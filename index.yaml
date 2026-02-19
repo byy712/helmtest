@@ -1,0 +1,835 @@
+apiVersion: v1
+entries:
+  altiplano-crds:
+  - apiVersion: v1
+    appVersion: 24.6.1-REL_256
+    created: "2026-02-18T22:42:58.489084-05:00"
+    dependencies:
+    - alias: altiplano-cbur-crds
+      condition: altiplano-cbur-crds.enabled,global.altiplano-cbur-crds.enabled
+      name: cbur-crds
+      repository: '@artifactory'
+      tags:
+      - altiplano-cbur-crds
+      version: 2.5.0
+    description: A Helm chart for Altiplano crds
+    digest: 8a8aa25de22964881feb3744b8b14664984a8157927af2bf3a054c6b9e04c1a1
+    maintainers:
+    - email: altiplano@nokia.com
+      name: Nokia Altiplano Team
+    name: altiplano-crds
+    urls:
+    - https://byy712.github.io/helmtest/altiplano-crds-24.6.1-REL-0256.tgz
+    version: 24.6.1-REL-0256
+  altiplano-infra:
+  - apiVersion: v1
+    appVersion: 24.6.1-REL_256
+    created: "2026-02-18T22:42:58.548527-05:00"
+    dependencies:
+    - alias: altiplano-indexsearch
+      condition: altiplano-indexsearch.enabled,global.altiplano-indexsearch.enabled
+      name: bssc-ifd
+      repository: '@artifactory'
+      tags:
+      - altiplano-indexsearch
+      - rdof
+      - infra
+      version: 13.0.1-nokia-patch-18
+    - alias: altiplano-standalone-fluentd
+      condition: altiplano-standalone-fluentd.enabled,global.altiplano-standalone-fluentd.enabled
+      name: bssc-ifd
+      repository: '@artifactory'
+      tags:
+      - altiplano-standalone-fluentd
+      - edge-infra
+      version: 13.0.1-nokia-patch-18
+    - alias: altiplano-alarms-indexsearch
+      condition: altiplano-alarms-indexsearch.enabled,global.altiplano-alarms-indexsearch.enabled
+      name: bssc-ifd
+      repository: '@artifactory'
+      tags:
+      - altiplano-alarms-indexsearch
+      - rdof
+      - infra
+      version: 13.0.1-nokia-patch-18
+    - condition: altiplano-opentsdb.enabled,global.altiplano-opentsdb.enabled
+      name: altiplano-opentsdb-cluster
+      repository: http://127.0.0.1:30879
+      tags:
+      - altiplano-opentsdb
+      - rdof
+      - infra
+      version: 24.6.1-REL-0256
+    - alias: altiplano-mariadb
+      condition: altiplano-mariadb.enabled,global.altiplano-mariadb.enabled
+      name: cmdb
+      repository: '@artifactory'
+      tags:
+      - altiplano-mariadb
+      - rdof
+      - infra
+      - edge-infra
+      version: 9.2.1-nokia-patch-1
+    - alias: altiplano-kafka
+      condition: altiplano-kafka.enabled,global.altiplano-kafka.enabled
+      name: ckaf-kafka
+      repository: '@artifactory'
+      tags:
+      - altiplano-kafka
+      - rdof
+      - infra
+      - edge-infra
+      version: 8.0.2-nokia-patch-3
+    - condition: altiplano-webdav.enabled,global.altiplano-webdav.enabled
+      name: altiplano-webdav
+      repository: http://127.0.0.1:30879
+      tags:
+      - altiplano-webdav
+      - rdof
+      - infra
+      - edge-infra
+      version: 24.6.1-REL-0256
+    - alias: altiplano-pts
+      condition: altiplano-pts.enabled,global.altiplano-pts.enabled
+      name: cpro
+      repository: '@artifactory'
+      tags:
+      - altiplano-pts
+      - rdof
+      - infra
+      - edge-infra
+      version: 5.0.1-nokia-patch-3
+    - alias: altiplano-redis
+      condition: altiplano-redis.enabled,global.altiplano-redis.enabled
+      name: crdb-redisio
+      repository: '@artifactory'
+      tags:
+      - altiplano-redis
+      - rdof
+      - infra
+      - edge-infra
+      version: 9.0.3-nokia-patch-1
+    - alias: altiplano-ingress
+      condition: altiplano-ingress.enabled,global.altiplano-ingress.enabled
+      name: citm-ingress
+      repository: '@artifactory'
+      tags:
+      - altiplano-ingress
+      - rdof
+      - infra
+      - edge-infra
+      - ingress-only
+      version: 3.0.1-nokia-patch-2
+    - alias: altiplano-kafka-mirrormaker
+      condition: altiplano-kafka-mirrormaker.enabled,global.altiplano-kafka-mirrormaker.enabled
+      name: ckaf-mirror-maker
+      repository: '@artifactory'
+      tags:
+      - altiplano-mirror-maker
+      - infra
+      - edge-infra
+      version: 5.1.0-nokia-patch-8
+    - alias: altiplano-oauth2-proxy
+      condition: altiplano-oauth2-proxy.enabled,global.altiplano-oauth2-proxy.enabled
+      name: altiplano-oauth2-proxy
+      repository: http://127.0.0.1:30879
+      tags:
+      - altiplano-oauth2-proxy
+      - infra
+      version: 24.6.1-REL-0256
+    - alias: altiplano-oauth2-proxy-nbi
+      condition: altiplano-oauth2-proxy-nbi.enabled,global.altiplano-oauth2-proxy-nbi.enabled
+      name: altiplano-oauth2-proxy
+      repository: http://127.0.0.1:30879
+      tags:
+      - altiplano-oauth2-proxy-nbi
+      - infra
+      version: 24.6.1-REL-0256
+    - condition: altiplano-nspos-rabbitmq.enabled,global.altiplano-nspos-rabbitmq.enabled
+      name: altiplano-nspos-rabbitmq
+      repository: http://127.0.0.1:30879
+      tags:
+      - altiplano-nspos-rabbitmq
+      - wfe
+      version: 24.6.1-REL-0256
+    - alias: altiplano-grafana
+      condition: altiplano-grafana.enabled,global.altiplano-grafana.enabled
+      name: cpro-grafana
+      repository: '@artifactory'
+      tags:
+      - altiplano-grafana
+      - rdof
+      - infra
+      version: 7.0.4-nokia-patch-4
+    - alias: altiplano-cbur
+      condition: altiplano-cbur.enabled,global.altiplano-cbur.enabled
+      name: cbur
+      repository: '@artifactory'
+      tags:
+      - altiplano-cbur
+      - infra
+      version: 1.17.0-nokia-patch-5
+    - condition: altiplano-backup-restore-helper.enabled,global.altiplano-backup-restore-helper.enabled
+      name: altiplano-backup-restore-helper
+      repository: http://127.0.0.1:30879
+      tags:
+      - altiplano-backup-restore-helper
+      - infra
+      version: 24.6.1-REL-0256
+    - alias: altiplano-sso
+      condition: altiplano-sso.enabled,global.altiplano-sso.enabled
+      name: ckey
+      repository: '@artifactory'
+      tags:
+      - altiplano-sso
+      - rdof
+      - infra
+      version: 12.2.0-nokia-patch-3
+    - condition: altiplano-diag.enabled,global.altiplano-diag.enabled
+      name: altiplano-diag
+      repository: http://127.0.0.1:30879
+      tags:
+      - altiplano-diag
+      - infra
+      version: 24.6.1-REL-0256
+    - alias: altiplano-ksql-server
+      condition: altiplano-ksql-server.enabled,global.altiplano-ksql-server.enabled
+      name: ckaf-ksql
+      repository: '@artifactory'
+      tags:
+      - altiplano-ksql-server
+      - infra
+      - edge-infra
+      version: 8.1.0-nokia-patch-2
+    - condition: altiplano-long-retention-opentsdb.enabled,global.altiplano-long-retention-opentsdb.enabled
+      name: altiplano-long-retention-opentsdb
+      repository: http://127.0.0.1:30879
+      tags:
+      - altiplano-long-retention-opentsdb
+      version: 24.6.1-REL-0256
+    description: A Helm chart for Altiplano Infra Components
+    digest: 950e400a87129ef3521faca6bb111a6b7880ab5af28f81fe490f86105952d336
+    maintainers:
+    - email: altiplano@nokia.com
+      name: Nokia Altiplano Team
+    name: altiplano-infra
+    urls:
+    - https://byy712.github.io/helmtest/altiplano-infra-24.6.1-REL-0256.tgz
+    version: 24.6.1-REL-0256
+  altiplano-secrets:
+  - apiVersion: v1
+    appVersion: 24.6.1-REL_256
+    created: "2026-02-18T22:42:58.554724-05:00"
+    dependencies:
+    - condition: altiplano-infra-secrets.enabled
+      name: altiplano-infra-secrets
+      repository: http://127.0.0.1:30879
+      version: 24.6.1-REL-0256
+    - condition: altiplano-solution-secrets.enabled
+      name: altiplano-solution-secrets
+      repository: http://127.0.0.1:30879
+      version: 24.6.1-REL-0256
+    - condition: altiplano-app-secrets.enabled
+      name: altiplano-app-secrets
+      repository: http://127.0.0.1:30879
+      version: 24.6.1-REL-0256
+    description: A Helm chart for Altiplano Secrets Components
+    digest: e23a90d6d33188b80a6806c9b0d1fc66b9248292d148fe89c5b5361f48d6c6db
+    maintainers:
+    - email: altiplano@nokia.com
+      name: Nokia Altiplano Team
+    name: altiplano-secrets
+    urls:
+    - https://byy712.github.io/helmtest/altiplano-secrets-24.6.1-REL-0256.tgz
+    version: 24.6.1-REL-0256
+  altiplano-solution:
+  - apiVersion: v1
+    appVersion: 24.6.1-REL_256
+    created: "2026-02-18T22:42:58.584173-05:00"
+    dependencies:
+    - condition: altiplano-av.enabled,global.altiplano-av.enabled
+      name: altiplano-av
+      repository: '@artifactory'
+      tags:
+      - altiplano-av
+      - avp
+      - rdof
+      - edge-apps
+      - virtualizer
+      version: 24.6.1-REL-0096
+    - alias: altiplano-nsp-mistral-notifier
+      condition: altiplano-nsp-mistral-notifier.enabled,global.altiplano-nsp-mistral-notifier.enabled
+      name: altiplano-nsp-mistral
+      repository: http://127.0.0.1:30879
+      tags:
+      - altiplano-nsp-mistral-notifier
+      - wfe
+      version: 24.6.1-REL-0256
+    - alias: altiplano-nsp-mistral-executor
+      condition: altiplano-nsp-mistral-executor.enabled,global.altiplano-nsp-mistral-executor.enabled
+      name: altiplano-nsp-mistral
+      repository: http://127.0.0.1:30879
+      tags:
+      - altiplano-nsp-mistral-executor
+      - wfe
+      version: 24.6.1-REL-0256
+    - alias: altiplano-nsp-mistral-executor-triggers
+      condition: altiplano-nsp-mistral-executor-triggers.enabled,global.altiplano-nsp-mistral-executor-triggers.enabled
+      name: altiplano-nsp-mistral
+      repository: http://127.0.0.1:30879
+      tags:
+      - altiplano-nsp-mistral-executor-triggers
+      - wfe
+      version: 24.6.1-REL-0256
+    - alias: altiplano-nsp-mistral-engine-triggers
+      condition: altiplano-nsp-mistral-engine-triggers.enabled,global.altiplano-nsp-mistral-engine-triggers.enabled
+      name: altiplano-nsp-mistral
+      repository: http://127.0.0.1:30879
+      tags:
+      - altiplano-nsp-mistral-engine-triggers
+      - wfe
+      version: 24.6.1-REL-0256
+    - alias: altiplano-nsp-mistral-engine
+      condition: altiplano-nsp-mistral-engine.enabled,global.altiplano-nsp-mistral-engine.enabled
+      name: altiplano-nsp-mistral
+      repository: http://127.0.0.1:30879
+      tags:
+      - altiplano-nsp-mistral-engine
+      - wfe
+      version: 24.6.1-REL-0256
+    - alias: altiplano-nsp-mistral-api
+      condition: altiplano-nsp-mistral-api.enabled,global.altiplano-nsp-mistral-api.enabled
+      name: altiplano-nsp-mistral
+      repository: http://127.0.0.1:30879
+      tags:
+      - altiplano-nsp-mistral-api
+      - wfe
+      version: 24.6.1-REL-0256
+    - condition: altiplano-nspos-app3-tomcat.enabled,global.altiplano-nspos-app3-tomcat.enabled
+      name: altiplano-nspos-app3-tomcat
+      repository: http://127.0.0.1:30879
+      tags:
+      - altiplano-nspos-app3-tomcat
+      - wfe
+      version: 24.6.1-REL-0256
+    - condition: altiplano-netconfinventorycollector.enabled,global.altiplano-netconfinventorycollector.enabled
+      name: altiplano-netconfinventorycollector
+      repository: '@artifactory'
+      tags:
+      - altiplano-netconfinventorycollector
+      - avp
+      - rdof
+      - edge-apps
+      - virtualizer
+      version: 24.6.1-REL-0070
+    - condition: altiplano-ipfixbecollector.enabled,global.altiplano-ipfixbecollector.enabled
+      name: altiplano-ipfixbecollector
+      repository: '@artifactory'
+      tags:
+      - altiplano-ipfixbecollector
+      - avp
+      - rdof
+      - edge-apps
+      - virtualizer
+      version: 24.6.1-REL-0080
+    - condition: altiplano-ipfixfecollector.enabled,global.altiplano-ipfixfecollector.enabled
+      name: altiplano-ipfixfecollector
+      repository: '@artifactory'
+      tags:
+      - altiplano-ipfixfecollector
+      - avp
+      - rdof
+      - edge-apps
+      - virtualizer
+      version: 24.6.1-REL-0080
+    - condition: altiplano-nclivecollector.enabled,global.altiplano-nclivecollector.enabled
+      name: altiplano-nclivecollector
+      repository: '@artifactory'
+      tags:
+      - altiplano-nclivecollector
+      - avp
+      - rdof
+      - edge-apps
+      - virtualizer
+      version: 24.6.1-REL-0066
+    - condition: altiplano-cliadapterav.enabled,global.altiplano-cliadapterav.enabled
+      name: altiplano-cliadapterav
+      repository: '@artifactory'
+      tags:
+      - altiplano-cliadapterav
+      - traditional-nbi-all
+      - traditional-nbi-edge
+      version: 24.6.1-REL-0007
+    - condition: altiplano-cliadapterac.enabled,global.altiplano-cliadapterac.enabled
+      name: altiplano-cliadapterac
+      repository: '@artifactory'
+      tags:
+      - altiplano-cliadapterac
+      - traditional-nbi-all
+      - traditional-nbi-central
+      version: 24.6.1-REL-0007
+    - condition: altiplano-cliadapteribn.enabled,global.altiplano-cliadapteribn.enabled
+      name: altiplano-cliadapteribn
+      repository: '@artifactory'
+      tags:
+      - altiplano-cliadapteribn
+      version: 24.6.1-REL-0007
+    - condition: altiplano-rcdeviceproxy.enabled,global.altiplano-rcdeviceproxy.enabled
+      name: altiplano-rcdeviceproxy
+      repository: '@artifactory'
+      tags:
+      - altiplano-rcdeviceproxy
+      - avp
+      version: 24.6.0-REL-0009
+    - condition: altiplano-vonumanagement.enabled,global.altiplano-vonumanagement.enabled
+      name: altiplano-vonumanagement
+      repository: '@artifactory'
+      tags:
+      - altiplano-vonumanagement
+      version: 24.6.1-REL-0028
+    - condition: altiplano-nspmediator.enabled,global.altiplano-nspmediator.enabled
+      name: altiplano-nspmediator
+      repository: http://127.0.0.1:30879
+      tags:
+      - altiplano-nspmediator
+      - external-tor-adapter
+      version: 24.6.1-REL-0256
+    - condition: altiplano-nsp-mdm-bulk-collector.enabled,global.altiplano-nsp-mdm-bulk-collector.enabled
+      name: altiplano-nsp-mdm-bulk-collector
+      repository: http://127.0.0.1:30879
+      tags:
+      - altiplano-nsp-mdm-bulk-collector
+      - external-tor-adapter
+      version: 24.6.1-REL-0256
+    - condition: altiplano-nokia-acs-mediator.enabled,global.altiplano-nokia-acs-mediator.enabled
+      name: altiplano-nokia-acs-mediator
+      repository: '@artifactory'
+      tags:
+      - altiplano-nokia-acs-mediator
+      - internal-acs-adapter
+      - fsm
+      - fmc
+      version: 24.6.1-REL-0068
+    - condition: altiplano-geo-import.enabled,global.altiplano-geo-import.enabled
+      name: altiplano-geo-import
+      repository: '@artifactory'
+      tags:
+      - altiplano-geo-import
+      - fsm
+      - fmc
+      version: 24.6.1-REL-0065
+    - condition: altiplano-nspalarm2kafka.enabled,global.altiplano-nspalarm2kafka.enabled
+      name: altiplano-nspalarm2kafka
+      repository: '@artifactory'
+      tags:
+      - altiplano-nspalarm2kafka
+      - external-tor-adapter
+      version: 24.6.1-REL-0068
+    - condition: altiplano-alarmisbridge.enabled,global.altiplano-alarmisbridge.enabled
+      name: altiplano-alarmisbridge
+      repository: '@artifactory'
+      tags:
+      - altiplano-alarmisbridge
+      - nms
+      - avp
+      - aac
+      - fsm
+      - fmc
+      - rdof
+      - slice-owner-controller
+      - central-apps
+      - altiplano-command-center
+      version: 24.6.1-REL-0081
+    - condition: altiplano-healthtoisbridge.enabled,global.altiplano-healthtoisbridge.enabled
+      name: altiplano-healthtoisbridge
+      repository: '@artifactory'
+      tags:
+      - altiplano-healthtoisbridge
+      - nms
+      - avp
+      - aac
+      - fsm
+      - fmc
+      - slice-owner-controller
+      - central-apps
+      - altiplano-command-center
+      version: 24.6.1-REL-0081
+    - condition: altiplano-hamid2isbridge.enabled,global.altiplano-hamid2isbridge.enabled
+      name: altiplano-hamid2isbridge
+      repository: '@artifactory'
+      tags:
+      - altiplano-hamid2isbridge
+      - altiplano-command-center
+      version: 24.6.1-REL-0068
+    - condition: altiplano-passive-topology.enabled,global.altiplano-passive-topology.enabled
+      name: altiplano-passive-topology
+      repository: '@artifactory'
+      tags:
+      - altiplano-passive-topology
+      version: 24.6.1-REL-0068
+    - condition: altiplano-ac.enabled,global.altiplano-ac.enabled
+      name: altiplano-ac
+      repository: '@artifactory'
+      tags:
+      - altiplano-ac
+      - nms
+      - avp
+      - aac
+      - fsm
+      - fmc
+      - rdof
+      - slice-owner-controller
+      - central-apps
+      version: 24.6.1-REL-0175
+    - condition: altiplano-ibn-be.enabled,global.altiplano-ibn-be.enabled
+      name: altiplano-ibn-be
+      repository: '@artifactory'
+      tags:
+      - altiplano-ibn-be
+      version: 24.6.1-REL-0175
+    - condition: altiplano-command-center.enabled,global.altiplano-command-center.enabled
+      name: altiplano-command-center
+      repository: '@artifactory'
+      tags:
+      - altiplano-command-center
+      version: 24.6.1-REL-0175
+    - condition: altiplano-healthengine.enabled,global.altiplano-healthengine.enabled
+      name: altiplano-healthengine
+      repository: '@artifactory'
+      tags:
+      - altiplano-healthengine
+      - aac
+      - fsm
+      - fmc
+      - slice-owner-controller
+      - rdof
+      - central-apps
+      - altiplano-command-center
+      version: 24.6.1-REL-0067
+    - condition: altiplano-pmfilegenerator.enabled,global.altiplano-pmfilegenerator.enabled
+      name: altiplano-pmfilegenerator
+      repository: '@artifactory'
+      tags:
+      - altiplano-pmfilegenerator
+      - traditional-nbi-all
+      - traditional-nbi-central
+      version: 24.6.1-REL-0065
+    - condition: altiplano-snmplivecollector.enabled,global.altiplano-snmplivecollector.enabled
+      name: altiplano-snmplivecollector
+      repository: '@artifactory'
+      tags:
+      - altiplano-snmplivecollector
+      - external-isam-snmp-adapter
+      - rdof
+      - isam-snmp-adapter
+      version: 24.6.1-REL-0067
+    - condition: altiplano-sdcbulkcollector.enabled,global.altiplano-sdcbulkcollector.enabled
+      name: altiplano-sdcbulkcollector
+      repository: '@artifactory'
+      tags:
+      - altiplano-sdcbulkcollector
+      - external-isam-snmp-adapter
+      - rdof
+      - isam-snmp-adapter
+      version: 24.6.1-REL-0068
+    - condition: altiplano-oad2kafka.enabled,global.altiplano-oad2kafka.enabled
+      name: altiplano-oad2kafka
+      repository: '@artifactory'
+      tags:
+      - altiplano-oad2kafka
+      - rdof
+      - external-isam-snmp-adapter
+      - isam-snmp-adapter
+      version: 24.6.1-REL-0066
+    - condition: altiplano-kafka2jms.enabled,global.altiplano-kafka2jms.enabled
+      name: altiplano-kafka2jms
+      repository: '@artifactory'
+      tags:
+      - altiplano-kafka2jms
+      version: 24.6.1-REL-0067
+    - condition: altiplano-tcaengine.enabled,global.altiplano-tcaengine.enabled
+      name: altiplano-tcaengine
+      repository: '@artifactory'
+      tags:
+      - altiplano-tcaengine
+      - avp
+      - aac
+      - fsm
+      - fmc
+      - slice-owner-controller
+      - rdof
+      - central-apps
+      - altiplano-command-center
+      version: 24.6.1-REL-0071
+    - condition: altiplano-nsploadbalancer.enabled,global.altiplano-nsploadbalancer.enabled
+      name: altiplano-nsploadbalancer
+      repository: http://127.0.0.1:30879
+      tags:
+      - altiplano-nsploadbalancer
+      - external-tor-adapter
+      version: 24.6.1-REL-0256
+    - condition: altiplano-nspbulkcollector.enabled,global.altiplano-nspbulkcollector.enabled
+      name: altiplano-nspbulkcollector
+      repository: http://127.0.0.1:30879
+      tags:
+      - altiplano-nspbulkcollector
+      - external-tor-adapter
+      version: 24.6.1-REL-0256
+    - condition: altiplano-trmbulkcollector.enabled,global.altiplano-trmbulkcollector.enabled
+      name: altiplano-trmbulkcollector
+      repository: '@artifactory'
+      tags:
+      - altiplano-trmbulkcollector
+      - fsm
+      - fmc
+      version: 24.6.1-REL-0065
+    - condition: altiplano-fm-kpi-be.enabled,global.altiplano-fm-kpi-be.enabled
+      name: altiplano-fm-kpi-be
+      repository: '@artifactory'
+      tags:
+      - altiplano-fm-kpi-be
+      - fsm
+      - fmc
+      version: 24.6.1-REL-0066
+    - condition: altiplano-hdm-event-proxy.enabled,global.altiplano-hdm-event-proxy.enabled
+      name: altiplano-hdm-event-proxy
+      repository: '@artifactory'
+      tags:
+      - altiplano-hdm-event-proxy
+      - fsm
+      - fmc
+      version: 24.6.1-REL-0067
+    - condition: altiplano-soapadapter.enabled,global.altiplano-soapadapter.enabled
+      name: altiplano-soapadapter
+      repository: '@artifactory'
+      tags:
+      - altiplano-soapadapter
+      - traditional-nbi-all
+      - traditional-nbi-central
+      version: 24.6.1-REL-0069
+    - alias: altiplano-snmp-inventory-collector
+      condition: altiplano-snmp-inventory-collector.enabled,global.altiplano-snmp-inventory-collector.enabled
+      name: altiplano-snmp-inventory-collector
+      repository: '@artifactory'
+      tags:
+      - altiplano-snmp-inventory-collector
+      - external-isam-snmp-adapter
+      - rdof
+      - isam-snmp-adapter
+      version: 24.6.1-REL-0068
+    - alias: altiplano-inventory-engine
+      condition: altiplano-inventory-engine.enabled,global.altiplano-inventory-engine.enabled
+      name: altiplano-inventory-engine
+      repository: '@artifactory'
+      tags:
+      - altiplano-inventory-engine
+      - avp
+      - rdof
+      - edge-apps
+      - virtualizer
+      version: 24.6.1-REL-0086
+    - condition: altiplano-snmp-trap-forwarder.enabled,global.altiplano-snmp-trap-forwarder.enabled
+      name: altiplano-snmp-trap-forwarder
+      repository: '@artifactory'
+      tags:
+      - altiplano-snmp-trap-forwarder
+      - traditional-nbi-all
+      - traditional-nbi-central
+      version: 24.6.1-REL-0067
+    - condition: altiplano-acs-live-collector.enabled,global.altiplano-acs-live-collector.enabled
+      name: altiplano-acs-live-collector
+      repository: '@artifactory'
+      tags:
+      - altiplano-acs-live-collector
+      - internal-acs-adapter
+      - fsm
+      - fmc
+      version: 24.6.1-REL-0069
+    - condition: altiplano-kafka2is.enabled,global.altiplano-kafka2is.enabled
+      name: altiplano-kafka2is
+      repository: http://127.0.0.1:30879
+      tags:
+      - altiplano-kafka2is
+      version: 24.6.1-REL-0256
+    - condition: altiplano-ran-live-collector.enabled,global.altiplano-ran-live-collector.enabled
+      name: altiplano-ran-live-collector
+      repository: '@artifactory'
+      tags:
+      - altiplano-ran-live-collector
+      - fmc
+      version: 24.6.1-REL-0070
+    - condition: altiplano-son-event-processor.enabled,global.altiplano-son-event-processor.enabled
+      name: altiplano-son-event-processor
+      repository: '@artifactory'
+      tags:
+      - altiplano-son-event-processor
+      - fmc
+      version: 24.6.1-REL-0065
+    - condition: altiplano-generic-acs-mediator.enabled,global.altiplano-generic-acs-mediator.enabled
+      name: altiplano-generic-acs-mediator
+      repository: http://127.0.0.1:30879
+      tags:
+      - altiplano-generic-acs-mediator
+      - fsm
+      - fmc
+      version: 24.6.1-REL-0256
+    - condition: altiplano-son-be-collector.enabled,global.altiplano-son-be-collector.enabled
+      name: altiplano-son-be-collector
+      repository: '@artifactory'
+      tags:
+      - altiplano-son-be-collector
+      - fmc
+      version: 24.6.1-REL-0063
+    - condition: altiplano-device-migration.enabled,global.altiplano-device-migration.enabled
+      name: altiplano-device-migration
+      repository: '@artifactory'
+      tags:
+      - altiplano-device-migration
+      version: 24.6.1-REL-0091
+    - condition: isam-snmpmanager.enabled,global.isam-snmpmanager.enabled
+      name: isam-snmpmanager
+      repository: '@artifactory'
+      tags:
+      - isam-snmpmanager
+      - isam-snmp-adapter
+      version: 24.6.0-REL-0002
+    - condition: altiplano-kpi-engine.enabled,global.altiplano-kpi-engine.enabled
+      name: altiplano-kpi-engine
+      repository: '@artifactory'
+      tags:
+      - altiplano-kpi-engine
+      - aac
+      - fsm
+      - fmc
+      - altiplano-command-center
+      version: 24.6.1-REL-0068
+    - condition: altiplano-pm-scheduler.enabled,global.altiplano-pm-scheduler.enabled
+      name: altiplano-pm-scheduler
+      repository: '@artifactory'
+      tags:
+      - altiplano-pm-scheduler
+      - aac
+      - fsm
+      - fmc
+      - slice-owner-controller
+      - rdof
+      - central-apps
+      - nms
+      - altiplano-command-center
+      version: 24.6.1-REL-0069
+    - condition: altiplano-ipdr-exporter.enabled,global.altiplano-ipdr-exporter.enabled
+      name: altiplano-ipdr-exporter
+      repository: '@artifactory'
+      tags:
+      - altiplano-ipdr-exporter
+      version: 24.6.1-REL-0068
+    - condition: altiplano-nsp-mdm-live-collector.enabled,global.altiplano-nsp-mdm-live-collector.enabled
+      name: altiplano-nsp-mdm-live-collector
+      repository: http://127.0.0.1:30879
+      tags:
+      - altiplano-nsp-mdm-live-collector
+      - external-tor-adapter
+      version: 24.6.1-REL-0256
+    - condition: altiplano-nsp-mdm-mediator.enabled,global.altiplano-nsp-mdm-mediator.enabled
+      name: altiplano-nsp-mdm-mediator
+      repository: '@artifactory'
+      tags:
+      - altiplano-nsp-mdm-mediator
+      - external-tor-adapter
+      version: 24.6.1-REL-0066
+    - condition: altiplano-nsp-inventory-collector.enabled,global.altiplano-nsp-inventory-collector.enabled
+      name: altiplano-nsp-inventory-collector
+      repository: '@artifactory'
+      tags:
+      - altiplano-nsp-inventory-collector
+      - external-tor-adapter
+      version: 24.6.1-REL-0057
+    - alias: altiplano-healthengine-fast
+      condition: altiplano-healthengine-fast.enabled
+      name: altiplano-healthengine
+      repository: '@artifactory'
+      tags:
+      - altiplano-healthengine-fast
+      - aac
+      - fsm
+      - fmc
+      - slice-owner-controller
+      - rdof
+      - central-apps
+      version: 24.6.1-REL-0067
+    - alias: altiplano-ipfixbecollector-highspeed
+      condition: altiplano-ipfixbecollector-highspeed.enabled
+      name: altiplano-ipfixbecollector
+      repository: '@artifactory'
+      tags:
+      - altiplano-ipfixbecollector-highspeed
+      - ipfix-highspeed-poc
+      version: 24.6.1-REL-0080
+    - alias: altiplano-ipfixfecollector-highspeed
+      condition: altiplano-ipfixfecollector-highspeed.enabled
+      name: altiplano-ipfixfecollector
+      repository: '@artifactory'
+      tags:
+      - altiplano-ipfixfecollector-highspeed
+      - ipfix-highspeed-poc
+      version: 24.6.1-REL-0080
+    - alias: altiplano-pmfilegenerator-highspeed
+      condition: altiplano-pmfilegenerator-highspeed.enabled
+      name: altiplano-pmfilegenerator
+      repository: '@artifactory'
+      tags:
+      - altiplano-pmfilegenerator-highspeed
+      - ipfix-highspeed-poc
+      version: 24.6.1-REL-0065
+    - condition: altiplano-opentsdb-data-forwarder.enabled,global.altiplano-opentsdb-data-forwarder.enabled
+      name: altiplano-opentsdb-data-forwarder
+      repository: '@artifactory'
+      tags:
+      - altiplano-opentsdb-data-forwarder
+      version: 24.6.1-REL-0075
+    - condition: altiplano-vlan-id-manager.enabled,global.altiplano-vlan-id-manager.enabled
+      name: altiplano-vlan-id-manager
+      repository: '@artifactory'
+      tags:
+      - altiplano-vlan-id-manager
+      version: 24.6.1-REL-0070
+    - condition: altiplano-migration-script-executor.enabled,global.altiplano-migration-script-executor.enabled
+      name: altiplano-migration-script-executor
+      repository: '@artifactory'
+      tags:
+      - altiplano-migration-script-executor
+      - aac
+      version: 24.6.1-REL-0078
+    - condition: altiplano-cpe-bulk-collector-fe.enabled,global.altiplano-cpe-bulk-collector-fe.enabled
+      name: altiplano-cpe-bulk-collector-fe
+      repository: '@artifactory'
+      tags:
+      - altiplano-cpe-bulk-collector-fe
+      - usp
+      - tr181-bulk-collector
+      version: 24.6.1-REL-0070
+    - condition: altiplano-cpe-bulk-collector-be.enabled,global.altiplano-cpe-bulk-collector-be.enabled
+      name: altiplano-cpe-bulk-collector-be
+      repository: '@artifactory'
+      tags:
+      - altiplano-cpe-bulk-collector-be
+      - usp
+      - tr181-bulk-collector
+      version: 24.6.1-REL-0070
+    - condition: altiplano-nokia-uspc-mediator.enabled,global.altiplano-nokia-uspc-mediator.enabled
+      name: altiplano-nokia-uspc-mediator
+      repository: '@artifactory'
+      tags:
+      - uspc-mediator
+      - usp
+      version: 24.6.1-REL-0065
+    description: A Helm chart for Altiplano
+    digest: cdf2af5ea6ffbef4a836e81011fbe8d19bf5ebd977027fbdd304e4a4d07ed651
+    maintainers:
+    - email: altiplano@nokia.com
+      name: Nokia Altiplano Team
+    name: altiplano-solution
+    urls:
+    - https://byy712.github.io/helmtest/altiplano-solution-24.6.1-REL-0256.tgz
+    version: 24.6.1-REL-0256
+generated: "2026-02-18T22:42:58.483853-05:00"
