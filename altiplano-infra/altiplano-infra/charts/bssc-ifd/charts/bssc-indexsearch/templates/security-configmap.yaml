@@ -1,0 +1,21 @@
+{{- if .Values.security.enable }}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ template "bssc-indexsearch.fullname" . }}-security-config
+  labels:
+{{- include "bssc-indexsearch.commonLabels" (tuple .) | nindent 4 }}
+{{- include "bssc-indexsearch.csf-toolkit-helm.labels" (tuple .) | nindent 4 }}
+  annotations:
+{{- include "bssc-indexsearch.csf-toolkit-helm.annotations" (tuple .) | nindent 4 }}
+data:
+  action_groups.yml: {{ toYaml .Values.security.sec_configmap.action_groups_yml | indent 2 }}
+  config.yml: {{ tpl (toYaml .Values.security.sec_configmap.config_yml) . | default "" | indent 2 }}
+  roles.yml: {{ toYaml .Values.security.sec_configmap.roles_yml | indent 2 }}
+  roles_mapping.yml: {{ toYaml .Values.security.sec_configmap.roles_mapping_yml | indent 2 }}
+  tenants.yml: {{ toYaml .Values.security.sec_configmap.tenants_yml | indent 2 }}
+  allowlist.yml: {{ toYaml .Values.security.sec_configmap.allowlist_yml | indent 2 }}
+  whitelist.yml: {{ toYaml .Values.security.sec_configmap.whitelist_yml | indent 2 }}
+  nodes_dn.yml: {{ toYaml .Values.security.sec_configmap.nodesdn_yml | indent 2 }}
+  audit.yml: {{ toYaml .Values.security.sec_configmap.audit_yml | indent 2 }}
+{{- end -}}

@@ -1,0 +1,8 @@
+--- cpro-o/Chart.yaml	2023-12-13 16:53:25.000000000 +0530
++++ cpro/Chart.yaml	2024-04-22 13:18:24.642771255 +0530
+@@ -20,4 +20,4 @@
+ - https://github.com/prometheus/pushgateway
+ - https://github.com/prometheus/node_exporter
+ - https://github.com/kubernetes/kube-state-metrics
+-version: 5.0.1
++version: 5.0.1-nokia-patch-3

@@ -1,0 +1,101 @@
+{{- if .Values.alertmanager.enabled -}}
+apiVersion: {{ template "cpro.apiVersion.jobApiversion" . }}
+kind: Job
+metadata:
+  name: "{{ template "cpro.prometheus.hooks.preDeleteDepName" . }}"
+  labels:
+    {{- include "cpro.app.labels.v3" ( dict "root" . "context" .Values.alertmanager ) | nindent 4 }}
+{{- include "cpro.labelsOrAnnotations" (tuple .Values.alertmanager.labels .Values.global.labels) | indent 4}}
+  annotations:
+{{- include "cpro.labelsOrAnnotations" (tuple .Values.alertmanager.annotations .Values.global.annotations) | indent 4}}
+    "helm.sh/hook": pre-upgrade,pre-rollback
+    "helm.sh/hook-weight": "0"
+    "helm.sh/hook-delete-policy": before-hook-creation, hook-succeeded
+spec:
+{{$data_csc := dict "cSecCtx" .Values.helmDeleteImage.containerSecurityContext "ctx" . }}
+  activeDeadlineSeconds: {{ default 300 .Values.helmDeleteImage.activeDeadlineSeconds }}
+  template:
+    metadata:
+      labels:
+        {{- include "cpro.app.labels.v3" ( dict "root" . "context" .Values.alertmanager ) | nindent 8 }}
+        app: {{ template "cpro.prometheus.name" . }}
+        release: "{{ .Release.Name }}"
+{{- include "cpro.labelsOrAnnotations" (tuple .Values.alertmanager.labels .Values.custom.pod.labels .Values.global.labels) | indent 8}}
+      annotations:
+        # TODO FEATURE enable
+        sidecar.istio.io/inject: "false"
+{{- include "cpro.labelsOrAnnotations" (tuple .Values.alertmanager.annotations .Values.custom.pod.annotations .Values.global.annotations) | indent 8}}
+{{- if .Values.rbac.pspUseAppArmor }}
+{{- include "cpro.labelsOrAnnotations" (tuple .Values.custom.pod.apparmorAnnotations) | indent 8}}
+{{- end }}
+    spec:
+      restartPolicy: Never
+      automountServiceAccountToken: true
+      {{- if or .Values.serviceAccountName .Values.global.serviceAccountName }}
+      serviceAccountName: {{ template "cpro.prometheus.serviceAccountName" . }}
+      {{- else if .Values.rbac.enabled }}
+      serviceAccountName: {{ template "cpro.prometheus.alertmanager.preUpgrade.serviceAccount" . }}
+      {{- else }}
+      serviceAccountName: "default"
+      {{- end }}
+      securityContext:
+      {{$data := dict "securitycontext" .Values.helmDeleteImage.securityContext "ctx" . }}
+      {{- include "cpro.securitycontext" $data | nindent 8 }}
+      {{- if .Values.seLinuxOptions.enabled }}
+        seLinuxOptions:
+          level: {{ .Values.seLinuxOptions.level }}
+          role: {{ .Values.seLinuxOptions.role }}
+          type: {{ .Values.seLinuxOptions.type }}
+          user: {{ .Values.seLinuxOptions.user }}
+      {{- end }}
+{{ include "cpro-common-lib.imagePullSecrets" (dict "workloadName" .Values.alertmanager "root" .) | indent 6 }}      
+      containers:
+      - name: "{{ template "cpro.prometheus.hooks.preDeleteContainerName" . }}"
+       
+{{- include "cpro.helm.delete.image"  (dict "root" . "container" .Values.helmDeleteImage  ) | nindent 8 }}
+{{- include "cpro.terminationMessage" . | nindent 8 }}
+        env:
+          {{- include "cpro.timeZoneEnvName" . | nindent 10 }}
+        resources:
+{{- include "cpro-common-lib.v1.resources" ( dict "root" . "workloadresources" .Values.helmDeleteImage.resources "defaultcpulimit" "100m") | nindent 10 }}
+        command:
+        - sh
+        - -c
+        - |
+          response=`kubectl get svc --namespace {{ .Release.Namespace }} -l release={{ .Release.Name }},app={{ template "cpro.prometheus.name" . }},component="{{ .Values.alertmanager.name }}" --no-headers=true | awk '{print $1}' | grep -v '{{ template "cpro.prometheus.alertmanager.fullname" . }}-ext'`
+          if [ $? == 0 ]; then
+            echo "The following svc will be deleted $response";
+          else
+            echo "No svc will be deleted";
+          fi
+
+          if [[ ! -z $response ]]; then
+            kubectl delete svc --namespace {{ .Release.Namespace }} $response
+          fi
+
+          response=`kubectl get svc --namespace {{ .Release.Namespace }} -l "app.kubernetes.io/instance={{ .Release.Name }},app.kubernetes.io/component={{ .Values.alertmanager.name }}" --no-headers=true | awk '{print $1}' | grep -v '{{ template "cpro.prometheus.alertmanager.fullname" . }}-ext'`
+          if [ $? == 0 ]; then
+            echo "The following svc will be deleted $response";
+          else
+            echo "No svc will be deleted";
+          fi
+
+          if [[ ! -z $response ]]; then
+            kubectl delete svc --namespace {{ .Release.Namespace }} $response
+          fi
+
+        securityContext:
+          {{- include "cpro.containerSecurityContext" $data_csc | nindent 10 }}
+{{- with .Values.hooks.nodeSelector }}
+      nodeSelector:
+{{ toYaml . | indent 8 }}
+{{- end }}
+{{- with .Values.hooks.tolerations }}
+      tolerations:
+{{ toYaml . | indent 8 }}
+{{- end }}
+{{- with .Values.hooks.affinity }}
+      affinity:
+{{ toYaml . | indent 8 }}
+{{- end }}
+{{- end }}

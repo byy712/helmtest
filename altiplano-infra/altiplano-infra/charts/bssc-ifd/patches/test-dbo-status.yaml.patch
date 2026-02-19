@@ -1,0 +1,50 @@
+--- bssc-ifd-13.0.1/bssc-ifd/charts/bssc-dashboards/templates/tests/test-dbo-status.yaml	2023-12-06 18:41:43.000000000 +0530
++++ bssc-ifd-patch-9/charts/bssc-dashboards/templates/tests/test-dbo-status.yaml	2024-03-14 13:55:10.536067000 +0530
+@@ -43,7 +43,7 @@
+   {{- end }}
+   containers:
+   - name: "{{ template "bssc-dashboards.helmTestContainer.name" . }}"
+-    image: {{ include "bssc-dashboards.registry" (tuple .Values .Values.internalAppRegistry) }}/{{.Values.dashboards.image.repo}}:{{ include "bssc-dashboards.imageTag" (tuple .Values.dashboards.image.tag $.commonSupportedImageFlavor .Values .Values.dashboards .Values.dashboards.image) }}
++    image: {{ include "bssc-dashboards.registry" (tuple .Values .Values.internalAppRegistry) }}/{{.Values.dashboards.image.repo}}:{{.Values.dashboards.image.tag}}
+     imagePullPolicy: {{.Values.dashboards.ImagePullPolicy}}
+     securityContext:
+ {{ include "bssc-dashboards.container.securityContext" . | indent 6 }}
+@@ -101,13 +101,35 @@
+   {{- if eq (tpl (.Values.security.sensitiveInfoInSecret.enabled | toString ) .) "true" }}
+     {{- if eq $.clientCertAuth "false" }}
+     volumeMounts:
+-    - name: "dashboards-secret"
++    - name: dashboards-passwordsecret
++      mountPath: "/etc/initContainerMount/passwords"
++    - name: dashboards-certsecret
+       mountPath: "/tmp/dboSecret"
+ 
+   volumes:
+-  - name: dashboards-secret
++  - name: dashboards-certsecret
+     secret:
+-      secretName: {{ .Values.security.sensitiveInfoInSecret.credentialName }}
++      secretName: {{ .Values.security.sensitiveInfoInSecret.credentialNameCert }}
++      items:
++      {{- if .Values.security.keycloak_auth }}
++          {{- if not $.istio.enabled }}
++              {{- if .Values.security.sensitiveInfoInSecret.keycloakRootCaPem }}
++      - key: {{ .Values.security.sensitiveInfoInSecret.keycloakRootCaPem }}
++        path: keycloakRootCaPem
++              {{- end }}
++          {{- end }}
++      {{- end }}
++      {{- if not $.istio.enabled }}
++      - key: {{ .Values.security.sensitiveInfoInSecret.dboServerCrt }}
++        path: dboServerCrt
++      - key: {{ .Values.security.sensitiveInfoInSecret.dboServerKey }}
++        path: dboServerKey
++      - key: {{ .Values.security.sensitiveInfoInSecret.IsRootCaPem }}
++        path: IsRootCaPem
++      {{- end }}
++  - name: dashboards-passwordsecret
++    secret:
++      secretName: {{ .Values.security.sensitiveInfoInSecret.credentialNamePassword }}
+       items:
+         - key: {{ .Values.security.sensitiveInfoInSecret.dboIsPassword }}
+           path: .dboIsPassword

@@ -1,0 +1,64 @@
+{{- include "cmdb.init" . -}}
+{{- if .Values.mariadb.metrics.enabled }}
+{{ $service_name := .Values.services.mariadb.exporter.name | default (printf "%s-mariadb-metrics" (include "cmdb.fullname" .)) }}
+{{ $targetPort := eq (include "cmdb.mariadb_use_zt_proxy" .) "true" | ternary "tcp-mdb-auth" "tcp-mdb-metrics" }}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ $service_name }}
+  labels:
+    {{- include "cmdb-mariadb.labels" (tuple . "metrics" "service")  | nindent 4 }}
+  annotations:
+    {{- include "cmdb-mariadb.annotations" (tuple . "metrics" "service")  | nindent 4 }}
+    {{- toYaml .Values.mariadb.metrics.annotations | nindent 4 }}
+    "prometheus.io/port": {{ .Values.services.mariadb.exporter.port | quote }}
+spec:
+  type: ClusterIP
+  {{- include "cmdb.dual-stack" (tuple . .Values.services.mariadb.exporter) | nindent 2 }}
+  ports:
+  - name: tcp-mdb-metrics
+    port: {{ .Values.services.mariadb.exporter.port }}
+    targetPort: {{ $targetPort }}
+  selector:
+    {{- include "cmdb-mariadb.selector_labels" . | nindent 4 }}
+    type: mariadb
+
+{{- if .Values.istio.enabled }}
+{{ $headless_name := .Values.services.mariadb.exporter.headless.name | default (printf "%s-headless" $service_name) }}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ $headless_name }}
+  labels:
+    {{- include "cmdb-mariadb.labels" (tuple . "metrics" "service")  | nindent 4 }}
+  annotations:
+    {{- include "cmdb-mariadb.annotations" (tuple . "metrics" "service")  | nindent 4 }}
+spec:
+  type: ClusterIP
+  clusterIP: None
+  sessionAffinity: None
+  ports:
+  - name: tcp-mdb-metrics
+    port: {{ .Values.services.mariadb.exporter.port }}
+    targetPort: {{ $targetPort }}
+  selector:
+    {{- include "cmdb-mariadb.selector_labels" . | nindent 4 }}
+    type: mariadb
+---
+apiVersion: networking.istio.io/v1beta1
+kind: DestinationRule
+metadata:
+  name: {{ $headless_name }}-mlts-dr
+  labels:
+    {{- include "cmdb-mariadb.labels" (tuple . "destinationrule") | nindent 4 }}
+  annotations:
+    {{- include "cmdb-mariadb.annotations" (tuple . "destinationrule") | nindent 4 }}
+spec:
+  host: {{ $headless_name }}
+  trafficPolicy:
+    tls:
+      mode: ISTIO_MUTUAL
+{{- end }}
+{{- end }}

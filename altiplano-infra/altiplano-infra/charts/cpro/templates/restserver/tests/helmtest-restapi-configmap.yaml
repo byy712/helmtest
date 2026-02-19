@@ -1,0 +1,142 @@
+{{- if .Values.restserver.enabled -}}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: "{{ .Release.Name }}-{{ .Chart.Name }}-helmtest-restapi-configmap"
+  labels:
+    {{- include "cpro.app.labels.v3" ( dict "root" . "context" .Values.restserver ) | nindent 4 }}
+    {{- include "cpro.labelsOrAnnotations" (tuple .Values.global.labels) | indent 4}}
+  annotations:
+    {{- include "cpro.labelsOrAnnotations" (tuple .Values.global.annotations) | indent 4}}
+  namespace: {{ .Release.Namespace }}
+data:
+  curl_cmd.sh: |
+    #!/bin/bash
+{{- if (eq (include "csf-common-lib.v1.coalesceBoolean" (tuple .Values.restserver.tls.enabled .Values.tls.enabled .Values.global.tls.enabled .Values.restserver.configs.httpsEnabled false)) "true") }}
+    CURL_PROTOCOL=https
+    INSECURE_FLAG=-k
+{{- else }}
+    CURL_PROTOCOL=http
+    INSECURE_FLAG=
+{{- end }}
+    CURL_URL="$CURL_PROTOCOL://{{ template "cpro.prometheus.restserver.fullname" . }}.{{ .Release.Namespace }}.svc.{{ .Values.clusterDomain }}:{{ .Values.restserver.service.servicePort }}/cpro/v2/"
+    {{if .Values.helmtest.CPROconfigmapname }}
+    CURL_parameters="namespace={{ .Release.Namespace }}&configmapName={{ .Values.helmtest.CPROconfigmapname }}"
+    {{- else }}
+    CURL_parameters="namespace={{ .Release.Namespace }}&configmapName={{ .Release.Name }}-helmtestdata-restapi-configmap" 
+    {{- end }} 
+    function get_curl_command {
+      action=$1
+      object=$2
+      if [ $# == 3 ] ; then
+        parameters=$3
+        curl_cmd="curl -v $INSECURE_FLAG -X $action $CURL_URL$object?$CURL_parameters&$parameters"
+      else
+        curl_cmd="curl -v $INSECURE_FLAG -X $action $CURL_URL$object?$CURL_parameters"
+      fi
+      echo $curl_cmd
+    }
+    function get_curl_command_code {
+      action=$1
+      object=$2
+      if [ $# == 3 ] ; then 
+        parameters=$3
+        curl_cmd="curl -v $INSECURE_FLAG -X $action $CURL_URL$object?$CURL_parameters&$parameters -w %{http_code} -o /dev/null "
+      elif [ $# == 4 ]; then
+        parameters=$3
+        option=$4
+        curl_cmd="-v $INSECURE_FLAG -X $action $CURL_URL$object?$CURL_parameters&$parameters -H Content-Type:application/json $option -w %{http_code} -o /dev/null"
+      else 
+        curl_cmd="curl -v $INSECURE_FLAG -X $action $CURL_URL$object?$CURL_parameters -w %{http_code} -o /dev/null"
+      fi
+      echo $curl_cmd
+    }
+    function check_response_success {
+      result=$1
+      if [ $result == "200" ];then
+         echo "successfully"
+      else 
+         echo "failed"
+      fi
+    } 
+    function run_curl_success {
+      action=$1
+      object=$2
+      if [ $# == 3 ] ; then
+        parameters=$3
+        cmd=$(get_curl_command_code $action $object $parameters)
+        echo $cmd
+        result=$($cmd)
+      elif [ $# == 4 ]; then
+        parameters=$3
+        option=$4
+        cmd=$(get_curl_command_code $action $object $parameters $option) 
+        echo $cmd
+       # result=`$cmd`
+        result=`echo "$cmd" | xargs curl`
+      else
+        cmd=$(get_curl_command_code $action $object) 
+        echo $cmd
+        result=$($cmd)
+      fi
+      res=$(check_response_success $result)
+      echo "$action $object $res"
+      if [ ${res} == "successfully" ]; then
+         return 0
+      else
+         return 1
+      fi
+    }
+    function run_curl {
+      action=$1
+      object=$2
+      if [ $# == 3 ] ; then 
+        parameters=$3
+        cmd=$(get_curl_command $action $object $parameters)
+        result=$($cmd)
+      else
+        cmd=$(get_curl_command $action $object)
+        result=$($cmd)
+      fi 
+      echo $result
+    }
+  newalerts.json: |
+                {
+                    "alert": "alerttest",
+                    "expr": "100 - (node_memory_MemFree_bytes + node_memory_Buffers_bytes + node_memory_Cached_bytes) / node_memory_MemTotal_bytes * 100 > 2",
+                    "for": "0s",
+                    "labels": {
+                        "severity": "MINOR",
+                        "name": "MemoryExceedThreshold",
+                        "text": "Usage of memory is greater than the threshold value",
+                        "id": 3001209,
+                        "eventType": 11,
+                        "probableCause": 351,
+                        "key": "MOC010"
+                    },
+                    "annotations": {
+                        "summary": " High memory usage detected",
+                        "description": " Memory usage is above 2%"
+                    }
+                }
+  modify.json: |
+                {
+                    "alert": "alerttest",
+                    "expr": "100 - (node_memory_MemFree_bytes + node_memory_Buffers_bytes + node_memory_Cached_bytes) / node_memory_MemTotal_bytes * 100 > 2",
+                    "for": "0s",
+                    "labels": {
+                        "severity": "MINOR",
+                        "name": "MemoryExceedThreshold",
+                        "text": "Usage of memory is greater than the threshold value",
+                        "id": 3001209,
+                        "eventType": 12,
+                        "probableCause": 351,
+                        "key": "MOC010"
+                    },
+                    "annotations": {
+                        "summary": "High memory usage detected",
+                        "description": " Memory usage is above 2%"
+                    }
+                }
+
+{{- end -}}

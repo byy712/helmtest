@@ -1,0 +1,184 @@
+{{- if not .Values.tests.skipTest }}
+apiVersion: v1
+kind: Pod
+metadata:
+  name: {{ template "citm-ingress.testName" . }}
+  annotations:
+    "helm.sh/hook": test-success
+    "helm.sh/hook-delete-policy": "{{ .Values.tests.hookDeletePolicy }}"
+    sidecar.istio.io/inject: "false"
+spec:
+  restartPolicy: Never
+  {{- include "citm-ingress.imagePullSecrets" . | indent 2 }}
+  containers:
+  - name: {{ include "csf-common-lib.v1.containerName" (tuple . ( include "citm-ingress.containerNameSuffix" (tuple ( include "citm-ingress.name" .) "test-connection" ))) }}
+    image: "{{ include "citm-ingress.imageMapper" (tuple $ .Values.controller .Values.internalCitmRegistry) }}"
+    imagePullPolicy: "{{ .Values.controller.imagePullPolicy }}"
+    terminationMessagePath: {{ .Values.controller.terminationMessagePath }}
+    terminationMessagePolicy: {{ .Values.controller.terminationMessagePolicy }}
+    securityContext:
+      readOnlyRootFilesystem: {{ .Values.controller.hook.containerSecurityContext.readOnlyRootFilesystem }}
+      runAsNonRoot: {{ .Values.controller.hook.containerSecurityContext.runAsNonRoot }}
+      capabilities:
+        drop:
+          - {{ .Values.controller.hook.containerSecurityContext.dropCapabilities }}
+      allowPrivilegeEscalation: {{ .Values.controller.hook.containerSecurityContext.privilegeEscalation }}
+{{- if eq (include "citm-ingress.addSeccompProfile" .) "true" }}
+      seccompProfile:
+        type: {{ .Values.controller.hook.containerSecurityContext.seccompProfile.type }}
+{{- if eq .Values.controller.hook.containerSecurityContext.seccompProfile.type "Localhost" }}
+        localhostProfile: {{ .Values.controller.hook.containerSecurityContext.seccompProfile.path }}
+{{- end }}
+{{- end }}
+{{- if eq .Values.controller.hook.containerSecurityContext.seLinuxOptions.enabled true }}
+      seLinuxOptions:
+        level: {{ .Values.controller.hook.containerSecurityContext.seLinuxOptions.level }}
+        role: {{ .Values.controller.hook.containerSecurityContext.seLinuxOptions.role }}
+        type: {{ .Values.controller.hook.containerSecurityContext.seLinuxOptions.type }}
+        user: {{ .Values.controller.hook.containerSecurityContext.seLinuxOptions.user }}
+{{- end }}
+    env:
+      - name: NGINX_HOST
+      {{- if .Values.controller.bindAddress }}
+        value: "{{ .Values.controller.bindAddress }}"
+      {{- else }}
+        value: {{ template "citm-ingress.fullname" . }}.{{ .Release.Namespace }}.svc.{{ .Values.controller.clusterDomain }}
+      {{- end }}
+      - name: NGINX_PORT
+      {{- if not .Values.controller.forcePort }}
+        {{- if .Values.controller.disableHttpPortListening }}
+          {{- if .Values.controller.httpsPort }}
+        value: "{{ .Values.controller.httpsPort }}"
+          {{- else }}
+        value: "443"
+          {{- end }}
+        {{- else if .Values.controller.httpPort }}
+        value: "{{ .Values.controller.httpPort }}"
+        {{- else }}
+        value: "80"
+        {{- end }}
+      {{- else }}
+        {{- if .Values.controller.disableHttpPortListening }}
+        value: "{{ .Values.controller.forcePortHttps }}"
+        {{- else }}
+        value: "{{ .Values.controller.forcePortHttp }}"
+        {{- end }}
+      {{- end }}
+      - name: NGINX_STATUS_PORT
+      {{- if .Values.controller.statusPort }}
+        value: "{{ .Values.controller.statusPort }}"
+      {{- else }}
+        value: "18080"
+      {{- end }}
+      {{- if not .Values.controller.timezone.mountHostLocaltime }}
+      - name: TZ
+        value: {{ template "citm-ingress.timeZoneName" . }}
+      {{- end }}
+      - name: HTTP_PORT_DISABLED
+        value: "{{ .Values.controller.disableHttpPortListening }}"
+    command:
+      - bash
+      - "-c"
+      - |
+        echo "Set the curl protocol"
+        PROTOCOL=$([ "$HTTP_PORT_DISABLED" = "true" ] && echo "https" || echo "http")
+        echo "Check if bindAddress was done on multiple IPs"
+        if [[ -z $(echo $NGINX_HOST |  grep ",") ]]
+        then
+          echo "NGINX_HOST contains single IP"
+          RC=0
+          for PORTS in $NGINX_PORT:/:200,404,308
+          do
+           P=$(echo $PORTS | cut -d ':' -f1)
+            U=$(echo $PORTS | cut -d ':' -f2)
+            CODES=$(echo $PORTS | cut -d ':' -f3)
+            echo "Checking $PROTOCOL://$NGINX_HOST:$P$U. Should return $CODES"
+            E=""
+            for C in $(echo $CODES | sed -e 's|,| |g')
+            do
+              if [ -z "${E:-}" ]
+              then
+                E="CITM_HTTP_CODE=$C"
+              else
+                E="$E|CITM_HTTP_CODE=$C"
+              fi
+          done
+          RETRY_COUNT={{ .Values.tests.numberOfRetry }};
+          RETRY_DELAY={{ .Values.tests.delaySecondsBetweenRetry }};
+          CURL_OPTS="{{ .Values.tests.curlExtraOpts }}";
+          echo "curl opts are : $CURL_OPTS";
+          for (( i = 0; i <= $RETRY_COUNT; i++ ))
+          do
+              echo "Curling -- i = $i -- cmd : curl $CURL_OPTS -w CITM_HTTP_CODE=%{http_code} $PROTOCOL://$NGINX_HOST:$P$U"
+              curl $CURL_OPTS -w "CITM_HTTP_CODE=%{http_code}" $PROTOCOL://$NGINX_HOST:$P$U | egrep "$E"
+              RRC=$?
+              if [ $RRC -eq 0 ]; then
+                  break
+              fi
+              sleep $RETRY_DELAY;
+          done
+          RC=$((RC + $RRC))
+          done
+          exit $RC
+        else
+          echo "NGINX_HOST contains multiple IPs";
+          IFS="," read -a NGINX_HOST_SINGLE_IP <<< $NGINX_HOST
+          echo "bindAddress contains these IPs: ${NGINX_HOST_SINGLE_IP[@]}"
+          for NGINX_HOST_IP in ${NGINX_HOST_SINGLE_IP[@]}
+          do
+            RC=0
+            for PORTS in $NGINX_PORT:/:200,404,308
+            do
+              P=$(echo $PORTS | cut -d ':' -f1)
+              U=$(echo $PORTS | cut -d ':' -f2)
+              CODES=$(echo $PORTS | cut -d ':' -f3)
+              echo "Checking $PROTOCOL://$NGINX_HOST_IP:$P$U. Should return $CODES"
+              E=""
+              for C in $(echo $CODES | sed -e 's|,| |g')
+              do
+                if [ -z "${E:-}" ]
+                then
+                  E="CITM_HTTP_CODE=$C"
+                else
+                  E="$E|CITM_HTTP_CODE=$C"
+                fi
+              done
+            done
+            CURL_OPTS="{{ .Values.tests.curlExtraOpts }}";
+            echo "curl opts are : $CURL_OPTS";
+            curl $CURL_OPTS -w "CITM_HTTP_CODE=%{http_code}" $PROTOCOL://$NGINX_HOST_IP:$P$U | egrep "$E"
+            RETRY_COUNT={{ .Values.tests.numberOfRetry }};
+            RETRY_DELAY={{ .Values.tests.delaySecondsBetweenRetry }};
+            for (( i = 0; i <= $RETRY_COUNT; i++ ))
+            do
+              echo "Curling -- i = $i -- cmd : curl $CURL_OPTS -w CITM_HTTP_CODE=%{http_code} $PROTOCOL://$NGINX_HOST:$P$U"
+              curl $CURL_OPTS -w "CITM_HTTP_CODE=%{http_code}" $PROTOCOL://$NGINX_HOST:$P$U | egrep "$E"
+                RRC=$?
+                if [ $RRC -eq 0 ]; then
+                    break
+                fi
+                sleep $RETRY_DELAY;
+            done
+            RRC=$?
+            RC=$((RC + $RRC))
+            exit $RC
+          done
+        fi
+    resources:
+{{ toYaml .Values.controller.hook.resources | indent 6 }}
+  nodeSelector:
+{{- if .Values.controller.runOnEdge }}
+    is_edge: 'true'
+{{- end }}
+{{- if .Values.controller.nodeSelector }}
+{{ toYaml .Values.controller.nodeSelector | indent 4 }}
+{{- end }}
+{{- if .Values.controller.affinity }}
+  affinity:
+{{ toYaml .Values.controller.affinity | indent 4 }}
+{{- end }}
+{{- if .Values.controller.tolerations }}
+  tolerations:
+{{ toYaml .Values.controller.tolerations | indent 4 }}
+{{- end }}
+{{- end }}

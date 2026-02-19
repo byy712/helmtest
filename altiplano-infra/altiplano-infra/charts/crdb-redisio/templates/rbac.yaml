@@ -1,0 +1,209 @@
+{{- include "crdb-redisio.init" . -}}
+{{- if .Values.rbac.enabled }}
+####################################################
+#  Pre-Install/Upgrade RBAC
+#
+#  Permissions:
+#    - check if PVCs exist (preserved)
+#    - create deploy configmap
+#    - create admin secret
+####################################################
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: {{ include "csf-common-lib.v3.resourceName" (tuple . "serviceaccount" "pre") }}
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "crdb-redisio.labels" (tuple . "serviceaccount") | nindent 4 }}
+  annotations:
+    {{- include "crdb-redisio.annotations" (tuple . "serviceaccount") | nindent 4 }}
+    "helm.sh/hook": pre-install,pre-upgrade,pre-rollback,pre-delete
+    "helm.sh/hook-weight": "-10"
+    "helm.sh/hook-delete-policy": "hook-succeeded,hook-failed,before-hook-creation"
+automountServiceAccountToken: false
+---
+kind: Role
+apiVersion: rbac.authorization.k8s.io/v1
+metadata:
+  namespace: {{ .Release.Namespace }}
+  name: {{ include "csf-common-lib.v3.resourceName" (tuple . "role" "pre") }}
+  labels:
+    {{- include "crdb-redisio.labels" (tuple . "role") | nindent 4 }}
+  annotations:
+    {{- include "crdb-redisio.annotations" (tuple . "role") | nindent 4 }}
+    "helm.sh/hook": pre-install,pre-upgrade,pre-rollback,pre-delete
+    "helm.sh/hook-weight": "-9"
+    "helm.sh/hook-delete-policy": "hook-succeeded,hook-failed,before-hook-creation"
+rules:
+- apiGroups: [""]
+  resources: ["persistentvolumeclaims", "services"]
+  verbs: ["create", "get", "list", "patch", "update", "delete"]
+- apiGroups: [""]
+  resources: ["pods"]
+  verbs: ["get", "list", "patch", "update", "delete"]
+- apiGroups: [""]
+  resources: ["secrets", "configmaps" ]
+  verbs: ["create", "get", "patch", "update", "delete"]
+- apiGroups: ["apps"]
+  resources: ["statefulsets"]
+  verbs: ["get", "list", "patch"]
+- apiGroups: ["apps"]
+  resources: ["statefulsets/status"]
+  verbs: ["get"]
+- apiGroups: [""]
+  resources: ["pods/exec"]
+  verbs: ["create", "get"]
+- apiGroups: [""]
+  resources: ["pods/status"]
+  verbs: ["get"]
+---
+kind: RoleBinding
+apiVersion: rbac.authorization.k8s.io/v1
+metadata:
+  name: {{ include "csf-common-lib.v3.resourceName" (tuple . "rolebinding" "pre") }}
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "crdb-redisio.labels" (tuple . "rolebinding") | nindent 4 }}
+  annotations:
+    {{- include "crdb-redisio.annotations" (tuple . "rolebinding") | nindent 4 }}
+    "helm.sh/hook": pre-install,pre-upgrade,pre-rollback,pre-delete
+    "helm.sh/hook-weight": "-8"
+    "helm.sh/hook-delete-policy": "hook-succeeded,hook-failed,before-hook-creation"
+subjects:
+- kind: ServiceAccount
+  name: {{ include "csf-common-lib.v3.resourceName" (tuple . "serviceaccount" "pre") }}
+  namespace: {{ .Release.Namespace }}
+  apiGroup: ""
+roleRef:
+  kind: Role
+  name: {{ include "csf-common-lib.v3.resourceName" (tuple . "role" "pre") }}
+  apiGroup: rbac.authorization.k8s.io
+---
+####################################################
+#  Main/Admin RBAC
+#
+#  Permissions:
+#    - create and manage all resources
+####################################################
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: {{ include "csf-common-lib.v3.resourceName" (tuple . "serviceaccount") }}
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "crdb-redisio.labels" (tuple . "serviceaccount") | nindent 4 }}
+  annotations:
+    {{- include "crdb-redisio.annotations" (tuple . "serviceaccount") | nindent 4 }}
+automountServiceAccountToken: false
+---
+kind: Role
+apiVersion: rbac.authorization.k8s.io/v1
+metadata:
+  namespace: {{ .Release.Namespace }}
+  name: {{ include "csf-common-lib.v3.resourceName" (tuple . "role") }}
+  labels:
+    {{- include "crdb-redisio.labels" (tuple . "role") | nindent 4 }}
+  annotations:
+    {{- include "crdb-redisio.annotations" (tuple . "role") | nindent 4 }}
+rules:
+- apiGroups: [""]
+  resources: ["configmaps", "pods", "persistentvolumeclaims", "secrets", "services"]
+  verbs: ["create", "get", "list", "patch", "update", "delete"]
+- apiGroups: ["apps"]
+  resources: ["statefulsets"]
+  verbs: ["get", "list", "patch"]
+- apiGroups: ["apps"]
+  resources: ["statefulsets/status"]
+  verbs: ["get"]
+- apiGroups: [""]
+  resources: ["pods/exec"]
+  verbs: ["create", "get"]
+- apiGroups: [""]
+  resources: ["pods/status"]
+  verbs: ["get"]
+- apiGroups: ["batch"]
+  resources: ["jobs"]
+  verbs: ["get", "list", "delete"]
+---
+kind: RoleBinding
+apiVersion: rbac.authorization.k8s.io/v1
+metadata:
+  name: {{ include "csf-common-lib.v3.resourceName" (tuple . "rolebinding") }}
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "crdb-redisio.labels" (tuple . "rolebinding") | nindent 4 }}
+  annotations:
+    {{- include "crdb-redisio.annotations" (tuple . "rolebinding") | nindent 4 }}
+subjects:
+- kind: ServiceAccount
+  name: {{ include "csf-common-lib.v3.resourceName" (tuple . "serviceaccount" "") }}
+  namespace: {{ .Release.Namespace }}
+  apiGroup: ""
+roleRef:
+  kind: Role
+  name: {{ include "csf-common-lib.v3.resourceName" (tuple . "role" "") }}
+  apiGroup: rbac.authorization.k8s.io
+---
+####################################################
+#  Post-Delete RBAC
+#
+#  Permissions:
+#    - delete all resources
+#    - delete endpoints
+####################################################
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: {{ include "csf-common-lib.v3.resourceName" (tuple . "serviceaccount" "post") }}
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "crdb-redisio.labels" (tuple . "serviceaccount") | nindent 4 }}
+  annotations:
+    {{- include "crdb-redisio.annotations" (tuple . "serviceaccount") | nindent 4 }}
+    "helm.sh/hook": post-delete
+    "helm.sh/hook-weight": "-10"
+    "helm.sh/hook-delete-policy": "hook-succeeded,hook-failed"
+automountServiceAccountToken: false
+---
+kind: Role
+apiVersion: rbac.authorization.k8s.io/v1
+metadata:
+  name: {{ include "csf-common-lib.v3.resourceName" (tuple . "role" "post") }}
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "crdb-redisio.labels" (tuple . "role") | nindent 4 }}
+  annotations:
+    {{- include "crdb-redisio.annotations" (tuple . "role") | nindent 4 }}
+    "helm.sh/hook": post-delete
+    "helm.sh/hook-weight": "-9"
+    "helm.sh/hook-delete-policy": "hook-succeeded,hook-failed"
+rules:
+- apiGroups: [""]
+  resources: ["configmaps", "persistentvolumeclaims", "secrets"]
+  verbs: ["get", "list", "delete"]
+- apiGroups: ["batch"]
+  resources: ["jobs"]
+  verbs: ["get", "list", "delete"]
+---
+kind: RoleBinding
+apiVersion: rbac.authorization.k8s.io/v1
+metadata:
+  name: {{ include "csf-common-lib.v3.resourceName" (tuple . "rolebinding" "post") }}
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "crdb-redisio.labels" (tuple . "rolebinding") | nindent 4 }}
+  annotations:
+    {{- include "crdb-redisio.annotations" (tuple . "rolebinding") | nindent 4 }}
+    "helm.sh/hook": post-delete
+    "helm.sh/hook-weight": "-8"
+    "helm.sh/hook-delete-policy": "hook-succeeded,hook-failed"
+subjects:
+- kind: ServiceAccount
+  name: {{ include "csf-common-lib.v3.resourceName" (tuple . "serviceaccount" "post") }}
+  namespace: {{ .Release.Namespace }}
+  apiGroup: ""
+roleRef:
+  kind: Role
+  name: {{ include "csf-common-lib.v3.resourceName" (tuple . "role" "post") }}
+  apiGroup: rbac.authorization.k8s.io
+{{- end }}

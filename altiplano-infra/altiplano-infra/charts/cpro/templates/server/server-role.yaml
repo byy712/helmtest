@@ -1,0 +1,97 @@
+{{- include "cpro.istio.cproInitIstio" . }}
+{{- if and .Values.server.enabled .Values.rbac.enabled .Values.restrictedToNamespace }}
+{{- $listNamespaces := append .Values.server.namespaceList .Release.Namespace | uniq }}
+{{- range $watchedNamespace := $listNamespaces }}
+kind: Role
+apiVersion: {{ template "cpro.apiVersion.roleApiversion" $ }}
+metadata:
+  labels:
+    {{- include "cpro.app.labels.v3" ( dict "root" $ "context" $.Values.server ) | nindent 4 }}
+{{- include "cpro.labelsOrAnnotations" (tuple $.Values.global.labels) | indent 4}}
+  name: {{ template "cpro.prometheus.server.role" $ }}
+  namespace: {{ $watchedNamespace }}
+  annotations:
+{{- include "cpro.labelsOrAnnotations" (tuple $.Values.global.annotations) | indent 4}}
+rules:
+{{- if and ( $.Values.server.extraHostPathMounts ) ( $.Capabilities.APIVersions.Has "security.openshift.io/v1/SecurityContextConstraints" ) }}
+  {{- if not $.Values.rbac.scc.create }}
+  {{- required "extraHostPathMounts of server is configured, so comment the extraHostPathMounts of server configuration in values file when scc is set to false" "" }}
+  {{- else }}
+  - apiGroups:
+      - security.openshift.io
+    resourceNames:
+      - {{ template "cpro.prometheus.server.psporsccname" $ }}
+    resources:
+      - securitycontextconstraints
+    verbs:
+      - use
+  {{- end }}
+{{- else }}
+{{- if and ( $.Values.rbac.psp.create)  ($.Capabilities.APIVersions.Has "policy/v1beta1/PodSecurityPolicy") }}
+{{- if or ( $.Values.server.extraHostPathMounts) (and ($.istio.enabled) (not $.istio.cni.enabled)) }}
+  - apiGroups:
+    - {{ template "cpro.prometheus.apiGroupVersionExtensionsorPolicy" $ }}
+    resources:
+    - podsecuritypolicies
+    verbs:
+    - use
+    resourceNames:
+    - {{ template "cpro.prometheus.server.psporsccname" $ }}
+{{- end }}
+{{- end }}
+{{- end }}
+  - apiGroups:
+      - ""
+    resources:
+      - services
+      - endpoints
+      - pods
+      - configmaps
+    verbs:
+      - get
+      - list
+      - watch
+  - apiGroups:
+      - "extensions"
+      - "networking.k8s.io"
+    resources:
+      - ingresses/status
+      - ingresses
+    verbs:
+      - get
+      - list
+      - watch
+  {{- if $.Values.server.cbur.enabled }}
+  - apiGroups:
+      - ""
+    resources:
+      - pods/exec
+      - pods
+    verbs:
+      - get
+      - list
+      - watch
+      - create
+  - apiGroups:
+      - "apps"
+    resources:
+      - statefulsets
+      - deployments
+    verbs:
+      - get
+      - create
+      - delete
+      - patch
+      - update
+      - list
+      - deletecollection
+    resourceNames:
+      {{- if $.Values.ha.enabled }}
+      - {{ template "cpro.prometheus.server.StsName" $ }}
+      {{- else }}
+      - {{ template "cpro.prometheus.server.DeploymentName" $ }}
+      {{- end }}
+  {{- end }}
+---
+{{- end }}
+{{- end }}

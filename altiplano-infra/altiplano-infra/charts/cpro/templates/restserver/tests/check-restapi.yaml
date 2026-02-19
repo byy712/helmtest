@@ -1,0 +1,83 @@
+{{- include "cpro.istio.cproInitIstio" . }}
+{{- if .Values.restserver.enabled -}}
+apiVersion: v1
+kind: Pod
+metadata:
+  name: {{ template "cpro.prometheus.restserver.helmTestDeploymentName" . }}
+  labels:
+    {{- include "cpro.app.labels.v3" ( dict "root" . "context" .Values.restserver ) | nindent 4 }}
+    {{- include "cpro.labelsOrAnnotations" (tuple .Values.restserver.labels .Values.custom.pod.labels .Values.global.labels) | indent 4}}
+  annotations:
+    "helm.sh/hook": test-success
+    "helm.sh/hook-delete-policy": "{{ .Values.helmtest.deletepolicy }}"
+    sidecar.istio.io/inject: "{{ $.istio.enabled }}"
+    {{- include "cpro.labelsOrAnnotations" (tuple .Values.restserver.annotations .Values.helmtest.annotations .Values.custom.pod.annotations .Values.global.annotations) | indent 4}}
+spec:
+  {{- if $.istio.enabled }}
+  automountServiceAccountToken: true
+  {{- end }}
+  serviceAccountName: {{ template "cpro.prometheus.serviceAccountName" . }}
+  securityContext:
+  {{$data := dict "securitycontext" .Values.tools.securityContext "ctx" . }}
+  {{- include "cpro.securitycontext" $data | nindent 4 }}
+{{ include "cpro-common-lib.imagePullSecrets" (dict "workloadName" .Values.restserver "root" .) | indent 2 }}
+  containers:
+    - name: {{ template "cpro.prometheus.restserver.helmTestRestServerContainerName" . }}
+{{- include "cpro.prometheus.python.image" (dict "root" . "workload" .Values.restserver "container" .Values.helmtest  ) | nindent 6}}
+{{- include "cpro.terminationMessage" . | nindent 6 }}
+      resources:
+{{- include "cpro-common-lib.v1.resources" ( dict "root" . "workloadresources" .Values.helmtest.resources "defaultcpulimit" "10m") | nindent 8 }}
+      volumeMounts:
+        - name: gittest
+          mountPath: /test/
+      securityContext:
+         {{$data := dict "cSecCtx" .Values.tools.containerSecurityContext "ctx" . }}
+         {{- include "cpro.containerSecurityContext" $data | nindent 8 }}
+      command:
+        - bash
+        - -ec
+        - |
+          {{- if $.istio.enabled }}
+          until [ $(curl --fail --silent --output /dev/stderr --write-out "%{http_code}" localhost:{{- template "cpro-common-lib.istioHealthCheckPort" . -}}/healthz/ready) -eq 200 ]
+            do
+            echo "Waiting for proxy..."
+            sleep 1
+          done
+          echo "istio-proxy available"
+          {{- end }}
+          source /test/curl_cmd.sh
+          run_curl_success "POST" "alertfiles" "fileName=/etc/config/testfiles"; RC1=$?
+          run_curl_success "GET" "alertfiles"; RC2=$?
+          run_curl_success "DELETE" "alertfiles/%2Fetc%2Fconfig%2Ftestfiles"; RC3=$?
+          run_curl_success "POST" "alertrules" "fileName=/etc/config/alerts&groupName=pre-defined-alert-rules" "-d@/test/newalerts.json"; RC4=$?
+          run_curl_success "GET" "alertrules" "fileName=/etc/config/alerts"; RC5=$?;
+          run_curl_success "PUT" "alertrules/alerttest" "fileName=/etc/config/alerts&groupName=pre-defined-alert-rules" "-d@/test/newalerts.json"; RC6=$?
+          run_curl_success "GET" "alertrules/alerttest" "fileName=/etc/config/alerts&groupName=pre-defined-alert-rules"; RC7=$?
+          run_curl_success "DELETE" "alertrules/alerttest" "fileName=/etc/config/alerts&groupName=pre-defined-alert-rules"; RC8=$?
+          run_curl_success "GET" "alertrules" "fileName=/etc/config/alerts"; RC9=$?
+          {{- if $.istio.enabled }}
+          curl -X POST http://localhost:{{- template "cpro-common-lib.istioStopPort" . -}}/quitquitquit
+          {{- end }}
+          if [[ $RC1 == 0 ]] && [[ $RC2 == 0 ]] && [[ $RC3 == 0 ]] && [[ $RC4 == 0 ]] && [[ $RC5 == 0 ]] && [[ $RC6 == 0 ]] && [[ $RC7 == 0 ]] && [[ $RC8 == 0 ]] && [[ $RC9 == 0 ]]; then
+            exit 0
+          else
+            exit 1
+          fi
+  volumes:
+    - name: gittest
+      configMap:
+        name: "{{ .Release.Name }}-{{ .Chart.Name }}-helmtest-restapi-configmap"
+{{- with .Values.hooks.nodeSelector }}
+  nodeSelector:
+{{ toYaml . | indent 4 }}
+{{- end }}
+{{- with .Values.hooks.tolerations }}
+  tolerations:
+{{ toYaml . | indent 4 }}
+{{- end }}
+{{- with .Values.hooks.affinity }}
+  affinity:
+{{ toYaml . | indent 4 }}
+{{- end }}
+  restartPolicy: Never
+{{- end -}}

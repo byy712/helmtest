@@ -1,0 +1,91 @@
+{{ if gt (int .Values.global.preheal ) 0 }}
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: {{ template "crmq.preHealJobName" . }}
+  labels:
+    app: {{ template "crmq.name" . }}-pre-heal
+    chart: {{ template "crmq.chart" .  }}
+    release: "{{ .Release.Name }}"
+    heritage: "{{ .Release.Service }}"
+    {{- include "crmq.commonLabels" . | indent 4 }}
+    {{- include "csf-common-lib.v1.customLabels" (tuple .Values.global.labels) | indent 4 }}
+  annotations:
+    {{- include "csf-common-lib.v1.customAnnotations" (tuple .Values.global.annotations) | indent 4 }}
+spec:
+  template:
+    metadata:
+      {{- if .Values.istio.enabled }}
+      annotations:
+        sidecar.istio.io/inject: "false"
+      {{- end }}  
+        {{- include "csf-common-lib.v1.customAnnotations" (tuple .Values.global.annotations) | indent 8 }}
+      labels:
+        app: {{ template "crmq.name" . }}-pre-heal-job
+        chart: {{ template "crmq.chart" .  }}
+        release: "{{ .Release.Name }}"
+        heritage: "{{ .Release.Service }}"
+        {{- include "crmq.commonLabels" . | indent 8 }}
+        {{- include "csf-common-lib.v1.customLabels" (tuple .Values.global.labels) | indent 8 }}
+    spec:
+      restartPolicy: Never
+      {{- if .Values.rbac.enabled}}
+      serviceAccountName: {{ template "crmq.fullname" . }}-heal
+      {{- else if not ( empty .Values.serviceAccountNamePreHeal ) }}
+      serviceAccountName: "{{ .Values.serviceAccountNamePreHeal }}"
+      {{- else }}
+      serviceAccountName: "{{ .Values.serviceAccountName }}"
+      {{- end }}
+      automountServiceAccountToken: true
+      {{- if .Values.nodeSelector }}
+      nodeSelector:
+        {{ toYaml .Values.nodeSelector | indent 8 }}
+      {{- end }}
+      {{- if .Values.tolerations }}
+      tolerations:
+        {{ toYaml .Values.tolerations | indent 8 }}
+      {{- end }}
+      {{- if  coalesce .Values.image.pullSecrets .Values.global.imagePullSecrets }}
+      imagePullSecrets:
+        - name: {{ coalesce .Values.image.pullSecrets .Values.global.imagePullSecrets }}
+      {{- end }}
+      containers:
+      - name: {{ template "crmq.preHealContainerName" . }}
+        image: "{{ .Values.global.registry1 }}/{{ .Values.kubectlImage.repository }}:{{ .Values.kubectlImage.tag }}"
+        securityContext:
+          capabilities:
+            drop: ["ALL"]
+          runAsNonRoot: true
+          {{- if eq (include "crmq.renderSeccompProfile" .) "true" }}
+          seccompProfile:
+            type: {{ .Values.securityContext.seccompProfile.type }}
+          {{- end }}
+          {{- if .Values.securityContext.allowPrivilegeEscalation }}
+          allowPrivilegeEscalation: {{ .Values.securityContext.allowPrivilegeEscalation }}
+          {{- else }}
+          allowPrivilegeEscalation: false
+          {{- end }}
+          readOnlyRootFilesystem: {{ required "Value is required true/false." .Values.securityContext.readOnlyRootFilesystem }}
+          {{- if ( ne ( toString ( .Values.securityContext.runAsUser )) "auto" ) }}
+          runAsUser: {{ .Values.securityContext.runAsUser }}
+          {{- end }}
+        resources:
+          limits:
+            cpu: "0.5"
+            memory: 256Mi
+          requests:
+            cpu: "0.25"
+            memory: 128Mi
+        command:
+        - sh
+        - -c
+        - |
+          echo 'Pre heal for release: {{ .Release.Name }}'
+          if [ '{{ .Values.updateStrategy.type }}' == "RollingUpdate" ]
+          then
+            kubectl rollout restart statefulset $(kubectl get statefulsets --namespace {{ .Release.Namespace }} -l release={{ .Release.Name }},app={{ template "crmq.name" . }} --output=jsonpath={.items[].metadata.name}) --namespace {{ .Release.Namespace }}
+          else
+            kubectl delete pods --namespace {{ .Release.Namespace }} -l release={{ .Release.Name }},app={{ template "crmq.name" . }}
+          fi
+{{ end }}
+

@@ -1,0 +1,2 @@
+{{- include "cmdb.init" . -}}
+{{- include "cmdb.job" . -}}

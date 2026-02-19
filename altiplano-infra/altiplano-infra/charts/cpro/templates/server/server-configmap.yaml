@@ -1,0 +1,138 @@
+{{- if and .Values.server.enabled (empty .Values.server.configMapOverrideName) -}}
+{{- $listNamespaces := append .Values.server.namespaceList .Release.Namespace | uniq }}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  labels:
+    {{- include "cpro.app.labels.v3" ( dict "root" . "context" .Values.server ) | nindent 4 }}
+{{- include "cpro.labelsOrAnnotations" (tuple .Values.global.labels) | indent 4}}
+  name: {{ template "cpro.prometheus.server.fullname" . }}
+  annotations:
+{{- include "cpro.labelsOrAnnotations" (tuple .Values.global.annotations) | indent 4}}
+data:
+{{- $root := . -}}
+{{- if .Values.server.prometheusAlertThresholds.enable }}
+{{- $serverDiskThreshold := .Values.server.prometheusAlertThresholds.PrometheusServerDiskThresholdReached -}}
+{{- $cburDiskThreshold := .Values.server.prometheusAlertThresholds.PrometheusCburDiskThresholdReached -}}
+{{- $namespace := .Release.Namespace }}
+  prometheus-monitoring-alerts: |
+    groups:
+    - name: prometheus-alert-rules
+      rules:
+      - alert: PrometheusTsdbWalCorruptions
+        expr: rate(prometheus_tsdb_wal_corruptions_total[4m]) >  0
+        labels:
+          severity: MAJOR
+          name: PrometheusTsdbWalCorruptions
+          text: Prometheus TSDB WAL corruptions encountered.
+          id: 3001297
+          source: CPRO
+          host: '{{`{{$labels.kubernetes_pod_name}}`}}.{{`{{$labels.namespace}}`}}'
+          eventType: 11
+          probableCause: 351
+          key: MOC018
+        annotations:
+          summary: '{{`{{$labels.instance}}`}}: The number of Prometheus TSDB WAL corruptions is greater than 1'
+          description: '{{`{{$labels.instance}}`}}: Prometheus encountered TSDB WAL corruptions'
+      - alert: PrometheusServerDiskThresholdReached
+        annotations:
+          summary: 'Prometheus instance {{`{{$labels.instance}}`}} is low on disk space'
+          description: 'Diskspace on Prometheus Instance {{`{{$labels.instance}}`}} is used over {{ $serverDiskThreshold }}%.'
+        expr: (100 - (kubelet_volume_stats_available_bytes{persistentvolumeclaim=~"{{ template "cpro.prometheus.server.pvc.name" $root }}",namespace="{{ $namespace }}"} / kubelet_volume_stats_capacity_bytes{persistentvolumeclaim=~"{{ template "cpro.prometheus.server.pvc.name" $root }}",namespace="{{ $namespace }}"} * 100) > {{ $serverDiskThreshold }})
+        labels:
+          severity: MAJOR
+          name: PrometheusServerDiskThresholdReached
+          text: The diskspace used is greater than {{ $serverDiskThreshold }}%
+          id: 3001296
+          source: CPRO
+          host: '{{`{{$labels.persistentvolumeclaim}}`}}.{{`{{$labels.namespace}}`}}'
+          eventType: 11
+          probableCause: 351
+          key: MOC019
+    {{- if .Values.server.cbur.enabled }}
+      - alert: PrometheusCburDiskThresholdReached
+        annotations:
+          summary: 'Prometheus Cbur instance {{`{{$labels.instance}}`}} is low on disk space'
+          description: 'Diskspace on Prometheus Cbur Instance {{`{{$labels.instance}}`}} is used over {{ $cburDiskThreshold }}%.'
+        expr: (100 - (kubelet_volume_stats_available_bytes{persistentvolumeclaim=~"{{ template "cpro.prometheus.cbur.pvc.name" $root }}",namespace="{{ $namespace }}"} / kubelet_volume_stats_capacity_bytes{persistentvolumeclaim=~"{{ template "cpro.prometheus.cbur.pvc.name" $root }}",namespace="{{ $namespace }}"} *100 ) > {{ $cburDiskThreshold }})
+        labels:
+          severity: MAJOR
+          name: PrometheusCburDiskThresholdReached
+          text: The diskspace used is greater than {{ $cburDiskThreshold }}%
+          id: 3001295
+          source: CPRO
+          host: '{{`{{$labels.persistentvolumeclaim}}`}}.{{`{{$labels.namespace}}`}}'
+          eventType: 11
+          probableCause: 351
+          key: MOC020
+    {{- end -}}
+{{- end -}}
+{{- range $key, $value := .Values.serverFiles }}
+  {{ $key }}: |
+{{ toYaml $value | default "{}" | indent 4 | replace "metric_relabel_configs:" (include "cpro.prometheus.server.scrape.config.mvno.label.add" (dict "context" $root)) | replace "names: __TPL_INCLUDE_NS__" (include "cpro.prometheus.server.scrape.config.includeNS" (dict "context" $root))  }}
+{{- if eq $key "prometheus.yml" -}}
+{{- if $root.Values.customScrapeJobs }}
+{{ toYaml $root.Values.customScrapeJobs | default "{}" | indent 4 | replace "names: __TPL_INCLUDE_NS__" (include "cpro.prometheus.server.scrape.config.includeNS" (dict "context" $root))  }}
+{{- end }}
+{{- if $root.Values.alertmanager.enabled -}}
+{{ printf "\n" }}
+    alerting:
+      alert_relabel_configs:
+{{ include "cpro.prometheus.server.alerting.mvno.label.add" (dict "context" $root) }}
+{{- if $root.Values.alertRelabelConfigs }}
+{{ $root.Values.alertRelabelConfigs | toYaml  | trimSuffix "\n" | indent 6 }}
+{{- end }}
+      alertmanagers:
+        {{- if ne $root.Values.alertmanager.prefixURL "" }}
+      - path_prefix: /{{ $root.Values.alertmanager.prefixURL }}
+        {{- else if ne $root.Values.alertmanager.baseURL "" }}
+        {{- $path := regexFind "[^/]+$" $root.Values.alertmanager.baseURL }}
+      - path_prefix: /{{ $path }}
+        {{- else }}
+      - path_prefix: /
+        {{- end }}
+        kubernetes_sd_configs:
+          - role: endpoints
+          {{- if  $root.Values.restrictedToNamespace }}
+            namespaces:
+              names:
+           {{- range $key := $listNamespaces }}
+              - {{ $key }}
+           {{- end }}
+          {{- end }}
+        {{- if (eq (include "csf-common-lib.v1.coalesceBoolean" (tuple $.Values.alertmanager.tls.enabled $.Values.tls.enabled $.Values.global.tls.enabled $.Values.alertmanager.tls_auth_config.tls.enabled false)) "true") }}
+        scheme: https
+        tls_config:
+          ca_file: {{ $.Values.server.alertmanagerCertMountPath }}/ca.crt
+          key_file: {{ $.Values.server.alertmanagerCertMountPath }}/tls.key
+          cert_file: {{ $.Values.server.alertmanagerCertMountPath }}/tls.crt
+          insecure_skip_verify: true
+        {{- else }}
+        scheme: http
+        {{- end }}
+        relabel_configs:
+        - source_labels: [__meta_kubernetes_namespace]
+          regex: {{ $root.Release.Namespace }}
+          action: keep
+        - source_labels: [__meta_kubernetes_pod_label_app_kubernetes_io_instance]
+          regex: {{ $root.Release.Name }}
+          action: keep
+        - source_labels: [__meta_kubernetes_pod_label_app]
+          regex: {{ template "cpro.prometheus.name" $ }}
+          action: keep
+        - source_labels: [__meta_kubernetes_pod_label_component]
+          regex: alertmanager
+          action: keep
+        - source_labels: [__meta_kubernetes_pod_container_name]
+          action: drop
+          regex: istio-proxy
+        - source_labels: [__meta_kubernetes_pod_container_port_number]
+          action: drop
+          regex: {{ $.Values.alertmanager.service.clusterPort }}
+        - source_labels: [__meta_kubernetes_pod_container_port_number]
+          regex:
+          action: drop
+{{- end -}}
+{{- end -}}
+{{- end -}}
+{{- end -}}

@@ -1,0 +1,83 @@
+{{- if .Values.cronjob.enabled }}
+apiVersion: batch/v1beta1
+kind: CronJob
+metadata:
+  name: {{ template "altiplano-opentsdb.fullname" . }}-cronjob
+  labels:
+    app: {{ template "altiplano-opentsdb.name" . }}
+    chart: {{ template "altiplano-opentsdb.chart" . }}
+    release: {{ .Release.Name }}
+    heritage: {{ .Release.Service }}
+spec:
+  schedule: "{{ .Values.cronjob.schedule }}"
+  {{- with .Values.cronjob.concurrencyPolicy }}
+  concurrencyPolicy: {{ . }}
+  {{- end }}
+  {{- with .Values.cronjob.failedJobsHistoryLimit }}
+  failedJobsHistoryLimit: {{ . }}
+  {{- end }}
+  {{- with .Values.cronjob.successfulJobsHistoryLimit }}
+  successfulJobsHistoryLimit: {{ . }}
+  {{- end }}
+  {{- with .Values.cronjob.suspend }}
+  suspend: {{ . }}
+  {{- end }}
+  jobTemplate:
+    metadata:
+      name: {{ template "altiplano-opentsdb.fullname" . }}-cronjob
+      labels:
+        app: {{ template "altiplano-opentsdb.name" . }}
+        chart: {{ template "altiplano-opentsdb.chart" . }}
+        release: {{ .Release.Name }}
+        heritage: {{ .Release.Service }}
+    spec:
+      template:
+        spec:
+          restartPolicy: Never
+          containers:
+            - name: {{ .Chart.Name }}-cronjob
+              image: {{ template "image.fullname" . }}
+              imagePullPolicy: {{ .Values.image.pullPolicy }}
+              command: ["/bin/sh", "-c", "/opt/bin/metasync.sh"]
+              volumeMounts:
+                - name: opentsdb-conf
+                  mountPath: "/opt/opentsdb/etc/opentsdb/opentsdb.conf"
+                  subPath: opentsdb.conf
+                {{- if not .Values.global.clustered_opentsdb }}
+                {{- if (or .Values.persistence.enabled .Values.global.persistence) }}
+                - name: opentsdb-storage
+                  mountPath: /data/hbase
+                {{- end }}
+                {{- end }}
+          volumes:
+            - name: opentsdb-conf
+              configMap:
+                name: {{ template "altiplano-opentsdb.fullname" . }}-conf
+                defaultMode: 0777
+                items:
+                  - key: opentsdb.conf
+                    path: opentsdb.conf
+{{- if not .Values.global.clustered_opentsdb }}
+{{- if (or .Values.persistence.enabled .Values.global.persistence) }}
+        - name: opentsdb-storage
+          persistentVolumeClaim:
+            claimName: opentsdb-pvclaim
+{{- end }}
+{{- end }}
+          {{- with .Values.nodeSelector }}
+          nodeSelector:
+          {{ toYaml . | indent 12 }}
+          {{- end }}
+          {{- with .Values.affinity }}
+          affinity:
+          {{ toYaml . | indent 12 }}
+          {{- end }}
+          {{- with .Values.tolerations }}
+          tolerations:
+          {{ toYaml . | indent 12 }}
+          {{- end }}
+          {{- with .Values.securityContext }}
+          securityContext:
+    {{ toYaml . | indent 12 }}
+  {{- end }}
+{{- end }}

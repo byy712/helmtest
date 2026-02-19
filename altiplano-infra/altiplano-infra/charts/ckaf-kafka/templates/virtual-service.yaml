@@ -1,0 +1,53 @@
+{{- if and ( .Values.global.istio.enabled ) ( .Values.ingress.enableExternalAccess ) (or (eq .Values.ingress.type "ocpRoute") ( eq "IstioGateway" .Values.ingress.type )) }}
+{{- $replicas := .Values.Replicas | int }}
+{{- $namespace := .Release.Namespace }}
+{{- $hostName := include "ckaf-kafka.statefulset" . }}
+{{- $commonLabels := include "ckaf-kafka.commonLabels" . }}
+{{- range $externalListener := .Values.ingress.externalListeners }}
+---
+apiVersion: "networking.istio.io/v1beta1"
+kind: VirtualService
+metadata:
+  name: {{ printf "%s-istio-vs-%s" $hostName ( $externalListener.name | lower )  }}
+  labels:
+{{- if $externalListener.IstioGateway.labels }}
+{{ toYaml ( $externalListener.IstioGateway.labels ) | indent 4 }}
+{{- end }}
+{{ $commonLabels | indent 4 }}
+{{- if $externalListener.IstioGateway.annotations }}
+  annotations:
+{{ toYaml ( $externalListener.IstioGateway.annotations ) | indent 4 }}
+{{- end }}
+  namespace: {{ $namespace }}
+spec:
+  hosts:
+  {{- $istioGatewayTLS := $externalListener.IstioGateway.tls }}
+  {{- if and ( $istioGatewayTLS ) ( $istioGatewayTLS.mode ) ( $istioGatewayTLS.SANValidation ) }}
+    {{- $extSvcName := $externalListener.externalServiceName }}
+    {{- if $externalListener.uniqueADL }}
+    {{- $prefix := $externalListener.ADLprefix }}
+    {{- range $replica := until $replicas }}
+  - {{ printf "%s-%d-%s" $prefix $replica $extSvcName }}
+    {{- end  }}
+    {{- else }}
+  - {{ printf "%s" $extSvcName }}
+    {{- end  }}
+  {{- else }}
+  - '*'
+  {{- end }}
+  gateways:
+  - {{ printf "%s-istio-gw-%s" $hostName ( $externalListener.name | lower ) }}
+  tcp:
+  {{- $startPortRange := $externalListener.startPortRangeOnEdgeNode }}
+  {{- range $replica := until $replicas }}
+  {{- $istioGatewayPort := add $startPortRange $replica }}
+  - match:
+    - port: {{ $istioGatewayPort }}
+    route:
+    - destination:
+        host: {{ $hostName }}-{{ $replica }}-broker-external
+        port:
+          number: {{ $istioGatewayPort }}
+  {{- end }}
+{{- end }}
+{{- end }}

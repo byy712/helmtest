@@ -1,0 +1,78 @@
+{{- if and (not .Values.volumeType.glusterfs) (not .Values.directPvc.enabled) -}}
+kind: PersistentVolumeClaim
+apiVersion: v1
+metadata:
+  name: {{ template "cbur.fullname" . }}-backup
+  annotations:
+    {{- include "cbur.customAnnotations" (tuple .Values.global.annotations) | indent 4 }}
+  {{- if .Values.keepPvc }}
+    "helm.sh/resource-policy": keep
+  {{- end }}
+  labels:
+    {{- include "cbur.proxy.commonLabels" (tuple .) | indent 4 }}
+    {{- include "cbur.customLabels" (tuple .Values.global.labels) | indent 4 }}
+    release: {{ .Release.Name }}
+spec:
+  {{- include "cbur.storageClassName" . }}
+  accessModes:
+    {{- if .Values.isPvRwx }}
+    - ReadWriteMany
+    {{- else }}
+    - ReadWriteOnce
+    {{- end }}
+  resources:
+    requests:
+      storage: {{ .Values.storageBackup }}
+---
+kind: PersistentVolumeClaim
+apiVersion: v1
+metadata:
+  name: {{ template "cbur.fullname" . }}-repo
+  annotations:
+  {{- include "cbur.customAnnotations" (tuple .Values.global.annotations) | indent 4 }}
+  {{- if .Values.keepPvc }}
+    "helm.sh/resource-policy": keep
+  {{- end }}
+  labels:
+    {{- include "cbur.proxy.commonLabels" (tuple .) | indent 4 }}
+    {{- include "cbur.customLabels" (tuple .Values.global.labels) | indent 4 }}
+    release: {{ .Release.Name }}
+spec:
+  {{- include "cbur.storageClassName" . }}
+  accessModes:
+    {{- if .Values.isPvRwx }}
+    - ReadWriteMany
+    {{- else }}
+    - ReadWriteOnce
+    {{- end }}
+  resources:
+    requests:
+      storage: {{ .Values.storageRepo }}
+{{- if and .Values.k8swatcher.enabled .Values.k8swatcher.clusterBrEnabled }}
+---
+kind: PersistentVolumeClaim
+apiVersion: v1
+metadata:
+  name: {{ template "cbur.fullname" . }}-backup-cluster
+  annotations:
+  {{- include "cbur.customAnnotations" (tuple .Values.global.annotations) | indent 4 }}
+  {{- if .Values.keepPvc }}
+    "helm.sh/resource-policy": keep
+  {{- end }}
+  labels:
+    {{- include "cbur.proxy.commonLabels" (tuple .) | indent 4 }}
+    {{- include "cbur.customLabels" (tuple .Values.global.labels) | indent 4 }}
+    release: {{ .Release.Name }}
+spec:
+  {{- include "cbur.storageClassName" . }}
+  accessModes:
+    {{- if .Values.isPvRwx }}
+    - ReadWriteMany
+    {{- else }}
+    - ReadWriteOnce
+    {{- end }}
+  resources:
+    requests:
+      storage: {{ .Values.storageBackupCluster }}
+{{- end  }}
+{{- end -}}

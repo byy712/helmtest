@@ -1,0 +1,167 @@
+--- bssc-ifd-13.0.1/bssc-ifd/charts/bssc-fluentd/templates/fluentd-daemonset.yaml	2023-12-06 18:41:43.000000000 +0530
++++ bssc-ifd-patch/bssc-ifd/charts/bssc-fluentd/templates/fluentd-daemonset.yaml	2024-01-10 16:21:45.640531000 +0530
+@@ -28,6 +28,7 @@
+   template:
+     metadata:
+       labels:
++        altiplano-role: {{ .Values.accessRoleLabel }}
+ {{- include "bssc-fluentd.commonLabels" (tuple . "fluentd" ) | nindent 8 }}
+         role: fluentd-logprocessor
+ {{- include "bssc-fluentd.csf-toolkit-helm.labels" (tuple . .Values.fluentd.custom.pod.labels) | indent 8}}
+@@ -72,11 +73,12 @@
+       {{- if (.Values.fluentd.sensitiveInfoInSecret.enabled) }}
+       initContainers:
+       - name : {{ template "bssc-fluentd.init.container" .  }}
+-        image: {{ include "bssc-fluentd.registry" (tuple .Values .Values.internalInitRegistry) }}/{{ .Values.fluentd.image.initRepo }}:{{ (include "bssc-fluentd.imageTag" (tuple .Values.fluentd.image.initTag $.commonSupportedImageFlavor .Values .Values.fluentd .Values.fluentd.image )) }}
++        image: {{ include "bssc-fluentd.registry" (tuple .Values .Values.internalInitRegistry) }}/{{ .Values.fluentd.image.initRepo }}:{{ .Values.fluentd.image.initTag }}
+         imagePullPolicy: {{.Values.fluentd.ImagePullPolicy}}
+         command: ['sh', '-c', "/etc/initContainerMount/encrypt.sh"]
+         securityContext:
+ {{ include "bssc-fluentd.container.securityContext" . | indent 10 }}
++          readOnlyRootFilesystem: false
+         resources:
+ {{ include "bssc-fluentd.resources" (tuple . .Values.fluentd.init_resources "100m") | indent 10 }}
+         env:
+@@ -85,16 +87,44 @@
+         volumeMounts:
+         - name: shared-volume
+           mountPath: "/etc/sharedMount/"
+-        {{- if and ( eq $.isCertManagerEnabled "true" ) (.Values.fluentd.certificate.enabled) ( not $.istio.enabled) (not .Values.fluentd.sensitiveInfoInSecret.secretData.isroot_cert) }}
+-        - name: fluentd-certmgr
+-          mountPath: "/etc/initContainerMount/certManagerSecret"
+-        {{- end }}
+-        - name: fluentd-secret
++        - name: fluentd-passwordsecret
++          mountPath: "/etc/initContainerMount/passwords"
++        - name: fluentd-certsecret
++          mountPath: "/etc/initContainerMount/secrets"
++        - name: tmp
++          mountPath: /tmp
++      - name: init-config-{{ .Chart.Name }}
++        image: {{ .Values.global.registry }}/{{ .Values.fluentd.image.fnmsInitRepo }}:{{ .Values.fluentd.image.fnmsInitTag }}
++        imagePullPolicy: "{{ .Values.fluentd.ImagePullPolicy }}"
++        command: ["sh", "-c", " /etc/initContainerMount/altiplano-config/IS-templates/altiplanoConfiguration.sh"]
++        volumeMounts:
++        - name: shared-volume
++          mountPath: "/etc/sharedMount/"
++        - name: fluentd-certsecret
+           mountPath: "/etc/initContainerMount/secrets"
++        - name: altiplano-config
++          mountPath: "/etc/initContainerMount/altiplano-config/IS-templates"
++        env:
++        - name: IS_URL
++          value: "{{.Values.fluentd.EnvVars.IS_URL}}"
++        - name: PTS_URL
++          value: "{{.Values.fluentd.EnvVars.PTS_URL}}"
++        - name: OPENTSDB_URL
++          value: "{{.Values.fluentd.EnvVars.OPENTSDB_URL}}"
++        - name: CREATE_INDEX_TEMPLATE
++          value: "{{.Values.fluentd.EnvVars.CREATE_INDEX_TEMPLATE}}"
++        - name: LOG_INDEX_PATTERN
++          value: "{{.Values.fluentd.EnvVars.LOG_INDEX_PATTERN}}"
++        - name: UAL_INDEX_PATTERN
++          value: "{{.Values.fluentd.EnvVars.UAL_INDEX_PATTERN}}"
++        - name: NUMBER_OF_REPLICAS
++          value: "{{.Values.fluentd.EnvVars.NUMBER_OF_REPLICAS}}"
++        - name: LOGSTASH_FORMAT
++          value: "{{.Values.fluentd.EnvVars.LOGSTASH_FORMAT}}"
+       {{- end }}
+       containers:
+       - name: {{ template "bssc-fluentd.daemonset.container" .  }}
+-        image: {{ include "bssc-fluentd.registry" (tuple .Values .Values.internalAppRegistry) }}/{{ .Values.fluentd.image.repo }}:{{ (include "bssc-fluentd.imageTag" (tuple .Values.fluentd.image.tag $.commonSupportedImageFlavor .Values .Values.fluentd .Values.fluentd.image )) }}
++        image: {{ include "bssc-fluentd.registry" (tuple .Values .Values.internalAppRegistry) }}/{{ .Values.fluentd.image.repo }}:{{ .Values.fluentd.image.tag }}
+         imagePullPolicy: {{.Values.fluentd.ImagePullPolicy}}
+         livenessProbe:
+           exec:
+@@ -135,6 +165,9 @@
+             protocol: {{ .Values.fluentd.forward_service.protocol }}
+           {{- end }}
+           {{- if .Values.fluentd.service.enabled }}
++          - name: syslog-forward
++            containerPort: {{ .Values.fluentd.forward_service.syslogPort }}
++            protocol: {{ .Values.fluentd.forward_service.syslogProtocol }}
+           - name: tcp-metrics
+             containerPort: {{ .Values.fluentd.service.metricsPort }}
+             protocol: TCP
+@@ -142,6 +175,28 @@
+         resources:
+ {{ include "bssc-fluentd.resources" (tuple . .Values.fluentd.resources "1") | indent 10 }}
+         env:
++          - name: IS_URL
++            value: "{{.Values.fluentd.EnvVars.IS_URL}}"
++          - name: PTS_URL
++            value: "{{.Values.fluentd.EnvVars.PTS_URL}}"
++          - name: OPENTSDB_URL
++            value: "{{.Values.fluentd.EnvVars.OPENTSDB_URL}}"
++          - name: CREATE_INDEX_TEMPLATE
++            value: "{{.Values.fluentd.EnvVars.CREATE_INDEX_TEMPLATE}}"
++          - name: LOG_INDEX_PATTERN
++            value: "{{.Values.fluentd.EnvVars.LOG_INDEX_PATTERN}}"
++          - name: UAL_INDEX_PATTERN
++            value: "{{.Values.fluentd.EnvVars.UAL_INDEX_PATTERN}}"
++          - name: NUMBER_OF_REPLICAS
++            value: "{{.Values.fluentd.EnvVars.NUMBER_OF_REPLICAS}}"
++          - name: LOGSTASH_FORMAT
++            value: "{{.Values.fluentd.EnvVars.LOGSTASH_FORMAT}}"
++          - name: IS_PROTO
++            value: "{{.Values.fluentd.EnvVars.IS_PROTO}}"
++          - name: IS_IP
++            value: "{{.Values.fluentd.EnvVars.IS_IP}}"
++          - name: IS_PORT
++            value: "{{.Values.fluentd.EnvVars.IS_PORT}}"
+           - name: HOST
+             valueFrom:
+               fieldRef:
+@@ -160,7 +215,9 @@
+             value: "{{ $.istio.enabled }}"
+           {{- if .Values.fluentd.sensitiveInfoInSecret.enabled }}
+           - name: SENSITIVE_DATA
+-            value: {{- include "bssc-fluentd.sensitiveData" (tuple .Values.fluentd.sensitiveInfoInSecret.secretData) | indent 12}}
++            value: {{- include "bssc-fluentd.sensitiveData" (tuple .Values.fluentd.sensitiveInfoInSecret.secretDataPassword) | indent 12}}
++          - name: SENSITIVE_DATA_CERT
++            value: {{- include "bssc-fluentd.sensitiveData" (tuple .Values.fluentd.sensitiveInfoInSecret.secretDataCert) | indent 12}}
+           {{- end }}
+           - name: "CERT_MANAGER_ENABLED"
+             value: {{ $.isCertManagerEnabled | quote }}
+@@ -233,6 +290,10 @@
+           {{- end }}
+       {{- end }}
+       volumes:
++      - name: altiplano-config
++        configMap:
++          name: {{ .Release.Name }}-altiplano-config
++          defaultMode: 0755 
+       # tmp is mounted as emptyDir since fluentd creates some file in /tmp
+       - name: tmp
+         emptyDir:
+@@ -266,11 +327,11 @@
+       - name: shared-volume
+         emptyDir:
+           sizeLimit: {{ default "10Mi"  .Values.emptyDirSizeLimit.sharedVolume }}
+-      - name: fluentd-secret
++      - name: fluentd-certsecret
+         secret:
+-          secretName: {{ .Values.fluentd.sensitiveInfoInSecret.credentialName }}
++          secretName: {{ .Values.fluentd.sensitiveInfoInSecret.credentialNameCert }}
+           items:
+-          {{- range $parameter, $secretKey := .Values.fluentd.sensitiveInfoInSecret.secretData }}
++          {{- range $parameter, $secretKey := .Values.fluentd.sensitiveInfoInSecret.secretDataCert }}
+           {{- if $secretKey }}
+           - key: {{ $secretKey }}
+             path: {{ $parameter }}
+@@ -284,7 +345,15 @@
+           items:
+           - key: ca.crt
+             path: isroot_cert
++          {{- end }} 
+           {{- end }}
++      - name: fluentd-passwordsecret
++        secret:
++          secretName: {{ .Values.fluentd.sensitiveInfoInSecret.credentialNamePassword }}
++          items:
++          {{- range $parameter, $secretKey := .Values.fluentd.sensitiveInfoInSecret.secretDataPassword }}
++          - key: {{ $secretKey }}
++            path: {{ $parameter }}
+           {{- end }}
+       {{- end }}
+       {{- if .Values.fluentd.serverCerts }}

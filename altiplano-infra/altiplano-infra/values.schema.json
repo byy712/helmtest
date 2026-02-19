@@ -1,0 +1,60 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "type": "object",
+  "properties": {
+    "global": {
+      "type": "object",
+      "properties": {
+        "ipFamilies": {
+          "type": [
+            "array",
+            "null"
+          ]
+        },
+        "clustered_opentsdb": {
+          "type": [
+            "boolean",
+            "null"
+          ]
+        }
+      }
+    },
+    "altiplano-long-retention-opentsdb": {
+      "type": "object",
+      "properties": {
+        "enabled": {
+          "type": [
+            "boolean",
+            "null"
+          ]
+        }
+      }
+    }
+  },
+  "if": {
+    "properties": {
+      "global": {
+        "properties": {
+          "clustered_opentsdb": {
+            "const": true
+          }
+        }
+      }
+    }
+  },
+  "then": {
+    "not": {
+      "properties": {
+        "global": {
+          "properties": {
+            "ipFamilies": {
+              "const": [
+                "IPv6"
+              ]
+            }
+          }
+        }
+      }
+    }
+  }
+}

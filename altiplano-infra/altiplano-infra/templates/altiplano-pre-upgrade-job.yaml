@@ -1,0 +1,347 @@
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ template "altiplano-infra.app" . }}-pre-upgrade-scripts
+  labels:
+    {{- include "altiplano-infra.labels" $ | nindent 4 }}
+    app: {{ template "altiplano-infra.app" . }}-pre-upgrade
+    release: {{ .Release.Name }}
+  annotations:
+    "helm.sh/hook": pre-upgrade
+    "helm.sh/hook-weight": "-8"
+    # hhok-failed is not working so using before-hook-creation
+    "helm.sh/hook-delete-policy": before-hook-creation, hook-succeeded
+data:
+  {{- (.Files.Glob "pre-upgrade-scripts/*").AsConfig | nindent 2 }}
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: {{ template "altiplano-infra.app" . }}-{{ .Values.global.existingServiceAccountName }}
+  labels:
+    {{- include "altiplano-infra.labels" $ | nindent 4 }}
+    app: {{ template "altiplano-infra.app" . }}-pre-upgrade
+    release: {{ .Release.Name }}
+  annotations:
+    "helm.sh/hook": pre-upgrade
+    "helm.sh/hook-weight": "-8"
+    # hhok-failed is not working so using before-hook-creation
+    "helm.sh/hook-delete-policy": before-hook-creation, hook-succeeded
+---
+{{- if .Values.global.allowClusterLevelPrivileges }}
+kind: ClusterRoleBinding
+apiVersion: rbac.authorization.k8s.io/v1
+metadata:
+  name: {{ template "altiplano-infra.app" . }}-pre-upgrade-rolebinding
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "altiplano-infra.labels" $ | nindent 4 }}
+    app: {{ template "altiplano-infra.app" . }}-pre-upgrade
+    release: {{ .Release.Name }}
+  annotations:
+    "helm.sh/hook": pre-upgrade
+    "helm.sh/hook-weight": "-7"
+    "helm.sh/hook-delete-policy": before-hook-creation, hook-succeeded
+subjects:
+  - kind: ServiceAccount
+    name: {{ template "altiplano-infra.app" . }}-{{ .Values.global.existingServiceAccountName }}
+    namespace: {{ .Release.Namespace }}
+    apiGroup: ""
+roleRef:
+  kind: ClusterRole
+  name: {{ template "altiplano-infra.app" . }}-pre-upgrade-role
+  apiGroup: rbac.authorization.k8s.io
+
+---
+kind: ClusterRole
+apiVersion: rbac.authorization.k8s.io/v1
+metadata:
+  name: {{ template "altiplano-infra.app" . }}-pre-upgrade-role
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "altiplano-infra.labels" $ | nindent 4 }}
+    app: {{ template "altiplano-infra.app" . }}-pre-upgrade
+    release: {{ .Release.Name }}
+  annotations:
+    "helm.sh/hook": pre-upgrade
+    "helm.sh/hook-weight": "-8"
+    "helm.sh/hook-delete-policy": before-hook-creation, hook-succeeded
+rules:
+  - apiGroups: ["apiextensions.k8s.io"]
+    resources: ["customresourcedefinitions"]
+    verbs: ["get","create","watch", "list"]
+
+  - apiGroups: ["", "extensions", "apps", "batch"]
+    resources: ["*"]
+    verbs: ["*"]
+
+  - apiGroups: ["storage.k8s.io"]
+    resources: ["storageclasses"]
+    verbs: ["list"]
+---
+{{- else }}
+kind: Role
+apiVersion: rbac.authorization.k8s.io/v1
+metadata:
+  namespace: "{{.Release.Namespace}}"
+  name: {{ template "altiplano-infra.app" . }}-role
+  labels:
+    app: {{ template "altiplano-infra.app" . }}-pre-upgrade
+    release: {{ .Release.Name }}
+  annotations:
+    "helm.sh/hook": pre-upgrade
+    "helm.sh/hook-weight": "-8"
+    "helm.sh/hook-delete-policy": before-hook-creation, hook-succeeded
+rules:
+  - apiGroups: ["apps"]
+    resources: ["daemonsets", "statefulsets", "deployments"]
+    verbs:
+      - get
+      - create
+      - list
+      - delete
+      - deletecollection
+      - update
+      - watch
+  - apiGroups: [""]
+    resources: ["services", "pods","configmaps"]
+    verbs:
+      - list
+      - get
+      - watch
+      - patch
+  - apiGroups: ["batch"]
+    resources: ["cronjobs"]
+    verbs:
+      - get
+      - delete
+      - list
+      - watch
+---
+kind: RoleBinding
+apiVersion: rbac.authorization.k8s.io/v1
+metadata:
+  name: {{ template "altiplano-infra.app" . }}-rolebinding
+  namespace: "{{.Release.Namespace}}"
+  labels:
+    {{- include "altiplano-infra.labels" $ | nindent 4 }}
+    app: {{ template "altiplano-infra.app" . }}-pre-upgrade
+    release: {{ .Release.Name }}
+  annotations:
+    "helm.sh/hook": pre-upgrade
+    "helm.sh/hook-weight": "-7"
+    "helm.sh/hook-delete-policy": before-hook-creation, hook-succeeded
+subjects:
+  - kind: ServiceAccount
+    name: {{ template "altiplano-infra.app" . }}-{{ .Values.global.existingServiceAccountName }}
+    namespace: "{{.Release.Namespace}}"
+    apiGroup: ""
+roleRef:
+  kind: Role
+  name: {{ template "altiplano-infra.app" . }}-role
+  apiGroup: rbac.authorization.k8s.io
+---
+{{- end }}
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: {{ template "altiplano-infra.app" . }}-pre-upgrade-job
+  labels:
+    {{- include "altiplano-infra.labels" $ | nindent 4 }}
+    app: {{ template "altiplano-infra.app" . }}-pre-upgrade
+    release: {{ .Release.Name }}
+  annotations:
+    "helm.sh/hook-weight": "-6"
+    "helm.sh/hook": pre-upgrade
+    "helm.sh/hook-delete-policy": before-hook-creation, hook-succeeded
+spec:
+  backoffLimit: 1
+  activeDeadlineSeconds: 1800
+  ttlSecondsAfterFinished: 1800
+  template:
+    metadata:
+      labels:
+        app: {{ template "altiplano-infra.app" . }}-pre-upgrade
+    spec:
+      serviceAccountName: {{ template "altiplano-infra.app" . }}-{{ .Values.global.existingServiceAccountName }}
+      restartPolicy: Never
+      containers:
+        - name: {{ template "altiplano-infra.app" . }}-pre-upgrade-job
+          image: "{{ .Values.global.registry }}/{{ .Values.global.kubectl.repo }}:{{ .Values.global.kubectl.tag }}"
+          securityContext:
+            runAsNonRoot: true
+            runAsUser: {{ .Values.global.altiplanoJob.securityContext.runAsUser | default 65534 }}
+            runAsGroup: {{ .Values.global.altiplanoJob.securityContext.runAsGroup | default 65534 }}
+          command:
+            - bash
+            - -c
+            - |
+              script_allowCluster=("/scripts/altiplano-pre-upgrade-pvc.sh","/scripts/crd-deletion.sh")
+              echo "$(date) - Executing altiplano-infra pre-upgrade tasks ..."
+              ls -lart /scripts
+              isDynamic=false
+              if [[ "{{ .Values.global.allowClusterLevelPrivileges }}" == "true" ]]; then
+                storageClass=$(kubectl get sc --no-headers | grep '(default)')
+                if [[ -n $storageClass ]]; then
+                  allowVolumeExpansion=$(echo "$storageClass" | awk '{print $6}')
+                  if [[ $allowVolumeExpansion = true ]]; then
+                    isDynamic=true
+                  fi
+                fi
+              fi
+              for script in /scripts/*
+              do
+                if [[ "{{ .Values.global.allowClusterLevelPrivileges }}" == "false" && ${script_allowCluster[@]} =~ $script ]]; then
+                  continue
+                fi
+                if [[ $isDynamic = true && $script == '/scripts/altiplano-pre-upgrade-pvc.sh' ]]; then
+                  echo "$(date) - Ignored $script since the K8S cluster has a dynamic storage"
+                  continue
+                fi
+                echo "$(date) - Executing $script ..."
+                bash $script -r {{ .Release.Name }} -n {{ .Release.Namespace }}
+                result=$?
+                if [ $script != "/scripts/altiplano-pre-upgrade-pvc.sh" ]; then
+                  if [ $result -ne 0 ]; then
+                    echo "Failed to run $script"
+                    exit 1
+                  fi
+                fi
+              done
+
+              # if there is change in podManagementPolicy, recreate SSO statefulset to update the field
+              expectedSsoPMP={{ index .Values "altiplano-sso" "podManagementPolicy" }}
+              actualSsoPMP=$(kubectl get sts -n {{ .Release.Namespace }} altiplano-sso -o=jsonpath='{.spec.podManagementPolicy}')
+              currentGeoSite=$expectedGeoSite
+              beforeGeoSite=$actualGeoSite
+              echo "SSO statefulset podManagementPolicy actual: $actualSsoPMP, SSO statefulset podManagementPolicy expected: $expectedSsoPMP"
+              
+              # if there is a switchover, recreate SSO statefulset to update the state
+              expectedGeoSite={{ .Values.global.ALTIPLANO_GEO_ACTIVE_SITE }}
+              actualGeoSite=$(kubectl get sts -n {{ .Release.Namespace }} altiplano-sso -o=jsonpath="{.spec.template.spec.initContainers[0].env[?(@.name=='ALTIPLANO_GEO_ACTIVE_SITE')].value}")
+              echo "Geo site actual: $actualGeoSite, Geo site expected: $expectedGeoSite"
+              
+              # if there is reference to old secret key, recreate SSO statefulset to update
+              kubectl get sts -n {{ .Release.Namespace }} altiplano-sso -oyaml > /tmp/sso-sts.yaml
+              grepResult=$(grep -A 1 "key: keycloak_client_secret" /tmp/sso-sts.yaml | tail -n 1 | awk '{print $2}')
+              echo $grepResult > /tmp/sso-grep-result.txt
+              grepFileContent=$(</tmp/sso-grep-result.txt)
+      
+              if ([ -n "$actualSsoPMP" ] && [ "$expectedSsoPMP" != "$actualSsoPMP" ]) || ([ -n "$actualGeoSite" ] && [ "$expectedGeoSite" != "$actualGeoSite" ]) || ([ $grepFileContent == "altiplano-secrets-server-certs" ]); then
+                kubectl delete sts -n {{ .Release.Namespace }} altiplano-sso
+              fi
+              rm -f /tmp/sso-grep-result.txt /tmp/sso-sts.yaml
+
+              # cleanup old redis service
+              altiplanoSolutionRedis=$(kubectl get service -n {{ .Release.Namespace }} -o=name | sed "s/^.\{8\}//" | grep altiplano-solution-redis)
+              if [ "$altiplanoSolutionRedis" != "" ]; then
+                kubectl delete service -n {{ .Release.Namespace }} $altiplanoSolutionRedis
+              fi
+
+              # Cleanup Redis admin statefulSet if any
+              redisAdminStsOutput=$(kubectl get sts -n {{ .Release.Namespace }} | awk '{print $1}' | grep redis-admin)
+              if [ "$redisAdminStsOutput" != "" ]; then
+                  kubectl delete sts -n {{ .Release.Namespace }} $redisAdminStsOutput
+              fi
+              
+              # clean up mariadb and maxscale sts if cbur change from disabled to enabled and vice versa
+              # upgrade from CMDB 8.2.3 also needs mariadb sts cleanup
+              # upgrade from CMDB 8.2.7 and other 8.x to 9.x needs to clean up maxscale
+              expectedMariadbCburTmp={{ index .Values "altiplano-mariadb" "cbur" "persistence" "cburtmp" "enabled" }}
+              actualMariadbCburCheck=$(kubectl get sts -n {{ .Release.Namespace }} {{ .Release.Name }}-altiplano-mariadb-mariadb -o=jsonpath='{.spec.volumeClaimTemplates[*].metadata.name}' | grep -w 'cburtmp')
+              maxscaleStsVersion=$(kubectl get sts -n {{ .Release.Namespace }} {{ .Release.Name }}-altiplano-mariadb-maxscale -o=jsonpath='{.metadata.labels.helm\.sh/chart}')
+              echo "expected mariadb cbur tmp: $expectedMariadbCburTmp, mariadb cbur check result: $actualMariadbCburCheck, maxscaleStsVersion: $maxscaleStsVersion"
+
+              if { [ "$expectedMariadbCburTmp" = true ] && [ -z "$actualMariadbCburCheck" ]; } || { [ "$expectedMariadbCburTmp" = false ] && [ -n "$actualMariadbCburCheck" ]; } || [[ "$maxscaleStsVersion" == *"altiplano-mariadb-8.2.3"* ]]; then
+                echo "deleting mariadb (and maxscale) sts and wait"
+                kubectl delete sts -n {{ .Release.Namespace }} {{ .Release.Name }}-altiplano-mariadb-mariadb {{ .Release.Name }}-altiplano-mariadb-maxscale
+                kubectl wait -n {{ .Release.Namespace }} --for=delete pod -l app={{ .Release.Name }}-altiplano-mariadb,type=mariadb --timeout=-1s
+                kubectl wait -n {{ .Release.Namespace }} --for=delete pod -l app={{ .Release.Name }}-altiplano-mariadb,type=maxscale --timeout=-1s
+              elif [[ "$maxscaleStsVersion" == *"altiplano-mariadb-8"*  ]]; then
+                kubectl delete sts -n {{ .Release.Namespace }} {{ .Release.Name }}-altiplano-mariadb-maxscale
+              fi
+              configmapName=$(kubectl get configmap {{ .Release.Name }}-altiplano-geo-site -n {{ .Release.Namespace }})
+              if [ $configmapName ]; then
+                kubectl patch configmap {{ .Release.Name }}-altiplano-geo-site --namespace={{ .Release.Namespace }} --type merge -p '{"data":{"beforeGeoSite":"'$beforeGeoSite'","currentGeoSite":"'$currentGeoSite'"}}'
+              fi
+              echo "Job completed"
+          volumeMounts:
+            - name: scripts
+              mountPath: /scripts
+      volumes:
+        - name: scripts
+          configMap:
+            name: {{ template "altiplano-infra.app" . }}-pre-upgrade-scripts
+---
+{{- if .Values.global.allowClusterLevelPrivileges }}
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: {{ template "altiplano-infra.app" . }}-dynamic-storage-check-preupg
+  labels:
+    {{- include "altiplano-infra.labels" $ | nindent 4 }}
+    app: {{ template "altiplano-infra.app" . }}-dynamic-storage-check-preupg
+    release: {{ .Release.Name }}
+  annotations:
+    "helm.sh/hook-weight": "99"
+    "helm.sh/hook": pre-upgrade
+    "helm.sh/hook-delete-policy": before-hook-creation, hook-succeeded
+spec:
+  backoffLimit: 1
+  activeDeadlineSeconds: 1800
+  ttlSecondsAfterFinished: 1800
+  template:
+    metadata:
+      labels:
+        app: {{ template "altiplano-infra.app" . }}-dynamic-storage-check-preupg
+    spec:
+      serviceAccountName: {{ template "altiplano-infra.app" . }}-{{ .Values.global.existingServiceAccountName }}
+      restartPolicy: Never
+      containers:
+        - name: {{ template "altiplano-infra.app" . }}-dynamic-storage-check-preupg
+          image: "{{ .Values.global.registry }}/{{ .Values.global.kubectl.repo }}:{{ .Values.global.kubectl.tag }}"
+          securityContext:
+            runAsNonRoot: true
+            runAsUser: {{ .Values.global.altiplanoJob.securityContext.runAsUser | default 65534 }}
+            runAsGroup: {{ .Values.global.altiplanoJob.securityContext.runAsGroup | default 65534 }}
+          command:
+            - bash
+            - -c
+            - |
+              echo "$(date) - Executing altiplano-infra pre-upgrade tasks for dynamic storage ..."
+              storageClass=$(kubectl get sc --no-headers | grep '(default)')
+
+              if [[ -n $storageClass ]]; then
+                  name=$(echo "$storageClass" | awk '{print $1}')
+                  allowVolumeExpansion=$(echo "$storageClass" | awk '{print $6}')
+                  if [[ $allowVolumeExpansion = false ]]; then
+                      echo "Default storage class $name is not allowed for volume expansion !!!"
+                      exit 0
+                  fi
+              else
+                  echo 'Default storage class not found !!!'
+                  exit 0
+              fi
+
+              NAME={{ .Release.Name }}
+              NS={{ .Release.Namespace }}
+              echo -e "\n$(date) - Deleting all StatefulSets having volumeClaimTemplates without removing pods"
+              sts=$(kubectl get sts -n "$NS" --no-headers -o custom-columns=':metadata.name' -l app.kubernetes.io/instance="$NAME" & kubectl get sts -n "$NS" --no-headers -o custom-columns=':metadata.name' -l release="$NAME")
+              mapfile -t sts < <(echo "$sts" | tr ' ' '\n' | sort -u)
+              for name in "${sts[@]}"; do
+                   if [[ $name == *'elasticsearch'* ]]; then
+                      continue
+                  fi
+
+                  length=$(kubectl get sts -n "$NS" "$name" -o=jsonpath='{@.spec.volumeClaimTemplates[*]}' | tr ' ' '\n' | grep -c '^')
+                  if [ "$length" -eq 0 ]; then
+                      continue
+                  else
+                      kubectl delete sts -n "$NS" "$name" --cascade=orphan
+                  fi
+              done
+
+              echo "Job completed"
+---
+{{- end }}

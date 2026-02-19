@@ -1,0 +1,360 @@
+--- ckey/templates/statefulset.yaml	2024-03-16 01:47:07.000000000 +0530
++++ /home/dejagana/local/helm-dev/altiplano-infra/charts/ckey/templates/statefulset.yaml	2024-04-23 19:11:59.402452170 +0530
+@@ -32,6 +32,7 @@
+   template:
+     metadata:
+       labels:
++        altiplano-role: {{ .Values.accessRoleLabel }}
+         app: {{ template "ckey.chartName" . }}
+         release: "{{ .Release.Name }}"
+         {{- include "ckey.customLabels" (tuple .Values.custom.pod.labels .Values.global.labels ) | indent 8 }}
+@@ -53,11 +54,62 @@
+       {{- else }}
+         sidecar.istio.io/inject: "false"
+       {{- end }}
++      {{- if .Values.rollme.enabled }}
+         rollme: {{ randAlphaNum 5 | quote }}
+         kubectl.kubernetes.io/default-container: {{ template "ckey.keycloak.containerName" . }}
+         kubectl.kubernetes.io/default-exec-container: {{ template "ckey.keycloak.containerName" . }}
++      {{- end }}
+     spec:
++      {{- if .Values.hostAliases }}
++      hostAliases:
++{{ toYaml .Values.hostAliases | indent 6 }}
++      {{- end }}
+       initContainers:
++        - name: init-{{ .Values.radiusImage.repository }}
++          image: {{ template "radiusImage.fullname" . }}
++          imagePullPolicy: {{ .Values.radiusImage.pullPolicy }}
++          command: ["sh", "-c", "until [ $ALTIPLANO_GEO_ACTIVE_SITE == true ]; do echo waiting for ALTIPLANO_GEO_ACTIVE_SITE to be true; sleep 10; done ; cp target/radius-provider-package/*.jar /opt/keycloak/providers/radius/ "]
++          volumeMounts:
++            - mountPath: /opt/keycloak/providers/radius
++              name: deployments-storage
++          env:
++            - name: ALTIPLANO_GEO_ACTIVE_SITE
++              value: {{ .Values.global.ALTIPLANO_GEO_ACTIVE_SITE | quote }}
++        - name: init-{{ .Chart.Name }}
++          image: {{ .Values.global.registry }}/{{ .Values.init.image.name }}:{{ .Values.init.image.tag }}
++          imagePullPolicy: "{{ .Values.init.image.pullPolicy }}"
++          command: [ "/bin/sh", "-c" ]
++          args:
++            - |
++              cp /etc/altiplano/certificates/secrets/sso-mariadb-client-trustchain-cert.pem /opt/keycloak/security/mariadb_ssl/server-cert.pem
++              cp /etc/altiplano/certificates/secrets/sso-server-cert.pem /opt/etc/keycloak/server_ssl_certificates/tls.crt
++              cp /etc/altiplano/certificates/secrets/sso-server-key.pem /opt/etc/keycloak/server_ssl_certificates/tls.key
++              cp /etc/altiplano/certificates/secrets/sso-mariadb-client-cert.pem /opt/keycloak/security/mariadb_ssl/client-cert.pem
++              cp /etc/altiplano/certificates/secrets/sso-mariadb-client-key.pem /opt/keycloak/security/mariadb_ssl/client-key.pem
++              cp /etc/altiplano/certificates/storepass/keystore-password /opt/keycloak/security/mariadb_ssl/keycloak-java-client-truststore-password
++              cp /etc/altiplano/certificates/storepass/keystore-password /opt/keycloak/security/mariadb_ssl/keycloak-java-keystore-password
++              /opt/init-container/pem-to-keystore.sh /etc/altiplano/certificates/secrets/sso-mariadb-client-key.pem /etc/altiplano/certificates/secrets/sso-mariadb-client-key.pass /etc/altiplano/certificates/secrets/sso-mariadb-client-cert.pem $keystore_jks_pass /opt/etc/keycloak/db-keystore/db_keystore.jks /etc/altiplano/certificates/secrets/sso-mariadb-client-trustchain-cert.pem $keystore_jks_pass /opt/etc/keycloak/keycloak_java_client_truststore/client_keystore.jks
++              /opt/init-container/pem-to-keystore.sh /etc/altiplano/certificates/secrets/sso-server-trustchain-cert.pem $keystore_jks_pass /opt/etc/keycloak/keycloak_java_client_truststore/client_keystore.jks
++              /opt/init-container/pem-to-keystore.sh /etc/altiplano/certificates/secrets/sso-ldap-client-trustchain-cert.pem $keystore_jks_pass /opt/etc/keycloak/keycloak_java_client_truststore/client_keystore.jks
++          env:
++            - name: keystore_jks_pass
++              valueFrom:
++                secretKeyRef:
++                  name: {{ .Values.certificates.secrets.altiplano_keystore_secrets }}
++                  key: {{ .Values.jksPassword }}
++          volumeMounts:
++            - name: altiplano-keystore-password
++              mountPath: /etc/altiplano/certificates/storepass/
++            - name: keycloak-java-client-truststore
++              mountPath: /opt/etc/keycloak/keycloak_java_client_truststore/
++            - name: cmdb-certificates
++              mountPath: /opt/keycloak/security/mariadb_ssl
++            - name: server-certificates
++              mountPath: /opt/etc/keycloak/server_ssl_certificates
++            - name: altiplano-sso-certs
++              mountPath: /etc/altiplano/certificates/secrets/
++            - name: db-keystore-certs
++              mountPath: /opt/etc/keycloak/db-keystore/  
+         {{- $thisChart := . }}
+         {{- range $index, $customProvider := .Values.customProviders }}
+         {{- if $customProvider.image }}
+@@ -116,6 +168,22 @@
+           securityContext:
+           {{- include "ckey.container.securitycontext" . | nindent 12 }}
+           env:
++            - name: ALTIPLANO_KEYCLOAK_UI_REALM
++              {{- if .Values.env.ALTIPLANO_KEYCLOAK_UI_REALM }}
++              value: {{ .Values.env.ALTIPLANO_KEYCLOAK_UI_REALM }}
++              {{- else if .Values.global.ALTIPLANO_KEYCLOAK_UI_REALM }}
++              value: {{ .Values.global.ALTIPLANO_KEYCLOAK_UI_REALM }}
++              {{- else }}
++              value: "master"
++              {{ end }}
++            - name: ALTIPLANO_KEYCLOAK_NBI_REALM
++              {{- if .Values.env.ALTIPLANO_KEYCLOAK_NBI_REALM }}
++              value: {{ .Values.env.ALTIPLANO_KEYCLOAK_NBI_REALM }}
++              {{- else if .Values.global.ALTIPLANO_KEYCLOAK_NBI_REALM }}
++              value: {{ .Values.global.ALTIPLANO_KEYCLOAK_NBI_REALM }}
++              {{- else }}
++              value: "system"
++              {{ end }}
+             {{- include "ckey.timezone" . | nindent 12 }}
+             - name: KC_HTTP_RELATIVE_PATH
+               value: {{ template "ckey.ingress.contextPath" . }}
+@@ -238,6 +306,8 @@
+               value: "8888"
+             - name: VERTX_HEALTH_CHECK_PORT
+               value: "8887"
++            - name: KC_LOG_FILE
++              value: "/logs/"
+             - name: LOG4CXX_PROP_PATH
+               value: "/tmp/opt/keycloak/vertx/log4cxx.property"
+             - name: KC_LOG
+@@ -325,6 +395,50 @@
+                    name: {{ .Values.secretCredentials.zeroTrustMetricSecret }}
+                    key: aud
+               {{ end }}
++            - name: JKS_PASSWORD
++              valueFrom:
++                secretKeyRef:
++                  name: {{ .Values.certificates.secrets.altiplano_keystore_secrets }}
++                  key: {{ .Values.jksPassword }}
++            - name: REDIRECT_URIS
++              {{- if .Values.REDIRECT_URIS }}
++              value: {{ .Values.REDIRECT_URIS }}
++              {{- else if .Values.global.K8S_PUBLIC_HOSTNAME }}
++              {{- if contains ":" .Values.global.K8S_PUBLIC_IP }} # This is to check if IP address is IPv6
++              {{- if .Values.global.INGRESS_CONTROLLER_HTTPSPORT }}
++              value: https://{{ .Values.global.K8S_PUBLIC_HOSTNAME }}:{{ .Values.global.INGRESS_CONTROLLER_HTTPSPORT }}/altiplano-indexsearch-dashboards/auth/openid/login,https://{{ .Values.global.K8S_PUBLIC_HOSTNAME }}:{{ .Values.global.INGRESS_CONTROLLER_HTTPSPORT }}/altiplano-indexsearch-dashboards,https://{{ .Values.global.K8S_PUBLIC_HOSTNAME }}:{{ .Values.global.INGRESS_CONTROLLER_HTTPSPORT }}/altiplano-alarms-indexsearch-dashboards/auth/openid/login,https://{{ .Values.global.K8S_PUBLIC_HOSTNAME }}:{{ .Values.global.INGRESS_CONTROLLER_HTTPSPORT }}/altiplano-alarms-indexsearch-dashboards,https://[{{ .Values.global.K8S_PUBLIC_IP }}]:30030,https://[{{ .Values.global.K8S_PUBLIC_IP }}]:{{ .Values.global.INGRESS_CONTROLLER_HTTPSPORT }}/altiplano-grafana,https://[{{ .Values.global.K8S_PUBLIC_IP }}]/workflow-manager,https://[{{ .Values.global.K8S_PUBLIC_IP }}]:{{ .Values.global.INGRESS_CONTROLLER_HTTPSPORT }}/oauth2/callback,https://{{ .Values.global.K8S_PUBLIC_HOSTNAME }}/oauth2/callback,https://{{ .Values.global.K8S_PUBLIC_HOSTNAME }}:{{ .Values.global.INGRESS_CONTROLLER_HTTPSPORT }}/altiplano-grafana,https://{{ .Values.global.K8S_PUBLIC_HOSTNAME }}/workflow-manager,https://[{{ .Values.global.K8S_PUBLIC_IP }}]/wfm,https://{{ .Values.global.K8S_PUBLIC_HOSTNAME }}/wfm
++              {{- else }}
++              value: https://{{ .Values.global.K8S_PUBLIC_HOSTNAME }}/altiplano-indexsearch-dashboards/auth/openid/login,https://{{ .Values.global.K8S_PUBLIC_HOSTNAME }}/altiplano-indexsearch-dashboards,https://{{ .Values.global.K8S_PUBLIC_HOSTNAME }}/altiplano-alarms-indexsearch-dashboards/auth/openid/login,https://{{ .Values.global.K8S_PUBLIC_HOSTNAME }}/altiplano-alarms-indexsearch-dashboards,https://[{{ .Values.global.K8S_PUBLIC_IP }}]:30030,https://[{{ .Values.global.K8S_PUBLIC_IP }}]/altiplano-grafana,https://[{{ .Values.global.K8S_PUBLIC_IP }}]/workflow-manager,https://[{{ .Values.global.K8S_PUBLIC_IP }}]/oauth2/callback,https://{{ .Values.global.K8S_PUBLIC_HOSTNAME }}/oauth2/callback,https://{{ .Values.global.K8S_PUBLIC_HOSTNAME }}/altiplano-grafana,https://{{ .Values.global.K8S_PUBLIC_HOSTNAME }}/workflow-manager,https://[{{ .Values.global.K8S_PUBLIC_IP }}]/wfm,https://{{ .Values.global.K8S_PUBLIC_HOSTNAME }}/wfm
++              {{- end }}
++              {{- else }}
++              {{- if .Values.global.INGRESS_CONTROLLER_HTTPSPORT }}
++              value: https://{{ .Values.global.K8S_PUBLIC_HOSTNAME }}:{{ .Values.global.INGRESS_CONTROLLER_HTTPSPORT }}/altiplano-indexsearch-dashboards/auth/openid/login,https://{{ .Values.global.K8S_PUBLIC_HOSTNAME }}:{{ .Values.global.INGRESS_CONTROLLER_HTTPSPORT }}/altiplano-indexsearch-dashboards,https://{{ .Values.global.K8S_PUBLIC_HOSTNAME }}:{{ .Values.global.INGRESS_CONTROLLER_HTTPSPORT }}/altiplano-alarms-indexsearch-dashboards/auth/openid/login,https://{{ .Values.global.K8S_PUBLIC_HOSTNAME }}:{{ .Values.global.INGRESS_CONTROLLER_HTTPSPORT }}/altiplano-alarms-indexsearch-dashboards,https://{{ .Values.global.K8S_PUBLIC_IP }}:30030,https://{{ .Values.global.K8S_PUBLIC_IP }}:{{ .Values.global.INGRESS_CONTROLLER_HTTPSPORT }}/altiplano-grafana,https://{{ .Values.global.K8S_PUBLIC_IP }}/workflow-manager,https://{{ .Values.global.K8S_PUBLIC_IP }}:{{ .Values.global.INGRESS_CONTROLLER_HTTPSPORT }}/oauth2/callback,https://{{ .Values.global.K8S_PUBLIC_HOSTNAME }}/oauth2/callback,https://{{ .Values.global.K8S_PUBLIC_HOSTNAME }}:{{ .Values.global.INGRESS_CONTROLLER_HTTPSPORT }}/altiplano-grafana,https://{{ .Values.global.K8S_PUBLIC_HOSTNAME }}/workflow-manager,https://{{ .Values.global.K8S_PUBLIC_IP }}/wfm,https://{{ .Values.global.K8S_PUBLIC_HOSTNAME }}/wfm
++              {{- else }}             
++              value: https://{{ .Values.global.K8S_PUBLIC_HOSTNAME }}/altiplano-indexsearch-dashboards/auth/openid/login,https://{{ .Values.global.K8S_PUBLIC_HOSTNAME }}/altiplano-indexsearch-dashboards,https://{{ .Values.global.K8S_PUBLIC_HOSTNAME }}/altiplano-alarms-indexsearch-dashboards/auth/openid/login,https://{{ .Values.global.K8S_PUBLIC_HOSTNAME }}/altiplano-alarms-indexsearch-dashboards,https://{{ .Values.global.K8S_PUBLIC_IP }}:30030,https://{{ .Values.global.K8S_PUBLIC_IP }}/altiplano-grafana,https://{{ .Values.global.K8S_PUBLIC_IP }}/workflow-manager,https://{{ .Values.global.K8S_PUBLIC_IP }}/oauth2/callback,https://{{ .Values.global.K8S_PUBLIC_HOSTNAME }}/oauth2/callback,https://{{ .Values.global.K8S_PUBLIC_HOSTNAME }}/altiplano-grafana,https://{{ .Values.global.K8S_PUBLIC_HOSTNAME }}/workflow-manager,https://{{ .Values.global.K8S_PUBLIC_IP }}/wfm,https://{{ .Values.global.K8S_PUBLIC_HOSTNAME }}/wfm
++              {{- end }}
++              {{- end }}
++              {{- else }}
++              {{- if .Values.global.INGRESS_CONTROLLER_HTTPSPORT }}
++              value: https://{{ .Values.global.K8S_PUBLIC_IP }}:{{ .Values.global.INGRESS_CONTROLLER_HTTPSPORT }}/altiplano-indexsearch-dashboards/auth/openid/login,https://{{ .Values.global.K8S_PUBLIC_IP }}:{{ .Values.global.INGRESS_CONTROLLER_HTTPSPORT }}/altiplano-indexsearch-dashboards,https://{{ .Values.global.K8S_PUBLIC_IP }}:{{ .Values.global.INGRESS_CONTROLLER_HTTPSPORT }}/altiplano-alarms-indexsearch-dashboards/auth/openid/login,https://{{ .Values.global.K8S_PUBLIC_IP }}:{{ .Values.global.INGRESS_CONTROLLER_HTTPSPORT }}/altiplano-alarms-indexsearch-dashboards,https://{{ .Values.global.K8S_PUBLIC_IP }}:30030,https://{{ .Values.global.K8S_PUBLIC_IP }}:{{ .Values.global.INGRESS_CONTROLLER_HTTPSPORT }}/altiplano-grafana,https://{{ .Values.global.K8S_PUBLIC_IP }}/workflow-manager,https://{{ .Values.global.K8S_PUBLIC_IP }}:{{ .Values.global.INGRESS_CONTROLLER_HTTPSPORT }}/oauth2/callback,https://{{ .Values.global.K8S_PUBLIC_IP }}/wfm
++              {{- else }}
++              value: https://{{ .Values.global.K8S_PUBLIC_IP }}/altiplano-indexsearch-dashboards/auth/openid/login,https://{{ .Values.global.K8S_PUBLIC_IP }}/altiplano-indexsearch-dashboards,https://{{ .Values.global.K8S_PUBLIC_IP }}/altiplano-alarms-indexsearch-dashboards/auth/openid/login,https://{{ .Values.global.K8S_PUBLIC_IP }}/altiplano-alarms-indexsearch-dashboards,https://{{ .Values.global.K8S_PUBLIC_IP }}:30030,https://{{ .Values.global.K8S_PUBLIC_IP }}/altiplano-grafana,https://{{ .Values.global.K8S_PUBLIC_IP }}/workflow-manager,https://{{ .Values.global.K8S_PUBLIC_IP }}/oauth2/callback,https://{{ .Values.global.K8S_PUBLIC_IP }}/wfm
++              {{- end }}
++              {{- end }}
++            - name: KC_CLIENT_SECRET
++              valueFrom:
++                secretKeyRef:
++                  name: altiplano-secrets
++                  key: keycloak_client_secret
++{{- $secret_name := include "custom-user-realm-config-secret" . }}
++{{- range $name, $value := .Values.env.secrets }}
++{{- if not ( empty $value) }}
++            - name: {{ $name | quote }}
++              valueFrom:
++                secretKeyRef:
++                  name: {{ $secret_name }}
++                  key: {{ $name | quote }}
++{{- end }}
++{{- end }}
+ 
+ {{- with .Values.extraEnv }}
+ {{ tpl . $ | indent 12 }}
+@@ -391,6 +505,8 @@
+           volumeMounts:
+             - name: {{ template "ckey.fullName" . }}-custom-providers
+               mountPath: /customProviders
++            - mountPath: /opt/keycloak/providers/radius
++              name: deployments-storage
+             {{- include "ckey.syslogVolumeMount" . | indent 12 }}
+             {{- range .Values.customProviders }}
+             {{- if .configMap }}
+@@ -423,10 +539,6 @@
+             {{ end }}
+             {{ if .Values.secretCredentials.keystoreSecret }}
+             - name: keystore-secret
+-              mountPath: /opt/etc/keycloak/server_ssl_certificates/keycloak.jks
+-              subPath: keycloak.jks
+-              readOnly: true
+-            - name: keystore-secret
+               mountPath: /opt/etc/keycloak/server_ssl_certificates/tls.key
+               subPath: tls.key
+               readOnly: true
+@@ -434,20 +546,16 @@
+               mountPath: /opt/etc/keycloak/server_ssl_certificates/tls.crt
+               subPath: tls.crt
+               readOnly: true
+-            - name: keystore-secret
+-              mountPath: /opt/keycloak/security/ckey-secret/keycloak-java-keystore-password
+-              subPath: keycloak-java-keystore-password
+-              readOnly: true
+             {{ end }}
+             {{ if .Values.secretCredentials.truststoreSecret }}
+             - name: keycloak-java-client-truststore
+-              mountPath: /opt/etc/keycloak/keycloak_java_client_truststore/client_keystore.jks
+-              subPath: client_keystore.jks
+-              readOnly: true
+-            - name: keycloak-java-client-truststore
+-              mountPath: /opt/keycloak/security/ckey-secret/keycloak-java-client-truststore-password
+-              subPath: keycloak-java-client-truststore-password
+-              readOnly: true
++              mountPath: /opt/etc/keycloak/keycloak_java_client_truststore/
++            - name: keystore-secret
++              mountPath: /opt/keycloak/security/ckey-secret/keycloak-java-keystore-password
++              subPath: keystore-password
++            - name: truststore-secret
++              mountPath: /opt/keycloak/security/ckey-secret/keycloak-java-client-truststore
++              subPath: keystore-password
+             {{ end }}
+             {{ if .Values.secretCredentials.spiSecret }}
+             - name: spi-keystore
+@@ -461,24 +569,26 @@
+             {{ end }}
+             {{ if .Values.secretCredentials.dbKeystoreSecret }}
+             - name: db-keystore
+-              mountPath: /opt/etc/keycloak/db-keystore/db_keystore.jks
+-              subPath: db_keystore.jks
+-              readOnly: true
+-            - name: db-keystore
+               mountPath: /opt/keycloak/security/ckey-secret/db-keystore-password
+-              subPath: db-keystore-password
+-              readOnly: true
++              subPath: keystore-password
+             {{ end }}
+-            {{ if and (not .Values.secretCredentials.keystoreSecret) (eq (include "ckey.certManagerCheck" . ) "true" )  }}
+             - name: server-certificates
+               mountPath: /opt/etc/keycloak/server_ssl_certificates
+-            {{ end }}
++            - name: db-keystore-certs
++              mountPath: /opt/etc/keycloak/db-keystore
++            - name: log-dir
++              mountPath: /logs/
+             - name: logging-configuration
+               mountPath: /opt/keycloak/vertx/log4cxx.property
+               subPath: log4cxx.property
+             - name: logging-extensions
+               mountPath: /opt/keycloak/vertx/logging-extensions.json
+               subPath: logging-extensions.json
++            - name: altiplano-sso-certs
++              mountPath: /etc/altiplano/certificates/secrets/
++              readOnly: true
++            - name: altiplano-keystore-password
++              mountPath: /etc/altiplano/certificates/storepass/
+             {{ if .Values.secretCredentials.rabbitMqPushEventListenerSecret }}
+             - name: push-listener-config-json
+               mountPath: /opt/etc/keycloak/push-listener-registry.json
+@@ -494,6 +604,9 @@
+             - name: notification-listener-config-json
+               mountPath: /opt/etc/keycloak/notification-listener-registry.json
+               subPath: notification-listener-registry.json
++            - mountPath: /opt/keycloak/security/mariadb_ssl/
++              name: cmdb-certificates
++              readOnly: true
+             - name: ckey-secret
+               mountPath: /opt/keycloak/security/ckey-secret/keycloak-admin-password
+               subPath: keycloak-admin-password
+@@ -555,9 +668,63 @@
+               ephemeral-storage: {{ index .Values.cbur.resources.limits "ephemeral-storage" | quote }}
+               {{- end }}
+         {{- end }}
++        - name: fluentd-sidecar
++          image: {{ .Values.global.registry }}/{{ .Values.fluentd_sidecar.image.name }}:{{ .Values.fluentd_sidecar.image.tag }}
++          imagePullPolicy: {{ .Values.fluentd_sidecar.image.pullPolicy }}
++          volumeMounts:
++          - name: fluentd-config
++            mountPath: /etc/fluent/
++          {{- if .Values.fluentd_sidecar.secrets }}
++          - name: certificates
++            mountPath: /etc/.certificates/
++          {{- end }}
++          - name: log-dir
++            mountPath: /logs/
++          resources:
++{{ toYaml .Values.fluentd_sidecar.resources | indent 12 }}
++          env:
++          {{- if .Values.fluentd_sidecar.secrets }}
++          - name: IS_USERNAME
++            valueFrom:
++              secretKeyRef:
++                key: {{ .Values.env.secrets.IS_USERNAME }}
++                name: {{ .Values.fluentd_sidecar.secrets.passwordSecret | quote }}
++          - name: IS_PASSWORD
++            valueFrom:
++              secretKeyRef:
++                key: {{ .Values.env.secrets.IS_PASSWORD }}
++                name: {{ .Values.fluentd_sidecar.secrets.passwordSecret | quote }}
++          {{- end }}
++          - name: CONTAINER_NAME
++            valueFrom:
++              fieldRef:
++                apiVersion: v1
++                fieldPath: metadata.name
++          - name: POD_IP
++            valueFrom:
++              fieldRef:
++                fieldPath: status.podIP
+       {{- include "ckey.imagePullSecrets" (tuple . "keycloak") | nindent 6 }}
+       terminationGracePeriodSeconds: {{ $terminationSeconds }}
+       volumes:
++        - name: altiplano-keystore-password
++          secret:
++            secretName: {{ .Values.certificates.secrets.altiplano_keystore_secrets }} 
++        - name: deployments-storage
++          emptyDir: {}
++        - name: log-dir
++          emptyDir: {}
++        - name: fluentd-config
++          configMap:
++            name: {{ template "ckey.fullName" . }}-keycloak-fluentd-config
++        {{- if .Values.fluentd_sidecar.secrets }}
++        - name: certificates
++          secret:
++            secretName: {{ (tpl .Values.fluentd_sidecar.secrets.certSecret .) }}
++        - name: passwords
++          secret:
++            secretName: {{ (tpl .Values.fluentd_sidecar.secrets.passwordSecret .) }}
++        {{- end }}
+         {{- range .Values.customProviders }}
+         {{- if .configMap }}
+         - name: {{ .configMap }}
+@@ -578,8 +745,7 @@
+             defaultMode: 0555
+         {{ if .Values.secretCredentials.keystoreSecret }}
+         - name: keystore-secret
+-          secret:
+-            secretName: {{ .Values.secretCredentials.keystoreSecret }}
++          emptyDir: {}
+         {{ end }}
+         {{ if .Values.secretCredentials.spiSecret }}
+         - name: spi-keystore
+@@ -593,13 +759,13 @@
+         {{ end }}
+         {{ if .Values.secretCredentials.truststoreSecret }}
+         - name: keycloak-java-client-truststore
++          emptyDir: {}
++        - name: keystore-secret
+           secret:
+             secretName: {{ .Values.secretCredentials.truststoreSecret }}
+-        {{ end }}
+-        {{ if and (not .Values.secretCredentials.keystoreSecret) (eq (include "ckey.certManagerCheck" . ) "true" ) }}
+-        - name: server-certificates
++        - name: truststore-secret
+           secret:
+-            secretName: {{ printf "%s-server-cert" ( include "ckey.fullName" .) }}
++            secretName: {{ .Values.secretCredentials.truststoreSecret }}
+         {{ end }}
+         - name: logging-configuration
+           configMap:
+@@ -615,6 +781,18 @@
+             {{ else }}
+             name: {{ template "ckey.fullName" . }}-logging-extensions
+             {{ end }}
++        - name: altiplano-sso-certs
++          secret:
++            secretName: altiplano-sso-certificate-secrets
++        - name: server-certificates
++          emptyDir:
++            medium: Memory
++        - name: cmdb-certificates
++          emptyDir:
++            medium: Memory
++        - name: db-keystore-certs
++          emptyDir:
++            medium: Memory
+         {{ if .Values.secretCredentials.rabbitMqPushEventListenerSecret }}
+         - name: push-listener-config-json
+           secret:

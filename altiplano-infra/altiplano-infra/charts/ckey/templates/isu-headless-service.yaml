@@ -1,0 +1,44 @@
+#This headless service is created only for the purpose of inservice upgrade / rollback timeframe. During that time, the isu specific statefulset should separate out its infinispan cluster from the original/upgrading/rolling back ckey sts.
+{{ if .Values.isuUpgrade.enabled }}
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ template "ckey.fullName" . }}-isu-headless
+  annotations:
+    {{- include "ckey.customAnnotations" (tuple .Values.global.annotations) | indent 4 }}
+  labels:
+    app: {{ template "ckey.chartName" . }}
+    release: "{{ .Release.Name }}"
+    heritage: "{{ .Release.Service }}"
+    {{- include "ckey.customLabels" (tuple .Values.global.labels ) | indent 4 }}
+    {{- include "ckey.commonLabels" . | indent 4 }}
+spec:
+  type: ClusterIP
+  clusterIP: None
+  # Below flag will set the endpoints once they are scheduled and will not wait for them to be ready.
+  # Setting below helps in the quicker infinispan cluster formation among the ISU replicas
+  publishNotReadyAddresses: true
+  ports:
+    - name: https-keycloak
+      port: {{ .Values.httpsPort }}
+      targetPort: {{ .Values.httpsPort }}
+      protocol: TCP
+      appProtocol: HTTPS
+    {{- if .Values.httpPort }}
+    - name: http-keycloak
+      port: {{ .Values.httpPort }}
+      targetPort: {{ .Values.httpPort }}
+      protocol: TCP
+      appProtocol: HTTP
+    {{- end }}
+  {{- include "ckey.dualStack.ipFamilyPolicy.config" ( dict "root" . "context" .Values )  | indent 2 }}
+  {{- include "ckey.dualStack.ipFamilies.config" ( dict "root" . "context" .Values )| indent 2 }}
+#note: ISU-headless-service selects its endpoints according to app,release and isu-upgrade:true
+#The isu-upgrade:true is crucial here as it distinguishes the pod specific to ISU upgrade activity.
+#The app selector has to be same as the original statefulset of ckey to maintain service continuity of ckey http service.
+#The underneath logic how the ckey http service continuity is maintained is explained in brief in isu-configmap.yaml
+  selector:
+    app: {{ template "ckey.chartName" . }}
+    release: "{{ .Release.Name }}"
+    isu-upgrade: "true"
+{{ end }}

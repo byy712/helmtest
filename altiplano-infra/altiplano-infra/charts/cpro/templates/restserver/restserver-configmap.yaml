@@ -1,0 +1,33 @@
+{{- if .Values.restserver.enabled -}}
+{{- $syslogEnabled := eq (include "csf-common-lib.v1.coalesceBoolean" (tuple .Values.restserver.unifiedLogging.syslog.enabled .Values.global.unifiedLogging.syslog.enabled false )) "true"  }}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  labels:
+    {{- include "cpro.app.labels.v3" ( dict "root" . "context" .Values.restserver ) | nindent 4 }}
+{{- include "cpro.labelsOrAnnotations" (tuple .Values.global.labels) | indent 4}}
+  name: {{ template "cpro.prometheus.restserver.fullname" . }}
+  annotations:
+{{- include "cpro.labelsOrAnnotations" (tuple .Values.global.annotations) | indent 4}}
+data:
+{{- if or $syslogEnabled .Values.restserver.unifiedLogging.extension .Values.global.unifiedLogging.extension }}
+{{ (tpl (.Files.Glob "configs/log4j.xml").AsConfig . ) | indent 2 -}}
+{{- else }}
+{{ (tpl (.Files.Glob "configs/log4j2.xml").AsConfig . ) | indent 2 -}}
+{{- end }}
+{{ (tpl (.Files.Glob "configs/prometheus.restServer.properties").AsConfig . ) | indent 2 -}}
+{{- if true -}}
+{{- if .Values.restserver.configs.restCACert }}
+  ca.crt: |
+{{ .Values.restserver.configs.restCACert | indent 4 }}
+{{- end }}
+{{- if .Values.restserver.configs.restServerKey }}
+  server.key: |
+{{ .Values.restserver.configs.restServerKey | indent 4 }}
+{{- end }}
+{{- if .Values.restserver.configs.restServerCert }}
+  server.crt: |
+{{ .Values.restserver.configs.restServerCert | indent 4 }}
+{{- end }}
+{{- end -}}
+{{- end -}}

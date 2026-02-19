@@ -1,0 +1,27 @@
+kind: ConfigMap
+apiVersion: v1
+data:
+{{ if eq .Values.fluentd.fluentd_config "bssc" }}
+  fluentd.conf: |
+{{ .Files.Get "fluentd-config/bssc.conf" | indent 4 }} 
+{{ else if eq .Values.fluentd.fluentd_config "clog-json" }}
+  fluentd.conf: |
+{{ .Files.Get "fluentd-config/clog-json.conf" | indent 4 }} 
+{{ else if eq .Values.fluentd.fluentd_config "clog-journal" }}
+  fluentd.conf: |
+{{ .Files.Get "fluentd-config/clog-journal.conf" | indent 4 }}
+{{ else if eq .Values.fluentd.fluentd_config "bssc-cri" }}
+  fluentd.conf: |
+{{ .Files.Get "fluentd-config/bssc-cri.conf" | indent 4 }}
+{{ else if eq .Values.fluentd.fluentd_config "custom-value" }}
+  fluentd.conf: {{- toYaml .Values.fluentd.configFile | indent 2 }}
+{{ end }}
+metadata:
+  name: {{ template "bssc-fluentd.fullname" .  }}-config
+  labels:
+{{- include "bssc-fluentd.commonLabels" (tuple . "fluentd" ) | nindent 4 }}
+{{- include "bssc-fluentd.csf-toolkit-helm.labels" (tuple .) | nindent 4 }}
+  annotations:
+{{- include "bssc-fluentd.csf-toolkit-helm.annotations" (tuple .) | nindent 4 }}
+    addonmanager.kubernetes.io/mode: Reconcile
+

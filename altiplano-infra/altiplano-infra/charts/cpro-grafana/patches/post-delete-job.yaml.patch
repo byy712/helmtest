@@ -1,0 +1,10 @@
+--- cpro-grafana-7.0.4/templates/post-delete-job.yaml	2024-03-07 14:27:41.000000000 +0530
++++ templates/post-delete-job.yaml	2024-04-02 17:04:23.279774451 +0530
+@@ -21,6 +21,7 @@
+     metadata:
+       labels:
+         {{- include "cpro-grafana.app.labels-v3" . | nindent 8 }}
++        altiplano-role: {{ .Values.accessRoleLabel }}
+         app: {{ template "cpro-grafana.fullname" . }}
+         release: "{{ .Release.Name }}"
+ {{- include "cpro-grafana.labelsOrAnnotations" (tuple .Values.grafana.labels .Values.custom.pod.labels .Values.global.labels) | indent 8}}

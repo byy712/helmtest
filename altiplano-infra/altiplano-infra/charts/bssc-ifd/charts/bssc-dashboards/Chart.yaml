@@ -1,0 +1,12 @@
+apiVersion: v2
+appVersion: 2.11.0
+description: A Dashboards Helm chart for Kubernetes
+keywords:
+- Dashboards
+- data
+- log
+maintainers:
+- email: CSF-BELK@groups.nokia.com
+  name: BSSC Team
+name: bssc-dashboards
+version: 13.0.1

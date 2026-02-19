@@ -1,0 +1,22 @@
+apiVersion: v2
+appVersion: cmdb-6.2-2_mariadb-10.11.7
+dependencies:
+- name: csf-common-lib
+  repository: https://repo.cci.nokia.net/csf-helm-stable
+  version: 1.15.0
+description: MariaDB is a third party software package that is a fork of the MySQL
+  project and provides “drop-in” replacement functionality for MySQL Standard Edition,
+  which is significantly different than the MySQL Cluster Edition.
+keywords:
+- mariadb
+- database
+- cmdb
+- maxscale
+- mysql
+- 'X-COMPAAS: { "CATEGORY": "Databases", "SVC_NAME": "MariaDB", "SVC_TYPE": "CMDB",
+  "SVC_SCOPE": [ "PRIVATE" ] }'
+maintainers:
+- email: csf-osdb-domains@list.nokia.com
+  name: CSF CMDB Team
+name: cmdb
+version: 9.2.1-nokia-patch-1

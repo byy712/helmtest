@@ -1,0 +1,4671 @@
+global:
+# registry repo is used to pull all the container images. global.registry will also support <registry>/<repository path>
+  registry:
+  vault:
+    enabled: false
+    config:
+      url: ""
+      token: ""
+      kvPath: "" 
+# If global.flatRegistry is set to true, then <repository path> in all container images will be skipped
+  flatRegistry: false
+
+
+# To configure annotations and labels for CPRO components resources
+  annotations: {}
+  labels: {}
+
+# Supported Image Flavors at global level and root level 
+# rocky8-python3.8-jre11
+# rocky8-python3.8-jre17
+# rocky8
+# rocky8-python3.8
+# rocky8-jre11
+# rocky8-jre17
+# rocky8-python3
+
+  imageFlavor: 
+# Image Flavor Policy can be configured as "BestMatch" or "Strict". Default is BestMatch
+  imageFlavorPolicy: 
+
+
+
+## timeZone priority order is
+## 1. timeZone.timeZoneEnv
+## 2. global.timeZoneEnv
+## Incase if timeZoneName is given instead of timeZoneEnv, it would be honoured too.
+## 1. timeZoneName
+## 2. global.timeZoneName
+## If both timeZoneName and  timeZoneEnv are defined then timeZoneEnv will be given preference.
+  timeZoneName: "UTC"
+  timeZoneEnv: ""
+## Define serviceAccount name for prometheus at global level.
+## serviceAccount priority order is
+## 1. serviceAccountName
+## 2. global.seviceAccountName
+## 3. If we are not using customized resources set rbac.enabled to true then resources will be created on helm install
+## 4. If both serviceAccounts are not set and rbac.ebabled is set to false then default serviceAccount will be used
+##
+  #precedence order for certManager
+  #certManager.enabled --> global.certManager.enabled
+ 
+  certManager:
+    enabled: true
+    issuerRef:
+      name:
+      kind: "Issuer"
+      group: "cert-manager.io"
+
+  serviceAccountName:
+  
+  #if disablePodNamePrefixRestrictions is true, then podnameprefix length will not restricted to 30. root level has more precedence over global level
+  disablePodNamePrefixRestrictions:
+  podNamePrefix: ""
+  ## containerNamePrefix maximum length is 34 characters according to the HBP
+  containerNamePrefix: ""
+## Optionally specify an array of imagePullSecrets.
+## Secrets must be manually created in the namespace.
+## ref: https://kubernetes.io/docs/tasks/configure-pod-container/pull-image-private-registry/
+  imagePullSecrets:
+    #   - name: myRegistrKeySecretName
+
+  ##Configuration for priority class
+  ## https://kubernetes.io/docs/concepts/scheduling-eviction/pod-priority-preemption/#pod-priority
+  ## priority class should be created before installing the chart
+  priorityClassName:
+  # For IPv4 and IPv6 dual stack support
+  # ipFamilyPolicy:  SingleStack | PreferDualStack | RequireDualStack
+  ipFamilyPolicy: 
+  # ipFamilies: ["IPv4"] | ["IPv6"] | ["IPv4","IPv6"] | ["IPv6","IPv4"]
+  ipFamilies: []
+
+  ##Ephemeral volumes are designed for such that they exists with Pod's lifetime and get created and deleted along with the Pod.
+  #Work load level ephemeral volume shall have precedence over global.
+  ephemeralVolume:
+    enabled: false
+# set  unifiedLogging.syslog.enabled to true to forward logs to rsyslog
+# <workload>.unifiedLogging.syslog.enabled will take precedence than global.unifiedLogging.syslog.enabled
+  unifiedLogging:
+    # Enable sylog to true for sending logs to syslog. Default value is False
+    syslog:
+      enabled: False
+      facility:
+      host:
+      port:
+      protocol:
+      tls:
+        secretRef:
+      # Secret name, pointing to a Secret object of type `kubernetes.io/tls`
+          name:
+           # Secret key names mapping
+           # If the provided Secret is of type `kubernetes.io/tls', then key names do not need to be changed.
+          keyNames:
+           # Name of Secret key, which contains CA certificate
+            caCrt: "ca.crt"
+    extension: {} 
+    #extension:
+    #  VM_Name: abc
+    #  VM_UUID: 123
+# +----------------------------------------------------------------------------------------------------------------------------+
+# | If set to true, container will use default CPU limits(Eg: 100m) . Also user can configure the cpu value to custom value    |
+# | If set to false, container will run without CPU limits set                                                                 |
+# | Either enableDefaultCpuLimits true or false If user configure limit.cpu in resource section, it will be considered         |
+# | NOTE: enableDefaultCpuLimits takes precedence over the global.enableDefaultCpuLimits                                       |
+# +----------------------------------------------------------------------------------------------------------------------------+
+  enableDefaultCpuLimits: false
+
+  tls:
+    enabled: true
+
+init:
+  image:
+    name: fnms-init-container
+    tag: nokia-1.0.7
+    pullPolicy: IfNotPresent
+    
+# intPromMetricsReg repo is used to pull cpro-prometheus-metrics image  
+intPromMetricsReg: "csf-docker-delivered.repo.cci.nokia.net"
+# intPromUtilReg repo is used to pull prometheus-util image  
+intPromUtilReg: "csf-docker-delivered.repo.cci.nokia.net"
+# intRestapiReg repo is used to pull Restapi image
+intRestapiReg: "csf-docker-delivered.repo.cci.nokia.net"
+# intKubectlReg repo is used to pull kubectl image
+intKubectlReg: "csf-docker-delivered.repo.cci.nokia.net"
+# intCburReg repo is used to pull cbur image
+intCburReg: "csf-docker-delivered.repo.cci.nokia.net"
+# intLFluentdReg repo is used to pull fluentd image
+intFluentdReg: "csf-docker-delivered.repo.cci.nokia.net"
+# intLogrotateReg repo is used to pull logrotate image
+intLogrotateReg: "csf-docker-delivered.repo.cci.nokia.net"
+
+## prefix to be used when mounting the root.externalCredentials or workload.externalCredentials or .Values.nodeexporter.auth.credentialName
+## default values is "/secrets"
+secretPathPrefix: "/secrets"
+#nameOverride: ""
+
+disablePodNamePrefixRestrictions: 
+
+tls:
+  enabled:  
+  secretRef:
+   # Secret name, pointing to a Secret object of type `kubernetes.io/tls`
+    name: 
+   # Secret key names mapping
+   # If the provided Secret is of type `kubernetes.io/tls', then key names do not need to be changed.
+    keyNames:
+   # Name of Secret key, which contains CA certificate
+      caCrt: "ca.crt"
+# Previous charts doesn't add podNamePrefix when nameOverride OR fullnameOverride was set
+# set usePodNamePrefixAlways to true as part of fresh installation to add podNamePrefix in all cases
+# usePodNamePrefixAlways should not be changed as part of upgrade
+usePodNamePrefixAlways: false
+
+# Few examples to configure the imageFlavor at root level
+# imageFlavor: rocky8-python3.8-jre17 
+# Note: Workload level configured imageFlavor will take precedence than root level. 
+## Root level will take precedence to global level 
+imageFlavor: 
+# Image Flavor Policy can be configured as "BestMatch" or "Strict" 
+imageFlavorPolicy: 
+image:
+  distro:
+    repo: cpro/registry4/cpro-prometheus-metrics
+    ## If image tag is 9.8.7-flavor-987, please configure it here as 9.8.7-987  i.e without the Flavor 
+    tag: 3.0.1-3220
+    imagePullPolicy: IfNotPresent
+    __defaultFlavor: distroless
+  python:
+    repo: cpro/registry4/cpro-prometheus-util
+    # Currently rocky8-python3.8 are supported in the imageFlavour.
+    tag: 3.0.1-3220
+    imagePullPolicy: IfNotPresent
+    # Note: Do Not change the _defaultFlavor parameters
+    __defaultFlavor: rocky8-python3.8
+
+
+# progressDeadlineSeconds denotes the number of seconds the Deployment controller waits before indicating (in the Deployment status) that the Deployment progress has stalled.
+# progressDeadlineSeconds is provided at root and component level.
+# configuration at root level will be applicable to all components. Component level always takes the precedence.
+progressDeadlineSeconds:
+
+managedBy: ""
+partOf: ""
+# this flag cannot be toggled using upgrade
+common_labels: false
+clusterDomain: cluster.local
+timeZoneName: ""
+timeZone:
+  timeZoneEnv: ""
+
+
+#Kubernetes retrieves termination messages from the termination message file specified in the terminationMessagePath.
+####The default terminationMessagepath is "/dev/termination-log"
+terminationMessagePath: "/dev/termination-log"
+#### User can opt for File or FallbackToLogsOnError for the terminarionMessagePolicy
+#### File is the default value for the terminationMessagePolicy
+#### By setting the terminationMessagePolicy to "FallbackToLogsOnError", you can tell Kubernetes to use the last chunk of container log output if the termination message file is empty and the container exited with an error.
+terminationMessagePolicy: "File"
+
+# +---------------------------------------------------------------------------------------------------------------------------+
+# | If set to true, container will use default CPU limits(Eg: 100m) . Also user can configure the cpu value to custom value   |
+# | If set to false, container will run without CPU limits set.                                                               |
+# | Either enableDefaultCpuLimits true or false If user configure limit.cpu in resource section, it will be considered        |
+# | NOTE: Takes precedence over global.enableDefaultCpuLimits, if empty global.enableDefaultCpuLimits will be used            |
+# +---------------------------------------------------------------------------------------------------------------------------+
+enableDefaultCpuLimits: false
+
+logrotate:
+  image: 
+    repo: char/char-logmanager
+    tag: 8.2308.0-1.1
+  ImagePullPolicy: "IfNotPresent" 
+  resources:
+    limits:
+      # User can configure the cpu limits whenever user wants to limit CPU.
+      #cpu: "500m"
+      memory: "500Mi"
+      ephemeral-storage: "1Gi"
+    requests:
+      cpu: "200m"
+      memory: "200Mi"
+      ephemeral-storage: "200Mi"
+  containerSecurityContext:
+    readOnlyRootFilesystem: true
+    allowPrivilegeEscalation: false
+    capabilities:
+      drop:
+        - ALL 
+
+
+fluentd:
+## Supported Image Flavors are rocky8-jre17 
+  imageFlavor:
+  imageFlavorPolicy:
+  image: 
+    repo: bssc-fluentd
+    tag: 1.16.2-2311.0.1
+    ImagePullPolicy: "IfNotPresent" 
+    __defaultFlavor: rocky8-jre17
+  resources:
+    limits:
+      # User can configure the cpu limits whenever user wants to limit CPU.
+      #cpu: "500m"
+      memory: "500Mi"
+      ephemeral-storage: "1Gi"
+    requests:
+      cpu: "200m"
+      memory: "200Mi"
+      ephemeral-storage: "200Mi"
+  containerSecurityContext:
+    readOnlyRootFilesystem: true
+    allowPrivilegeEscalation: false
+  # Configure runAsUser other than 65534
+    runAsUser: 65530
+    capabilities:
+      drop:
+        - ALL 
+  env: 
+    - name: SYSTEM
+      value: BCMT
+    - name: SYSTEMID
+      value: BCMT_ID
+
+customResourceNames:
+  resourceNameLimit: 63
+  alertManagerPod:
+    alertManagerContainer: ""
+    configMapReloadContainer: ""
+    cproUtil: ""
+  restServerPod:
+    restServerContainer: ""
+    configMapReloadContainer: ""
+  restServerHelmTestPod:
+    name: ""
+    testContainer: ""
+  toolsPod:
+    initContainer: ""
+  serverPod:
+    inCntInitConfigFile: ""
+    inCntWait4Certs2BeConsumed: ""
+    configMapReloadContainer: ""
+    serverContainer: ""
+    monitoringContainer: ""
+    cproUtil: ""
+    ## cbur sidecar container name should end with cbura-sidecar
+    cburaSidecarContainer: ""
+  pushGatewayPod:
+    pushGatewayContainer: ""
+  kubeStateMetricsPod:
+    kubeStateMetricsContainer: ""
+  hooks:
+    preDeleteJobName: ""
+    preDeleteContainer: ""
+    postDeleteJobName: ""
+    postDeleteContainer: ""
+  webhook4fluentd:
+    webhookContainer: ""
+  nodeExporter:
+    nodeExporterContainer: ""
+  migrate:
+    preUpgradeJobName: ""
+    preUpgradeContainer: ""
+    postUpgradePodName: ""
+    postUpgradeContainer: ""
+  serverHelmTestPod:
+    name: ""
+    testContainer: ""
+  postRestore:
+    postRestoreJobName: ""
+    postRestoreContainerName: ""
+  preBackup:
+    preBackupJobName: ""
+    preBackupContainerName: ""
+
+custom:   
+
+# To configure customized annotations and labels for CPRO components pods
+  pod:
+    annotations:
+      seccomp.security.alpha.kubernetes.io/allowedProfileNames: runtime/default
+      seccomp.security.alpha.kubernetes.io/defaultProfileName: runtime/default
+    apparmorAnnotations:
+      apparmor.security.beta.kubernetes.io/allowedProfileNames: runtime/default
+      apparmor.security.beta.kubernetes.io/defaultProfileName: runtime/default
+    labels: {}
+
+  cproSts:
+    annotations: {}
+    labels: {}
+
+  cproDeployment:
+    annotations: {}
+    labels: {}
+
+  alertManagerSts:
+    annotations: {}
+    labels: {}
+
+  alertManagerDeployment:
+    annotations: {}
+    labels: {}
+
+  kubeStateMetricsDeployment:
+    annotations: {}
+    labels: {}
+   
+  nodeExporterDaemonSet:
+    annotations: {}
+    labels: {}
+
+  pushGatewayDeployment:
+    annotations: {}
+    labels: {}
+
+  restServerDeployment:
+    annotations: {}
+    labels: {}
+
+  webhook4FluentdDeployment:
+    annotations: {}
+    labels: {}
+
+
+# In OpenShift environment, set psp create to false and scc create to true
+# when .Values.server.extraHostPathMounts is configured then scc will get create for the prometheus server.
+# this helm chart creates scc for node-exporter  when scc is set to true and for other components restricted scc is sufficient
+rbac:
+  enabled: true
+  pspUseAppArmor: false
+  #By defalut psp.create would be true, because cpro requires some extra privileges for nodeExporter.
+  #nodeExporter requires SYS_TIME, hostNetwork, hostPID, hostPaths, hostPorts capabilities
+  psp:
+    create: true
+    annotations:
+      seccomp.security.alpha.kubernetes.io/allowedProfileNames: "*"
+      seccomp.security.alpha.kubernetes.io/defaultProfileName: runtime/default
+  scc:
+    create: false
+
+#common configurations for certmanager for cpro chart
+#the same config wil be used for all the certificates created by this chart
+certManager:
+  #precedence order
+  #certManager.enabled --> global.certManager.enabled
+  enabled:
+  duration: "8760h" # 365d
+  renewBefore: "360h" # 15d
+  keySize: "2048"
+  #servername: "bcmt.domain"
+  # As per the tests in sandbox and environment dnsNames: localhost was sufficient for scrapping etcd metrics
+  dnsNames:
+    - localhost
+  domain:
+  #ipAddresses:
+  #  - 127.0.0.1
+  issuerRef:
+      name:
+      # We can reference ClusterIssuers by changing the kind here.
+      # The default value is Issuer (i.e. a locally namespaced Issuer)
+      kind:
+      group:
+## If the flag is set to true, then server component scrape the metrics within listed namespaces
+## else scrape the metrics at cluster level.
+## Namespace listed in values_restricted.yaml file.
+## If the flag is set to true, then restserver component is forbidden to access
+## the configmap or any other resources of prometheus server from different namespaces and role/rolebinding is created
+## else clusterrole/clusterrolebinding is created and able to access the configmaps
+## and other resources of prometheus server across the different namespaces.
+restrictedToNamespace: false
+
+seLinuxOptions:
+  enabled: false
+  level: ""
+  role: ""
+  type: ""
+  user: ""
+
+## Define serviceAccount name for alertmanager, kubeStateMetrics, pushgateway, server, webhook4fluentd, restserver and migrate components.
+## Defaults to component's fully qualified name.
+##
+serviceAccountName:
+
+## Define serviceAccount name for nodeExporter components.
+## Defaults to component's fully qualified name.
+##
+exportersServiceAccountName:
+
+## Define psp name for nodeExporter components.
+## Defaults to component's fully qualified name.
+
+exportersPspName: "privileged"
+
+hooks:
+  ## Node tolerations for jobs scheduling to nodes with taints
+  ## Ref: https://kubernetes.io/docs/concepts/configuration/assign-pod-node/
+  ##
+  tolerations: []
+    # - key: "key"
+    #   operator: "Equal|Exists"
+    #   value: "value"
+    #   effect: "NoSchedule|PreferNoSchedule|NoExecute(1.6 only)"
+
+  ## NodeSelector for Job assignment
+  ## Ref: https://kubernetes.io/docs/user-guide/node-selection/
+  ##
+  nodeSelector: {}
+
+## Affinity for Pod assignment
+#### ref: https://kubernetes.io/docs/concepts/configuration/assign-pod-node/#affinity-and-anti-affinity
+  affinity: {}
+
+## If true, high avaibility feature will be enabled
+## altermanger and server could create 2 instances
+## If false, altermanger and server could create only 1 instance
+##
+ha:
+  enabled: false
+
+helmDeleteImage:
+## Supported Image Flavor is rocky8
+  imageFlavor:
+  imageFlavorPolicy:
+  image:
+    imageRepo: tools/kubectl
+    imageTag: 1.26.11-nano-20231124
+    __defaultFlavor: rocky8
+    imagePullPolicy: IfNotPresent
+  ## Once a Job reaches activeDeadlineSeconds, all of its running Pods are terminated and
+  ## the Job status will become type: Failed with reason: DeadlineExceeded
+  ## Refer more details in https://kubernetes.io/docs/concepts/workloads/controllers/job/#job-termination-and-cleanup
+  activeDeadlineSeconds: 300
+  containerSecurityContext:
+    readOnlyRootFilesystem: true
+    allowPrivilegeEscalation: false
+    capabilities:
+      drop:
+        - ALL
+  securityContext:
+    runAsNonRoot: true
+    runAsUser: 65530
+    fsGroup: 65530
+    seccompProfile:
+      type: RuntimeDefault
+  resources:
+    limits:
+      # User can configure the cpu limits whenever user wants to limit CPU.
+      #cpu: 100m
+      memory: 100Mi
+      ephemeral-storage: "1Gi"
+    requests:
+      cpu: 50m
+      memory: 32Mi
+      ephemeral-storage: "250Mi"
+
+## If true, pvc of alertmanager and server will be reserved
+## it's only useful when ha.enabled == true
+persistence:
+  reservePvc: false
+
+##sensitive details in prometheus config file
+# sensitive details like username, password , token will be given in the secret format
+# please refer to the confluence page for  details  on secret format and specific name for the key.
+# if sensitivedata is enabled then it is mandatory to create secret for
+sensitiveDataSecretName: ""
+
+
+# These certs are currently used for fetching metrics from etcd.
+# By default this will be disabled. user need to enable it
+certManagerConfig:
+  duration: "8760h" # 365d
+  renewBefore: "360h" # 15d
+  keySize: "2048"
+
+  ## prometheus distro image will be used - supported Flavors are distroless
+  imageFlavor:
+  imageFlavorPolicy:
+
+  #servername: "bcmt.domain"
+  # As per the tests in sandbox and environment dnsNames: localhost was sufficient for scrapping etcd metrics
+  dnsNames:
+    - localhost
+  #ipAddresses:
+  #  - 127.0.0.1
+  issuerRef:
+    name:
+    # We can reference ClusterIssuers by changing the kind here.
+    # The default value is Issuer (i.e. a locally namespaced Issuer)
+    kind:
+    group:
+  
+
+  wait4Certs2BeConsumed:
+    enabled: true
+
+    name: file-validator
+    ## container security context for initcontainer
+    containerSecurityContext:
+      readOnlyRootFilesystem: true
+      allowPrivilegeEscalation: false
+      capabilities:
+        drop:
+          - ALL
+  ##initConfigFile resource requests and limits
+  #Ref: http://kubernetes.io/docs/user-guide/compute-resources/
+  #
+    resources:
+      limits:
+        # User can configure the cpu limits whenever user wants to limit CPU.
+        #cpu: 10m
+        memory: 32Mi
+        ephemeral-storage: "1Gi"
+      requests:
+        cpu: 10m
+        memory: 32Mi
+        ephemeral-storage: "256Mi"
+
+    ## fileNames list should not be empty, if fileNames are empty set wait4Certs2BeConsumed.enabled to false
+    fileNames:
+    - ca.crt
+    - tls.crt
+    - tls.key
+    # log level valid values are debug, info, error, warn
+    logLevel: info
+    # logformat of the application. Default is logfmt. Supported values are logfmt, json
+    logFmt: "logfmt"
+    # time to wait before exiting the program
+    timeout: 3m
+
+alertmanager:
+  ## If false, alertmanager will not be installed
+  ##
+  enabled: true
+  # Note: rocky8-python3.8 imageFlavor are supported for all alertmanager containers in BestMatch
+  # Configure distroless here in case of Strict Match
+  imageFlavor: 
+  imageFlavorPolicy: 
+
+  # workload level scope
+  # ipFamilyPolicy:  SingleStack | PreferDualStack | RequireDualStack
+  ipFamilyPolicy: 
+  #  # ipFamilies: ["IPv4"] | ["IPv6"] | ["IPv4","IPv6"] | ["IPv6","IPv4"]
+  ipFamilies: []
+  ## Custom DNS configuration to be added to alertmanager pods
+  ## work only if ha is true
+  dnsConfig: {}
+  # nameservers:
+  #   - 1.2.3.4
+  # searches:
+  #   - ns1.svc.cluster-domain.example
+  #   - my.dns.search.suffix
+  # options:
+  #   - name: ndots
+  #     value: "2"
+  #   - name: edns0
+
+  imagePullSecrets:
+    #   - name: myRegistrKeySecretName
+    
+  ##soft means preferredDuringSchedulingIgnoredDuringExecution
+  ##hard means requiredDuringSchedulingIgnoredDuringExecution
+  ##you could refer k8s api for more detail
+  ##
+  antiAffinityMode: "soft"
+# set  unifiedLogging.syslog.enabled to true to forward logs to rsyslog
+# <workload>.unifiedLogging.syslog.enabled will take precedence than global.unifiedLogging.syslog.enabled
+  unifiedLogging:
+    # Enable sylog to true for sending logs to syslog. Enabled value left empty intentionally, default value is False
+    syslog:
+      enabled:
+      facility:
+      host:
+      port:
+      protocol:
+      tls:
+        secretRef:
+      # Secret name, pointing to a Secret object of type `kubernetes.io/tls`
+          name:
+           # Secret key names mapping
+           # If the provided Secret is of type `kubernetes.io/tls', then key names do not need to be changed.
+          keyNames:
+           # Name of Secret key, which contains CA certificate
+            caCrt: "ca.crt"
+    extension: {}
+    #extension:
+    #   VM_Name: abc
+    #   VM_UUID: 123
+  ##https://kubernetes.io/docs/concepts/workloads/controllers/statefulset/#pod-management-policies
+  ##Allowed values are OrderedReady/Parallel
+  podManagementPolicy: OrderedReady
+
+  ## alertmanager container name
+  ##
+  name: alertmanager
+
+  ## alertmanager distroless container image
+  ##
+## prometheus distro image will be used
+
+  ## Additional alertmanager container arguments
+  ##
+
+  extraArgs: {}
+
+  ##Additional secrets for alertmanager container
+  # Defines additional mounts with secrets. Secrets must be manually created in the namespace.
+  extraSecretMounts: []
+    # - name: secret-files
+    #   mountPath: /etc/secrets
+    #   secretName: alertmanager-secret
+    #   readOnly: true
+  
+
+  ## The URL prefix at which the container can be accessed. Useful in the case the '-web.external-url' includes a slug
+  ## so that the various internal URLs are still able to access as they are in the default case.
+  ## (Optional)
+  ## prefixURL: "alertmanager"
+  prefixURL: ""
+
+  ## External URL which can access alertmanager
+  ## Maybe same with Ingress host name
+  ## Alertmanager validates the 'web.external-url',configure valid baseUrl if not alertmanager installation
+  ## will fail with error. So "/" is removed.
+  ##
+  ## baseURL: "http://localhost:31380/alertmanager"
+  baseURL: ""
+
+## For more info on Topology Spread Constraints ref: https://kubernetes.io/docs/concepts/scheduling-eviction/topology-spread-constraints/
+# if labelSelector key is omitted and autoGenerateLabelSelector is set to true in a constraint block
+# then labelSelector is automatically generated otherwise labelSelector are taken from labelSelector key
+# Alertmanager
+  topologySpreadConstraints: []
+  #- maxSkew: 1
+  #  topologyKey: topology.kubernetes.io/zone
+  #  whenUnsatisfiable: DoNotSchedule
+  #  autoGenerateLabelSelector: true
+
+  ## Additional alertmanager container environment variable
+  ## For instance to add a http_proxy
+  ## If outboundTls is enabled and  certificate use only common name the following has to be added as follows under extraEnv
+  # GODEBUG: "x509ignoreCN=0"
+  extraEnv: {}
+
+  configmapReload:
+    ## Alertmanager configmap-reload container name
+    ##
+    name: "{{ .Values.configmapReload.name }}"
+    ## configmap-reload resource requests and limits
+    ## Ref: http://kubernetes.io/docs/user-guide/compute-resources/
+    ##
+    resources:
+      limits:
+        # User can configure the cpu limits whenever user wants to limit CPU.
+        #cpu: "{{ .Values.configmapReload.resources.limits.cpu }}"
+        memory: "{{ .Values.configmapReload.resources.limits.memory }}"
+        ephemeral-storage: "1Gi"
+      requests:
+        cpu: "{{ .Values.configmapReload.resources.requests.cpu }}"
+        memory: "{{ .Values.configmapReload.resources.requests.memory }}"
+        ephemeral-storage: "256Mi"
+  cproUtil:
+
+   ## Alertmanager cpro Util container name
+   name: "{{ .Values.cproUtil.name }}"
+
+## prometheus python image will be used
+
+   ##cpro util resource requests and limits
+   ## Ref: http://kubernetes.io/docs/user-guide/compute-resources/
+   
+   resources:
+     limits:
+       # User can configure the cpu limits whenever user wants to limit CPU.
+       #cpu: "{{ .Values.cproUtil.resources.limits.cpu }}"
+       memory: "{{ .Values.cproUtil.resources.limits.memory }}"
+       ephemeral-storage: "1Gi"
+     requests:
+       cpu: "{{ .Values.cproUtil.resources.requests.cpu }}"
+       memory: "{{ .Values.cproUtil.resources.requests.memory }}"
+       ephemeral-storage: "256Mi"
+
+
+  ## ConfigMap override where fullname is {{.Release.Name}}-{{.Values.alertmanager.configMapOverrideName}}
+  ## Defining configMapOverrideName will cause templates/alertmanager-configmap.yaml
+  ## to NOT generate a ConfigMap resource
+  ##
+  configMapOverrideName: ""
+
+  progressDeadlineSeconds:
+
+  ## Alertmanager TLS for outbound messages
+  ## e.g. if connected to CNOT this should be set to CNOT's wildfly cert.
+  outboundTLS:
+    enabled: false
+    cert:
+
+  ingress:
+    ## If true, alertmanager Ingress will be created
+    ##
+    enabled: false
+    #All possible allowed values for pathType is Prefix,ImplementationSpecific, Exact
+    pathType: "Prefix"
+
+    ## alertmanager Ingress annotations
+    ##
+    annotations: {}
+    #   kubernetes.io/ingress.class: nginx
+    #   kubernetes.io/tls-acme: 'true'
+
+    ## alertmanager Ingress additional labels
+    ##
+    extraLabels: {}
+
+    ## alertmanager Ingress hostnames with optional path
+    ## Must be provided if Ingress is enabled
+    ##
+    hosts: []
+    #   - alertmanager.domain.com
+    #   - domain.com/alertmanager
+
+    ## alertmanager Ingress TLS configuration
+    ## Secrets must be manually created in the namespace
+    ##
+    tls: []
+    #   - secretName: prometheus-alerts-tls
+    #     hosts:
+    #       - alertmanager.domain.com
+  ## Alertmanager Deployment Strategy type
+  #for Statefulset the supported strategy values are OnDelete,RollingUpdate
+  # strategy:
+  #   type: Recreate
+
+  ## Node tolerations for alertmanager scheduling to nodes with taints
+  ## Ref: https://kubernetes.io/docs/concepts/configuration/assign-pod-node/
+  ##
+  tolerations: []
+    # - key: "key"
+    #   operator: "Equal|Exists"
+    #   value: "value"
+    #   effect: "NoSchedule|PreferNoSchedule|NoExecute(1.6 only)"
+
+  ## Node labels for alertmanager pod assignment
+  ## Ref: https://kubernetes.io/docs/user-guide/node-selection/
+  ##
+  nodeSelector: {}
+
+## Affinity for pod assignment
+## ref: https://kubernetes.io/docs/concepts/configuration/assign-pod-node/#affinity-and-anti-affinity
+##
+  affinity: {}
+
+  ## Use an alternate scheduler, e.g. "stork".
+  ## ref: https://kubernetes.io/docs/tasks/administer-cluster/configure-multiple-schedulers/
+  ##
+  # schedulerName:
+
+  persistentVolume:
+    ## If true, alertmanager will create/use a Persistent Volume Claim
+    ## If false, use emptyDir
+    ##
+    enabled: true
+
+    ## alertmanager data Persistent Volume access modes
+    ## Must match those of existing PV or dynamic provisioner
+    ## Ref: http://kubernetes.io/docs/user-guide/persistent-volumes/
+    ##
+    accessModes:
+      - ReadWriteOnce
+
+    ## alertmanager data Persistent Volume Claim annotations
+    ##
+    annotations: {}
+
+    ## alertmanager data Persistent Volume existing claim name
+    ## Requires alertmanager.persistentVolume.enabled: true
+    ## If defined, PVC must be created manually before volume will be bound
+    existingClaim: ""
+
+    ## alertmanager data Persistent Volume mount root path
+    ##
+    mountPath: /data
+
+    ## alertmanager data Persistent Volume size
+    ##
+    size: 2Gi
+
+    ## alertmanager data Persistent Volume Storage Class
+    ## If defined, storageClassName: <storageClass>
+    ## If set to "-", storageClassName: "", which disables dynamic provisioning
+    ## If undefined (the default) or set to null, no storageClassName spec is
+    ##   set, choosing the default provisioner.  (gp2 on AWS, standard on
+    ##   GKE, AWS & OpenStack)
+    ##
+    storageClass: ""
+
+    ## Subdirectory of alertmanager data Persistent Volume to mount
+    ## Useful if the volume's root directory is not empty
+    ##
+    subPath: ""
+
+  ## Annotations to be added to alertmanager pods
+  ##
+  podAnnotations: {}
+
+  ## Alertmanager workload labels & annotations
+  annotations: {}
+  labels: {}
+
+  ## when ha.enabled is false, replicaCount will be 1.
+  ## when ha.enabled is true, replicaCount will be taken from here.
+  ## default is 2. If ha.enabled is false no need to change the below value.
+  replicaCount: 2
+
+  ## alertmanager resource requests and limits
+  ## Ref: http://kubernetes.io/docs/user-guide/compute-resources/
+  ##
+  resources:
+    limits:
+      # User can configure the cpu limits whenever user wants to limit CPU.
+      #cpu: 500m
+      memory: 1Gi
+      ephemeral-storage: "1Gi"
+    requests:
+      cpu: 10m
+      memory: 32Mi
+      ## If persistentVolume [Values.alertmanager.persistentVolume.] is set to false the ephemeral-storage request size shall be configured according to the storage requirements
+      ephemeral-storage: "256Mi"
+
+  ## securityContext for alertmanager
+  containerSecurityContext:
+    readOnlyRootFilesystem: true
+    allowPrivilegeEscalation: false
+    capabilities:
+      drop:
+        - ALL
+  securityContext:
+    runAsNonRoot: true
+    runAsUser: 65534
+    fsGroup: 65534
+    seccompProfile:
+      type: RuntimeDefault
+    #seLinuxOptions:
+    #  level: ""
+    #  role: ""
+    #  type: ""
+    #  user: ""
+
+  retention:
+    time: 120h
+
+  service:
+    annotationsForAlertmanagerCluster: {}
+    annotationsForScrape:
+      prometheus.io/probe: alert-manager
+    annotations: {}
+    labels: {}
+    clusterIP: ""
+
+    ## List of IP addresses at which the alertmanager service is available
+    ## Ref: https://kubernetes.io/docs/user-guide/services/#external-ips
+    ##
+    externalIPs: []
+
+    loadBalancerIP: ""
+    loadBalancerSourceRanges: []
+    servicePort: 80
+    clusterPort: 8001
+    webPort: 9093
+
+    # meshpeerPortUdp parameter added to configure different ports for TCP and UDP
+    # to avoid alertmanager pod crash issue Openshift dualstack environment with aspenmesh 
+    meshpeerPort: 9094
+    meshpeerPortUdp: 9094
+    # nodePort: 30000
+    type: ClusterIP
+
+  ## Configurations about alertmanager probes
+  ## Including livenessProbe and readinessProbe
+  livenessProbe:
+    initialDelaySeconds: 0
+    timeoutSeconds: 30
+    failureThreshold: 3
+    periodSeconds: 10
+  readinessProbe:
+    initialDelaySeconds: 0
+    timeoutSeconds: 30
+    failureThreshold: 3
+    periodSeconds: 10
+
+#PodDisruptionBudgets for alertmanager
+#This will ensure that configured number of pods are always up and try to prevent the evictions
+#https://kubernetes.io/docs/tasks/run-application/configure-pdb/
+#Note: either minAvailable or maxUnavailable should be used cannot be used at the same time
+  pdb:
+    enabled: false
+    #minAvailable: 1
+    maxUnavailable: 0
+
+  tls:
+    enabled: 
+    secretRef:
+      # Secret name, pointing to a Secret object.
+      # If empty then automatically generated secret with certificate will be used
+      name:
+      # Secret key names mapping.
+      # If the provided Secret is of type `kubernetes.io/tls', then key names do not need to be changed.
+      keyNames:
+        # Name of Secret key, which contains CA certificate
+        caCrt: "ca.crt"
+        # Name of Secret key, which contains TLS key
+        tlsKey: "tls.key"
+        # Name of Secret key, which contains TLS certificate
+        tlsCrt: "tls.crt"
+
+  certificate:
+    # Certificate object is created based on the data in this section.
+    # Optional parameter
+    enabled: true
+    # workload issuerRef >> certmanager.issuerRef >> global.certmanager.issuerRef
+    issuerRef:
+      name:
+      kind:
+      group:
+    duration: 8760h # 1 year
+    renewBefore: 360h # 15 days
+    # If left empty, it will be generated automatically.
+    secretName:
+    # Not needed in internal communication
+    subject:
+    # It has been deprecated since 2000 and is discouraged from being used for a server side certificates.
+    # `dnsNames` are used instead.
+    commonName:
+    # Usages is the set of x509 usages that are requested for the certificate.
+    # If `usages` is not specified, the following will be used:
+    # - server auth
+    # - client auth
+    usages:
+    # DNSNames is a list of DNS subjectAltNames to be set on the Certificate.
+    # If ssl passthrough is used on the Ingress object,
+    # then dnsNames should be set to external DNS names.
+    # If `dnsNames` is not specified then the following internal names will be used:
+    # - localhost
+    # - <service name>.<namespace>
+    # - <service name>.<namespace>.svc
+    # - <service name>.<namespace>.svc.<cluster domain>
+    dnsNames:
+    # URIs is a list of URI subjectAltNames to be set on the Certificate.
+    uris:
+    # IPAddresses is a list of IP address subjectAltNames to be set on the Certificate.
+    # If ipAddresses not specified then the following internal local IPs will be used:
+    # - "127.0.0.1"
+    # - "::1"
+    ipAddresses:
+    privateKey:
+      algorithm:
+      encoding:
+      size:
+      # Rotation of a key pair, when certificate is refreshed is recommended from a security point of view
+      rotationPolicy: Always
+
+  tls_auth_config:
+    secretForWebConfig: ""
+    tls:
+      enabled: false
+      externalSecret: ""
+#Additional domain and dnsNames to be provided if required
+#      dnsNames:
+#        - localhost
+#      ipAddresses:
+#        - 127.0.0.1
+    insecureReload: false
+
+
+  ##Configuration for priority class
+  ## https://kubernetes.io/docs/concepts/scheduling-eviction/pod-priority-preemption/#pod-priority
+  ## priority class should be created before installing the chart
+  priorityClassName:
+
+## Monitors ConfigMap changes and POSTs to a URL
+## Ref: https://github.com/jimmidyson/configmap-reload
+##
+configmapReload:
+  ## configmap-reload container name
+  ##
+  name: cmreload
+
+## prometheus distro image will be used
+  ## Supported Image Flavors distroless
+  imageFlavor:
+  imageFlavorPolicy:
+
+  ## Additional configmap-reload container arguments
+  ##
+
+  extraArgs: {} 
+    # volume-dir have to be passed as a list
+    #  volume-dir: 
+      #   - /etc/alerts.d
+      #   - /etc/config
+    #  web.listen-address: ":9100"
+
+
+  ## Additional configmap-reload mounts
+  ##
+  extraConfigmapMounts: []
+    # - name: prometheus-alerts
+    #   mountPath: /etc/alerts.d
+    #   configMap: prometheus-alerts
+    #   readOnly: true
+
+
+  ## configmap-reload resource requests and limits
+  ## Ref: http://kubernetes.io/docs/user-guide/compute-resources/
+  ##
+  resources:
+    limits:
+      # User can configure the cpu limits whenever user wants to limit CPU.
+      #cpu: 10m
+      memory: 32Mi
+      ephemeral-storage: "1Gi"
+    requests:
+      cpu: 10m
+      memory: 32Mi
+      ephemeral-storage: "256Mi"
+
+tools:
+  # container security context for the helm test pods
+  containerSecurityContext:
+    readOnlyRootFilesystem: true
+    allowPrivilegeEscalation: false
+    capabilities:
+      drop:
+        - ALL
+  securityContext:
+    runAsNonRoot: true
+    runAsUser: 65534
+    fsGroup: 65534
+    seccompProfile:
+      type: RuntimeDefault
+
+    #seLinuxOptions:
+    #  level: ""
+    #  role: ""
+    #  type: ""
+    #  user: ""
+
+
+
+helmtest:
+  CPROconfigmapname:
+  deletepolicy: hook-succeeded,before-hook-creation
+
+  containerSecurityContext:
+    readOnlyRootFilesystem: true
+    allowPrivilegeEscalation: false
+    capabilities:
+      drop:
+        - ALL
+  securityContext:
+    runAsNonRoot: true
+    runAsUser: 65534
+    fsGroup: 65534
+    seccompProfile:
+      type: RuntimeDefault
+
+  # The username/password are needed for running helm test
+  # This username/password are part of sensitive data needed for basic authentication for scrapping metrics from nodeexporter securely
+  # This section need not be configured if new way of sensitivedata is used from .Values.nodeExporter.auth.credentialName
+  nodeExporter_prometheus_basic_auth:
+    username: 
+    password: 
+
+  ## helmtest resource requests and limits
+  ## Ref: http://kubernetes.io/docs/user-guide/compute-resources/
+  resources:
+    limits:
+      # User can configure the cpu limits whenever user wants to limit CPU.
+      #cpu: 10m
+      memory: 32Mi
+      ephemeral-storage: "1Gi"
+    requests:
+      cpu: 10m
+      memory: 32Mi
+      ephemeral-storage: "256Mi"
+  ## timeout for the helm test
+  timeout: 60
+
+  ##Configuration for priority class
+  ## https://kubernetes.io/docs/concepts/scheduling-eviction/pod-priority-preemption/#pod-priority
+  ## priority class should be created before installing the chart
+  priorityClassName:
+  
+  # helmtest pod labels and annotations
+  labels: {}
+  annotations: {}
+
+  ## for test container
+  ## Supported Image Flavors rocky8-python3.8
+  imageFlavor:
+  imageFlavorPolicy:
+
+initConfigFile:
+
+  ##initConfigFile container name
+  #
+  name: init-config-file
+
+## Confgure image Flavor here for all Init Containers for server, alertmanager and restserver
+## Supported Image Flavors rocky8-python3.8
+  imageFlavor:
+  imageFlavorPolicy:
+
+  ##initConfigFile resource requests and limits
+  #Ref: http://kubernetes.io/docs/user-guide/compute-resources/
+  #
+  resources:
+    limits:
+      # User can configure the cpu limits whenever user wants to limit CPU.
+      #cpu: 10m
+      memory: 32Mi
+      ephemeral-storage: "1Gi"
+    requests:
+      cpu: 10m
+      memory: 32Mi
+      ephemeral-storage: "256Mi"
+
+kubeStateMetrics:
+  ## If false, kube-state-metrics will not be installed
+  ##
+  enabled: true
+
+  ## kube-state-metrics container name
+  ##
+  name: kube-state-metrics
+  # workload level scope
+  # ipFamilyPolicy:  SingleStack | PreferDualStack | RequireDualStack
+
+  ## Supported Flavors: distroless
+  imageFlavor:
+  imageFlavorPolicy:
+
+  ipFamilyPolicy: 
+  #  # ipFamilies: ["IPv4"] | ["IPv6"] | ["IPv4","IPv6"] | ["IPv6","IPv4"]
+  ipFamilies: []
+
+  imagePullSecrets:
+    #   - name: myRegistrKeySecretName
+    
+# set  unifiedLogging.syslog.enabled to true to forward logs to rsyslog
+# <workload>.unifiedLogging.syslog.enabled will take precedence than global.unifiedLogging.syslog.enabled
+  unifiedLogging:
+    # Enable sylog to true for sending logs to syslog. Enabled value left empty intentionally, default value is False
+    syslog:
+      enabled:
+      facility:
+      host:
+      port:
+      protocol:
+      tls:
+        secretRef:
+      # Secret name, pointing to a Secret object of type `kubernetes.io/tls`
+          name:
+           # Secret key names mapping
+           # If the provided Secret is of type `kubernetes.io/tls', then key names do not need to be changed.
+          keyNames:
+           # Name of Secret key, which contains CA certificate
+            caCrt: "ca.crt"
+    extension: {}
+    #extension:
+    #   VM_Name: abc
+    #   VM_UUID: 123
+
+## For more info on Topology Spread Constraints ref: https://kubernetes.io/docs/concepts/scheduling-eviction/topology-spread-constraints/
+# if labelSelector key is omitted and autoGenerateLabelSelector is set to true in a constraint block
+# then labelSelector is automatically generated otherwise labelSelector are taken from labelSelector key
+# Kube-state-metrics
+  topologySpreadConstraints: []
+  #- maxSkew: 4
+  #  topologyKey: topology.kubernetes.io/zone
+  #  whenUnsatisfiable: DoNotSchedule
+  #  autoGenerateLabelSelector: true
+
+## prometheus distro image will be used
+
+  
+  ## Node tolerations for kube-state-metrics scheduling to nodes with taints
+  ## Ref: https://kubernetes.io/docs/concepts/configuration/assign-pod-node/
+  ##
+  tolerations: []
+    # - key: "key"
+    #   operator: "Equal|Exists"
+    #   value: "value"
+    #   effect: "NoSchedule|PreferNoSchedule|NoExecute(1.6 only)"
+
+  ## Node labels for kube-state-metrics pod assignment
+  ## Ref: https://kubernetes.io/docs/user-guide/node-selection/
+  ##
+  nodeSelector: {}
+
+## Affinity for pod assignment
+## ref: https://kubernetes.io/docs/concepts/configuration/assign-pod-node/#affinity-and-anti-affinity
+##
+  affinity: {}
+  ##soft means preferredDuringSchedulingIgnoredDuringExecution
+  ##hard means requiredDuringSchedulingIgnoredDuringExecution
+  ##you could refer k8s api for more detail
+  #
+  antiAffinityMode: "soft"
+  ## Annotations to be added to kube-state-metrics pods
+  ##
+  podAnnotations: {}
+
+  ## Kube-state-metrics workload labels & annotations
+  annotations: {}
+  labels: {}
+
+  tls:
+    enabled: 
+    secretRef:
+      # Secret name, pointing to a Secret object.
+      # If empty then automatically generated secret with certificate will be used
+      name:
+      # Secret key names mapping.
+      # If the provided Secret is of type `kubernetes.io/tls', then key names do not need to be changed.
+      keyNames:
+        # Name of Secret key, which contains CA certificate
+        caCrt: "ca.crt"
+        # Name of Secret key, which contains TLS key
+        tlsKey: "tls.key"
+        # Name of Secret key, which contains TLS certificate
+        tlsCrt: "tls.crt"
+  certificate:
+    # Certificate object is created based on the data in this section.
+    # Optional parameter
+    enabled: true
+    # workload issuerRef >> certmanager.issuerRef >> global.certmanager.issuerRef
+    issuerRef:
+      name:
+      kind:
+      group:
+    duration: 8760h # 1 year
+    renewBefore: 360h # 15 days
+    # If left empty, it will be generated automatically.
+    secretName:
+    # Not needed in internal communication
+    subject:
+    # It has been deprecated since 2000 and is discouraged from being used for a server side certificates.
+    # `dnsNames` are used instead.
+    commonName:
+    # Usages is the set of x509 usages that are requested for the certificate.
+    # If `usages` is not specified, the following will be used:
+    # - server auth
+    # - client auth
+    usages:
+    # DNSNames is a list of DNS subjectAltNames to be set on the Certificate.
+    # If ssl passthrough is used on the Ingress object,
+    # then dnsNames should be set to external DNS names.
+    # If `dnsNames` is not specified then the following internal names will be used:
+    # - localhost
+    # - <service name>.<namespace>
+    # - <service name>.<namespace>.svc
+    # - <service name>.<namespace>.svc.<cluster domain>
+    dnsNames:
+    # URIs is a list of URI subjectAltNames to be set on the Certificate.
+    uris:
+    # IPAddresses is a list of IP address subjectAltNames to be set on the Certificate.
+    # If ipAddresses not specified then the following internal local IPs will be used:
+    # - "127.0.0.1"
+    # - "::1"
+    ipAddresses:
+    privateKey:
+      algorithm:
+      encoding:
+      size:
+      # Rotation of a key pair, when certificate is refreshed is recommended from a security point of view
+      rotationPolicy: Always
+
+  tls_auth_config:
+    secretForWebConfig: ""
+    tls:
+      enabled: false
+      externalSecret: ""
+#Additional domain and dnsNames to be provided if required
+#      dnsNames:
+#        - localhost
+#      ipAddresses:
+#        - 127.0.0.1
+  pod:
+    labels: {}
+
+  replicaCount: 1
+
+  ## kube-state-metrics resource requests and limits
+  ## Ref: http://kubernetes.io/docs/user-guide/compute-resources/
+  ##
+  resources:
+    limits:
+      # User can configure the cpu limits whenever user wants to limit CPU.
+      #cpu: 100m
+      memory: 200Mi
+      ephemeral-storage: "1Gi"
+    requests:
+      cpu: 10m
+      memory: 32Mi
+      ephemeral-storage: "256Mi"
+
+  # securityContext for kube-statemetrics
+  containerSecurityContext:
+    readOnlyRootFilesystem: true
+    allowPrivilegeEscalation: false
+    capabilities:
+      drop:
+        - ALL
+  securityContext:
+    runAsNonRoot: true
+    runAsUser: 65530
+    fsGroup: 65530
+    seccompProfile:
+      type: RuntimeDefault
+    #seLinuxOptions:
+    #  level: ""
+    #  role: ""
+    #  type: ""
+    #  user: ""
+
+  progressDeadlineSeconds:
+
+  service:
+    annotations: {}
+    annotationsForScrape:
+      prometheus.io/probe: kube-state-metrics
+
+    labels: {}
+    metricsPort: 8080
+
+    # Exposed as a headless service:
+    # https://kubernetes.io/docs/concepts/services-networking/service/#headless-services
+    # NOTE: If this workload needs to be included in the istio Mesh in REGISTRY_ONLY environment,
+    # Make it empty string which will create the kube state metrics normal service and set the value of
+    # includeWorkloadInIstioMesh to true which will create the Headless service.
+    clusterIP: None
+
+    ## List of IP addresses at which the kube-state-metrics service is available
+    ## Ref: https://kubernetes.io/docs/user-guide/services/#external-ips
+    ##
+    externalIPs: []
+
+    loadBalancerIP: ""
+    loadBalancerSourceRanges: []
+    servicePort: 80
+    type: ClusterIP
+
+  #Available collectors for kube-state-metrics. By default all available
+  # resources are enabled. true/false has to be set as per the cluster.
+  args:
+    collectors:
+      certificatesigningrequests: true
+      configmaps: true
+      cronjobs: true
+      daemonsets: true
+      deployments: true
+      endpoints: true
+      horizontalpodautoscalers: true
+      ingresses: true
+      jobs: true
+      limitranges: true
+      mutatingwebhookconfigurations: true
+      namespaces: true
+      networkpolicies: true
+      nodes: true
+      persistentvolumeclaims: true
+      persistentvolumes: true
+      poddisruptionbudgets: true
+      pods: true
+      replicasets: true
+      replicationcontrollers: true
+      resourcequotas: true
+      secrets: true
+      services: true
+      statefulsets: true
+      storageclasses: true
+      validatingwebhookconfigurations: true
+      verticalpodautoscalers: false
+      volumeattachments: true
+
+    # Comma-separated list of metrics to be exposed.
+    # This list comprises of exact metric names and/or regex patterns.
+    # The allowlist and denylist are mutually exclusive.
+    metricAllowlist: []
+
+    # Comma-separated list of metrics not to be enabled.
+    # This list comprises of exact metric names and/or regex patterns.
+    # The allowlist and denylist are mutually exclusive.
+    metricDenylist: []
+
+    # Comma-separated list of additional Kubernetes label keys that will be used in the resource's
+    # labels metric. By default the metric contains only name and namespace labels.
+    # To include additional labels, provide a list of resource names in their plural form and Kubernetes
+    # label keys you would like to allow for them (Example: '=namespaces=[k8s-label-1,k8s-label-n,...],pods=[app],...)'.
+    # A single '*' can be provided per resource instead to allow any labels, but that has
+    # severe performance implications (Example: '=pods=[*]').
+    metricLabelsAllowlist: []
+    # - namespaces=[k8s-label-1,k8s-label-n]
+
+    # Comma-separated list of Kubernetes annotations keys that will be used in the resource'
+    # labels metric. By default the metric contains only name and namespace labels.
+    # To include additional annotations provide a list of resource names in their plural form and Kubernetes
+    # annotation keys you would like to allow for them (Example: '=namespaces=[kubernetes.io/team,...],pods=[kubernetes.io/team],...)'.
+    # A single '*' can be provided per resource instead to allow any annotations, but that has
+    # severe performance implications (Example: '=pods=[*]').
+    metricAnnotationsAllowList: []
+    # - pods=[k8s-annotation-1,k8s-annotation-n]
+
+    ## Set the namespaces using the --namespace option,Comma-separated list of namespaces to be enabled. Defaults to ""
+    namespace: ""
+
+  # List of additional cli arguments to configure kube-state-metrics
+  # for example: --enable-gzip-encoding, --log-file, etc.
+  # all the possible args can be found here: https://github.com/kubernetes/kube-state-metrics/blob/v2.2.3/docs/cli-arguments.md
+  extraArgs: []
+
+  ## Configurations about kubeStateMetrics probes
+  ## Including livenessProbe and readinessProbe
+  livenessProbe:
+    initialDelaySeconds: 0
+    timeoutSeconds: 30
+    failureThreshold: 3
+    periodSeconds: 10
+  readinessProbe:
+    initialDelaySeconds: 0
+    timeoutSeconds: 30
+    failureThreshold: 3
+    periodSeconds: 10
+
+#PodDisruptionBudgets for kube-state-metrics
+#This will ensure that configured number of pods are always up and try to prevent the evictions
+#https://kubernetes.io/docs/tasks/run-application/configure-pdb/
+#Note: either minAvailable or maxUnavailable should be used cannot be used at the same time
+#As per HBP,if replica count is 1, pdb will be disabled by default. It can be enabled when required.
+  pdb:
+    enabled: false
+    #minAvailable: 1
+    maxUnavailable: 0
+
+
+  ##Configuration for priority class
+  ## https://kubernetes.io/docs/concepts/scheduling-eviction/pod-priority-preemption/#pod-priority
+  ## priority class should be created before installing the chart
+  priorityClassName:
+
+
+nodeExporter:
+  ## If false, node-exporter will not be installed
+  ##
+  enabled: true
+
+  ## Supported Flavors: distroless
+  imageFlavor: 
+  imageFlavorPolicy:
+  # workload level scope
+  # ipFamilyPolicy:  SingleStack | PreferDualStack | RequireDualStack
+  ipFamilyPolicy: 
+  #  # ipFamilies: ["IPv4"] | ["IPv6"] | ["IPv4","IPv6"] | ["IPv6","IPv4"]
+  ipFamilies: []
+
+  imagePullSecrets:
+    #   - name: myRegistrKeySecretName
+    
+  ## node-exporter container name
+  ##
+  name: node-exporter
+# set  unifiedLogging.syslog.enabled to true to forward logs to rsyslog
+# <workload>.unifiedLogging.syslog.enabled will take precedence than global.unifiedLogging.syslog.enabled
+  unifiedLogging:
+    # Enable sylog to true for sending logs to syslog. Enabled value left empty intentionally, default value is False
+    syslog:
+      enabled:  
+      facility:
+      host:
+      port:
+      protocol:
+      tls:
+        secretRef:
+      # Secret name, pointing to a Secret object of type `kubernetes.io/tls`
+          name:
+           # Secret key names mapping
+           # If the provided Secret is of type `kubernetes.io/tls', then key names do not need to be changed.
+          keyNames:
+           # Name of Secret key, which contains CA certificate
+            caCrt: "ca.crt"
+
+  # See https://kubernetes.io/docs/concepts/services-networking/dns-pod-service/
+  # DNS policies can be set on a per-pod basis. Currently Kubernetes supports the following pod-specific DNS policies. These policies are specified in the dnsPolicy field of a Pod Spec.
+  # "Default": The Pod inherits the name resolution configuration from the node that the pods run on. See related discussion for more details.
+  # "ClusterFirst": Any DNS query that does not match the configured cluster domain suffix, such as "www.kubernetes.io", is forwarded to the upstream nameserver inherited from the node. Cluster administrators may have extra stub-domain and upstream DNS servers configured. See related discussion for details on how DNS queries are handled in those cases.
+  # "ClusterFirstWithHostNet": For Pods running with hostNetwork, you should explicitly set its DNS policy "ClusterFirstWithHostNet".
+  # "None": It allows a Pod to ignore DNS settings from the Kubernetes environment. All DNS settings are supposed to be provided using the dnsConfig field in the Pod Spec. See Pod's DNS config subsection below.
+  dnsPolicy:
+
+  # See https://kubernetes.io/docs/concepts/services-networking/dns-pod-service/#pod-dns-config
+  # 
+  # Pod's DNS Config allows users more control on the DNS settings for a Pod.
+  # The dnsConfig field is optional and it can work with any dnsPolicy settings. However, when a Pod's dnsPolicy is set to "None", the dnsConfig field has to be specified.
+  # Below are the properties a user can specify in the dnsConfig field:
+  #
+  # nameservers: a list of IP addresses that will be used as DNS servers for the Pod. There can be at most 3 IP addresses specified. When the Pod's dnsPolicy is set to "None", the list must contain at least one IP address, otherwise this property is optional. The servers listed will be combined to the base nameservers generated from the specified DNS policy with duplicate addresses removed.
+  # searches: a list of DNS search domains for hostname lookup in the Pod. This property is optional. When specified, the provided list will be merged into the base search domain names generated from the chosen DNS policy. Duplicate domain names are removed. Kubernetes allows for at most 6 search domains.
+  # options: an optional list of objects where each object may have a name property (required) and a value property (optional). The contents in this property will be merged to the options generated from the specified DNS policy. Duplicate entries are removed.
+  dnsConfig:
+
+## prometheus distro image will be used
+
+  ## Custom Update Strategy
+  ##
+  updateStrategy:
+    type: RollingUpdate
+
+  tls:
+    enabled: 
+    secretRef:
+      # Secret name, pointing to a Secret object.
+      # If empty then automatically generated secret with certificate will be used
+      name:
+      # Secret key names mapping.
+      # If the provided Secret is of type `kubernetes.io/tls', then key names do not need to be changed.
+      keyNames:
+        # Name of Secret key, which contains CA certificate
+        caCrt: "ca.crt"
+        # Name of Secret key, which contains TLS key
+        tlsKey: "tls.key"
+        # Name of Secret key, which contains TLS certificate
+        tlsCrt: "tls.crt"
+  certificate:
+    # Certificate object is created based on the data in this section.
+    # Optional parameter
+    enabled: true
+    # workload issuerRef >> certmanager.issuerRef >> global.certmanager.issuerRef
+    issuerRef:
+      name:
+      kind:
+      group:
+    duration: 8760h # 1 year
+    renewBefore: 360h # 15 days
+    # If left empty, it will be generated automatically.
+    secretName:
+    # Not needed in internal communication
+    subject:
+    # It has been deprecated since 2000 and is discouraged from being used for a server side certificates.
+    # `dnsNames` are used instead.
+    commonName:
+    # Usages is the set of x509 usages that are requested for the certificate.
+    # If `usages` is not specified, the following will be used:
+    # - server auth
+    # - client auth
+    usages:
+    # DNSNames is a list of DNS subjectAltNames to be set on the Certificate.
+    # If ssl passthrough is used on the Ingress object,
+    # then dnsNames should be set to external DNS names.
+    # If `dnsNames` is not specified then the following internal names will be used:
+    # - localhost
+    # - <service name>.<namespace>
+    # - <service name>.<namespace>.svc
+    # - <service name>.<namespace>.svc.<cluster domain>
+    dnsNames:
+    # URIs is a list of URI subjectAltNames to be set on the Certificate.
+    uris:
+    # IPAddresses is a list of IP address subjectAltNames to be set on the Certificate.
+    # If ipAddresses not specified then the following internal local IPs will be used:
+    # - "127.0.0.1"
+    # - "::1"
+    ipAddresses:
+    privateKey:
+      algorithm:
+      encoding:
+      size:
+      # Rotation of a key pair, when certificate is refreshed is recommended from a security point of view
+      rotationPolicy: Always
+  
+  tls_auth_config:
+    secretForWebConfig: ""
+    basic_auth:
+      enabled: false
+    tls:
+      enabled: false
+      externalSecret: ""
+#Additional domain and dnsNames to be provided if required
+##      dnsNames:
+##        - localhost
+##      ipAddresses:
+##        - 127.0.0.1
+
+  ## Node exporter basic auth credentials to be specified for prometheus scrape job.
+  ## If configured, update the basic_auth node exporter scrape job where username and password 
+  ## are provided in the form of $__expnd{nxp-auth/<values-of-the-keyNames>}
+  auth:
+    # Name of the credential which has basic auth credentials of node exporter
+    # Example: If the user has pre-created a secret containing basic auth username and password with name "nodeexportercred",
+    # then configure as below
+    # credentialName: "nodeexportercred"
+    credentialName: ""
+    keyNames:
+      # key used to define the above secret which refers to basic auth username
+      # if empty, then default key "username" is used
+      # Example: If user has used "myuser" as key when creating the secret, then update the username field as follows
+      # username: "myuser"
+      username: ""
+      # key used to define the above secret which refers to basic auth password
+      # if empty, then default key "password" is used
+      # Example: If user has used "mypass" as key when creating the secret, then update the password field as follows
+      # ppassword: "mypass"
+      password: ""
+ 
+  ## Additional node-exporter container arguments
+  ## Update "web.listen-address" If you have updated podHostPort & podContainerPort
+  ## web.listen-address value should be same as  podHostPort & podContainerPort
+  # please disable timex collector by uncommenting no-collector.timex when scc is false in the openshift
+  extraArgs:
+    web.listen-address: ":9100"
+   # no-collector.timex:
+  
+   # # Below will enable processes collector 
+   # collector.processes:
+
+  ## Additional node-exporter hostPath mounts
+  ##
+  extraHostPathMounts: []
+    # - name: textfile-dir
+    #   mountPath: /srv/txt_collector
+    #   hostPath: /var/lib/node-exporter
+    #   readOnly: true
+
+  extraConfigmapMounts: []
+    # - name: certs-configmap
+    #   mountPath: /prometheus
+    #   configMap: certs-configmap
+    #   readOnly: true
+
+  ## Node tolerations for node-exporter scheduling to nodes with taints
+  ## Ref: https://kubernetes.io/docs/concepts/configuration/assign-pod-node/
+  ##
+  tolerations:
+      - operator: Exists
+    # - key: "key"
+    #   operator: "Equal|Exists"
+    #   value: "value"
+    #   effect: "NoSchedule|PreferNoSchedule|NoExecute(1.6 only)"
+
+  ## Node labels for node-exporter pod assignment
+  ## Ref: https://kubernetes.io/docs/user-guide/node-selection/
+  ##
+  nodeSelector: {}
+
+  ## Annotations to be added to node-exporter pods
+  ##
+  podAnnotations: {}
+
+  ## Node-exporter workload labels and annotations
+  annotations: {}
+  labels: {}
+
+  ## Labels to be added to node-exporter pods
+  ##
+  pod:
+    labels: {}
+
+  ## node-exporter resource limits & requests
+  ## Ref: https://kubernetes.io/docs/user-guide/compute-resources/
+  ##
+  resources:
+    limits:
+      # User can configure the cpu limits whenever user wants to limit CPU.
+      #cpu: 500m
+      memory: 500Mi
+      ephemeral-storage: "1Gi"
+    requests:
+      cpu: 100m
+      memory: 30Mi
+      ephemeral-storage: "256Mi"
+
+  ##securityContext for nodeeexporter
+  containerSecurityContext:
+    allowPrivilegeEscalation: false
+    readOnlyRootFilesystem: true
+    capabilities:
+      add:
+        - SYS_TIME
+      drop:
+        - ALL
+  podSecurityContext:
+    runAsNonRoot: true
+    runAsUser: 65530
+    fsGroup: 65530
+    seccompProfile:
+      type: RuntimeDefault 
+
+    #seLinuxOptions:
+    #  level: ""
+    #  role: ""
+    #  type: ""
+    #  user: ""
+
+  service:
+    annotations:
+      prometheus.io/probe: node-exporter
+    labels: {}
+
+    # Exposed as a headless service:
+    # https://kubernetes.io/docs/concepts/services-networking/service/#headless-services
+    # NOTE: If this workload needs to be included in the istio Mesh in REGISTRY_ONLY environment,
+    # Make it empty string which will create the node-exporter normal service and set the value of
+    # includeWorkloadInIstioMesh to true which will create the Headless service.
+    clusterIP: None
+    ## List of IP addresses at which the node-exporter service is available
+    ## Ref: https://kubernetes.io/docs/user-guide/services/#external-ips
+    ##
+    externalIPs: []
+
+    loadBalancerIP: ""
+    loadBalancerSourceRanges: []
+    servicePort: 9101
+    type: ClusterIP
+
+    podContainerPort: 9100
+    podHostPort: 9100
+
+  ## Configurations about NodeExporter probes
+  ## Including livenessProbe and readinessProbe
+  livenessProbe:
+    initialDelaySeconds: 0
+    timeoutSeconds: 30
+    failureThreshold: 3
+    periodSeconds: 10
+  readinessProbe:
+    initialDelaySeconds: 0
+    timeoutSeconds: 30
+    failureThreshold: 3
+    periodSeconds: 10
+
+  ##Configuration for priority class
+  ## https://kubernetes.io/docs/concepts/scheduling-eviction/pod-priority-preemption/#pod-priority
+  ## priority class should be created before installing the chart
+  priorityClassName:
+
+
+
+## Cpro Util is Debug container image for AlertManager, Prometheus
+cproUtil:
+  ##cpro Util container name
+  name: util
+  ## prometheus python image will be used
+  # Supported Image Flavors: rocky8-python3.8
+  imageFlavor:
+  imageFlavorPolicy:
+  ##cpro util resource requests and limits
+  ## Ref: http://kubernetes.io/docs/user-guide/compute-resources/
+  resources:
+    limits:
+      # User can configure the cpu limits whenever user wants to limit CPU.
+      #cpu: 100m
+      memory: 200Mi
+      ephemeral-storage: "1Gi"
+    requests:
+      cpu: 10m
+      memory: 32Mi
+      ephemeral-storage: "256Mi"
+
+server:
+  # Supported Image Flavors rocky8-python3.8 
+  ## Note: Configure distroless here in case of Strict Match
+  imageFlavor:
+  imageFlavorPolicy:    
+  enabled: true
+  
+  ## Prometheus server container name
+  ##
+  name: server
+  # workload level scope
+
+  # ipFamilyPolicy:  SingleStack | PreferDualStack | RequireDualStack
+  ipFamilyPolicy: 
+  #  # ipFamilies: ["IPv4"] | ["IPv6"] | ["IPv4","IPv6"] | ["IPv6","IPv4"]
+  ipFamilies: []
+
+  imagePullSecrets:
+    #   - name: myRegistrKeySecretName
+    
+  etcdCertMountPath: /etc/etcd/ssl
+  nodeexporterCertMountPath: /etc/etcd/tls-nodeexporter
+  kubeStateMetricsCertMountPath: /etc/ksm/tls-kubestatemetrics
+  alertmanagerCertMountPath: /etc/am/tls-alertmanager
+  pushgatewayCertMountPath: /etc/pushgateway/tls-pushgateway
+  serverCertMountPath: /etc/prom/tls-server
+
+  ##soft means preferredDuringSchedulingIgnoredDuringExecution
+  ##hard means requiredDuringSchedulingIgnoredDuringExecution
+  ##you could refer k8s api for more detail
+  ##
+  antiAffinityMode: "soft"
+
+  ##https://kubernetes.io/docs/concepts/workloads/controllers/statefulset/#pod-management-policies
+  ##Allowed values are OrderedReady/Parallel
+  podManagementPolicy: OrderedReady
+
+## prometheus distro image will be used
+
+  ## The URL prefix at which the container can be accessed. Useful in the case the '-web.external-url' includes a slug
+  ## so that the various internal URLs are still able to access as they are in the default case.
+  ## (Optional)
+  ## prefixURL: "prometheus"
+  prefixURL: ""
+
+  ## External URL which can access prometheus server
+  ## Maybe same with Ingress host name
+  ## baseURL: "http://localhost:31380/prometheus"
+  baseURL: ""
+
+## For more info on Topology Spread Constraints ref: https://kubernetes.io/docs/concepts/scheduling-eviction/topology-spread-constraints/
+# if labelSelector key is omitted and autoGenerateLabelSelector is set to true in a constraint block
+# then labelSelector is automatically generated otherwise labelSelector are taken from labelSelector key
+# Server
+  topologySpreadConstraints: []
+  #- maxSkew: 1
+  #  topologyKey: topology.kubernetes.io/zone
+  #  whenUnsatisfiable: DoNotSchedule
+  #  autoGenerateLabelSelector: true
+
+  ## This flag controls access to the administrative HTTP API which includes functionality such as deleting time
+  ## series. This is disabled by default.
+  ## To enable Backup/Restore feature(need to take Prometheus snapshot), this must be set to "true"
+  enableAdminApi: true
+
+  ## Uncomment the param if the restrictedToNamespace flag is set to true,
+  ## then list the namespaces to monitor in comma-separated value
+  ## Example: namespaceList: ['test1','test2']
+  #
+  namespaceList: []
+
+  ## Additional Prometheus server container arguments
+  ## This flag controls the capacity of the queue for pending Alertmanager notifications.
+  ##
+  extraArgs: {}
+    # alertmanager.notification-queue-capacity: 10000
+    # storage.tsdb.min-block-duration: 2h
+
+  ## Additional Prometheus server container only key arguments
+  ## Since there is an enableAdminApi separate flag, no need to add here
+  ## wal compression flag is added, flag enables compression of the write-ahead log (WAL).
+  ##
+  extraKeys: []
+    # - storage.tsdb.wal-compression
+
+  ## Additional Prometheus server hostPath mounts
+  ##
+  extraHostPathMounts: []
+    # - name: certs-dir
+    #   mountPath: /etc/kubernetes/certs
+    #   hostPath: /etc/kubernetes/certs
+    #   readOnly: true
+
+  extraConfigmapMounts: []
+    # - name: certs-configmap
+    #   mountPath: /prometheus
+    #   configMap: certs-configmap
+    #   readOnly: true
+
+# set  unifiedLogging.syslog.enabled to true to forward logs to rsyslog
+# <workload>.unifiedLogging.syslog.enabled will take precedence than global.unifiedLogging.syslog.enabled
+  unifiedLogging:
+    # Enable sylog to true for sending logs to syslog. Enabled value left empty intentionally, default value is False
+    syslog:
+      enabled: 
+      facility:
+      host: 
+      port:
+      protocol:
+      tls:
+        secretRef:
+      # Secret name, pointing to a Secret object of type `kubernetes.io/tls`
+          name:
+           # Secret key names mapping
+           # If the provided Secret is of type `kubernetes.io/tls', then key names do not need to be changed.
+          keyNames:
+           # Name of Secret key, which contains CA certificate
+            caCrt: "ca.crt"
+    extension: {}
+    #extension:
+    #   VM_Name: abc
+    #   VM_UUID: 123 
+  ## Additional Prometheus server Secret mounts
+  # Defines additional mounts with secrets. Secrets must be manually created in the namespace.
+  extraSecretMounts: []
+    # - name: secret-files
+    #   mountPath: /etc/secrets
+    #   secretName: prom-secret-files
+    #   readOnly: true
+  
+  configmapReload:
+    ## Server configmap-reload container name
+    ##
+    name: "{{ .Values.configmapReload.name }}"
+
+    ## configmap-reload resource requests and limits
+    ## Ref: http://kubernetes.io/docs/user-guide/compute-resources/
+    ##
+    resources:
+      limits:
+        # User can configure the cpu limits whenever user wants to limit CPU.
+        #cpu: "{{ .Values.configmapReload.resources.limits.cpu }}"
+        memory: "{{ .Values.configmapReload.resources.limits.memory }}"
+        ephemeral-storage: "1Gi"
+      requests:
+        cpu: "{{ .Values.configmapReload.resources.requests.cpu }}"
+        memory: "{{ .Values.configmapReload.resources.requests.memory }}"
+        ephemeral-storage: "256Mi"
+  
+  
+  cproUtil:
+
+    ## Server cpro Util container name
+    name: "{{ .Values.cproUtil.name}}"
+
+    ## prometheus python image will be used
+
+    ##cpro util resource requests and limits
+    ## Ref: http://kubernetes.io/docs/user-guide/compute-resources/
+    resources:
+      limits:
+        # User can configure the cpu limits whenever user wants to limit CPU.
+        #cpu: "{{ .Values.cproUtil.resources.limits.cpu }}"
+        memory: "{{ .Values.cproUtil.resources.limits.memory }}"
+        ephemeral-storage: "1Gi"
+      requests:
+        cpu: "{{ .Values.cproUtil.resources.requests.cpu }}"
+        memory: "{{ .Values.cproUtil.resources.requests.memory }}"
+        ephemeral-storage: "256Mi"
+
+
+  ## ConfigMap override where fullname is {{.Release.Name}}-{{.Values.server.configMapOverrideName}}
+  ## Defining configMapOverrideName will cause templates/server-configmap.yaml
+  ## to NOT generate a ConfigMap resource
+  ##
+  configMapOverrideName: ""
+
+  progressDeadlineSeconds:
+
+  ## Enable this if you are previously deploy in non-HA (K8S Deployment) and want to migrate to HA (K8S Statefulset)
+  ## It will migrate scraped data to new created PersistentVolumes mounted to each Statefulset pod.
+  ## Invalid in BCMT 19.06, needs enhancement
+  migrate:
+    enabled: false
+    name: migrate
+
+    ## The file name you backup in non-HA. This file will be copied to CBUR STATEFULSET folder so it could be backup when cpro is in HA mode
+    ## when the backup is taken, the backup details can be found in CBUR for the release, use the folder name from that, it will be a timestamp, example below
+    # if this will be the file name 20210506152708_e03_LOCAL_ashwin_truedef-cpro-server_volume.tar.gz take only the 20210506152708 will the folder name, which will be created
+    folderName: "20210506152708"
+
+    ## migrate resource requests and limits
+    #  ## Ref: http://kubernetes.io/docs/user-guide/compute-resources/
+    resources:
+      requests:
+        cpu: 100m
+        memory: 64Mi
+        ephemeral-storage: "256Mi"
+      limits:
+        # User can configure the cpu limits whenever user wants to limit CPU.
+        #cpu: 200m
+        memory: 128Mi
+        ephemeral-storage: "1Gi"
+
+   ## The below mentioned configuration for nodeSelector and toletations are default values required during migration
+    nodeSelector:
+      is_control: "true"
+
+    tolerations:
+    - effect: NoExecute
+      key: is_control
+      operator: Equal
+      value: "true"
+
+    ## Pointing to cbur glusterfs repo. By default it is mounted to BCMT control node.
+    cbur:
+      # Namespace where CBUR is running
+      namespace: "ncms"
+      # Read write many volumeType used in CBUR
+      volumeType: "glusterfs"
+      # Provide path and endpoint details when volumeType in CBUR is "glusterfs"
+      glusterfs:
+        path: "1.2.3.4:cbur-glusterfs-repo"
+        endpoint: "glusterfs-cluster"
+      # PVC claimName details when volumeType in CBUR is other than "glusterfs"
+      otherpvc:
+        claimName: "cbur-local-cbur-repo"
+
+    ## Time for migrating data from CBUR DEPLOYMENT to STATEFULSET.
+    moveDuration: 30
+
+    ## Security context to be added to migrate. This should be same as that of CBUR
+    securityContext:
+      runAsUser: 0
+      fsGroup: 2000
+
+  #Container to monitor prometheus server for WAL corruptions. Flag is set as false by default
+  monitoringContainer:
+    enabled: false
+
+    ## monitoringContainer container name
+    name: monitoring-container
+## prometheus python image will be used
+    ## Supported FLavors are rocky8-python3.8
+    imageFlavor:
+    imageFlavorPolicy: 
+
+    ## monitoringContainer resource requests and limits
+    ## Ref: http://kubernetes.io/docs/user-guide/compute-resources/
+    resources:
+      limits:
+        # User can configure the cpu limits whenever user wants to limit CPU.
+        #cpu: 500m
+        memory: 512Mi
+        ephemeral-storage: "1Gi"
+      requests:
+        cpu: 200m
+        memory: 128Mi
+        ephemeral-storage: "256Mi"
+
+    ## loglevel can be INFO,ERROR,DEBUG. Not mandatory. Taken as INFO as default
+    loglevel: INFO
+
+    ##removal of .tmp directories
+    removetmp:
+      #to be given as true/false
+      enable: true
+
+    ##deltatime indicates buffer time for WAL compaction after min-block-duration
+    ##addition of deltatime is mandatory and should be a prime number near 60 minutes. Most preferable as 53 .
+    deltatime: 53
+
+    ##comparing the WAL segments to it itself , to ensure rewritting of closed segments is not happening.
+    checkwalfiles:
+      enable: true
+      compareInterval: 23
+
+    ##compaction frequecy is checked. Ensuring the compaction process is correct. Checking happens once in 2hrs + delta by default.
+    checkpoint:
+      enable: true
+
+  ## when mvno feature is enabled then prometheus server will add default Label value if it is not present in both metrics and alerts
+  mvno:
+    enable: false
+    labelName: "enterprise"
+    defaultLabelValue: "default"
+    labelValueToBeReplaced: ""
+
+  ## configurable alerts to monitor prometheus
+  prometheusAlertThresholds:
+    enable: true
+    PrometheusServerDiskThresholdReached: 70
+    PrometheusCburDiskThresholdReached: 70
+
+  cbur:
+    enabled: true
+    image:
+      imageRepo: cbur/cbur-agent
+      imageTag: 1.1.0-alpine-6419
+      imagePullPolicy: IfNotPresent
+
+    resources:
+      limits:
+        # User can configure the cpu limits whenever user wants to limit CPU.
+        #cpu: 200m
+        memory: 200Mi
+        ephemeral-storage: "1Gi"
+      requests:
+        cpu: 100m
+        memory: 64Mi
+        ephemeral-storage: "256Mi"
+
+  ##Ephemeral volumes are designed for such that they exists with Pod's lifetime and get created and deleted along with the Pod.
+  #Work load level ephemeral volume shall have precedence over global. Example to configure ephemeralVolume is shown below.
+  #  ephemeralVolume:
+  #    enabled: true
+  #    volumedata:
+  #      storageClass: "cider-sc"
+  #      accessmodes: [ "ReadWriteOnce" ]
+  #      storageSize: 1Gi
+
+    ephemeralVolume:
+    #enabled value left empty intentionally, default value is False
+      enabled:
+      volumedata:
+        storageClass: "-"
+        accessmodes: [ "ReadWriteOnce" ]
+        storageSize: 1Gi
+
+    backendMode: "local"
+    ##autoEnableCron = true indicates that the cron job is immediately scheduled when the BrPolicy is created,
+    ##while autoEnableCron = false indicates that scheduling of the cron job should be done on a subsequent backup request.
+    ##This option only works when k8swatcher.enabled is true
+    autoEnableCron: false
+    ##Indicate if subsequent update of cronjob will be done via brpoilicy update.
+    ##true means cronjob must be updated via brpolicy update,
+    ##false means cronjob must be updated via manual "helm backup -t app -a enable/disable" command.
+    autoUpdateCron: false
+    ## It is used for scheduled backup task. Empty string is allowed for no scheduled backup.
+    ## Here means every 5 minutes of every day
+    cronJob: "*/5 * * * *"
+
+    ## This value only applies to statefulset, when ha.enabled is true. The value can be 0,1 or 2.
+    ## 0: backup any one of the PODs and restore to any one of PODs
+    ## 1: backup any one of the POD, and restore it to all PODs one by one by its index
+    ## 2: backup all PODs and restore them one by one based by its index
+    ##
+    brOption: 2
+
+    ## Limit the number of copies that can be saved. Once it is reached, the newer backup will overwritten the oldest one.
+    maxCopy: 5
+    
+    ##The timer to wait for pods stable after backup / restore.If not set, CBUR will wait for default  1800 seconds.
+    waitPodStableSeconds: 1800
+
+    ## If set to true, Backup and Recovery disregards the error message: "File changed as we read it" and "File removed before we read it". when creating a tar file in the cbura sidecar. This parameter does not apply to the tar operation in cbur-master
+    ignoreFileChanged: true
+
+    #dataEncryptionEnable is to enable or disable if the data should be encryted or not during the backup procedure
+    #Note: this should we false while using migrate feature
+    dataEncryptionEnable: true
+    ## CBUR will get the passphrase from the secret and use it to encrypt/decrypt the tarballs during backup/restore.
+    ## Refer to CBUR user guide for format of secret
+    dataEncryptionSecretName: ""
+
+    containerSecurityContext:
+      readOnlyRootFilesystem: true
+      allowPrivilegeEscalation: false
+      capabilities:
+        drop:
+          - ALL
+    
+    #duration for post restore job, total time will be time reqired for prometheus server to in in running state
+    #time out in seconds
+
+    postRestoreJobTimeout: 3600
+    
+    #hook weight for the restore job
+    postRestoreHookWeight: "-10"
+
+    #duration for pre backup job, total time will be time required for prometheus server to complete snapshot
+    #time out in seconds
+    preBackupJobTimeout: 3600
+
+    #hook weight for the restore job
+    preBackupHookWeight: "-10"
+
+
+    #duration for post backup job, total time will be time reqired for prometheus server to in in running state
+    #time out in seconds
+    postBackupJobTimeout: 3600
+
+    #hook weight for the backup job
+    postBackupHookWeight: "-10"
+
+
+
+  ingress:
+    ## If true, Prometheus server Ingress will be created
+    ##
+    enabled: false
+    #All possible allowed values for pathType is Prefix,ImplementationSpecific, Exact
+    pathType: "Prefix"
+
+    ## Prometheus server Ingress annotations
+    ##
+    annotations: {}
+    #   kubernetes.io/ingress.class: nginx
+    #   kubernetes.io/tls-acme: 'true'
+
+    ## Prometheus server Ingress additional labels
+    ##
+    extraLabels: {}
+
+    ## Prometheus server Ingress hostnames with optional path
+    ## Must be provided if Ingress is enabled
+    ##
+    hosts: []
+    #   - prometheus.domain.com
+    #   - domain.com/prometheus
+
+    ## Prometheus server Ingress TLS configuration
+    ## Secrets must be manually created in the namespace
+    ##
+    tls: []
+    #   - secretName: prometheus-server-tls
+    #     hosts:
+    #       - prometheus.domain.com
+
+  ## Server Deployment Strategy type
+  #  #for Statefulset the supported strategy values are OnDelete,RollingUpdate
+  # strategy:
+  #   type: Recreate
+
+  ## Node tolerations for server scheduling to nodes with taints
+  ## Ref: https://kubernetes.io/docs/concepts/configuration/assign-pod-node/
+  ##
+  tolerations: []
+    # - key: "key"
+    #   operator: "Equal|Exists"
+    #   value: "value"
+    #   effect: "NoSchedule|PreferNoSchedule|NoExecute(1.6 only)"
+
+  ## Node labels for Prometheus server pod assignment
+  ## Ref: https://kubernetes.io/docs/user-guide/node-selection/
+  ##
+  nodeSelector: {}
+
+## Affinity for pod assignment
+## ref: https://kubernetes.io/docs/concepts/configuration/assign-pod-node/#affinity-and-anti-affinity
+##
+  affinity: {}
+
+  ## Use an alternate scheduler, e.g. "stork".
+  ## ref: https://kubernetes.io/docs/tasks/administer-cluster/configure-multiple-schedulers/
+  ##
+  # schedulerName:
+
+  persistentVolume:
+    ## If true, Prometheus server will create/use a Persistent Volume Claim
+    ## If false, use emptyDir
+    ##
+    enabled: true
+
+    ## Prometheus server data Persistent Volume access modes
+    ## Must match those of existing PV or dynamic provisioner
+    ## Ref: http://kubernetes.io/docs/user-guide/persistent-volumes/
+    ##
+    accessModes:
+      - ReadWriteOnce
+
+    ## Prometheus server data Persistent Volume annotations
+    ##
+    annotations: {}
+
+    ## Prometheus server data Persistent Volume existing claim name
+    ## Requires server.persistentVolume.enabled: true
+    ## If defined, PVC must be created manually before volume will be bound
+    existingClaim: ""
+
+    ## Prometheus server data Persistent Volume mount root path
+    ##
+    mountPath: /data
+
+    mountPath2: /data
+
+    ## Prometheus server data Persistent Volume size
+    ##
+    size: 16Gi
+
+    ## Prometheus server data Persistent Volume Storage Class
+    ## If defined, storageClassName: <storageClass>
+    ## If set to "-", storageClassName: "", which disables dynamic provisioning
+    ## If undefined (the default) or set to null, no storageClassName spec is
+    ##   set, choosing the default provisioner.  (gp2 on AWS, standard on
+    ##   GKE, AWS & OpenStack)
+    ##
+    storageClass: ""
+
+    ## Subdirectory of Prometheus server data Persistent Volume to mount
+    ## Useful if the volume's root directory is not empty
+    ##
+    subPath: ""
+
+  ## Annotations to be added to Prometheus server pods
+  ##
+  podAnnotations: {}
+    # iam.amazonaws.com/role: prometheus
+    # Add below annotation when istio is enabled and prometheus needs to scrape metrics from kubernetes-apiservers
+    #traffic.sidecar.istio.io/excludeOutboundPorts: "8443"
+  
+  ## Server workload labels and annotations
+  labels: {}
+  annotations: {}
+
+  ## when ha.enabled is false, replicaCount will be 1.
+  ## when ha.enabled is true, replicaCount will be taken from here.
+  ## default is 2. If ha.enabled is false no need to change the below value.
+  replicaCount: 2
+
+  ## Prometheus server resource requests and limits
+  ## Ref: http://kubernetes.io/docs/user-guide/compute-resources/
+  ##
+  resources:
+    limits:
+      # User can configure the cpu limits whenever user wants to limit CPU.
+      #cpu: 2
+      memory: 4Gi
+      ephemeral-storage: "1Gi"
+    requests:
+      cpu: 500m
+      memory: 512Mi
+      ## If persistentVolume [Values.server.persistentVolume.] is set to false the ephemeral-storage request size shall be configured according to the storage requirements
+      ephemeral-storage: "256Mi"
+
+  ## Security context to be added to server pods
+  containerSecurityContext:
+    readOnlyRootFilesystem: true
+    allowPrivilegeEscalation: false
+    capabilities:
+      drop:
+        - ALL
+  securityContext:
+    runAsNonRoot: true
+    runAsUser: 65530
+    fsGroup: 65530
+    seccompProfile:
+      type: RuntimeDefault
+    #seLinuxOptions:
+    #  level: ""
+    #  role: ""
+    #  type: ""
+    #  user: ""
+
+  service:
+    annotations: {}
+    annotationsForScrape:
+      prometheus.io/probe: prometheus
+    labels: {}
+    clusterIP: ""
+
+    ## List of IP addresses at which the Prometheus server service is available
+    ## Ref: https://kubernetes.io/docs/user-guide/services/#external-ips
+    ##
+    externalIPs: []
+
+    loadBalancerIP: ""
+    loadBalancerSourceRanges: []
+    servicePort: 80
+    webPort: 9090 
+    # nodePort: 31000
+    type: ClusterIP
+
+  ## Prometheus server pod termination grace period
+  ##
+  terminationGracePeriodSeconds: 10
+
+  ## Prometheus data retention
+  ##
+  retention: {}
+  ## How long to retain samples in storage. Units supported: s, m, h, d, w, y. Default is 15d.
+  # time: ""
+  ## Maximum number of bytes that can be stored for blocks. Units supported: KB, MB, GB, TB, PB. Default is disabled. For example 200GB.
+  ## If both time and size retention policies are specified, whichever policy triggers first will be used at that instant.
+  # size: ""
+
+  ## Use this option to enable restart of cpro-server by startupprobe (It uses ready end point which does all the WAL replay) when it does not start up within
+  ## the duration of failureThreshold * periodSeconds. Tune these in "startupProbe" to give
+  ## sufficient duration at startup for WAL replay to complete in your deployment.
+  useReadyInStartupProbe: false
+  ## Configurations about server probes
+  ## Including startupProbe, livenessProbe and readinessProbe
+  startupProbe:
+    initialDelaySeconds: 0
+    timeoutSeconds: 30
+    failureThreshold: 120
+    periodSeconds: 10
+  livenessProbe:
+    initialDelaySeconds: 0
+    timeoutSeconds: 30
+    failureThreshold: 3
+    periodSeconds: 10
+  readinessProbe:
+    initialDelaySeconds: 0
+    timeoutSeconds: 30
+    failureThreshold: 3
+    periodSeconds: 10
+
+#PodDisruptionBudgets for server
+#This will ensure that configured number of pods are always up and try to prevent the evictions
+#https://kubernetes.io/docs/tasks/run-application/configure-pdb/
+#Note: either minAvailable or maxUnavailable should be used cannot be used at the same time
+  pdb:
+    enabled: false
+    #minAvailable: 1
+    maxUnavailable: 0
+
+  tls:
+    enabled: 
+    secretRef:
+      # Secret name, pointing to a Secret object.
+      # If empty then automatically generated secret with certificate will be used
+      name:
+      # Secret key names mapping.
+      # If the provided Secret is of type `kubernetes.io/tls', then key names do not need to be changed.
+      keyNames:
+        # Name of Secret key, which contains CA certificate
+        caCrt: "ca.crt"
+        # Name of Secret key, which contains TLS key
+        tlsKey: "tls.key"
+        # Name of Secret key, which contains TLS certificate
+        tlsCrt: "tls.crt"
+  certificate:
+    # Certificate object is created based on the data in this section.
+    # Optional parameter
+    enabled: true
+    # workload issuerRef >> certmanager.issuerRef >> global.certmanager.issuerRef
+    issuerRef:
+      name:
+      kind:
+      group:
+    duration: 8760h # 1 year
+    renewBefore: 360h # 15 days
+    # If left empty, it will be generated automatically.
+    secretName:
+    # Not needed in internal communication
+    subject:
+    # It has been deprecated since 2000 and is discouraged from being used for a server side certificates.
+    # `dnsNames` are used instead.
+    commonName:
+    # Usages is the set of x509 usages that are requested for the certificate.
+    # If `usages` is not specified, the following will be used:
+    # - server auth
+    # - client auth
+    usages:
+    # DNSNames is a list of DNS subjectAltNames to be set on the Certificate.
+    # If ssl passthrough is used on the Ingress object,
+    # then dnsNames should be set to external DNS names.
+    # If `dnsNames` is not specified then the following internal names will be used:
+    # - localhost
+    # - <service name>.<namespace>
+    # - <service name>.<namespace>.svc
+    # - <service name>.<namespace>.svc.<cluster domain>
+    dnsNames:
+    # URIs is a list of URI subjectAltNames to be set on the Certificate.
+    uris:
+    # IPAddresses is a list of IP address subjectAltNames to be set on the Certificate.
+    # If ipAddresses not specified then the following internal local IPs will be used:
+    # - "127.0.0.1"
+    # - "::1"
+    ipAddresses:
+    privateKey:
+      algorithm:
+      encoding:
+      size:
+      # Rotation of a key pair, when certificate is refreshed is recommended from a security point of view
+      rotationPolicy: Always
+
+  tls_auth_config:
+    secretForWebConfig: ""
+    tls:
+      enabled: false
+      externalSecret: ""
+#Additional domain and dnsNames to be provided if required
+#      dnsNames:
+#        - localhost
+#      ipAddresses:
+#        - 127.0.0.1
+    insecureReload: false
+
+
+  ##Configuration for priority class
+  ## https://kubernetes.io/docs/concepts/scheduling-eviction/pod-priority-preemption/#pod-priority
+  ## priority class should be created before installing the chart
+  priorityClassName:
+
+  ## Any other credentials which contain the sensitivedata to be consumed by prometheus server.
+  # externalCredentials:
+  #   # name of the component of which the secret has to be mounted. This will be used as the name of the volume and the mount-path with prefix when mounting
+  #   # When using the externalCredentials in scrape jobs, specify the sensitive data in the below format.
+  #   # usage: username: $__expnd{<externalCredential-section-name>/<KeyNames-values>}
+  #   # example: username: $__expnd{ckey/username} [This is when keyNames are configured]
+  #    ckey:
+  #   ## name of the secret to be mounted
+  #      credentialName: ""
+  #   ## key used when creating the secret.
+  #      keyNames:
+  #        key1: ""
+  #        key2: ""
+
+pushgateway:
+  ## If false, pushgateway will not be installed
+  ##
+  enabled: true
+
+  imagePullSecrets:
+    #   - name: myRegistrKeySecretName
+    
+# set  unifiedLogging.syslog.enabled to true to forward logs to rsyslog
+# <workload>.unifiedLogging.syslog.enabled will take precedence than global.unifiedLogging.syslog.enabled
+  unifiedLogging:
+    # Enable sylog to true for sending logs to syslog. Enabled value left empty intentionally, default value is False
+    syslog:
+      enabled:
+      facility:
+      host:
+      port:
+      protocol:
+      tls:
+        secretRef:
+      # Secret name, pointing to a Secret object of type `kubernetes.io/tls`
+          name:
+           # Secret key names mapping
+           # If the provided Secret is of type `kubernetes.io/tls', then key names do not need to be changed.
+          keyNames:
+           # Name of Secret key, which contains CA certificate
+            caCrt: "ca.crt"
+    extension: {}
+    #extension:
+    #   VM_Name: abc
+    #   VM_UUID: 123
+
+## For more info on Topology Spread Constraints ref: https://kubernetes.io/docs/concepts/scheduling-eviction/topology-spread-constraints/
+# If labelSelector key is omitted and autoGenerateLabelSelector is set to true in a constraint block
+# then labelSelector is automatically generated otherwise labelSelector are taken from labelSelector key
+# pushgateway
+  topologySpreadConstraints: []
+  #- maxSkew: 4
+  #  topologyKey: topology.kubernetes.io/zone
+  #  whenUnsatisfiable: DoNotSchedule
+  #  autoGenerateLabelSelector: true
+  
+  ## Supported Flavors: distroless
+  imageFlavor:
+  imageFlavorPolicy:
+  # workload level scope
+  # ipFamilyPolicy:  SingleStack | PreferDualStack | RequireDualStack
+  ipFamilyPolicy: 
+  #  # ipFamilies: ["IPv4"] | ["IPv6"] | ["IPv4","IPv6"] | ["IPv6","IPv4"]
+  ipFamilies: []
+  ## pushgateway container name
+  ##
+  name: pushgateway
+
+  persistentVolume:
+    ## If true, pushgateway will create/use a Persistent Volume Claim
+    ## If false, use emptyDir
+    ##
+    enabled: true
+
+    ## pushgateway data Persistent Volume access modes
+    ## Must match those of existing PV or dynamic provisioner
+    ## Ref: http://kubernetes.io/docs/user-guide/persistent-volumes/
+    ##
+    accessModes:
+      - ReadWriteOnce
+
+    ## pushgateway data Persistent Volume Claim annotations
+    ##
+    annotations: {}
+
+    ## pushgateway data Persistent Volume existing claim name
+    ## Requires pushgateway.persistentVolume.enabled: true
+    ## If defined, PVC must be created manually before volume will be bound
+    existingClaim: ""
+
+    ## pushgateway data Persistent Volume mount root path
+    ##
+    mountPath: /data
+
+    ## pushgateway data Persistent Volume size
+    ##
+    size: 1Gi
+
+    ## pushgateway data Persistent Volume Storage Class
+    ## If defined, storageClassName: <storageClass>
+    ## If set to "-", storageClassName: "", which disables dynamic provisioning
+    ## If undefined (the default) or set to null, no storageClassName spec is
+    ##   set, choosing the default provisioner.  (gp2 on AWS, standard on
+    ##   GKE, AWS & OpenStack)
+    ##
+    storageClass: ""
+
+    ## Subdirectory of pushgateway data Persistent Volume to mount
+    ## Useful if the volume's root directory is not empty
+    ##
+    subPath: ""
+
+
+  ## soft means preferredDuringSchedulingIgnoredDuringExecution
+  ## hard means requiredDuringSchedulingIgnoredDuringExecution
+  ## you could refer k8s api for more detail
+  #
+  antiAffinityMode: "soft"
+
+## prometheus distro image will be used
+
+  ## Additional pushgateway container arguments
+  ## For arguments where no value is needed give it as "". eg  push.disable-consistency-check: ""
+  extraArgs:
+     push.disable-consistency-check: ""
+     persistence.file: /opt/pushgateway/file.txt
+  #when persistence.file is used it will create a mount path, hence use a path that is not used in the container
+  #ex: opt/pushgateway/file.txt
+  ## External URL which can access pushgateway
+  ## baseURL: "http://localhost:31380/pushgateway"
+  baseURL: ""
+
+  ## The URL prefix at which the container can be accessed. Useful in the case the '-web.external-url' includes a slug
+  ## so that the various internal URLs are still able to access as they are in the default case.
+  ## (Optional)
+  ## prefixURL: "pushgateway"
+  prefixURL: ""
+
+  progressDeadlineSeconds:
+
+  ingress:
+    ## If true, pushgateway Ingress will be created
+    ##
+    enabled: false
+    #All possible allowed values for pathType is Prefix,ImplementationSpecific, Exact
+    pathType: "Prefix"
+    ## pushgateway Ingress annotations
+    ##
+    annotations: {}
+    #   kubernetes.io/ingress.class: nginx
+    #   kubernetes.io/tls-acme: 'true'
+
+    ## pushgateway Ingress hostnames with optional path
+    ## Must be provided if Ingress is enabled
+    ##
+    hosts: []
+    #   - pushgateway.domain.com
+    #   - domain.com/pushgateway
+
+    ## pushgateway Ingress TLS configuration
+    ## Secrets must be manually created in the namespace
+    ##
+    tls: []
+    #   - secretName: prometheus-alerts-tls
+    #     hosts:
+    #       - pushgateway.domain.com
+
+  ## Node tolerations for pushgateway scheduling to nodes with taints
+  ## Ref: https://kubernetes.io/docs/concepts/configuration/assign-pod-node/
+  ##
+  tolerations: []
+    # - key: "key"
+    #   operator: "Equal|Exists"
+    #   value: "value"
+    #   effect: "NoSchedule|PreferNoSchedule|NoExecute(1.6 only)"
+
+  ## Node labels for pushgateway pod assignment
+  ## Ref: https://kubernetes.io/docs/user-guide/node-selection/
+  ##
+  nodeSelector: {}
+
+## Affinity for pod assignment
+## ref: https://kubernetes.io/docs/concepts/configuration/assign-pod-node/#affinity-and-anti-affinity
+##
+  affinity: {}
+
+  ## Annotations to be added to pushgateway pods
+  ##
+  podAnnotations: {}
+
+  ## PushGateway workload labels and annotations
+  annotations: {}
+  labels: {}
+
+  replicaCount: 1
+
+  ## Pushgateway Deployment Strategy type
+  #  strategy:
+  #    type: Recreate
+
+  ## pushgateway resource requests and limits
+  ## Ref: http://kubernetes.io/docs/user-guide/compute-resources/
+  ##
+  resources:
+    limits:
+      # User can configure the cpu limits whenever user wants to limit CPU.
+      #cpu: 100m
+      memory: 200Mi
+      ephemeral-storage: "1Gi"
+    requests:
+      cpu: 10m
+      memory: 32Mi
+      ## If persistence.file: "/opt/pushgateway/file.txt" is set the ephemeral-storage request size shall be configured according to the storage requirements
+      ephemeral-storage: "256Mi"
+
+  ## securityContext for pushgateway
+  containerSecurityContext:
+    readOnlyRootFilesystem: true
+    allowPrivilegeEscalation: false
+    capabilities:
+      drop:
+        - ALL
+  securityContext:
+    runAsNonRoot: true
+    runAsUser: 65530
+    fsGroup: 65530
+    seccompProfile:
+      type: RuntimeDefault
+
+    #seLinuxOptions:
+    #  level: ""
+    #  role: ""
+    #  type: ""
+    #  user: ""
+
+  service:
+    annotations:
+      prometheus.io/probe: pushgateway
+    labels: {}
+    clusterIP: ""
+
+    ## List of IP addresses at which the pushgateway service is available
+    ## Ref: https://kubernetes.io/docs/user-guide/services/#external-ips
+    ##
+    externalIPs: []
+
+    loadBalancerIP: ""
+    loadBalancerSourceRanges: []
+    servicePort: 9091
+    type: ClusterIP
+
+  ## Configurations about pushgateway probes
+  ## Including livenessProbe and readinessProbe
+  livenessProbe:
+    initialDelaySeconds: 0
+    timeoutSeconds: 30
+    failureThreshold: 3
+    periodSeconds: 10
+  readinessProbe:
+    initialDelaySeconds: 0
+    timeoutSeconds: 30
+    failureThreshold: 3
+    periodSeconds: 10
+
+#PodDisruptionBudgets for pushgateway
+#This will ensure that configured number of pods are always up and try to prevent the evictions
+#https://kubernetes.io/docs/tasks/run-application/configure-pdb/
+#Note: either minAvailable or maxUnavailable should be used cannot be used at the same time
+# As per HBP,if replica count is 1, pdb will be disabled by default. It can be enabled when required.
+  pdb:
+    enabled: false
+    #minAvailable: 1
+    maxUnavailable: 0
+
+  tls:
+    enabled: 
+    secretRef:
+      # Secret name, pointing to a Secret object.
+      # If empty then automatically generated secret with certificate will be used
+      name:
+      # Secret key names mapping.
+      # If the provided Secret is of type `kubernetes.io/tls', then key names do not need to be changed.
+      keyNames:
+        # Name of Secret key, which contains CA certificate
+        caCrt: "ca.crt"
+        # Name of Secret key, which contains TLS key
+        tlsKey: "tls.key"
+        # Name of Secret key, which contains TLS certificate
+        tlsCrt: "tls.crt"
+  certificate:
+    # Certificate object is created based on the data in this section.
+    # Optional parameter
+    enabled: true
+    # workload issuerRef >> certmanager.issuerRef >> global.certmanager.issuerRef
+    issuerRef:
+      name:
+      kind:
+      group:
+    duration: 8760h # 1 year
+    renewBefore: 360h # 15 days
+    # If left empty, it will be generated automatically.
+    secretName:
+    # Not needed in internal communication
+    subject:
+    # It has been deprecated since 2000 and is discouraged from being used for a server side certificates.
+    # `dnsNames` are used instead.
+    commonName:
+    # Usages is the set of x509 usages that are requested for the certificate.
+    # If `usages` is not specified, the following will be used:
+    # - server auth
+    # - client auth
+    usages:
+    # DNSNames is a list of DNS subjectAltNames to be set on the Certificate.
+    # If ssl passthrough is used on the Ingress object,
+    # then dnsNames should be set to external DNS names.
+    # If `dnsNames` is not specified then the following internal names will be used:
+    # - localhost
+    # - <service name>.<namespace>
+    # - <service name>.<namespace>.svc
+    # - <service name>.<namespace>.svc.<cluster domain>
+    dnsNames:
+    # URIs is a list of URI subjectAltNames to be set on the Certificate.
+    uris:
+    # IPAddresses is a list of IP address subjectAltNames to be set on the Certificate.
+    # If ipAddresses not specified then the following internal local IPs will be used:
+    # - "127.0.0.1"
+    # - "::1"
+    ipAddresses:
+    privateKey:
+      algorithm:
+      encoding:
+      size:
+      # Rotation of a key pair, when certificate is refreshed is recommended from a security point of view
+      rotationPolicy: Always
+
+  tls_auth_config:
+    secretForWebConfig: ""
+    tls:
+      enabled: false
+      externalSecret: ""
+#Additional domain and dnsNames to be provided if required
+#      dnsNames:
+#        - localhost
+#      ipAddresses:
+#        - 127.0.0.1
+
+
+  ##Configuration for priority class
+  ## https://kubernetes.io/docs/concepts/scheduling-eviction/pod-priority-preemption/#pod-priority
+  ## priority class should be created before installing the chart
+  priorityClassName:
+
+webhook4fluentd:
+  ## If false, webhook4fluentd will not be installed
+  #  ##
+  enabled: true
+  # fluentd port and svc is used for webhook to send the alerts which it received from the alertmanager. if either fluentd port or svc is not configured then alerts will get print on the webhook console logs
+  fluentd:
+    port: 24224
+    # service must be svc: < fluentd service name>.<namespace where fluentd is installed>.svc.<clusterDomain>
+    svc: 
+    # This tag is an internal string that is used to decide which Filter or match phase it must go through in fluentd
+    tag: nokia.logging.webhook4fluentd.alarm 
+
+  tls:
+    enabled: 
+    secretRef: 
+   # Secret name, pointing to a Secret object of type `kubernetes.io/tls`
+      name: 
+   # Secret key names mapping
+   # If the provided Secret is of type `kubernetes.io/tls', then key names do not need to be changed.
+      keyNames:
+        # Name of Secret key, which contains CA certificate
+        caCrt: "ca.crt"
+        # Name of Secret key, which contains TLS key
+        tlsKey: "tls.key"
+        # Name of Secret key, which contains TLS certificate
+        tlsCrt: "tls.crt"
+
+  certificate:
+    # Certificate object is created based on the data in this section.
+    # Optional parameter
+    enabled: true
+    # workload issuerRef >> certmanager.issuerRef >> global.certmanager.issuerRef
+    issuerRef:
+      name:
+      kind:
+      group:
+    duration: 8760h # 1 year
+    renewBefore: 360h # 15 days
+    # If left empty, it will be generated automatically.
+    secretName: 
+    # Not needed in internal communication
+    subject:
+    # It has been deprecated since 2000 and is discouraged from being used for a server side certificates.
+    # `dnsNames` are used instead.
+    commonName:
+    # Usages is the set of x509 usages that are requested for the certificate.
+    # If `usages` is not specified, the following will be used:
+    # - server auth
+    # - client auth
+    usages:
+    # DNSNames is a list of DNS subjectAltNames to be set on the Certificate.
+    # If ssl passthrough is used on the Ingress object,
+    # then dnsNames should be set to external DNS names.
+    # If `dnsNames` is not specified then the following internal names will be used:
+    # - localhost
+    # - <service name>.<namespace>
+    # - <service name>.<namespace>.svc
+    # - <service name>.<namespace>.svc.<cluster domain>
+    dnsNames:
+    # URIs is a list of URI subjectAltNames to be set on the Certificate.
+    uris:
+    # IPAddresses is a list of IP address subjectAltNames to be set on the Certificate.
+    # If ipAddresses not specified then the following internal local IPs will be used:
+    # - "127.0.0.1"
+    # - "::1"
+    ipAddresses:
+    privateKey:
+      algorithm:
+      encoding:
+      size:
+      # Rotation of a key pair, when certificate is refreshed is recommended from a security point of view
+      rotationPolicy: Always
+ 
+  # minimumtlsVersion is the Minimum TLS Version only allows HTTPS connections from visitors that support the selected TLS protocol version. Supported values are TLS10, TLS11,TL12,TLS13.  
+  mintlsVersion: TLS12
+  # Path for the secrets to get mount inside the container        
+  secretMountPath: /var/lib/webhook
+# set  unifiedLogging.syslog.enabled to true to forward logs to rsyslog
+# <workload>.unifiedLogging.syslog.enabled will take precedence than global.unifiedLogging.syslog.enabled
+  unifiedLogging:
+    # Enable sylog to true for sending logs to syslog. Enabled value left empty intentionally, default value is False
+    syslog:
+      enabled:  
+      facility:
+      host:
+      port:
+      protocol:
+      tls:
+        secretRef:
+      # Secret name, pointing to a Secret object of type `kubernetes.io/tls`
+          name:
+           # Secret key names mapping
+           # If the provided Secret is of type `kubernetes.io/tls', then key names do not need to be changed.
+          keyNames:
+           # Name of Secret key, which contains CA certificate
+            caCrt: "ca.crt"
+    extension: {}
+    #extension:
+    #   VM_Name: abc
+    #   VM_UUID: 123
+
+## For more info on Topology Spread Constraints ref: https://kubernetes.io/docs/concepts/scheduling-eviction/topology-spread-constraints/
+# if labelSelector key is omitted and autoGenerateLabelSelector is set to true in a constraint block
+# then labelSelector is automatically generated otherwise labelSelector are taken from labelSelector key
+# Webhook4fluentd
+  topologySpreadConstraints: []
+  #- maxSkew: 4
+  #  topologyKey: topology.kubernetes.io/zone
+  #  whenUnsatisfiable: DoNotSchedule
+  #  autoGenerateLabelSelector: true
+
+
+  ## Supported Flavors: distroless
+  imageFlavor:
+  imageFlavorPolicy:
+  # workload level scope
+  # ipFamilyPolicy:  SingleStack | PreferDualStack | RequireDualStack
+  ipFamilyPolicy: 
+  #  # ipFamilies: ["IPv4"] | ["IPv6"] | ["IPv4","IPv6"] | ["IPv6","IPv4"]
+  ipFamilies: []
+  ## webhook4fluentd container name
+  ##
+  name: webhook4fluentd
+
+  imagePullSecrets:
+    #   - name: myRegistrKeySecretName
+    
+  ##soft means preferredDuringSchedulingIgnoredDuringExecution
+  ##hard means requiredDuringSchedulingIgnoredDuringExecution
+  ##you could refer k8s api for more detail
+  ##
+  antiAffinityMode: "soft"
+
+## prometheus distro image will be used
+
+  tolerations: []
+    # - key: "key"
+    #   operator: "Equal|Exists"
+    #   value: "value"
+    #   effect: "NoSchedule|PreferNoSchedule|NoExecute(1.6 only)"
+
+  ## Node labels for webhook4fluentd pod assignment
+  ## Ref: https://kubernetes.io/docs/user-guide/node-selection/
+  ##
+  nodeSelector: {}
+
+  ## Annotations to be added to webhook4fluentd pods
+  ##
+  podAnnotations: {}
+
+  ## webhook4fluentd workload labels and annotations
+  annotations: {}
+  labels: {}
+
+  replicaCount: 2
+
+  ## webhook4fluentd resource requests and limits
+  ## Ref: http://kubernetes.io/docs/user-guide/compute-resources/
+  ##
+  resources:
+    limits:
+      # User can configure the cpu limits whenever user wants to limit CPU.
+      #cpu: 100m
+      memory: 200Mi
+      ephemeral-storage: "1Gi"
+    requests:
+      cpu: 10m
+      memory: 32Mi
+      ephemeral-storage: "256Mi"
+
+  ## securityContext for webhook4fluentd
+  containerSecurityContext:
+    readOnlyRootFilesystem: true
+    allowPrivilegeEscalation: false
+    capabilities:
+      drop:
+        - ALL
+  securityContext:
+    runAsNonRoot: true
+    runAsUser: 65534
+    fsGroup: 65534
+    seccompProfile:
+      type: RuntimeDefault
+
+    #seLinuxOptions:
+    #  level: ""
+    #  role: ""
+    #  type: ""
+    #  user: ""
+
+  progressDeadlineSeconds:
+
+  service:
+    annotations: {}
+    #annotationsForScrape:
+    #  prometheus.io/probe: webhook4fluentd
+    labels: {}
+    clusterIP: ""
+    receiverPort: 8004
+    servicePort: 8005
+    type: ClusterIP
+
+  ## Configurations about webhook4fluentd probes
+  ## Including livenessProbe and readinessProbe
+  livenessProbe:
+    initialDelaySeconds: 0
+    timeoutSeconds: 30
+    failureThreshold: 3
+    periodSeconds: 10
+  readinessProbe:
+    initialDelaySeconds: 0
+    timeoutSeconds: 30
+    failureThreshold: 3
+    periodSeconds: 10
+
+#PodDisruptionBudgets for webhook4fluentd
+#This will ensure that configured number of pods are always up and try to prevent the evictions
+#https://kubernetes.io/docs/tasks/run-application/configure-pdb/
+#Note: either minAvailable or maxUnavailable should be used cannot be used at the same time
+  pdb:
+    enabled: true
+    #minAvailable: 1
+    maxUnavailable: 50%
+
+  ##Configuration for priority class
+  ## https://kubernetes.io/docs/concepts/scheduling-eviction/pod-priority-preemption/#pod-priority
+  ## priority class should be created before installing the chart
+  priorityClassName:
+
+## alertmanager ConfigMap entries
+
+# receivers: - name: cpro_webhook should not be changed 
+alertmanagerWebhookFiles:
+  alertmanager.yml:
+    global: {}
+    receivers:
+    - name: cpro_webhook
+    route:
+      group_wait: 10s
+      group_interval: 5m
+      receiver: "webhook"
+
+
+## Prometheus server ConfigMap entries
+##
+serverFiles:
+  alerts:
+    groups:
+    - name: pre-defined-alert-rules
+      rules:
+      - alert: NodeFilesystemUsageMinor
+        expr: ((node_filesystem_size_bytes{mountpoint="/",device!="rootfs"} - node_filesystem_avail_bytes{mountpoint="/",device!="rootfs"}) / node_filesystem_size_bytes{mountpoint="/",device!="rootfs"} * 100 > 70) and ((node_filesystem_size_bytes{mountpoint="/",device!="rootfs"} - node_filesystem_avail_bytes{mountpoint="/",device!="rootfs"}) / node_filesystem_size_bytes{mountpoint="/",device!="rootfs"} * 100 <= 80)
+        for: 1m
+        labels:
+          severity: MINOR
+          name: FileSystemExceedThresholdMinor
+          text: Usage of file system is greater than the threshold value
+          id: 3001200
+          source: CPRO
+          host: "{{$labels.kubernetes_io_hostname}}"
+          eventType: 11
+          probableCause: 351
+          key: MOC001
+        annotations:
+          summary: "{{$labels.instance}}: High Filesystem usage detected"
+          description: "{{$labels.instance}}: Filesystem usage is above 70%"
+      - alert: NodeFilesystemUsageMajor
+        expr: ((node_filesystem_size_bytes{mountpoint="/",device!="rootfs"} - node_filesystem_avail_bytes{mountpoint="/",device!="rootfs"}) / node_filesystem_size_bytes{mountpoint="/",device!="rootfs"} * 100 > 80) and ((node_filesystem_size_bytes{mountpoint="/",device!="rootfs"} - node_filesystem_avail_bytes{mountpoint="/",device!="rootfs"}) / node_filesystem_size_bytes{mountpoint="/",device!="rootfs"} * 100 <= 90)
+        for: 1m
+        labels:
+          severity: MAJOR
+          name: FileSystemExceedThresholdMajor
+          text: Usage of file system is greater than the threshold value
+          id: 3001201
+          source: CPRO
+          host: "{{$labels.kubernetes_io_hostname}}"
+          eventType: 11
+          probableCause: 351
+          key: MOC002
+        annotations:
+          summary: "{{$labels.instance}}: High Filesystem usage detected"
+          description: "{{$labels.instance}}: Filesystem usage is above 80%"
+      - alert: NodeFilesystemUsageCritical
+        expr: (node_filesystem_size_bytes{mountpoint="/",device!="rootfs"} - node_filesystem_avail_bytes{mountpoint="/",device!="rootfs"}) / node_filesystem_size_bytes{mountpoint="/",device!="rootfs"} * 100 > 90
+        for: 1m
+        labels:
+          severity: CRITICAL
+          name: FileSystemExceedThresholdCritical
+          text: Usage of file system is greater than the threshold value
+          id: 3001202
+          source: CPRO
+          host: "{{$labels.kubernetes_io_hostname}}"
+          eventType: 11
+          probableCause: 351
+          key: MOC003
+        annotations:
+          summary: "{{$labels.instance}}: High Filesystem usage detected"
+          description: "{{$labels.instance}}: Filesystem usage is above 90%"
+      - alert: NodeCPUUsageMinor
+        expr: (100 - avg by (instance,kubernetes_io_hostname) (irate(node_cpu_seconds_total{mode="idle"}[5m])) * 100 > 70) and (100 - avg by (instance,kubernetes_io_hostname) (irate(node_cpu_seconds_total{mode="idle"}[5m])) * 100 <= 80)
+        for: 1m
+        labels:
+          severity: MINOR
+          name: CPUExceedThresholdMinor
+          text: Usage of CPU is greater than the threshold value
+          id: 3001203
+          source: CPRO
+          host: "{{$labels.kubernetes_io_hostname}}"
+          eventType: 11
+          probableCause: 351
+          key: MOC004
+        annotations:
+          summary: "{{$labels.instance}}: High CPU usage detected"
+          description: "{{$labels.instance}}: CPU usage is above 70%"
+      - alert: NodeCPUUsageMajor
+        expr: (100 - avg by (instance,kubernetes_io_hostname) (irate(node_cpu_seconds_total{mode="idle"}[5m])) * 100 > 80) and (100 - avg by (instance,kubernetes_io_hostname) (irate(node_cpu_seconds_total{mode="idle"}[5m])) * 100 <= 90)
+        for: 1m
+        labels:
+          severity: MAJOR
+          name: CPUExceedThresholdMajor
+          text: Usage of CPU is greater than the threshold value
+          id: 3001204
+          source: CPRO
+          host: "{{$labels.kubernetes_io_hostname}}"
+          eventType: 11
+          probableCause: 351
+          key: MOC005
+        annotations:
+          summary: "{{$labels.instance}}: High CPU usage detected"
+          description: "{{$labels.instance}}: CPU usage is above 80%"
+      - alert: NodeCPUUsageCritical
+        expr: 100 - avg by (instance,kubernetes_io_hostname) (irate(node_cpu_seconds_total{mode="idle"}[5m])) * 100 > 90
+        for: 1m
+        labels:
+          severity: CRITICAL
+          name: CPUExceedThresholdCritical
+          text: Usage of CPU is greater than the threshold value
+          id: 3001205
+          source: CPRO
+          host: "{{$labels.kubernetes_io_hostname}}"
+          eventType: 11
+          probableCause: 351
+          key: MOC006
+        annotations:
+          summary: "{{$labels.instance}}: High CPU usage detected"
+          description: "{{$labels.instance}}: CPU usage is above 90%"
+      - alert: NodeSwapUsageMinor
+        expr: (100 - (node_memory_SwapFree_bytes + 1) / (node_memory_SwapTotal_bytes + 1) * 100 > 70) and (100 - (node_memory_SwapFree_bytes + 1) / (node_memory_SwapTotal_bytes + 1) * 100 <= 80)
+        for: 1m
+        labels:
+          severity: MINOR
+          name: SwapExceedThresholdMinor
+          text: Usage of swap space is greater than the threshold value
+          id: 3001206
+          source: CPRO
+          host: "{{$labels.kubernetes_io_hostname}}"
+          eventType: 11
+          probableCause: 351
+          key: MOC007
+        annotations:
+          summary: "{{$labels.instance}}: High swap space usage detected"
+          description: "{{$labels.instance}}: Swap space usage is above 70%"
+      - alert: NodeSwapUsageMajor
+        expr: (100 - (node_memory_SwapFree_bytes + 1) / (node_memory_SwapTotal_bytes + 1) * 100 > 80) and (100 - (node_memory_SwapFree_bytes + 1) / (node_memory_SwapTotal_bytes + 1) * 100 <= 90)
+        for: 1m
+        labels:
+          severity: MAJOR
+          name: SwapExceedThresholdMajor
+          text: Usage of swap space is greater than the threshold value
+          id: 3001207
+          source: CPRO
+          host: "{{$labels.kubernetes_io_hostname}}"
+          eventType: 11
+          probableCause: 351
+          key: MOC008
+        annotations:
+          summary: "{{$labels.instance}}: High swap space usage detected"
+          description: "{{$labels.instance}}: Swap space usage is above 80%"
+      - alert: NodeSwapUsageCritical
+        expr: 100 - (node_memory_SwapFree_bytes + 1) / (node_memory_SwapTotal_bytes + 1) * 100 > 90
+        for: 1m
+        labels:
+          severity: CRITICAL
+          name: SwapExceedThresholdCritical
+          text: Usage of swap space is greater than the threshold value
+          id: 3001208
+          source: CPRO
+          host: "{{$labels.kubernetes_io_hostname}}"
+          eventType: 11
+          probableCause: 351
+          key: MOC009
+        annotations:
+          summary: "{{$labels.instance}}: High swap space usage detected"
+          description: "{{$labels.instance}}: Swap space usage is above 90%"
+      - alert: NodeMemoryUsageMinor
+        expr: (100 - (node_memory_MemAvailable_bytes) / node_memory_MemTotal_bytes * 100 > 70) and (100 - (node_memory_MemAvailable_bytes) / node_memory_MemTotal_bytes * 100 <= 80)
+        for: 1m
+        labels:
+          severity: MINOR
+          name: MemoryExceedThresholdMinor
+          text: Usage of memory is greater than the threshold value
+          id: 3001209
+          source: CPRO
+          host: "{{$labels.kubernetes_io_hostname}}"
+          eventType: 11
+          probableCause: 351
+          key: MOC010
+        annotations:
+          summary: "{{$labels.instance}}: High memory usage detected"
+          description: "{{$labels.instance}}: Memory usage is above 70%"
+      - alert: NodeMemoryUsageMajor
+        expr: (100 - (node_memory_MemAvailable_bytes) / node_memory_MemTotal_bytes * 100 > 80) and (100 - (node_memory_MemAvailable_bytes) / node_memory_MemTotal_bytes * 100 <= 90)
+        for: 1m
+        labels:
+          severity: MAJOR
+          name: MemoryExceedThresholdMajor
+          text: Usage of memory is greater than the threshold value
+          id: 3001210
+          source: CPRO
+          host: "{{$labels.kubernetes_io_hostname}}"
+          eventType: 11
+          probableCause: 351
+          key: MOC011
+        annotations:
+          summary: "{{$labels.instance}}: High memory usage detected"
+          description: "{{$labels.instance}}: Memory usage is above 80%"
+      - alert: NodeMemoryUsageCritical
+        expr: 100 - (node_memory_MemAvailable_bytes) / node_memory_MemTotal_bytes * 100 > 90
+        for: 1m
+        labels:
+          severity: CRITICAL
+          name: MemoryExceedThresholdCritical
+          text: Usage of memory is greater than the threshold value
+          id: 3001211
+          source: CPRO
+          host: "{{$labels.kubernetes_io_hostname}}"
+          eventType: 11
+          probableCause: 351
+          key: MOC012
+        annotations:
+          summary: "{{$labels.instance}}: High memory usage detected"
+          description: "{{$labels.instance}}: Memory usage is above 90%"
+      - alert: NodeZombieCountMinor
+        expr: (node_processes_state{state="Z"} > 5) and (node_processes_state{state="Z"} <= 10)
+        for: 1m
+        labels:
+          severity: MINOR
+          name: ZombieCountExceedThresholdMinor
+          text: Zombie process count is greater than the threshold value
+          id: 3001212
+          source: CPRO
+          host: "{{$labels.kubernetes_io_hostname}}"
+          eventType: 11
+          probableCause: 351
+          key: MOC013
+        annotations:
+          summary: "{{$labels.instance}}: Too many zombie processes detected"
+          description: "{{$labels.instance}}: Zombie process count is above 5"
+      - alert: NodeZombieCountMajor
+        expr: (node_processes_state{state="Z"} > 10) and (node_processes_state{state="Z"} <= 15)
+        for: 1m
+        labels:
+          severity: MAJOR
+          name: ZombieCountExceedThresholdMajor
+          text: Zombie process count is greater than the threshold value
+          id: 3001213
+          source: CPRO
+          host: "{{$labels.kubernetes_io_hostname}}"
+          eventType: 11
+          probableCause: 351
+          key: MOC014
+        annotations:
+          summary: "{{$labels.instance}}: Too many zombie processes detected"
+          description: "{{$labels.instance}}: Zombie process count is above 10"
+      - alert: NodeZombieCountCritical
+        expr: node_processes_state{state="Z"} > 15
+        for: 1m
+        labels:
+          severity: CRITICAL
+          name: ZombieCountExceedThresholdCritical
+          text: Zombie process count is greater than the threshold value
+          id: 3001214
+          source: CPRO
+          host: "{{$labels.kubernetes_io_hostname}}"
+          eventType: 11
+          probableCause: 351
+          key: MOC015
+        annotations:
+          summary: "{{$labels.instance}}: Too many zombie processes detected"
+          description: "{{$labels.instance}}: Zombie process count is above 15"
+      - alert: NodeSysUpTimeCritical
+        expr: node_time_seconds - node_boot_time_seconds < 5 * 24 * 3600
+        for: 1m
+        labels:
+          severity: CRITICAL
+          name: NodeSysUpTimeLessThresholdCritical
+          text: The number of seconds since last node reboot is less than the threshold value
+          id: 3001215
+          source: CPRO
+          host: "{{$labels.kubernetes_io_hostname}}"
+          eventType: 11
+          probableCause: 351
+          key: MOC016
+        annotations:
+          summary: "{{$labels.instance}}: Node uptime is less than threshold"
+          description: "{{$labels.instance}}: Node uptime is less than 5 days"
+      - alert: NetworkRetransMajor
+        expr: sort_desc(sum(rate(node_netstat_Tcp_RetransSegs[2m]) / rate(node_netstat_Tcp_OutSegs[2m]) * 100) by (instance,kubernetes_io_hostname)) > 25
+        for: 1m
+        labels:
+          severity: MAJOR
+          name: NetworkRetransExceedThresholdMajor
+          text: The number of segments re-transmitted is greater than the threshold value
+          id: 3001216
+          source: CPRO
+          host: "{{$labels.kubernetes_io_hostname}}"
+          eventType: 11
+          probableCause: 351
+          key: MOC017
+        annotations:
+          summary: "{{$labels.instance}}: The number of re-trans segments is more than threshold"
+          description: "{{$labels.instance}}: The number of re-trans segments is more than 25%"
+  rules: {}
+
+  prometheus.yml:
+    global:
+      ## How frequently to scrape targets by default
+      ##
+      scrape_interval: 1m
+      ## How long until a scrape request times out
+      ##
+      scrape_timeout: 10s
+      ## How frequently to evaluate rules
+      ##
+      evaluation_interval: 1m
+      ##use a file to record all the queries
+      ## Note: when readOnlyRootFilesystem is enabled the path for this parameter must be mount path
+      ## query_log_file: /data/query.log
+      ## external label to deduplicate data from replicas in a high-availability configuration
+      ## A label(prometheus) whose value identifies the name of a high-availability cluster or group of Prometheus servers.
+      ## prometheus_replica label is internally populated. Don't change it's value
+      ## uncomment below 3 lines to add external label with proper value of "prometheus" label
+      ##external_labels:
+      ##  prometheus: cpro
+      ##  prometheus_replica: $(HOSTNAME)
+
+    rule_files:
+      - /etc/config/rules
+      - /etc/config/alerts
+      - /etc/config/prometheus-monitoring-alerts
+
+    scrape_configs:
+      - job_name: prometheus
+        static_configs:
+          - targets:
+            - localhost:9090
+        honor_labels: true
+
+        kubernetes_sd_configs:
+          - role: endpoints
+
+        metric_relabel_configs:
+          - action: labeldrop
+            regex: __cpro_dummy_label_to_drop
+
+      ## Following parameters needs to set if prometheus has to scrape metrices in tls mode
+      #  scheme: https
+      #  tls_config:
+      #    ca_file: /etc/prom/tls-server/ca.crt
+      #    key_file: /etc/prom/tls-server/tls.key
+      #    cert_file: /etc/prom/tls-server/tls.crt
+      #    insecure_skip_verify: true
+
+        relabel_configs:
+          - source_labels: [__meta_kubernetes_service_annotation_prometheus_io_probe]
+            action: keep
+            regex: prometheus
+          - action: replace
+            source_labels:
+            - __meta_kubernetes_service_annotation_prometheus_io_scheme
+            target_label: __scheme__
+          - source_labels: [__meta_kubernetes_pod_container_name]
+            action: drop
+            regex: istio-proxy
+          - source_labels: [__meta_kubernetes_namespace]
+            action: replace
+            target_label: namespace
+          - source_labels: [__meta_kubernetes_service_annotation_prometheus_io_path]
+            action: replace
+            target_label: __metrics_path__
+          - source_labels: [__meta_kubernetes_pod_name]
+            action: replace
+            target_label: kubernetes_pod_name
+
+
+      # Uncomment the below lines if etcd metrics are to be scrapped in BCMT environment.
+      #- job_name: bcmt-etcd
+      #  kubernetes_sd_configs:
+      #    - role: node
+      #  metrics_path: /metrics
+      #  scheme: https
+      #  tls_config:
+      #    ca_file: /etc/etcd/ssl/ca.crt
+      #    cert_file: /etc/etcd/ssl/tls.crt
+      #    key_file: /etc/etcd/ssl/tls.key
+      #    insecure_skip_verify: true
+      #  metric_relabel_configs:
+      #    - action: labeldrop
+      #      regex: __cpro_dummy_label_to_drop
+      #  relabel_configs:
+      #  - action: keep
+      #    regex: true
+      #    source_labels:
+      #    - __meta_kubernetes_node_label_is_control
+      #  - action: replace
+      #    regex: (.*)
+      #    replacement: $1:2379
+      #    source_labels:
+      #    - __meta_kubernetes_node_address_InternalIP
+      #    target_label: __address__
+      #  - action: replace
+      #    regex: (.*)
+      #    replacement: $1
+      #    source_labels:
+      #    - job
+      #    target_label: component
+
+      - job_name: 'kubernetes-apiservers'
+
+        kubernetes_sd_configs:
+          - role: endpoints
+
+        # Default to scraping over https. If required, just disable this or change to
+        # `http`.
+        scheme: https
+
+        # This TLS & bearer token file config is used to connect to the actual scrape
+        # endpoints for cluster components. This is separate to discovery auth
+        # configuration because discovery & scraping are two separate concerns in
+        # Prometheus. The discovery auth config is automatic if Prometheus runs inside
+        # the cluster. Otherwise, more config options have to be provided within the
+        # <kubernetes_sd_config>.
+        tls_config:
+          ca_file: /var/run/secrets/kubernetes.io/serviceaccount/ca.crt
+          # If your node certificates are self-signed or use a different CA to the
+          # master CA, then disable certificate verification below. Note that
+          # certificate verification is an integral part of a secure infrastructure
+          # so this should only be disabled in a controlled environment. You can
+          # disable certificate verification by uncommenting the line below.
+          #
+          insecure_skip_verify: true
+        bearer_token_file: /var/run/secrets/kubernetes.io/serviceaccount/token
+
+        # Keep only the default/kubernetes service endpoints for the https port. This
+        # will add targets for each API server which Kubernetes adds an endpoint to
+        # the default/kubernetes service.
+        metric_relabel_configs:
+          - action: labeldrop
+            regex: __cpro_dummy_label_to_drop
+
+        relabel_configs:
+          - source_labels: [__meta_kubernetes_namespace, __meta_kubernetes_service_name, __meta_kubernetes_endpoint_port_name]
+            action: keep
+            regex: default;kubernetes;https
+          - source_labels: [__meta_kubernetes_namespace]
+            action: replace
+            target_label: namespace
+
+      - job_name: 'kubernetes-nodes'
+
+        # Default to scraping over https. If required, just disable this or change to
+        # `http`.
+        scheme: https
+
+        # This TLS & bearer token file config is used to connect to the actual scrape
+        # endpoints for cluster components. This is separate to discovery auth
+        # configuration because discovery & scraping are two separate concerns in
+        # Prometheus. The discovery auth config is automatic if Prometheus runs inside
+        # the cluster. Otherwise, more config options have to be provided within the
+        # <kubernetes_sd_config>.
+        tls_config:
+          ca_file: /var/run/secrets/kubernetes.io/serviceaccount/ca.crt
+          # If your node certificates are self-signed or use a different CA to the
+          # master CA, then disable certificate verification below. Note that
+          # certificate verification is an integral part of a secure infrastructure
+          # so this should only be disabled in a controlled environment. You can
+          # disable certificate verification by uncommenting the line below.
+          #
+          insecure_skip_verify: true
+        bearer_token_file: /var/run/secrets/kubernetes.io/serviceaccount/token
+
+        kubernetes_sd_configs:
+          - role: node
+
+        metric_relabel_configs:
+          - action: labeldrop
+            regex: __cpro_dummy_label_to_drop
+
+        relabel_configs:
+          - action: labelmap
+            regex: __meta_kubernetes_node_label_(.+)
+          - target_label: __address__
+            replacement: kubernetes.default.svc:443
+          - source_labels: [__meta_kubernetes_node_name]
+            regex: (.+)
+            target_label: __metrics_path__
+            replacement: /api/v1/nodes/${1}/proxy/metrics
+          - source_labels: [__meta_kubernetes_namespace]
+            action: replace
+            target_label: namespace
+
+
+      - job_name: 'kubernetes-nodes-cadvisor'
+
+        # Default to scraping over https. If required, just disable this or change to
+        # `http`.
+        scheme: https
+
+        # This TLS & bearer token file config is used to connect to the actual scrape
+        # endpoints for cluster components. This is separate to discovery auth
+        # configuration because discovery & scraping are two separate concerns in
+        # Prometheus. The discovery auth config is automatic if Prometheus runs inside
+        # the cluster. Otherwise, more config options have to be provided within the
+        # <kubernetes_sd_config>.
+        tls_config:
+          ca_file: /var/run/secrets/kubernetes.io/serviceaccount/ca.crt
+          # If your node certificates are self-signed or use a different CA to the
+          # master CA, then disable certificate verification below. Note that
+          # certificate verification is an integral part of a secure infrastructure
+          # so this should only be disabled in a controlled environment. You can
+          # disable certificate verification by uncommenting the line below.
+          #
+          insecure_skip_verify: true
+        bearer_token_file: /var/run/secrets/kubernetes.io/serviceaccount/token
+
+        kubernetes_sd_configs:
+          - role: node
+
+        # This configuration will work only on kubelet 1.7.3+
+        # As the scrape endpoints for cAdvisor have changed
+        # if you are using older version you need to change the replacement to
+        # replacement: /api/v1/nodes/${1}:4194/proxy/metrics
+        # more info here https://github.com/coreos/prometheus-operator/issues/633
+        metric_relabel_configs:
+          - action: labeldrop
+            regex: __cpro_dummy_label_to_drop
+
+        relabel_configs:
+          - action: labelmap
+            regex: __meta_kubernetes_node_label_(.+)
+          - target_label: __address__
+            replacement: kubernetes.default.svc:443
+          - source_labels: [__meta_kubernetes_node_name]
+            regex: (.+)
+            target_label: __metrics_path__
+            replacement: /api/v1/nodes/${1}/proxy/metrics/cadvisor
+          - source_labels: [__meta_kubernetes_namespace]
+            action: replace
+            target_label: namespace
+
+      # Scrape config for service endpoints.
+      #
+      # The relabeling allows the actual service scrape endpoint to be configured
+      # via the following annotations:
+      #
+      # * `prometheus.io/scrape`: Only scrape services that have a value of `true`
+      # * `prometheus.io/scheme`: If the metrics endpoint is secured then you will need
+      # to set this to `https` & most likely set the `tls_config` of the scrape config.
+      # * `prometheus.io/path`: If the metrics path is not `/metrics` override this.
+      # * `prometheus.io/port`: If the metrics are exposed on a different port to the
+      # service then set this appropriately.
+      - job_name: 'kubernetes-service-endpoints-insecure'
+
+        kubernetes_sd_configs:
+          - role: endpoints
+
+        metric_relabel_configs:
+          - action: labeldrop
+            regex: __cpro_dummy_label_to_drop
+
+        relabel_configs:
+          - source_labels: [__meta_kubernetes_pod_container_name]
+            action: drop
+            regex: istio-proxy
+          - source_labels: [__meta_kubernetes_service_annotation_prometheus_io_scrape]
+            action: keep
+            regex: true
+          - source_labels: [__meta_kubernetes_service_annotation_prometheus_io_scheme]
+            action: drop
+            target_label: __scheme__
+            regex: https
+          - source_labels: [__meta_kubernetes_endpoint_address_target_kind]
+            regex: Pod
+            action: keep                  
+          - source_labels: [__meta_kubernetes_service_annotation_prometheus_io_path]
+            action: replace
+            target_label: __metrics_path__
+            regex: (.+)
+          - source_labels: [__address__, __meta_kubernetes_service_annotation_prometheus_io_port]
+            action: replace
+            target_label: __address__
+            regex: (.+)(?::\d+);(\d+)
+            replacement: $1:$2
+          - action: labelmap
+            regex: __meta_kubernetes_service_label_(.+)
+          - source_labels: [__meta_kubernetes_namespace]
+            action: replace
+            target_label: namespace
+          - source_labels: [__meta_kubernetes_service_name]
+            action: replace
+            target_label: kubernetes_name
+          - source_labels: [__meta_kubernetes_pod_node_name]
+            target_label: kubernetes_io_hostname
+            action: replace
+
+      - job_name: 'prometheus-pushgateway'
+        honor_labels: true
+        scheme: http
+        kubernetes_sd_configs:
+          - role: service
+
+        metric_relabel_configs:
+          - action: labeldrop
+            regex: __cpro_dummy_label_to_drop
+
+      ## Following parameters needs to set if prometheus has to scrape metrices in tls mode
+      #  scheme: https
+      #  tls_config:
+      #    ca_file: /etc/pushgateway/tls-pushgateway/ca.crt
+      #    key_file: /etc/pushgateway/tls-pushgateway/tls.key
+      #    cert_file: /etc/pushgateway/tls-pushgateway/tls.crt
+      #    insecure_skip_verify: true
+
+
+        relabel_configs:
+          - source_labels: [__meta_kubernetes_service_annotation_prometheus_io_probe]
+            action: keep
+            regex: pushgateway
+          - action: replace
+            source_labels:
+            - __meta_kubernetes_service_annotation_prometheus_io_scheme
+            target_label: __scheme__
+          - source_labels: [__meta_kubernetes_namespace]
+            action: replace
+            target_label: namespace
+          - source_labels: [__meta_kubernetes_service_annotation_prometheus_io_path]
+            action: replace
+            target_label: __metrics_path__
+
+      - job_name: 'kubernetes-pods-insecure'
+        kubernetes_sd_configs:
+          - role: pod
+        metric_relabel_configs:
+          - action: labeldrop
+            regex: __cpro_dummy_label_to_drop
+
+        relabel_configs:  # If first two labels are present, pod should be scraped  by the istio-secure job.
+          - source_labels: [__meta_kubernetes_pod_annotation_prometheus_io_scrape]
+            action: keep
+            regex: true
+          - source_labels: [__meta_kubernetes_pod_annotation_sidecar_istio_io_status, __meta_kubernetes_pod_annotation_istio_mtls]
+            action: drop
+            regex: (([^;]+);([^;]*))|(([^;]*);(true))
+          - source_labels: [__meta_kubernetes_pod_annotation_prometheus_io_scheme]
+            action: drop
+            regex: https
+          - source_labels: [__meta_kubernetes_pod_annotation_prometheus_io_path]
+            action: replace
+            target_label: __metrics_path__
+            regex: (.+)
+          - source_labels: [__address__, __meta_kubernetes_pod_annotation_prometheus_io_port]
+            action: replace
+            regex: (.+)(?::\d+);(\d+)
+            replacement: $1:$2
+            target_label: __address__
+          - action: labelmap
+            regex: __meta_kubernetes_pod_label_(.+)
+          - source_labels: [__meta_kubernetes_namespace]
+            action: replace
+            target_label: namespace
+          - source_labels: [__meta_kubernetes_pod_name]
+            action: replace
+            target_label: kubernetes_pod_name
+          - source_labels: [__meta_kubernetes_pod_node_name]
+            action: replace
+            target_label: kubernetes_io_hostname
+
+      # Example scrape config for probing services via the Blackbox Exporter.
+      #
+      # The relabeling allows the actual service scrape endpoint to be configured
+      # via the following annotations:
+      #
+      # * `prometheus.io/probe`: Only probe services that have a value of `true`
+      #
+      #
+      - job_name: 'prometheus-nodeexporter'
+        honor_labels: true
+
+        kubernetes_sd_configs:
+          - role: endpoints
+      ## Following parameters needs to set if prometheus has to scrape metrices in tls mode
+      #scheme: https
+      ## If .Values.nodeexporter.auth.credentialName is specified, then specify the username and password
+      ## in the format $__expnd{nxp-auth/<value-of-the-keyName>}
+      ## Example: username: $__expnd{nxp-auth/myuser} and password: $__expnd{nap-auth/mypass}
+      #basic_auth:
+      #  username:
+      ## `password` and `password_file` are mutually exclusive. If password_file is used, specify the absolute path in the below format.
+      ## Format: password_file: "<.Values.secretPathPrefix>/nxp-auth/<value-of-the-keyName>"
+      ## Example: password_file: "/secrets/nxp-auth/mypass"
+      #  password:
+      #  password_file:
+      #  tls_config:
+      #    ca_file: /etc/etcd/tls-nodeexporter/ca.crt
+      #    key_file: /etc/etcd/tls-nodeexporter/tls.key
+      #    cert_file: /etc/etcd/tls-nodeexporter/tls.crt
+      #    insecure_skip_verify: true
+
+        metric_relabel_configs:
+          - action: labeldrop
+            regex: __cpro_dummy_label_to_drop
+
+        relabel_configs:
+          - source_labels: [__meta_kubernetes_service_annotation_prometheus_io_probe]
+            action: keep
+            regex: node-exporter
+          - action: replace
+            source_labels:
+            - __meta_kubernetes_service_annotation_prometheus_io_scheme
+            target_label: __scheme__
+          - source_labels: [__meta_kubernetes_namespace]
+            action: replace
+            target_label: namespace
+          - source_labels: [__meta_kubernetes_pod_node_name]
+            target_label: kubernetes_io_hostname
+            action: replace
+
+      - job_name: 'grafana'
+        honor_labels: true
+        kubernetes_sd_configs:
+          - role: endpoints
+      ## Following parameters needs to set if prometheus has to scrape metrices in tls mode
+      #  scheme: https
+      #  basic_auth:
+      #    username: 
+      #    password:
+        tls_config:
+      #    ca_file: /etc/grafana/tls-grafana/ca.crt
+      #    key_file: /etc/grafana/tls-grafana/tls.key
+      #    cert_file: /etc/grafana/tls-grafana/tls.crt
+          insecure_skip_verify: true
+        relabel_configs:
+          - source_labels: [__meta_kubernetes_service_annotation_prometheus_io_probe]
+            action: keep
+            regex: grafana
+          - source_labels: [__meta_kubernetes_endpoint_address_target_kind]
+            regex: Pod
+            action: keep                  
+          - action: replace
+            regex: (.+)
+            source_labels:
+            - __meta_kubernetes_service_annotation_prometheus_io_path
+            target_label: __metrics_path__
+          - action: replace
+            regex: (.+)
+            source_labels:
+            - __meta_kubernetes_service_annotation_prometheus_io_scheme
+            target_label: __scheme__
+          - action: replace
+            regex: (.+)(?::\d+);(\d+)
+            replacement: $1:$2
+            source_labels:
+            - __address__
+            - __meta_kubernetes_service_annotation_prometheus_io_port
+            target_label: __address__
+          - action: labelmap
+            regex: __meta_kubernetes_service_label_(.+)
+          - action: replace
+            source_labels:
+            - __meta_kubernetes_namespace
+            target_label: namespace
+          - action: replace
+            source_labels:
+            - __meta_kubernetes_service_name
+            target_label: kubernetes_name
+          - action: replace
+            source_labels:
+            - __meta_kubernetes_pod_node_name
+            target_label: kubernetes_io_hostname
+
+      - job_name: 'cpro-ksm'
+        honor_labels: true
+        kubernetes_sd_configs:
+          - role: endpoints
+      ## Following parameters needs to set if prometheus has to scrape metrices in tls mode
+      #  scheme: https
+      #  tls_config:
+      #    ca_file: /etc/ksm/tls-kubestatemetrics/ca.crt
+      #    key_file: /etc/ksm/tls-kubestatemetrics/tls.key
+      #    cert_file: /etc/ksm/tls-kubestatemetrics/tls.crt
+      #    insecure_skip_verify: true
+        relabel_configs:
+          - source_labels: [__meta_kubernetes_service_annotation_prometheus_io_probe]
+            action: keep
+            regex: kube-state-metrics
+          - source_labels: [__meta_kubernetes_endpoint_address_target_kind]
+            regex: Pod
+            action: keep                  
+          - action: replace
+            source_labels:
+            - __meta_kubernetes_service_annotation_prometheus_io_scheme
+            target_label: __scheme__
+          - action: replace
+            regex: (.+)
+            source_labels:
+            - __meta_kubernetes_service_annotation_prometheus_io_path
+            target_label: __metrics_path__
+          - action: replace
+            regex: (.+)(?::\d+);(\d+)
+            replacement: $1:$2
+            source_labels:
+            - __address__
+            - __meta_kubernetes_service_annotation_prometheus_io_port
+            target_label: __address__
+          - action: labelmap
+            regex: __meta_kubernetes_service_label_(.+)
+          - action: replace
+            source_labels:
+            - __meta_kubernetes_namespace
+            target_label: namespace
+          - action: replace
+            source_labels:
+            - __meta_kubernetes_service_name
+            target_label: kubernetes_name
+          - action: replace
+            source_labels:
+            - __meta_kubernetes_pod_node_name
+            target_label: kubernetes_io_hostname
+
+      - job_name: 'cpro-am'
+        honor_labels: true
+        kubernetes_sd_configs:
+          - role: endpoints
+      ## Following parameters needs to set if prometheus has to scrape metrices in tls mode
+      #  scheme: https
+      #  tls_config:
+      #    ca_file: /etc/am/tls-alertmanager/ca.crt
+      #    key_file: /etc/am/tls-alertmanager/tls.key
+      #    cert_file: /etc/am/tls-alertmanager/tls.crt
+      #    insecure_skip_verify: true
+        relabel_configs:
+          - source_labels: [__meta_kubernetes_service_annotation_prometheus_io_probe]
+            action: keep
+            regex: alert-manager
+          - source_labels: [__meta_kubernetes_endpoint_address_target_kind]
+            regex: Pod
+            action: keep                  
+          - action: replace
+            source_labels:
+            - __meta_kubernetes_service_annotation_prometheus_io_scheme
+            target_label: __scheme__
+          - action: replace
+            regex: (.+)
+            source_labels:
+            - __meta_kubernetes_service_annotation_prometheus_io_path
+            target_label: __metrics_path__
+          - action: replace
+            regex: (.+)(?::\d+);(\d+)
+            replacement: $1:$2
+            source_labels:
+            - __address__
+            - __meta_kubernetes_service_annotation_prometheus_io_port
+            target_label: __address__
+          - action: labelmap
+            regex: __meta_kubernetes_service_label_(.+)
+          - action: replace
+            source_labels:
+            - __meta_kubernetes_namespace
+            target_label: namespace
+          - action: replace
+            source_labels:
+            - __meta_kubernetes_service_name
+            target_label: kubernetes_name
+          - action: replace
+            source_labels:
+            - __meta_kubernetes_pod_node_name
+            target_label: kubernetes_io_hostname
+
+      - job_name: 'cpro-webhook'
+        honor_labels: true
+        kubernetes_sd_configs:
+          - role: endpoints
+        relabel_configs:
+          - source_labels: [__meta_kubernetes_service_annotation_prometheus_io_probe]
+            action: keep
+            regex: webhook4fluentd
+          - source_labels: [__meta_kubernetes_endpoint_address_target_kind]
+            regex: Pod
+            action: keep          
+          - action: replace
+            regex: (.+)
+            source_labels:
+            - __meta_kubernetes_service_annotation_prometheus_io_path
+            target_label: __metrics_path__
+          - action: replace
+            regex: (.+)(?::\d+);(\d+)
+            replacement: $1:$2
+            source_labels:
+            - __address__
+            - __meta_kubernetes_service_annotation_prometheus_io_port
+            target_label: __address__
+          - action: labelmap
+            regex: __meta_kubernetes_service_label_(.+)
+          - action: replace
+            source_labels:
+            - __meta_kubernetes_namespace
+            target_label: namespace
+          - action: replace
+            source_labels:
+            - __meta_kubernetes_service_name
+            target_label: kubernetes_name
+          - action: replace
+            source_labels:
+            - __meta_kubernetes_pod_node_name
+            target_label: kubernetes_io_hostname
+
+      - job_name: 'kubernetes-services'
+
+        metrics_path: /probe
+        params:
+          module: [http_2xx]
+
+        kubernetes_sd_configs:
+          - role: service
+
+        metric_relabel_configs:
+          - action: labeldrop
+            regex: __cpro_dummy_label_to_drop
+
+        relabel_configs:
+          - source_labels: [__meta_kubernetes_service_annotation_prometheus_io_probe]
+            action: keep
+            regex: true
+          - source_labels: [__address__]
+            target_label: __param_target
+          - target_label: __address__
+            replacement: blackbox
+          - source_labels: [__param_target]
+            target_label: instance
+          - action: labelmap
+            regex: __meta_kubernetes_service_label_(.+)
+          - source_labels: [__meta_kubernetes_namespace]
+            target_label: namespace
+          - source_labels: [__meta_kubernetes_service_name]
+            target_label: kubernetes_name
+
+      # Example scrape config for pods
+      #
+      # The relabeling allows the actual pod scrape endpoint to be configured via the
+      # following annotations:
+      #
+      # * `prometheus.io/scrape`: Only scrape pods that have a value of `true`
+      # * `prometheus.io/path`: If the metrics path is not `/metrics` override this.
+      # * `prometheus.io/port`: Scrape the pod on the indicated port instead of the default of `9102`.
+      # Mixer scrapping. Defaults to Prometheus and mixer on same namespace.
+      - job_name: 'istio-mesh'
+        kubernetes_sd_configs:
+        - role: endpoints
+          namespaces:
+            names:
+            - istio-system
+        metric_relabel_configs:
+          - action: labeldrop
+            regex: __cpro_dummy_label_to_drop
+
+        relabel_configs:
+        - source_labels: [__meta_kubernetes_service_name, __meta_kubernetes_endpoint_port_name]
+          action: keep
+          regex: istio-telemetry;prometheus
+
+      # Scrape config for envoy stats
+      - job_name: 'envoy-stats'
+        metrics_path: /stats/prometheus
+        kubernetes_sd_configs:
+        - role: pod
+
+        metric_relabel_configs:
+          - action: labeldrop
+            regex: __cpro_dummy_label_to_drop
+
+        relabel_configs:
+        - source_labels: [__meta_kubernetes_pod_container_port_name]
+          action: keep
+          regex: '.*-envoy-prom'
+        - source_labels: [__address__, __meta_kubernetes_pod_annotation_prometheus_io_port]
+          action: replace
+          regex: (.+)(?::\d+);(\d+)
+          replacement: $1:15090
+          target_label: __address__
+        - action: labeldrop
+          regex: __meta_kubernetes_pod_label_(.+)
+        - source_labels: [__meta_kubernetes_namespace]
+          action: replace
+          target_label: namespace
+        - source_labels: [__meta_kubernetes_pod_name]
+          action: replace
+          target_label: pod_name
+
+      - job_name: 'istio-policy'
+        kubernetes_sd_configs:
+        - role: endpoints
+          namespaces:
+            names:
+            - istio-system
+
+
+        metric_relabel_configs:
+          - action: labeldrop
+            regex: __cpro_dummy_label_to_drop
+
+        relabel_configs:
+        - source_labels: [__meta_kubernetes_service_name, __meta_kubernetes_endpoint_port_name]
+          action: keep
+          regex: istio-policy;http-policy-monitoring
+
+      - job_name: 'istio-telemetry'
+        kubernetes_sd_configs:
+        - role: endpoints
+          namespaces:
+            names:
+            - istio-system
+
+        metric_relabel_configs:
+          - action: labeldrop
+            regex: __cpro_dummy_label_to_drop
+
+        relabel_configs:
+        - source_labels: [__meta_kubernetes_service_name, __meta_kubernetes_endpoint_port_name]
+          action: keep
+          regex: istio-telemetry;http-monitoring
+
+      - job_name: 'pilot'
+        kubernetes_sd_configs:
+        - role: endpoints
+          namespaces:
+            names:
+            - istio-system
+
+        metric_relabel_configs:
+          - action: labeldrop
+            regex: __cpro_dummy_label_to_drop
+
+        relabel_configs:
+        - source_labels: [__meta_kubernetes_service_name, __meta_kubernetes_endpoint_port_name]
+          action: keep
+          regex: istiod;http-monitoring
+        - source_labels: [__meta_kubernetes_service_label_app]
+          target_label: app
+
+      - job_name: 'galley'
+        kubernetes_sd_configs:
+        - role: endpoints
+          namespaces:
+            names:
+            - istio-system
+
+        metric_relabel_configs:
+          - action: labeldrop
+            regex: __cpro_dummy_label_to_drop
+
+        relabel_configs:
+        - source_labels: [__meta_kubernetes_service_name, __meta_kubernetes_endpoint_port_name]
+          action: keep
+          regex: istio-galley;http-monitoring
+
+      - job_name: 'citadel'
+        kubernetes_sd_configs:
+        - role: endpoints
+          namespaces:
+            names:
+            - istio-system
+
+        metric_relabel_configs:
+          - action: labeldrop
+            regex: __cpro_dummy_label_to_drop
+
+        relabel_configs:
+        - source_labels: [__meta_kubernetes_service_name, __meta_kubernetes_endpoint_port_name]
+          action: keep
+          regex: istio-citadel;http-monitoring
+
+      - job_name: 'sidecar-injector'
+
+        kubernetes_sd_configs:
+        - role: endpoints
+          namespaces:
+            names:
+            - istio-system
+
+        metric_relabel_configs:
+          - action: labeldrop
+            regex: __cpro_dummy_label_to_drop
+
+        relabel_configs:
+        - source_labels: [__meta_kubernetes_service_name, __meta_kubernetes_endpoint_port_name]
+          action: keep
+          regex: istio-sidecar-injector;http-monitoring
+
+
+
+## Define custom scrape job here for Prometheus.
+## These jobs will be appended to prometheus.yml
+customScrapeJobs: []
+#    - job_name: cnot
+#      metrics_path: /api/cnot/v1/metrics
+#      scheme: http
+#      static_configs:
+#      - targets:
+#        - cnot.default.svc.cluster.local
+#    - job_name: grafana
+#      scheme: https
+#      tls_config:
+#        insecure_skip_verify: true
+#      static_configs:
+#      - targets:
+#        - grafana-cpro-grafana.default.svc.cluster.local:80
+
+# Adds option to add alert_relabel_configs to avoid duplicate alerts in alertmanager
+# useful in H/A prometheus with different external labels but the same alerts
+alertRelabelConfigs:
+  - regex: 'prometheus_replica'
+    action: labeldrop
+  # - source_labels: [dc]
+  #   regex: (.+)\d+
+  #   target_label: dc
+
+networkPolicy:
+  ## Enable creation of NetworkPolicy resources.
+  ##
+  enabled: false
+
+
+restserver:
+  # supported imageFlavor are rocky8-python3.8, rocky8-python3.8-jre17 in case of Best Match
+  # Configure distroless-jre17 here in case of Strict Match for main container
+  imageFlavor:    
+  imageFlavorPolicy: 
+  enabled: true
+
+  name: restserver
+  # workload level scope
+
+  # ipFamilyPolicy:  SingleStack | PreferDualStack | RequireDualStack
+  ipFamilyPolicy: 
+  #  # ipFamilies: ["IPv4"] | ["IPv6"] | ["IPv4","IPv6"] | ["IPv6","IPv4"]
+  ipFamilies: []
+  # Uncomment KUBERNETES_DISABLE_HOSTNAME_VERIFICATION env variable for deploying in Ipv6
+  env: {}
+   # KUBERNETES_DISABLE_HOSTNAME_VERIFICATION: "\"true\""
+
+  podAnnotations: {}
+
+  ## restserver workload labels and annotations
+  annotations: {}
+  labels: {}
+
+  imagePullSecrets:
+    #   - name: myRegistrKeySecretName
+    
+  BCMT:
+    serverURL: https://kubernetes.default.svc:443
+
+  ## soft means preferredDuringSchedulingIgnoredDuringExecution
+  ## hard means requiredDuringSchedulingIgnoredDuringExecution
+  ## you could refer k8s api for more detail
+  #
+  antiAffinityMode: "soft"
+
+# set  unifiedLogging.syslog.enabled to true to forward logs to rsyslog
+# <workload>.unifiedLogging.syslog.enabled will take precedence than global.unifiedLogging.syslog.enabled
+  unifiedLogging:
+    # Enable sylog to true for sending logs to syslog. Enabled value left empty intentionally, default value is False
+    syslog:
+      enabled:  
+      facility:
+      host:
+      port:
+      protocol:
+      tls:
+        secretRef:
+      # Secret name, pointing to a Secret object of type `kubernetes.io/tls`
+          name:
+           # Secret key names mapping
+           # If the provided Secret is of type `kubernetes.io/tls', then key names do not need to be changed.
+          keyNames:
+           # Name of Secret key, which contains CA certificate
+            caCrt: "ca.crt"
+    extension: {}
+    #extension:
+    #   VM_Name: abc
+    #   VM_UUID: 123
+
+## For more info on Topology Spread Constraints ref: https://kubernetes.io/docs/concepts/scheduling-eviction/topology-spread-constraints/
+# if labelSelector key is omitted and autoGenerateLabelSelector is set to true in a constraint block
+# then labelSelector is automatically generated otherwise labelSelector are taken from labelSelector key
+# restserver
+  topologySpreadConstraints: []
+  #- maxSkew: 4
+  #  topologyKey: topology.kubernetes.io/zone
+  #  whenUnsatisfiable: DoNotSchedule
+  #  autoGenerateLabelSelector: true
+  
+  configmapReload:
+    ## Restserver configmap-reload container name
+    ##
+    # name: "{{ Values.configmapReload.name }}"
+    name: "{{ .Values.configmapReload.name }}"
+    ## prometheus distro image will be used
+
+    ## configmap-reload resource requests and limits
+    ## Ref: http://kubernetes.io/docs/user-guide/compute-resources/
+    ##
+    resources:
+      limits:
+        # User can configure the cpu limits whenever user wants to limit CPU.
+        #cpu: "{{ .Values.configmapReload.resources.limits.cpu }}"
+        memory: "{{ .Values.configmapReload.resources.limits.memory }}"
+        ephemeral-storage: "1Gi"
+      requests:
+        cpu: "{{ .Values.configmapReload.resources.requests.cpu }}"
+        memory: "{{ .Values.configmapReload.resources.requests.memory }}"
+        ephemeral-storage: "256Mi"
+
+  image:
+    restapi:
+      imageRepo: cpro/registry4/cpro-restapi
+      imageTag: 5.0.1-4.1.0-3220
+      __defaultFlavor: distroless-jre17
+      imagePullPolicy: IfNotPresent
+  replicaCount: 1
+
+  # when https is enabled, certificates are read in below order.
+  # 1) From certmanager generated certificate when restserver.certificateSecret is set to "certmanager"
+  # 2) From restserver.certificateSecret which is manually created.
+  # 3) From sensitiveDataSecretName which is manually created. Note that sensitiveDataSecretName will be used by all CPRO components.
+  # 4) From certificates given in values.yaml as part of restCACert, restServerKey and restServerCert
+  certificateSecret: ""
+
+  service:
+    # Options: ClusterIP or NodePort
+    type: ClusterIP
+    servicePort: 8888
+    # Note the range of a valid nodePort is 30000-32767.
+    nodePort: 32766
+
+  progressDeadlineSeconds:
+
+  ingress:
+    enabled: false
+    #All possible allowed values for pathType is Prefix,ImplementationSpecific, Exact
+    pathType: "Prefix"
+    # annotations to be used in restserver ingress
+    # note: if the ingress is to be used with hostname/path then nginx.ingress.kubernetes.io/rewrite-target: /$2 should be enabed
+    annotations: {}
+    # nginx.ingress.kubernetes.io/rewrite-target: /$2
+    # kubernetes.io/ingress.class: nginx
+    # kubernetes.io/tls-acme: "true"
+
+    # restserver Ingress hostnames with optional path
+    ## the host name is also optional
+    # note: if hostname/path configuration has to used then use hostname/path(/|$)(.*)
+    #ie: if restapisrv.domain.com/rest is the path the use restapisrv.domain.com/rest(/|$)(.*)
+    hosts: []
+    #  - restapisrv.domain.com
+
+    tls: []
+  #  - secretName: chart-example-tls
+  #    hosts:
+  #      - chart-example.local
+  resources:
+  # We usually recommend not to specify default resources and to leave this as a conscious
+  # choice for the user. This also increases chances charts run on environments with little
+  # resources, such as Minikube. If you do want to specify resources, uncomment the following
+  # lines, adjust them as necessary, and remove the curly braces after 'resources:'.
+    limits:
+      # User can configure the cpu limits whenever user wants to limit CPU.
+      #cpu: 1
+      memory: 512Mi
+      ephemeral-storage: "1Gi"
+    requests:
+      cpu: 100m
+      memory: 128Mi
+      ephemeral-storage: "256Mi"
+
+  ## securityContext for restapi 
+  containerSecurityContext:
+    readOnlyRootFilesystem: true
+    allowPrivilegeEscalation: false
+    capabilities:
+      drop:
+        - ALL
+  securityContext:
+    runAsNonRoot: true
+    runAsUser: 1999
+    fsGroup: 1999
+    seccompProfile:
+      type: RuntimeDefault
+    #seLinuxOptions:
+    #  level: ""
+    #  role: ""
+    #  type: ""
+    #  user: ""
+
+  nodeSelector: {}
+
+  tolerations: []
+    # - key: "key"
+    #   operator: "Equal|Exists"
+    #   value: "value"
+    #   effect: "NoSchedule|PreferNoSchedule|NoExecute(1.6 only)"
+
+  configs:
+    httpsEnabled: false
+    httpPort: 8880
+    min_version: TLS12
+    reloadPort: 9090
+    restCACert: 
+    restServerKey: 
+    restServerCert: 
+
+  tls:
+    enabled: 
+    secretRef:
+      # Secret name, pointing to a Secret object.
+      # If empty then automatically generated secret with certificate will be used
+      name:
+      # Secret key names mapping.
+      # If the provided Secret is of type `kubernetes.io/tls', then key names do not need to be changed.
+      keyNames:
+        # Name of Secret key, which contains CA certificate
+        caCrt: "ca.crt"
+        # Name of Secret key, which contains TLS key
+        tlsKey: "tls.key"
+        # Name of Secret key, which contains TLS certificate
+        tlsCrt: "tls.crt"
+
+  certificate:
+    # Certificate object is created based on the data in this section.
+    # Optional parameter
+    enabled: true
+    # workload issuerRef >> certmanager.issuerRef >> global.certmanager.issuerRef
+    issuerRef:
+      name:
+      kind:
+      group:
+    duration: 8760h # 1 year
+    renewBefore: 360h # 15 days
+    # If left empty, it will be generated automatically.
+    secretName:
+    # Not needed in internal communication
+    subject:
+    # It has been deprecated since 2000 and is discouraged from being used for a server side certificates.
+    # `dnsNames` are used instead.
+    commonName:
+    # Usages is the set of x509 usages that are requested for the certificate.
+    # If `usages` is not specified, the following will be used:
+    # - server auth
+    # - client auth
+    usages:
+    # DNSNames is a list of DNS subjectAltNames to be set on the Certificate.
+    # If ssl passthrough is used on the Ingress object,
+    # then dnsNames should be set to external DNS names.
+    # If `dnsNames` is not specified then the following internal names will be used:
+    # - localhost
+    # - <service name>.<namespace>
+    # - <service name>.<namespace>.svc
+    # - <service name>.<namespace>.svc.<cluster domain>
+    dnsNames:
+    # URIs is a list of URI subjectAltNames to be set on the Certificate.
+    uris:
+    # IPAddresses is a list of IP address subjectAltNames to be set on the Certificate.
+    # If ipAddresses not specified then the following internal local IPs will be used:
+    # - "127.0.0.1"
+    # - "::1"
+    ipAddresses:
+    privateKey:
+      algorithm:
+      encoding:
+      size:
+      # Rotation of a key pair, when certificate is refreshed is recommended from a security point of view
+      rotationPolicy: Always
+  tls_auth_config:
+    tls:
+## Additional domain and dnsNames to be provided if required
+##      dnsNames:
+##        - localhost
+##      ipAddresses:
+##        - 127.0.0.1
+
+  # Log Level: DEBUG < INFO < WARN < ERROR < FATAL < OFF
+  loglevel: INFO
+
+  ## Configurations about restserver probes
+  ## Including livenessProbe and readinessProbe
+  livenessProbe:
+    initialDelaySeconds: 0
+    timeoutSeconds: 30
+    failureThreshold: 3
+    periodSeconds: 10
+  readinessProbe:
+    initialDelaySeconds: 0
+    timeoutSeconds: 30
+    failureThreshold: 3
+    periodSeconds: 10
+
+#PodDisruptionBudgets for restserver
+#This will ensure that configured number of pods are always up and try to prevent the evictions
+#https://kubernetes.io/docs/tasks/run-application/configure-pdb/
+#Note: either minAvailable or maxUnavailable should be used cannot be used at the same time
+#As per HBP,if replica count is 1, pdb will be disabled by default. It can be enabled when required.
+  pdb:
+    enabled: false
+    #minAvailable: 1
+    maxUnavailable: 0
+
+# This context root will be used when the istio is enabled
+  contextRoot: restserver
+
+
+  ##Configuration for priority class
+  ## https://kubernetes.io/docs/concepts/scheduling-eviction/pod-priority-preemption/#pod-priority
+  ## priority class should be created before installing the chart
+  priorityClassName:
+
+# Below values is used only in the REGISTRY_ONLY environment. In the REGISTRY_ONLY environment, for the prometheus to scrap the metrics
+# from any workload or application, there must be a service,headless service and destinationRule must be created. This will make sure the application
+# to be included in the istio service mesh. However DestinationRule will be taken care by the createDrForClient in the istio section but for the 
+# service and headless service will be taken care by the below value.
+includeWorkloadInIstioMesh: false
+
+## Whether the chart will deploy on istio
+# Root configuration for all istio level parameters.
+istio:
+  sidecar:
+    # Istio sidecar (Envoy) healthcheck port.
+    # If it is not set, then the default value is 15021, and 15020 for Istio versions prior to 1.6.
+    healthCheckPort:
+    # Istio sidecar (Envoy) admin port on which `quitquitquit` endpoint can be used to stop sidecar container.
+    stopPort: 15000
+  # version of istio available in the environment.
+  version: "1.11"
+  # Should istio be enabled for this deployment.
+  enabled: false
+  # Whether istio cni is enabled in the environment.
+  cni:
+    enabled: true
+  # MTLS section of configuration.
+  mtls:
+    #Is strict MTLS enabled in the environment.
+    enabled: true
+  # Should allow mutual TLS as well as clear text for your deployment.
+  permissive: false
+  # This optional flag should only be used when application was installed in istio-injection=enabled namespace, but was configured with istio.enabled=false, thus istio sidecar could not be injected into this application. Client then would need destinationRule for accessing this application
+  createDrForClient: false
+  # Optional sharedHttpGateway which should be used if you need to share a gateway.
+  sharedHttpGateway:
+    # This section instructs the chart to reuse an already existing gateway for http/https purposes.
+    # This is applicable if you already have a gateway on the same hostname listening on 80/443.
+    # Namespace where the existing gateway object exists.
+    namespace: "istio-system"
+    # Name of the gateway object.
+    name: "single-gateway-in-istio-system"
+
+  # An optional array of gateways which can be added if needed. These gateways will be created fresh in your install.
+  gateways:
+  # Name of the gateway should not be changed.
+    cproServer:
+    # Should this be enabled or not.
+      enabled: false
+      # Optional labels to be added to gateway object.
+      labels: {}
+      # Any annotations to be added to the gateway object.
+      annotations: {}
+      # By default the chart will use label 'istio: ingressgateway' as selector which is the default one deployed in istio-system namespace.
+      # This should be the label of the istio ingressgateway pod which you want your gateway to attach to.
+      ingressPodSelector:
+        istio: ingressgateway
+      # Port number where the gateway should attach to.
+      port: 443
+      # Protocol to be used for the port(TLS/TCP/HTTP/HTTPS). TLS/HTTPS will need the optional tls section to be filled.
+      protocol: HTTPS
+      # By default the chart will use '*'. It can be a YAML array of host names.
+      host: []
+      # TLS settings for your gateway. This section is mandatory if protocol is TLS/HTTPS.
+      tls:
+      # This optional flag is only applicable for an HTTP port to force a redirection to HTTPS.
+        redirect: true
+        # Mode can be SIMPLE / MUTUAL / PASSTHROUGH/ ISTIO_MUTUAL and it is exactly as per ISTIO documentation.
+        mode: "ISTIO_MUTUAL"
+        # The name of the kubernetes secret, in the namespace to be used for TLS traffic.
+        credentialName: ""
+        # Istio TLS has many other attributes and configurations. If for some reason none of the above fits your
+        # needs , then use this section to configure as per istio docs. Anything under here will be directly moved
+        # under TLS section of gateway definition.
+        custom: {}
+    # Name of the gateway should not be changed.
+    cproAlertmanager:
+    # Should this be enabled or not.
+      enabled: false
+      # Optional labels to be added to gateway object.
+      labels: {}
+      # Any annotations to be added to the gateway object.
+      annotations: {}
+      # By default the chart will use label 'istio: ingressgateway' as selector which is the default one deployed in istio-system namespace.
+      # This should be the label of the istio ingressgateway pod which you want your gateway to attach to.
+      ingressPodSelector:
+        istio: ingressgateway
+      # Port number where the gateway should attach to.
+      port: 443
+      # Protocol to be used for the port(TLS/TCP/HTTP/HTTPS). TLS/HTTPS will need the optional tls section to be filled.
+      protocol: HTTPS
+      # By default the chart will use '*'. It can be a YAML array of host names.
+      host: []
+      # TLS settings for your gateway. This section is mandatory if protocol is TLS/HTTPS.
+      tls:
+      # This optional flag is only applicable for an HTTP port to force a redirection to HTTPS.
+        redirect: true
+        # Mode can be SIMPLE / MUTUAL / PASSTHROUGH/ ISTIO_MUTUAL and it is exactly as per ISTIO documentation.
+        mode: "ISTIO_MUTUAL"
+        # The name of the kubernetes secret, in the namespace to be used for TLS traffic.
+        credentialName: ""
+        # Istio TLS has many other attributes and configurations. If for some reason none of the above fits your
+        # needs , then use this section to configure as per istio docs. Anything under here will be directly moved
+        # under TLS section of gateway definition.
+        custom: {}
+        # Name of the gateway should not be changed.
+    cproPushgateway:
+    # Should this be enabled or not.
+      enabled: false
+      # Optional labels to be added to gateway object.
+      labels: {}
+      # Any annotations to be added to the gateway object.
+      annotations: {}
+      # By default the chart will use label 'istio: ingressgateway' as selector which is the default one deployed in istio-system namespace.
+      # This should be the label of the istio ingressgateway pod which you want your gateway to attach to.
+      ingressPodSelector:
+        istio: ingressgateway
+      # Port number where the gateway should attach to.
+      port: 443
+      # Protocol to be used for the port(TLS/TCP/HTTP/HTTPS). TLS/HTTPS will need the optional tls section to be filled.
+      protocol: HTTPS
+      # By default the chart will use '*'. It can be a YAML array of host names.
+      host: []
+      # TLS settings for your gateway. This section is mandatory if protocol is TLS/HTTPS.
+      tls:
+      # This optional flag is only applicable for an HTTP port to force a redirection to HTTPS.
+        redirect: true
+        # Mode can be SIMPLE / MUTUAL / PASSTHROUGH/ ISTIO_MUTUAL and it is exactly as per ISTIO documentation.
+        mode: "ISTIO_MUTUAL"
+        # The name of the kubernetes secret, in the namespace to be used for TLS traffic.
+        credentialName: ""
+        # Istio TLS has many other attributes and configurations. If for some reason none of the above fits your
+        # needs , then use this section to configure as per istio docs. Anything under here will be directly moved
+        # under TLS section of gateway definition.
+        custom: {}
+    # Name of the gateway should not be changed.
+    cproRestserver:
+    # Should this be enabled or not.
+      enabled: false
+      # Optional labels to be added to gateway object.
+      labels: {}
+      # Any annotations to be added to the gateway object.
+      annotations: {}
+      # By default the chart will use label 'istio: ingressgateway' as selector which is the default one deployed in istio-system namespace.
+      # This should be the label of the istio ingressgateway pod which you want your gateway to attach to.
+      ingressPodSelector:
+        istio: ingressgateway
+      # Port number where the gateway should attach to.
+      port: 443
+      # Protocol to be used for the port(TLS/TCP/HTTP/HTTPS). TLS/HTTPS will need the optional tls section to be filled.
+      protocol: HTTPS
+      # By default the chart will use '*'. It can be a YAML array of host names.
+      host: []
+      # TLS settings for your gateway. This section is mandatory if protocol is TLS/HTTPS.
+      tls:
+      # This optional flag is only applicable for an HTTP port to force a redirection to HTTPS.
+        redirect: true
+        # Mode can be SIMPLE / MUTUAL / PASSTHROUGH/ ISTIO_MUTUAL and it is exactly as per ISTIO documentation.
+        mode: "ISTIO_MUTUAL"
+        # The name of the kubernetes secret, in the namespace to be used for TLS traffic.
+        credentialName: ""
+        # Istio TLS has many other attributes and configurations. If for some reason none of the above fits your
+        # needs , then use this section to configure as per istio docs. Anything under here will be directly moved
+        # under TLS section of gateway definition.
+        custom: {}
+
+# Any other credentials which contain the sensitivedata to be consumed all workloads.
+# externalCredentials:
+#   # name of the component of which the secret has to be mounted. This will be used as the name of the volume and the mount-path with prefix when mounting
+#   # When using the externalCredentials in scrape jobs, specify the sensitive data in the below format.
+#   # usage: username: $__expnd{<externalCredential-section-name>/<KeyNames-values>}
+#   # example: username: $__expnd{ckey2/key1} [This is when keyNames are not configured]
+#   ckey2:
+#   # name of the secret to be mounted
+#     credentialName: ""
+#   # key used when creating the secret.
+#     keyNames:
+#       key1: ""
+#       key2: ""

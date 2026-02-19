@@ -1,0 +1,59 @@
+{{- include "cpro.istio.cproInitIstio" . }}
+{{- if .Values.webhook4fluentd.enabled -}}
+apiVersion: v1
+kind: Service
+metadata:
+  annotations:
+    prometheus.io/port: "{{ .Values.webhook4fluentd.service.receiverPort }}"
+{{- include "cpro.labelsOrAnnotations" (tuple .Values.webhook4fluentd.service.annotationsForScrape .Values.webhook4fluentd.service.annotations .Values.global.annotations) | indent 4}}
+  labels:
+    {{- include "cpro.app.labels.v3" ( dict "root" . "context" .Values.webhook4fluentd ) | nindent 4 }}
+{{- include "cpro.labelsOrAnnotations" (tuple .Values.webhook4fluentd.service.labels .Values.global.labels) | indent 4}}
+  name: {{ template "cpro.prometheus.webhook4fluentd.fullname" . }}
+spec:
+{{- if .Values.webhook4fluentd.service.clusterIP }}
+  clusterIP: {{ .Values.webhook4fluentd.service.clusterIP | quote }}
+{{- end }}
+  ports:
+    - name: tcp-http
+      port: {{ .Values.webhook4fluentd.service.servicePort }}
+      protocol: TCP
+      targetPort: tcp-receiver
+      #appProtocol: http
+  {{- include "cpro.dualStack.ipFamilyPolicy.config" ( dict "root" . "context" .Values.webhook4fluentd )  | indent 2 }}
+  {{- include "cpro.dualStack.ipFamilies.config" ( dict "root" . "context" .Values.webhook4fluentd )| indent 2 }}
+  selector:
+    app: {{ template "cpro.prometheus.name" . }}
+    component: "{{ .Values.webhook4fluentd.name }}"
+    release: {{ .Release.Name }}
+  type: "{{ .Values.webhook4fluentd.service.type }}"
+{{- end }}
+---
+{{- if .Values.webhook4fluentd.enabled -}}
+{{- if or ($.istio.enabled) (.Values.includeWorkloadInIstioMesh) -}}
+apiVersion: v1
+kind: Service
+metadata:
+  annotations:
+{{- include "cpro.labelsOrAnnotations" (tuple .Values.webhook4fluentd.service.annotations .Values.global.annotations) | indent 4}}
+  labels:
+    {{- include "cpro.app.labels.v3" ( dict "root" . "context" .Values.webhook4fluentd ) | nindent 4 }}
+{{- include "cpro.labelsOrAnnotations" (tuple .Values.webhook4fluentd.service.labels .Values.global.labels) | indent 4}}
+  name: {{ template "cpro.prometheus.webhook4fluentd.fullname" . }}-scr
+spec:
+  clusterIP: None
+  ports:
+    - name: tcp-http
+      port: {{ .Values.webhook4fluentd.service.receiverPort }}
+      protocol: TCP
+      targetPort: tcp-receiver
+      #appProtocol: http
+  {{- include "cpro.dualStack.ipFamilyPolicy.config" ( dict "root" . "context" .Values.webhook4fluentd )  | indent 2 }}
+  {{- include "cpro.dualStack.ipFamilies.config" ( dict "root" . "context" .Values.webhook4fluentd )| indent 2 }}
+  selector:
+    app: {{ template "cpro.prometheus.name" . }}
+    component: "{{ .Values.webhook4fluentd.name }}"
+    release: {{ .Release.Name }}
+  type: ClusterIP
+{{- end }}
+{{- end }}

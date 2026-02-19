@@ -1,0 +1,23 @@
+apiVersion: v2
+appVersion: 2.47.2
+dependencies:
+- name: csf-common-lib
+  repository: https://repo.cci.nokia.net/csf-helm-stable/
+  version: 1.10.0
+- name: cpro-common-lib
+  repository: https://repo.cci.nokia.net/csf-helm-stable/
+  version: 2.0.0
+description: Prometheus delivered by CPRO
+home: https://prometheus.io/
+icon: https://raw.githubusercontent.com/prometheus/prometheus.github.io/master/assets/prometheus_logo-cb55bb5c346.png
+maintainers:
+- email: I_CSF_CPRO@groups.nokia.com
+  name: CSF_CPRO
+name: cpro
+sources:
+- https://github.com/prometheus/alertmanager
+- https://github.com/prometheus/prometheus
+- https://github.com/prometheus/pushgateway
+- https://github.com/prometheus/node_exporter
+- https://github.com/kubernetes/kube-state-metrics
+version: 5.0.1-nokia-patch-3

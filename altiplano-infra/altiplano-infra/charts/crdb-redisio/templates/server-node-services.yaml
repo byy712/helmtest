@@ -1,0 +1,83 @@
+{{- include "crdb-redisio.init" . -}}
+{{- $top := . -}}
+{{- $primary_port := include "crdb-redisio.db.port" . -}}
+{{- $alternate_port := include "crdb-redisio.db.alt-port" . -}}
+{{- range $i := until (int .Values.server.count) }}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "csf-common-lib.v3.resourceName" (tuple $top "service" (printf "%s-%d" $top.Values.server.nameSuffix $i)) }}
+  labels:
+    {{- include "crdb-redisio.labels" (tuple $top "server" "metrics" "service") | nindent 4 }}
+  {{- if $top.Values.server.metrics.usePodServices }}
+    metrics-type: server
+  {{- end }}
+  annotations:
+    {{- include "crdb-redisio.annotations" (tuple $top "server" "metrics" "service") | nindent 4 }}
+  {{- if $top.Values.server.metrics.usePodServices }}
+    {{- toYaml $top.Values.server.metrics.annotations | nindent 4 }}
+  {{- end }}
+spec:
+  type: ClusterIP
+  {{- include "crdb-redisio.dual-stack" (tuple $top $top.Values.services.server) | nindent 2 }}
+  publishNotReadyAddresses: true
+  ports:
+  - name: tcp-redis
+    port: {{ $primary_port }}
+    appProtocol: tcp
+    targetPort: {{ $primary_port }}
+  {{- if $alternate_port }}
+  - name: tcp-redis-nontls
+    port: {{ $alternate_port }}
+    appProtocol: tcp
+    targetPort: {{ $alternate_port }}
+  {{- end }}
+  {{- if $top.redis_cluster }}
+  - name: tcp-redis-cluster
+    port: 16379
+    appProtocol: tcp
+  {{- end }}
+  {{- if $top.Values.server.metrics.usePodServices }}
+  - name: tcp-metrics
+    port: {{ $top.Values.server.metrics.port | default 9121 }}
+    appProtocol: tcp
+  {{- end }}
+  selector:
+    {{- include "crdb-redisio.selector_labels" $top | nindent 4 }}
+    type: server
+    statefulset.kubernetes.io/pod-name: {{ include "csf-common-lib.v3.resourceName" (tuple $top "pod" (printf "%s-%d" $top.Values.server.nameSuffix $i)) }}
+{{- if and $top.Values.istio.enabled $top.Values.istio.createDrForClient }}
+{{- if semverCompare "<1.5" (toString $top.Values.istio.version) }}
+---
+apiVersion: authentication.istio.io/v1alpha1
+kind: Policy
+metadata:
+  name: {{ include "csf-common-lib.v3.resourceName" (tuple $top "policy" (printf "server-%d-mtls-authn" $i)) }}
+  labels:
+    {{- include "crdb-redisio.labels" (tuple $top "server" "policy") | nindent 4 }}
+  annotations:
+    {{- include "crdb-redisio.annotations" (tuple $top "server" "policy") | nindent 4 }}
+spec:
+  targets:
+  - name: {{ include "csf-common-lib.v3.resourceName" (tuple $top "pod" (printf "%s-%d" $top.Values.server.nameSuffix $i)) }}
+  peers:
+  - mtls:
+      mode: {{ $top.Values.istio.permissive | ternary "STRICT" "PERMISSIVE" }}
+{{- end }}
+---
+apiVersion: networking.istio.io/v1beta1
+kind: DestinationRule
+metadata:
+  name: {{ include "csf-common-lib.v3.resourceName" (tuple $top "destinationrule" (printf "server-%d-mtls-dr" $i)) }}
+  labels:
+    {{- include "crdb-redisio.labels" (tuple $top "server" "destinationrule") | nindent 4 }}
+  annotations:
+    {{- include "crdb-redisio.annotations" (tuple $top "server" "destinationrule") | nindent 4 }}
+spec:
+  host: {{ template "crdb-redisio.groupname" $top }}
+  trafficPolicy:
+    tls:
+      mode: ISTIO_MUTUAL
+{{- end }}
+{{- end }}

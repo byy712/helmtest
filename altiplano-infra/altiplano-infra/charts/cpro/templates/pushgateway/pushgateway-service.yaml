@@ -1,0 +1,50 @@
+{{- include "cpro.istio.cproInitIstio" . }}
+{{- if .Values.pushgateway.enabled -}}
+apiVersion: v1
+kind: Service
+metadata:
+  annotations:
+    prometheus.io/path: {{ template "cpro.pushgateway.routePrefixURL" . }}/metrics
+    prometheus.io/scheme: {{ template "cpro.prometheus.pushgateway.scheme" . }}
+{{- include "cpro.labelsOrAnnotations" (tuple .Values.pushgateway.service.annotations .Values.global.annotations) | indent 4}}
+  labels:
+    {{- include "cpro.app.labels.v3" ( dict "root" . "context" .Values.pushgateway ) | nindent 4 }}
+{{- if $.istio.enabled }}
+    istio: "true"
+{{- end }}
+{{- include "cpro.labelsOrAnnotations" (tuple .Values.pushgateway.service.labels .Values.global.labels) | indent 4}}
+  name: {{ template "cpro.prometheus.pushgateway.fullname" . }}
+spec:
+{{- if .Values.pushgateway.service.clusterIP }}
+  clusterIP: {{ .Values.pushgateway.service.clusterIP | quote }}
+{{- end }}
+{{- if .Values.pushgateway.service.externalIPs }}
+  externalIPs:
+{{ toYaml .Values.pushgateway.service.externalIPs | indent 4 }}
+{{- end }}
+{{- if .Values.pushgateway.service.loadBalancerIP }}
+  loadBalancerIP: {{ .Values.pushgateway.service.loadBalancerIP }}
+{{- end }}
+{{- if .Values.pushgateway.service.loadBalancerSourceRanges }}
+  loadBalancerSourceRanges:
+  {{- range $cidr := .Values.pushgateway.service.loadBalancerSourceRanges }}
+    - {{ $cidr }}
+  {{- end }}
+{{- end }}
+  ports:
+    - name: tcp-http
+      port: {{ .Values.pushgateway.service.servicePort }}
+      protocol: TCP
+      targetPort: tcp-metrics
+    {{- if (and (eq .Values.pushgateway.service.type "NodePort") (not (empty .Values.pushgateway.service.nodePort))) }}  
+      nodePort: {{ .Values.pushgateway.service.nodePort }}
+    {{- end }}
+      #appProtocol:  {{ template "cpro.prometheus.pushgateway.scheme" . }}
+  {{- include "cpro.dualStack.ipFamilyPolicy.config" ( dict "root" . "context" .Values.pushgateway )  | indent 2 }}
+  {{- include "cpro.dualStack.ipFamilies.config" ( dict "root" . "context" .Values.pushgateway )| indent 2 }}
+  selector:
+    app: {{ template "cpro.prometheus.name" . }}
+    component: "{{ .Values.pushgateway.name }}"
+    release: {{ .Release.Name }}
+  type: "{{ .Values.pushgateway.service.type }}"
+{{- end }}

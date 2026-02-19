@@ -1,0 +1,19 @@
+{{- include "ckaf-zookeeper.istio.initIstio" . }}
+{{- if $.create_dr }}
+apiVersion: networking.istio.io/v1beta1
+kind: DestinationRule
+metadata:
+  name: {{ template "ckaf-zookeeper.name" . }}-headless-zkdestrule
+  namespace: {{ .Release.Namespace }}
+  labels:
+{{ include "ckaf-zookeeper.commonlabels" . | indent 4 }}
+{{- include "csf-common-lib.v1.customLabels" (tuple .Values.global.labels) | indent 4 }}
+  annotations:
+{{- include "csf-common-lib.v1.customAnnotations" (tuple .Values.global.annotations) | indent 4 }}
+spec:
+  host: {{ template "ckaf-zookeeper.name" . }}-headless.{{ .Release.Namespace }}.svc.{{ .Values.clusterDomain }}
+  trafficPolicy:
+    tls:
+      mode: {{ $.dr_mode }}
+---
+{{- end }}

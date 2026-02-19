@@ -1,0 +1,127 @@
+{{- include "crdb-redisio.init" . -}}
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "csf-common-lib.v3.resourceName" (tuple . "deployment" .Values.admin.nameSuffix) }}
+  labels:
+    {{- include "crdb-redisio.admin.labels" (tuple . "admin" "deployment") | nindent 4 }}
+  annotations:
+    {{- include "crdb-redisio.annotations" (tuple . "admin" "deployment") | nindent 4 }}
+spec:
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      {{- include "crdb-redisio.admin.selector_labels" . | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "crdb-redisio.admin.labels" (tuple . "admin" "pod") | nindent 8 }}
+        type: admin
+        altiplano-role: {{ .Values.admin.accessRoleLabel }}
+        admin-daemon: "yes"
+      annotations:
+        metrics/checksum: {{ include "crdb-redisio.metrics.config" . | sha256sum }}
+        {{- include "crdb-redisio.annotations" (tuple . "admin" "pod") | nindent 8 }}
+        {{- include "crdb-redisio.istio-annotation" . | nindent 8 }}
+    spec:
+      terminationGracePeriodSeconds: {{ .Values.admin.terminationGracePeriodSeconds | default 0 }}
+      automountServiceAccountToken: true
+      {{- include "crdb-redisio.get_image_pull_secrets" (tuple . "admin") | nindent 6 }}
+      {{- include "crdb-redisio.get_security_context" (tuple . "pod" "admin") | nindent 6 }}
+      {{- include "crdb-redisio.sa" (tuple .) | nindent 6 }}
+      {{- include "crdb-redisio.priority-class-name" (tuple . "admin") | nindent 6 }}
+      containers:
+      - name: {{ include "csf-common-lib.v1.containerName" (tuple . "lcmdb") }}
+        {{- include "crdb-redisio.admin.image" . | nindent 8 }}
+        args: [ "daemon" ]
+        {{- include "crdb-redisio.get_security_context" (tuple . "container" "admin") | nindent 8 }}
+        ports:
+        - containerPort: 6379
+          name: tcp-redisio
+        env:
+        {{- include "crdb-redisio.admin.env" . | nindent 8 }}
+        {{- include "crdb-redisio.tz.env" . | nindent 8 }}
+        {{- include "crdb-redisio.cli.env" . | nindent 8 }}
+        - name: DEBUG
+          value: {{ .Values.admin.debug | default "" | quote }}
+        volumeMounts:
+        {{- include "crdb-redisio.fs.vm" . | nindent 8 }}
+        - name: event-cm
+          mountPath: /event
+        - name: cluster-cm
+          mountPath: /chart
+        - name: datadir
+          mountPath: /admin
+        # Can't use subpath as that isn't updated when using cmgr, so mount all certs
+        {{- include "crdb-redisio.tls.vm.cacerts" . | nindent 8 }}
+        {{- include "crdb-redisio.tls.vm.client" . | nindent 8 }}
+        {{- include "crdb-redisio.logging.vm" . | nindent 8 }}
+        {{- with .Values.admin }}
+        startupProbe:
+          {{- with .startupProbe }}
+          httpGet:
+            path: /started
+            port: 36379
+          initialDelaySeconds: {{ .initialDelaySeconds | default 1 }}
+          periodSeconds: {{ .periodSeconds | default 5 }}
+          timeoutSeconds: {{ .timeoutSeconds | default 1 }}
+          failureThreshold: {{ .failureThreshold | default 60 }}
+          successThreshold: {{ .successThreshold | default 1 }}
+          {{- end }}
+        livenessProbe:
+          {{- with .livenessProbe }}
+          httpGet:
+            path: /alive
+            port: 36379
+          initialDelaySeconds: {{ .initialDelaySeconds | default 300 }}
+          periodSeconds: {{ .periodSeconds | default 10 }}
+          timeoutSeconds: {{ .timeoutSeconds | default 6 }}
+          failureThreshold: {{ .failureThreshold | default 6 }}
+          successThreshold: {{ .successThreshold | default 1 }}
+          {{- end }}
+        readinessProbe:
+          {{- with .readinessProbe }}
+          httpGet:
+            path: /ready
+            port: 36379
+          initialDelaySeconds: {{ .initialDelaySeconds | default 10 }}
+          periodSeconds: {{ .periodSeconds | default 10 }}
+          timeoutSeconds: {{ .timeoutSeconds | default 6 }}
+          failureThreshold: {{ .failureThreshold | default 3 }}
+          successThreshold: {{ .successThreshold | default 1 }}
+          {{- end }}
+        resources: {{- toYaml .resources | nindent 10 }}
+        {{- end }}
+      volumes:
+      {{- include "crdb-redisio.fs.vol" . | nindent 6 }}
+      - name: datadir
+        emptyDir: {}
+      - name: event-cm
+        configMap:
+          name: {{ include "csf-common-lib.v3.resourceName" (tuple . "configmap" "admin-event") }}
+      - name: cluster-cm
+        configMap:
+          name: {{ include "csf-common-lib.v3.resourceName" (tuple . "configmap" "cluster-config") }}
+      {{- include "crdb-redisio.tls.vol" (tuple . "admin") | nindent 6 }}
+      {{- include "crdb-redisio.logging.vol" (tuple . "admin") | nindent 6 }}
+      {{- if .Values.admin.tolerations }}
+      tolerations: {{- toYaml .Values.admin.tolerations | nindent 8 }}
+      {{- end }}
+      {{- include "crdb-redisio.node-selector" (tuple . "admin") | nindent 6 }}
+      {{- include "crdb-redisio.spread-constraints" (tuple . "admin") | nindent 6 }}
+      affinity:
+      {{- if .Values.admin.podAntiAffinity -}}
+      {{- include "csf-common-lib.v2.podAntiAffinity" (tuple . .Values.admin) | nindent 8 -}}
+      {{- end -}}
+      {{- if .Values.admin.nodeAffinity.enabled }}
+        nodeAffinity:
+          requiredDuringSchedulingIgnoredDuringExecution:
+            nodeSelectorTerms:
+            - matchExpressions:
+              - key: {{ .Values.admin.nodeAffinity.key }}
+                operator: In
+                values:
+                - {{ quote .Values.admin.nodeAffinity.value }}
+      {{- end }}

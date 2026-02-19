@@ -1,0 +1,556 @@
+{{- if eq .Values.controller.kind "DaemonSet" }}
+apiVersion: {{ template "citm-ingress.getAppsV1orextV1Beta1" . }}
+kind: DaemonSet
+metadata:
+  labels:
+    app: {{ template "citm-ingress.name" . }}
+    chart: {{ .Chart.Name }}-{{ .Chart.Version }}
+    component: "{{ .Values.controller.name }}"
+    heritage: {{ .Release.Service }}
+    release: {{ .Release.Name }}
+    class: {{ .Values.controller.ingressClassResource.name }}
+    {{- include "citm-ingress.commonLabels" . | indent 4 }}
+  name: {{ include "csf-common-lib.v3.resourceName" (tuple . "DaemonSet") }}
+spec:
+  selector:
+    matchLabels:
+      app: {{ template "citm-ingress.name" . }}
+  updateStrategy:
+{{ toYaml .Values.controller.updateStrategy | indent 4 }}
+  template:
+    metadata:
+      annotations:
+        sidecar.istio.io/inject: "{{ .Values.istio.sidecarInjection }}"
+        checksum/config: {{ include (print $.Template.BasePath "/controller-configmap.yaml") . | sha256sum }}
+{{- if eq (include "citm-ingress.isSyslogEnabled" . ) "true" }}
+        checksum/logrotate-config: {{ include (print $.Template.BasePath "/logrotate-configmap.yaml") . | sha256sum }}
+{{- end }}
+{{- if .Values.custom }}
+{{- if .Values.custom.deployment }}
+{{- if .Values.custom.deployment.annotations }}
+{{- include "citm-ingress.annotations" (tuple . .Values.custom.deployment.annotations) | indent 8 }}
+{{- end }}
+{{- end }}
+{{- end }}
+    {{- if .Values.controller.podAnnotations }}
+{{ toYaml .Values.controller.podAnnotations | indent 8}}
+    {{- end }}
+{{- if (or (.Values.grafanaURL) (.Values.metrics)) }}
+        prometheus.io/port: "9913"
+        prometheus.io/scrape: "true"
+{{- end }}
+      labels:
+        app: {{ template "citm-ingress.name" . }}
+        component: "{{ .Values.controller.name }}"
+        release: {{ .Release.Name }}
+        {{- if .Values.controller.podLabels }}
+{{ toYaml .Values.controller.podLabels | indent 8 }}
+        {{- end }}
+        {{- include "citm-ingress.commonLabels" . | indent 8 }}
+    spec:
+{{- if .Values.controller.priorityClassName }}
+      priorityClassName: {{ .Values.controller.priorityClassName }}
+{{- else if .Values.global.priorityClassName }}
+      priorityClassName: {{ .Values.global.priorityClassName }}
+{{- end }}
+      securityContext:
+      {{- if not (eq (include "citm-ingress.securityContextrunAsUser" . ) "auto") }}
+        runAsUser: {{ include "citm-ingress.securityContextrunAsUser" . }}
+      {{- end }}
+      {{- if not (eq (include "citm-ingress.securityContextfsGroup" . ) "auto") }}
+        fsGroup: {{ include "citm-ingress.securityContextfsGroup" . }}
+      {{- end }}
+      {{- include "citm-ingress.imagePullSecrets" . | indent 6 }}
+      containers:
+{{- if eq (include "citm-ingress.isSyslogEnabled" . ) "true" }}
+{{- include "citm-ingress.rsyslog-client-container" . | indent 8 }}
+{{- end }}
+        - name: {{ include "csf-common-lib.v1.containerName" (tuple . ( include "citm-ingress.containerNameSuffix" (tuple ( include "citm-ingress.name" .) .Values.controller.name ))) }}
+          image: "{{ include "citm-ingress.imageMapper" (tuple $ .Values.controller .Values.internalCitmRegistry) }}"
+          imagePullPolicy: "{{ .Values.controller.imagePullPolicy }}"
+          terminationMessagePath: {{ .Values.controller.terminationMessagePath }}
+          terminationMessagePolicy: {{ .Values.controller.terminationMessagePolicy }}
+          args:
+            - /nginx-ingress-controller
+            - --default-backend-service={{ if .Values.defaultBackend.enabled }}{{ tpl .Values.defaultBackend.serviceName . }}{{ else }}{{ .Values.controller.defaultBackendService }}{{ end }}
+          {{- if .Values.controller.publishService.enabled }}
+            - --publish-service={{ template "citm-ingress.publishServicePath" . }}
+          {{- end }}
+            - --election-id={{ tpl .Values.controller.electionID . }}
+            - --controller-class={{ .Values.controller.ingressClassResource.controllerValue }}
+          {{- if .Values.controller.ingressClassByName }}
+            - --ingress-class-by-name=true
+          {{- end }}
+            - --ingress-class={{ .Values.controller.ingressClass }}
+          {{- if .Values.controller.watchIngressWithoutClass }}
+            - --watch-ingress-without-class=true
+          {{- end }}
+            - --configmap={{ .Release.Namespace }}/{{ template "citm-ingress.fullname" . }}
+          {{- if .Values.controller.UdpServiceConfigMapNoNamespace }}
+            - --udp-services-configmap={{ template "citm-ingress.fullname" . }}-udp
+          {{- else }}
+            - --udp-services-configmap={{ .Release.Namespace }}/{{ template "citm-ingress.fullname" . }}-udp
+          {{- end }}
+          {{- if .Values.controller.TcpServiceConfigMapNoNamespace }}
+            - --tcp-services-configmap={{ template "citm-ingress.fullname" . }}-tcp
+          {{- else }}
+            - --tcp-services-configmap={{ .Release.Namespace }}/{{ template "citm-ingress.fullname" . }}-tcp
+          {{- end }}
+          {{- if .Values.controller.scope.enabled }}
+            - --watch-namespace={{ default .Release.Namespace .Values.controller.scope.namespace }}
+          {{- end }}
+          {{- if not (eq (include "citm-ingress.getCertificate" (tuple  . "sslCertificate" )) "no_certificate") }}
+            - --default-ssl-certificate={{ tpl (include "citm-ingress.getCertificate" (tuple  . "sslCertificate" )) . }}
+          {{- else if and (contains "true" (include "citm-ingress.isCertManagerEnabled" .)) (eq (include "citm-ingress.getCertificate" (tuple  . "streamSSLCertificate" )) "no_certificate") }}
+              {{- if ((.Values.controller).certificate).secretName }}
+            - --default-ssl-certificate={{ .Release.Namespace }}/{{ .Values.controller.certificate.secretName }}
+              {{- else }}
+            - --default-ssl-certificate={{ .Release.Namespace }}/tls-{{ template "citm-ingress.fullname" . }}
+              {{- end }}
+          {{- end }}
+          {{- if not (eq (include "citm-ingress.getCertificate" (tuple  . "streamSSLCertificate" )) "no_certificate") }}
+            - --default-stream-ssl-certificate={{ tpl (include "citm-ingress.getCertificate" (tuple  . "streamSSLCertificate" )) . }}
+          {{- else if and (contains "true" (include "citm-ingress.isCertManagerEnabled" .)) (eq (include "citm-ingress.getCertificate" (tuple  . "sslCertificate" )) "no_certificate") }}
+              {{- if ((.Values.controller).certificate).secretName }}
+            - --default-stream-ssl-certificate={{ .Release.Namespace }}/{{ .Values.controller.certificate.secretName }}
+              {{- else }}
+            - --default-stream-ssl-certificate={{ .Release.Namespace }}/tls-{{ template "citm-ingress.fullname" . }}
+              {{- end }}
+          {{- end }}
+            - --citm-allow-certificate-not-found={{ .Values.controller.allowCertificateNotFound }}
+            - --citm-allow-invalid-certificate={{ .Values.controller.allowInvalidCertificate }}
+          {{- if .Values.httpsForAllServers }}
+            - --citm-enable-https-all-server
+          {{- end }}
+          {{- if .Values.controller.extraArgs }}
+            {{- range $key, $value := .Values.controller.extraArgs }}
+              {{- if $value }}
+            - --{{ $key }}={{ $value }}
+              {{- else }}
+            - --{{ $key }}
+              {{- end }}
+            {{- end }}
+          {{- end }}
+            - --sort-backends
+          {{- if .Values.controller.serviceOnStream.enable }}
+            - --citm-use-service-on-stream
+          {{- end }}
+          {{- if .Values.controller.UseOnlyIpv6Endpoint }}
+            - --only-ipv6-endpoint
+          {{- end }}
+          {{- if .Values.controller.CalicoVersion }}
+            - --use-calico-cni-workload-endpoint={{ .Values.controller.CalicoVersion }}
+          {{- end }}
+          {{- if .Values.controller.healthzPort }}
+            - --healthz-port={{ .Values.controller.healthzPort }}
+          {{- end }}
+          {{- if and (.Values.controller.enableAnnotationValidations) ( not (contains "v1.3.1" .Values.controller.imageTag)) }}
+            - --enable-annotation-validation=true
+          {{- end }}
+          {{- if and (.Values.controller.forcePort) (not .Values.controller.disableHttpPortListening)  }}
+            - --http-port={{ .Values.controller.forcePortHttp }}
+          {{- else }}
+            {{- if and (.Values.controller.httpPort) (not .Values.controller.disableHttpPortListening) }}
+            - --http-port={{ .Values.controller.httpPort  }}
+            {{- end }}
+          {{- end }}
+          {{- if .Values.controller.forcePort  }}
+            - --https-port={{ .Values.controller.forcePortHttps }}
+          {{- else }}
+            {{- if .Values.controller.httpsPort  }}
+            - --https-port={{ .Values.controller.httpsPort  }}
+            {{- end }}
+          {{- end }}
+          {{- if .Values.controller.sslPasstroughProxyPort  }}
+            - --ssl-passthrough-proxy-port={{ .Values.controller.sslPasstroughProxyPort }}
+          {{- end }}
+          {{- if .Values.controller.sslPasstroughSplitPortListening  }}
+            - --citm-ssl-passthrough-split=true
+          {{- end }}
+          {{- if .Values.controller.statusPort  }}
+            - --status-port={{ .Values.controller.statusPort }}
+          {{- end }}
+          securityContext:
+            readOnlyRootFilesystem: {{ .Values.securityContext.readOnlyRootFilesystem }}
+{{- if .Values.rbac.bindCapability.enabled }}
+            capabilities:
+                drop:
+                - ALL
+                add:
+                - NET_BIND_SERVICE
+            allowPrivilegeEscalation: true
+{{- else }}
+            capabilities:
+                drop:
+                - ALL
+            allowPrivilegeEscalation: false
+{{- end }}
+{{- if .Values.controller.securityContextPrivileged }}
+            privileged: true
+            allowPrivilegeEscalation: true
+{{- end }}
+        {{- if eq (include "citm-ingress.addSeccompProfile" .) "true" }}
+            seccompProfile:
+              type: {{ .Values.securityContext.seccompProfile.type }}
+        {{- if eq .Values.securityContext.seccompProfile.type "Localhost" }}
+              localhostProfile: {{ .Values.securityContext.seccompProfile.path }}
+        {{- end }}
+        {{- end }}
+        {{- if eq .Values.securityContext.seLinuxOptions.enabled true }}
+            seLinuxOptions:
+              level: {{ .Values.securityContext.seLinuxOptions.level }}
+              role: {{ .Values.securityContext.seLinuxOptions.role }}
+              type: {{ .Values.securityContext.seLinuxOptions.type }}
+              user: {{ .Values.securityContext.seLinuxOptions.user }}
+        {{- end }}
+        {{- if or .Values.controller.workerProcessAsRoot .Values.controller.securityContextPrivileged }}
+            runAsUser: 0
+        {{- else }}
+        {{- if not (eq (include "citm-ingress.securityContextrunAsUser" . ) "auto") }}
+            runAsUser: {{ include "citm-ingress.securityContextrunAsUser" . }}
+        {{- end }}
+            runAsNonRoot: true
+        {{- end }}
+          env:
+            - name: POD_NAME
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.name
+            - name: POD_IP
+              valueFrom:
+                fieldRef:
+                  fieldPath: status.podIP
+            - name: POD_NAMESPACE
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.namespace
+            - name: CITM_NAMESPACE
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.namespace
+            - name: CITM_SERVICE
+              value: "citm-ingress"
+            - name: DISABLE_TLS_STATUS_PORT
+              value: "{{ .Values.controller.disableTlsForStatusPort }}"
+            {{- if .Values.controller.enableSystemId }}
+            - name: ENABLE_CLOG_SYSTEMID
+              value: "true"
+            {{- end }}
+            {{- if not .Values.controller.timezone.mountHostLocaltime }}
+            - name: TZ
+              value: {{ template "citm-ingress.timeZoneName" . }}
+            {{- end }}
+            {{- if eq (include "citm-ingress.isSyslogEnabled" . ) "true" }}
+            - name: SYSLOG_ENABLED
+              value: "true"
+            - name: LOGRUNNER_DIR
+              value: {{ .Values.controller.unifiedLogging.syslog.logRunner.dir }}
+            - name: LOGRUNNER_FILE
+              value: {{ .Values.controller.unifiedLogging.syslog.logRunner.file }}
+            {{- end }}
+            - name: CITM_INGRESS_CONFIG_DIR
+              value: /nginx-config
+            - name: TMPDIR
+              value: /nginx-config
+            - name: CITM_SERVICE_NAME
+              value: {{ template "citm-ingress.fullname" . }}
+            - name: CITM_POD_LEADER
+              value: {{ tpl .Values.controller.electionID . }}
+            - name: CITM_UPDATE_STREAM_SERVICES
+              value: "{{ .Values.controller.dynamicUpdateServiceStream }}"
+            - name: CITM_SERVICE_TYPE
+              value: "{{ .Values.controller.service.type }}"
+            - name: CITM_DISABLE_IPV4
+              value: {{ include "citm-ingress.disableIpv4" . | quote }}
+            - name: CITM_DISABLE_IPV6
+              value: {{ include "citm-ingress.disableIpv6" . | quote }}
+            - name: CITM_DISABLE_ROOT_ALIAS_DIRECTIVE
+              value: "{{ .Values.controller.disableRootAliasDirective }}"
+{{- if .Values.controller.cgroup2Path  }}
+            - name: CITM_CGROUP2_PATH
+              value: "{{ .Values.controller.cgroup2Path }}"
+{{- end }}
+{{- if .Values.controller.forcePort  }}
+    {{- if not .Values.controller.disableHttpPortListening }}
+            - name: CITM_HTTP_PORT
+              value: "{{ .Values.controller.forcePortHttp }}"
+    {{- end }}
+            - name: CITM_HTTPS_PORT
+              value: "{{ .Values.controller.forcePortHttps }}"
+{{- else }}
+    {{- if and (.Values.controller.httpPort) (not .Values.controller.disableHttpPortListening) }}
+            - name: CITM_HTTP_PORT
+              value: "{{ .Values.controller.httpPort }}"
+    {{- end }}
+    {{- if .Values.controller.httpsPort  }}
+            - name: CITM_HTTPS_PORT
+              value: "{{ .Values.controller.httpsPort }}"
+    {{- end }}
+{{- end }}
+{{- if not .Values.rbac.bindCapability.enabled }}
+            - name: CITM_IC_NO_CAP_NEEDED
+              value: "true"
+{{- end }}
+            - name: CITM_STATUS_PORT
+              value: "{{ .Values.controller.statusPort }}"
+          {{- if .Values.controller.healthzPort }}
+            - name: "CITM_INGRESS_INTERNAL_HEALTHZ_SERVER"
+              value: "true"
+          {{- end }}
+            - name: CITM_ENABLE_UKTSR_ALERTS
+              value: "{{ .Values.controller.enableCustomAlerts | toString | default true }}"
+            {{- if gt (len (include "citm-ingress.unhardenedAlertMsg" .)) 0 }}
+            - name : CITM_SECURITY_HARDENING_LOG
+              value: {{ include "citm-ingress.unhardenedAlertMsg" . }}
+            {{- end }}
+            {{- if eq .Values.controller.logToJsonFormat true }}
+            - name: "CITM_LOG_HARMONIZED"
+              value: "true"
+            - name: "CLOG_ENABLE"
+              value: "1"
+            {{- if gt (len (include "citm-ingress.logExtensions" .)) 0 }}
+            - name: CITM_LOG_EXTENSION
+              value: "{{ include "citm-ingress.logExtensions" . }}"
+            {{- end }}
+            {{- end }}
+            - name: NGX_CONTAINER_OPTION
+              value: "ingress"
+            {{- if .Values.domain_name }}
+            - name: DOMAIN_NAME
+              value: {{ .Values.domain_name }}
+            {{- end }}
+            {{- if (or (.Values.grafanaURL) (.Values.metrics)) }}
+            - name: CITM_NGINX_VTS_EXPORTER
+              value: "true"
+            {{- end }}
+            {{- if .Values.controller.statusPort  }}
+            - name: CITM_NGINX_STATUS_PORT
+              value: "{{ .Values.controller.statusPort }}"
+            {{- end }}
+            {{- if .Values.controller.etcd.enabled }}
+            # Configure the location of your etcd cluster.
+            - name: ETCD_ENDPOINTS
+              value: "{{ .Values.controller.etcd.etcd_endpoints}}"
+            - name: ETCD_CA_CERT_FILE
+              value: "{{  .Values.controller.etcd.ETCD_CA_CERT }}"
+            - name: ETCD_CERT_FILE
+              value: "{{  .Values.controller.etcd.ETCD_CLIENT_CERT }}"
+            - name: ETCD_KEY_FILE
+              value: "{{  .Values.controller.etcd.ETCD_CLIENT_KEY }}"
+            {{- end }}
+          volumeMounts:
+          {{- if .Values.controller.timezone.mountHostLocaltime }}
+            - name: host-timezone
+              mountPath: /etc/localtime
+              readOnly: true
+          {{- end }}
+            - name: config-volume
+              mountPath: /nginx-config
+          {{- if eq (include "citm-ingress.isSyslogEnabled" . ) "true" }}
+            - name: logrunner-volume
+              mountPath: {{ .Values.controller.unifiedLogging.syslog.logRunner.dir }}
+              readOnly: false
+          {{- end }}
+          {{- if .Values.controller.customTemplate.configMapName }}
+            - name: nginx-template
+              mountPath: /nginx-config/template
+              readOnly: true
+          {{- end }}
+          {{- if .Values.controller.etcd.enabled }}
+            - mountPath: /etc/etcd
+              name: etc-etcd
+              readOnly: true
+          {{- end }}
+          {{ if (.Values.controller.customLuaModules.enabled | default false) }}
+          {{- range .Values.controller.customLuaModules.modules}}
+            - mountPath: /ingress-controller/lua/{{ .moduleName }}
+              name: {{ .moduleName }}
+          {{- end }}
+          {{- end }}
+          lifecycle:
+              preStop:
+                  exec:
+                      command: [
+                      # Gracefully shutdown nginx
+                      # Introduce a delay to the shutdown sequence to wait for the
+                      # pod eviction event to propagate. Then, gracefully shutdown
+                      # nginx.
+                      "/bin/sh","-c",
+                      {{- if .Values.controller.preStop.command }}
+                      {{- tpl .Values.controller.preStop.command . | squote | nindent 22 -}}
+                      ]
+                      {{- else }}
+                      'sleep {{ .Values.controller.gracefulShutdownSleepSeconds }};
+                      BIN_DIR="/usr/sbin/";
+                      {{- if .Values.rbac.bindCapability.enabled }}
+                      NGINX_BIN="nginx";
+                      {{- else }}
+                      NGINX_BIN="nginx.nocap";
+                      {{- end }}
+                      NGINX_BIN_ABS="${BIN_DIR}${NGINX_BIN}";
+                      NGINX_CONF_FILE="nginx.conf";
+                      NGINX_CONF_ABS="${CITM_INGRESS_CONFIG_DIR}/${NGINX_CONF_FILE}";
+                      echo "Nginx Binary               : $NGINX_BIN";
+                      echo "Nginx Binary Absolute Path : $NGINX_BIN_ABS";
+                      echo "Nginx Conf File            : $NGINX_CONF_FILE";
+                      echo "Nginx Conf Absolute Path   : $NGINX_CONF_ABS";
+                      $NGINX_BIN_ABS -c $NGINX_CONF_ABS -s quit;
+                      while pidof $NGINX_BIN; do sleep 1; done;']
+                      {{- end }}
+{{- if .Values.controller.probe.enabled }}
+          {{- if or ( eq ( include "citm-ingress.disableIpv6" . )  "false" ) ( eq ( include "citm-ingress.disableIpv4" .) "false" ) }}
+          startupProbe:
+            httpGet:
+              path: {{ .Values.controller.probe.startup.path }}
+              port: {{ .Values.controller.statusPort }}
+              scheme: {{ include "citm-ingress.statusPortScheme" . }}
+            initialDelaySeconds: {{ .Values.controller.probe.startup.delay }}
+            periodSeconds: {{ .Values.controller.probe.startup.period }}
+            timeoutSeconds: {{ .Values.controller.probe.startup.timeout }}
+            failureThreshold: {{ .Values.controller.probe.startup.maxfailure }}
+
+          livenessProbe:
+            exec:
+{{ toYaml .Values.controller.probe.liveness.exec | indent 16 }}
+            initialDelaySeconds: {{ .Values.controller.probe.liveness.delay }}
+            periodSeconds: {{ .Values.controller.probe.liveness.period }}
+            timeoutSeconds: {{ .Values.controller.probe.liveness.timeout }}
+            failureThreshold: {{ .Values.controller.probe.liveness.maxfailure }}
+
+          readinessProbe:
+            httpGet:
+              path: {{ .Values.controller.probe.readiness.path }}
+              port: {{ .Values.controller.statusPort }}
+              scheme: {{ include "citm-ingress.statusPortScheme" . }}
+            initialDelaySeconds: {{ .Values.controller.probe.readiness.delay }}
+            periodSeconds: {{ .Values.controller.probe.readiness.period }}
+            timeoutSeconds: {{ .Values.controller.probe.readiness.timeout }}
+            failureThreshold: {{ .Values.controller.probe.readiness.maxfailure }}
+          {{- end }}
+{{- end }}
+          ports:
+            {{- if and (.Values.controller.httpPort) (not .Values.controller.disableHttpPortListening) }}
+            - name: http
+              containerPort: {{ .Values.controller.httpPort }}
+              protocol: TCP
+            {{- end }}
+            {{- if .Values.controller.httpsPort  }}
+            - name: https
+              containerPort: {{ .Values.controller.httpsPort }}
+              protocol: TCP
+            {{- end }}
+            {{- if and (.Values.controller.statusPort) (.Values.controller.addStatusPortToHostports) }}
+            - name: status-port
+              containerPort: {{ .Values.controller.statusPort }}
+              protocol: TCP
+            {{- end }}
+          {{- if .Values.forceTcp }}
+          {{- range $key, $value := .Values.forceTcp }}
+            - name: "{{ $key }}-tcp"
+              containerPort: {{ $key }}
+              protocol: TCP
+          {{- end }}
+          {{- else }}
+          {{- range $key, $value := .Values.tcp }}
+            - name: "{{ $key }}-tcp"
+              containerPort: {{ $key }}
+              protocol: TCP
+          {{- end }}
+          {{- end }}
+          {{- if .Values.forceUdp }}
+          {{- range $key, $value := .Values.forceUdp }}
+            - name: "{{ $key }}-udp"
+              containerPort: {{ $key }}
+              protocol: UDP
+          {{- end }}
+          {{- else }}
+          {{- range $key, $value := .Values.udp }}
+            - name: "{{ $key }}-udp"
+              containerPort: {{ $key }}
+              protocol: UDP
+          {{- end }}
+          {{- end }}
+          resources:
+{{ toYaml .Values.controller.resources | indent 12 }}
+      hostNetwork: {{ .Values.controller.hostNetwork }}
+      dnsPolicy: {{ .Values.controller.dnsPolicy }}
+{{- if .Values.controller.dnsConfig }}
+      dnsConfig:
+{{ toYaml .Values.controller.dnsConfig | indent 8 }}
+{{- end }}
+      nodeSelector:
+{{- if .Values.controller.runOnEdge }}
+        is_edge: 'true'
+{{- end }}
+    {{- if .Values.controller.nodeSelector }}
+{{ toYaml .Values.controller.nodeSelector | indent 8 }}
+    {{- end }}
+    {{- with .Values.controller.affinity }}
+      affinity:
+{{ toYaml . | indent 8 }}
+    {{- end }}
+    {{- if .Values.controller.tolerations }}
+      tolerations:
+{{ toYaml .Values.controller.tolerations | indent 8 }}
+    {{- end }}
+      serviceAccountName: {{ if .Values.rbac.enabled }}{{ template "citm-ingress.fullname" . }}{{ else }}"{{ tpl .Values.rbac.serviceAccountName . }}"{{ end }}
+      terminationGracePeriodSeconds: {{ .Values.controller.terminationGracePeriodSeconds }}
+      volumes:
+      {{- if .Values.controller.timezone.mountHostLocaltime }}
+        - name: host-timezone
+          hostPath:
+            path: /etc/localtime
+      {{- end }}
+        - name: config-volume
+      {{- if eq (include "citm-ingress.isGenericVolumeEnabled" . ) "true" }}
+          ephemeral:
+            volumeClaimTemplate:
+              metadata:
+                labels:
+                    app: {{ template "citm-ingress.name" . }}
+                    component: "{{ .Values.controller.name }}"
+                    release: {{ .Release.Name }}
+                    {{- include "citm-ingress.commonLabels" .  | indent 20  }}
+              spec:
+                accessModes: [ "ReadWriteOnce" ]
+                {{- if (eq "-" .Values.controller.ephemeralVolume.generic.storageClass) }}
+                storageClassName: ""
+                {{- else }}
+                storageClassName: {{ .Values.controller.ephemeralVolume.generic.storageClass | quote }}
+                {{- end }}
+                resources:
+                  requests:
+                    storage: {{ index .Values.controller.ephemeralVolume.generic.resources.requests "ephemeral-storage" | quote }}
+                  limits:
+                    storage: {{ index .Values.controller.ephemeralVolume.generic.resources.limits "ephemeral-storage" | quote }}
+      {{- else }}
+          emptyDir:
+            {{- if .Values.controller.ephemeralVolume.emptyDir.medium }}
+            medium: {{ .Values.controller.ephemeralVolume.emptyDir.medium | quote }}
+            {{ end }}
+            sizeLimit: {{ index .Values.controller.ephemeralVolume.emptyDir.sizeLimit | quote }}
+      {{ end }}
+      {{- if eq (include "citm-ingress.isSyslogEnabled" . ) "true" }}
+{{- include "citm-ingress.rsyslog-client-volumes" . | nindent 8 }}
+      {{- end }}
+      {{- if .Values.controller.customTemplate.configMapName }}
+        - name: nginx-template
+          configMap:
+            name: {{ .Values.controller.customTemplate.configMapName }}
+            items:
+            - key: {{ .Values.controller.customTemplate.configMapKey }}
+              path: nginx.tmpl
+      {{- end }}
+      {{- if .Values.controller.etcd.enabled }}
+        - hostPath:
+            path: /etc/etcd
+          name: etc-etcd
+      {{- end }}
+      {{ if .Values.controller.customLuaModules.enabled }}
+        {{- range .Values.controller.customLuaModules.modules }}
+        - name: {{ .moduleName }}
+          configMap:
+            name: {{ .sourcesConfigMapName }}
+        {{- end }}
+      {{- end }}
+{{- end }}

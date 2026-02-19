@@ -1,0 +1,189 @@
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: {{ include "hbase.fullname" . }}-regionserver
+  annotations:
+    checksum/config: {{ include (print $.Template.BasePath "/hbase-configmap.yaml") . | sha256sum }}
+  labels:
+    app.kubernetes.io/name: {{ include "hbase.name" . }}
+    app.kubernetes.io/component: regionserver
+    {{- include "hbase.labels" . | nindent 4 }}
+    release: "{{ .Release.Name }}"
+spec:
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: {{ include "hbase.name" . }}
+      app.kubernetes.io/component: regionserver
+      {{- include "hbase.labels" . | nindent 6 }}
+  serviceName: {{ include "hbase.fullname" . }}-regionserver
+  replicas: {{ .Values.hbase.regionServer.replicas }}
+  template:
+    metadata:
+      labels:
+        altiplano-role: {{ .Values.hbase.regionServer.accessRoleLabel }}
+        release: "{{ .Release.Name }}"
+        app.kubernetes.io/name: {{ include "hbase.name" . }}
+        app.kubernetes.io/component: regionserver
+        {{- include "hbase.labels" . | nindent 8 }}
+    spec:
+      {{- with .Values.hbase.regionServer.nodeSelector }}
+      nodeSelector:
+{{ toYaml . | indent 8 }}
+      {{- end }}
+      affinity:
+        podAntiAffinity:
+        {{- if eq .Values.antiAffinity "hard" }}
+          requiredDuringSchedulingIgnoredDuringExecution:
+          - topologyKey: "kubernetes.io/hostname"
+            labelSelector:
+              matchLabels:
+                app.kubernetes.io/name: {{ include "hbase.name" . }}
+                app.kubernetes.io/component: regionserver
+                {{- include "hbase.labels" . | nindent 16 }}
+        {{- else if eq .Values.antiAffinity "soft" }}
+          preferredDuringSchedulingIgnoredDuringExecution:
+          - weight: 5
+            podAffinityTerm:
+              topologyKey: "kubernetes.io/hostname"
+              labelSelector:
+                matchLabels:
+                  app.kubernetes.io/name: {{ include "hbase.name" . }}
+                  app.kubernetes.io/component: regionserver
+                  {{- include "hbase.labels" . | nindent 18 }}
+        {{- end }}
+      initContainers:
+      {{- if .Values.prometheus.enabled }}
+      - name: inject-exporter-jar
+        image: "{{ .Values.global.registry }}/{{ .Values.prometheus.image }}:{{ .Values.prometheus.imageTag }}"
+        securityContext:
+          runAsUser: 1000
+          runAsGroup: 114
+        env:
+        - name: SHARED_VOLUME_PATH
+          value: /jmx-exporter
+        volumeMounts:
+        - mountPath: /jmx-exporter
+          name: jmx-exporter
+      {{- end }}
+      - name: init-hbase-regionserver
+        image: {{ template "image.fullname" . }}
+        imagePullPolicy: {{ .Values.image.pullPolicy | quote }}
+        securityContext:
+          runAsUser: 1000
+          runAsGroup: 114
+        command: [ "sh", "-c", "until curl -s http://{{ .Release.Name }}-altiplano-hdfs-namenode:9870/jmx?qry=Hadoop:service=NameNode,name=FSNamesystemState | grep  'NumLiveDataNodes' | grep -q [1-9]; do echo `date` waiting for Live Datanode; sleep 5; done;until curl --silent --output /dev/null http://{{ .Release.Name }}-altiplano-hbase-master:16010; do echo `date` waiting for {{ .Release.Name }}-altiplano-hbase-master; sleep 5; done;"]
+      containers:
+      - name: regionserver
+        image: {{ template "image.fullname" . }}
+        imagePullPolicy: {{ .Values.image.pullPolicy | quote }}
+        command:
+           - "/bin/bash"
+           - "/tmp/hbase-config/bootstrap.sh"
+           - "-d"
+           - "regionserver"
+        securityContext:
+          runAsUser: {{ .Values.securityContext.runAsUser | default 201 }}
+          runAsGroup: {{ .Values.securityContext.runAsGroup | default 114 }}
+        env:
+        - name: TZ
+          {{- if .Values.timeZoneEnv}}
+          value: {{ .Values.timeZoneEnv }}
+          {{- else if .Values.global.timeZoneEnv }}
+          value: {{ .Values.global.timeZoneEnv }}
+          {{- else }}
+          value: "UTC"
+          {{- end }}
+  {{- range $key, $value := .Values.hbase.regionServer.env }}
+        - name: {{ $key | quote }}
+          value: {{ $value | quote }}
+  {{- end }}
+        - name: HADOOP_USER_NAME
+          value: hdfs
+        resources:
+{{ toYaml .Values.hbase.regionServer.resources | indent 10 }}
+        readinessProbe:
+          httpGet:
+            path: /
+            port: 16030
+          initialDelaySeconds: 5
+          timeoutSeconds: 2
+        livenessProbe:
+          httpGet:
+            path: /
+            port: 16030
+          initialDelaySeconds: 10
+          timeoutSeconds: 2
+        volumeMounts:
+        - name: hbase-config
+          mountPath: /tmp/hbase-config
+        {{- if .Values.prometheus.enabled }}
+        - name: jmx-exporter
+          mountPath: /jmx-exporter
+        - name: exporter-config
+          mountPath: /etc/exporter
+        {{- end }}
+        - name: log-dir
+          mountPath: /opt/hbase/logs
+      - name: fluentd-sidecar
+        image: {{ .Values.global.registry }}/{{ .Values.hbase.regionServer.fluentd_sidecar.image.name }}:{{ .Values.hbase.regionServer.fluentd_sidecar.image.tag }}
+        imagePullPolicy: {{ .Values.hbase.regionServer.fluentd_sidecar.image.pullPolicy }}
+        securityContext:
+          runAsUser: {{ .Values.hbase.securityContext.runAsUser | default 1000 }}
+          runAsGroup: {{ .Values.hbase.securityContext.runAsGroup | default 114 }}
+        volumeMounts:
+        - name: fluentd-config
+          mountPath: /etc/fluent/
+        {{- if .Values.hbase.regionServer.fluentd_sidecar.secrets }}
+        - name: certificates
+          mountPath: /etc/.certificates/
+        {{- end }}
+        - name: log-dir
+          mountPath: /logs
+        resources:
+{{ toYaml .Values.hbase.regionServer.fluentd_sidecar.resources | indent 12 }}
+        env:
+        {{- if .Values.hbase.regionServer.fluentd_sidecar.secrets }}
+        - name: IS_USERNAME
+          valueFrom:
+            secretKeyRef:
+              key: {{ .Values.hbase.regionServer.env.secrets.IS_USERNAME }}
+              name: {{ .Values.hbase.regionServer.fluentd_sidecar.secrets.passwordSecret | quote }}
+        - name: IS_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              key: {{ .Values.hbase.regionServer.env.secrets.IS_PASSWORD }}
+              name: {{ .Values.hbase.regionServer.fluentd_sidecar.secrets.passwordSecret | quote }}
+        {{- end }}
+        - name: CONTAINER_NAME
+          valueFrom:
+            fieldRef:
+              apiVersion: v1
+              fieldPath: metadata.name
+        - name: POD_IP
+          valueFrom:
+            fieldRef:
+              fieldPath: status.podIP 
+      volumes:
+      - name: hbase-config
+        configMap:
+          name: {{ include "hbase.fullname" . }}
+      - name: log-dir
+        emptyDir: {} 
+      - name: fluentd-config
+        configMap:
+          name: {{ include "hbase.fullname" . }}-regionserver
+      {{- if .Values.hbase.regionServer.fluentd_sidecar.secrets }}
+      - name: certificates
+        secret:
+          secretName: {{ (tpl .Values.hbase.regionServer.fluentd_sidecar.secrets.certSecret .) }}
+      - name: passwords
+        secret:
+          secretName: {{ (tpl .Values.hbase.regionServer.fluentd_sidecar.secrets.passwordSecret .) }}
+      {{- end }}
+      {{- if .Values.prometheus.enabled  }}
+      - name: jmx-exporter
+        emptyDir: {}     
+      - name: exporter-config
+        configMap:
+          name: {{ include "hbase.fullname" . }}-exporter
+      {{- end }}

@@ -1,0 +1,3 @@
+{{- if eq (include "ckaf-zookeeper.PspCreation" .) "true" }}
+{{ include "ckaf-zookeeper.istio.psp" . }}
+{{- end }}

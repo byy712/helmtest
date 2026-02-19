@@ -1,0 +1,10 @@
+--- ckey-12.2.0/templates/jobs/post-delete-job.yaml	2024-03-16 01:47:07.000000000 +0530
++++ ckey-12.2.0-nokia-patch-1/ckey/templates/jobs/post-delete-job.yaml	2024-03-27 18:39:11.132143045 +0530
+@@ -16,6 +16,7 @@
+   template:
+     metadata:
+       labels:
++        altiplano-role: {{ .Values.accessRoleLabel }}
+         app: {{ template "ckey.fullName" . }}
+         release: {{ .Release.Name }}
+         {{- include "ckey.customLabels" (tuple .Values.custom.job.labels .Values.global.labels ) | indent 8 }}

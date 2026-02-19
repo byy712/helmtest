@@ -1,0 +1,8 @@
+apiVersion: v1
+appVersion: 24.6.1-REL_256
+description: A Helm chart for Altiplano
+maintainers:
+- email: altiplano@nokia.com
+  name: Nokia Altiplano Team
+name: altiplano-opentsdb-cluster
+version: 24.6.1-REL-0256

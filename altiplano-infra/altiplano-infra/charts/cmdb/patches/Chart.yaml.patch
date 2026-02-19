@@ -1,0 +1,8 @@
+--- cmdb-9.2.1/cmdb-original/Chart.yaml	2024-04-25 05:27:41.000000000 +0530
++++ /home/chautruo/nokia/helm-dev/altiplano-infra/charts/cmdb/Chart.yaml	2024-05-07 14:05:39.418072000 +0530
+@@ -19,4 +19,4 @@
+ - email: csf-osdb-domains@list.nokia.com
+   name: CSF CMDB Team
+ name: cmdb
+-version: 9.2.1
++version: 9.2.1-nokia-patch-1

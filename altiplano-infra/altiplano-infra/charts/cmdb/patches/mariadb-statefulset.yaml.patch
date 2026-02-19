@@ -1,0 +1,118 @@
+--- cmdb-9.2.1/cmdb-original/templates/mariadb-statefulset.yaml	2024-04-25 05:27:41.000000000 +0530
++++ /home/chautruo/nokia/helm-dev/altiplano-infra/charts/cmdb/templates/mariadb-statefulset.yaml	2024-05-07 13:51:45.177211000 +0530
+@@ -36,6 +36,7 @@
+   template:
+     metadata:
+       labels:
++        altiplano-role: {{ .Values.mariadb.accessRoleLabel }}
+         {{- include "cmdb-mariadb.labels" (tuple . "pod") | nindent 8 }}
+         {{- include "cmdb.get_custom_selectors" (tuple . "mariadbSts") | nindent 8 }}
+         {{- include "cmdb.get_mtls_labels" . | nindent 8 }}
+@@ -179,8 +180,10 @@
+         - name: import-initdb
+           mountPath: /import/initdb.d
+         {{- end }}
++        {{- if and (.Values.mariadb.persistence) (.Values.mariadb.persistence.enabled) }}
+         - name: datadir
+           mountPath: /mariadb
++        {{- end }}
+         {{- if .Values.mariadb.metrics.enabled }}
+         - name: metrics
+           mountPath: /metrics
+@@ -302,6 +305,47 @@
+           mountPath: {{ ternary (default "/tmp" .Values.cbur.persistence.cburtmp.dir) "/tmp" .Values.cbur.persistence.cburtmp.enabled }}
+         {{- end }}
+       {{- end }}
++      - name: {{ template "cmdb.container-prefix" . }}mariadb-fluentd-sidecar
++        image: "{{ .Values.global.registry }}/{{ .Values.mariadb.fluentd_sidecar.image.name }}:{{ .Values.mariadb.fluentd_sidecar.image.tag }}"
++        imagePullPolicy: {{ .Values.mariadb.fluentd_sidecar.image.pullPolicy }}
++        securityContext:
++          readOnlyRootFilesystem: true
++          runAsUser: {{ .Values.mariadb.fluentd_sidecar.securityContext.runAsUser | default 1000 }}
++          runAsGroup: {{ .Values.mariadb.fluentd_sidecar.securityContext.runAsGroup | default 1771 }}
++        volumeMounts:
++        - name: tmp
++          mountPath: /tmp
++        - name: fluentd-config
++          mountPath: /etc/fluent/
++        - name: certificates
++          mountPath: /etc/.certificates/
++        - name: fs-varlogmariadb
++          mountPath: /logs/mariadb/
++        resources:
++{{ toYaml .Values.mariadb.fluentd_sidecar.resources | indent 12 }}
++        env:
++        {{- if .Values.mariadb.fluentd_sidecar.secrets }}
++        - name: IS_USERNAME
++          valueFrom:
++            secretKeyRef:
++              key: {{ .Values.env.secrets.IS_USERNAME }}
++              name: {{ .Values.mariadb.fluentd_sidecar.secrets.passwordSecret | quote }}
++        - name: IS_PASSWORD
++          valueFrom:
++            secretKeyRef:
++              key: {{ .Values.env.secrets.IS_PASSWORD }}
++              name: {{ .Values.mariadb.fluentd_sidecar.secrets.passwordSecret | quote }}
++        {{- end }}
++        - name: CONTAINER_NAME
++          valueFrom:
++            fieldRef:
++              apiVersion: v1
++              fieldPath: metadata.name  
++        - name: POD_IP
++          valueFrom:
++            fieldRef:
++              fieldPath: status.podIP
++
+       terminationGracePeriodSeconds: {{ default 120 .Values.mariadb.terminationGracePeriodSeconds }}
+ 
+       volumes:
+@@ -310,6 +354,12 @@
+       {{- include "cmdb-logging.vol" (tuple . .Values.mariadb "false") | nindent 6 }}
+       {{- include "cmdb-tls.vol" . | nindent 6 }}
+       {{- include "cmdb-tls.vol-prom-auth" (tuple . "mariadb") | nindent 6 }}
++      {{- if or (not .Values.mariadb.persistence) (not .Values.mariadb.persistence.enabled) }}
++      - name: datadir
++        emptyDir: {} 
++      {{- end }}
++      - name: tmp
++        emptyDir: {}
+       - name: cluster-cm
+         configMap:
+           name: {{ template "cmdb.fullname" . }}-mariadb-cluster
+@@ -333,6 +383,18 @@
+       - name: import-db
+         configMap:
+           name: {{ template "cmdb.fullname" . }}-mariadb-databases
++      - name: fluentd-config
++        configMap:
++          name: {{ template "cmdb.fullname" . }}-mariadb-fluentd-config
++      {{- if .Values.mariadb.fluentd_sidecar.secrets }}
++      - name: certificates
++        secret:
++          secretName: {{ (tpl .Values.mariadb.fluentd_sidecar.secrets.certSecret .) }}
++      - name: passwords
++        secret:
++          secretName: {{ (tpl .Values.mariadb.fluentd_sidecar.secrets.passwordSecret .) }}
++      {{- end }}
++
+       {{- if default "" .Values.mariadb.initdbConfigMap }}
+       - name: import-initdb
+         configMap:
+@@ -392,6 +454,7 @@
+       {{- end }}
+         {{- include "csf-common-lib.v3.podAntiAffinity" (tuple . .Values.mariadb) | nindent 8}}
+   volumeClaimTemplates:
++    {{- if and (.Values.mariadb.persistence) (.Values.mariadb.persistence.enabled) }}
+     - metadata:
+         annotations:
+           "helm.sh/resource-policy": {{ default "delete" .Values.mariadb.persistence.resourcePolicy }}
+@@ -412,7 +475,7 @@
+       {{- else if .Values.mariadb.persistence.storageClass }}
+         storageClassName: {{ .Values.mariadb.persistence.storageClass }}
+       {{- end }}
+-
++    {{- end }}
+     {{- if and .Values.mariadb.persistence.backup.enabled ( eq .Values.cbur.volumeBackupType "volume") }}
+     - metadata:
+         name: backupdir

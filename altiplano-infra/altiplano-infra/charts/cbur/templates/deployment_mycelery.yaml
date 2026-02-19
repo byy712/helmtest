@@ -1,0 +1,615 @@
+{{- include "cbur.initCelery" . }}
+{{- include "cbur.unifiedLoggingMerge" (tuple . "celery") }}
+{{- include "cbur.unifiedLogging" (tuple . "celery") }}
+{{- include "cbur.tls" . }}
+{{- if .Values.direct_redis.enabled }}
+apiVersion: {{ template "cbur.DeploymentAPI" . }}
+kind: Deployment
+metadata:
+  name: {{ include "cbur.proxy.resourceName" (tuple . "Deployment" "mycelery") }}
+  labels:
+    heritage: {{ .Release.Service }}
+    app: {{ template "cbur.fullname" . }}-mycelery
+    release: {{ .Release.Name }}
+    component: "{{ .Release.Name }}-{{ .Values.component }}"
+    {{- include "cbur.proxy.commonLabels" (tuple . .Values.celery.name)  | indent 4 }}
+    {{- include "cbur.customLabels" (tuple .Values.celery.labels .Values.global.labels) | indent 4 }}
+  annotations:
+    {{- include "cbur.customAnnotations" (tuple .Values.celery.annotations .Values.global.annotations) | indent 4 }}
+spec:
+  replicas: {{ .Values.replicas }}
+  strategy:
+    type: Recreate
+    rollingUpdate:
+  selector:
+    matchLabels:
+      heritage: {{ .Release.Service }}
+      app: {{ template "cbur.fullname" . }}-mycelery
+      release: {{ .Release.Name }}
+      component: "{{ .Release.Name }}-{{ .Values.component }}"
+  template:
+    metadata:
+      name: {{ include "cbur.proxy.resourceName" (tuple . "Deployment" "mycelery") }}
+      labels:
+        altiplano-role: {{ .Values.accessRoleLabel }}
+        heritage: {{ .Release.Service }}
+        app: {{ template "cbur.fullname" . }}-mycelery
+        release: {{ .Release.Name }}
+        component: "{{ .Release.Name }}-{{ .Values.component }}"
+        {{- include "cbur.proxy.commonLabels" (tuple . .Values.celery.name)  | indent 8 }}
+        {{- include "cbur.customLabels" (tuple .Values.celery.labels .Values.global.labels) | indent 8 }}
+      annotations:
+      {{- include "cbur.customAnnotations" (tuple .Values.celery.annotations .Values.custom.pod.annotations .Values.global.annotations) | indent 8 }}
+      {{- include "cbur.defaultContainer" (tuple . "celery") | indent 8 }}
+      {{- include "cbur.syslogCmChecksum" (tuple . "celery") | indent 8 }}
+      {{- if .Values.istio.enabled }}
+        sidecar.istio.io/inject: "true"
+        {{- if .Values.istio.mtls.enabled }}
+        sidecar.istio.io/rewriteAppHTTPProbers: "true"
+        {{- end }}
+      {{- else }}
+        sidecar.istio.io/inject: "false"
+      {{- end }}
+        checksum/secret: {{ include (print $.Template.BasePath "/redis_secret.yaml") . | sha256sum }}
+      {{- if .Values.multus.enabled }}
+        {{- include "cbur.multus.annotation" . | nindent 8 }}
+      {{- end }}
+    spec:
+      {{- if .Values.rbac.enabled }}
+      serviceAccountName: {{ template "cbur.fullname" . }}
+      {{- else if .Values.rbac.serviceAccountName }}
+      serviceAccountName: {{ .Values.rbac.serviceAccountName }}
+      {{- end }}
+      automountServiceAccountToken: true
+{{ include "cbur.podSecurityContext" . | indent 6 }}
+      {{- if .Values.priorityClassName }}
+      priorityClassName: {{ .Values.priorityClassName | quote }}
+      {{- else if .Values.global.priorityClassName }}
+      priorityClassName: {{ .Values.global.priorityClassName | quote }}
+      {{- end }}
+      {{- if .Values.image.master.imagePullSecrets }}
+      imagePullSecrets: {{ toYaml .Values.image.master.imagePullSecrets | nindent 8 }}
+      {{- else if .Values.global.imagePullSecrets }}
+      imagePullSecrets: {{ toYaml .Values.global.imagePullSecrets | nindent 8 }}
+      {{- end }}
+      initContainers:
+      - name: init-{{ .Chart.Name }}
+        image: {{ .Values.global.registry }}/{{ .Values.image.init.name }}:{{ .Values.image.init.tag }}
+        imagePullPolicy: "{{ .Values.image.init.pullPolicy }}"
+        securityContext:
+         runAsUser: {{ .Values.securityContext.runAsUser }}
+         runAsGroup: {{ .Values.securityContext.runAsGroup }}
+         runAsNonRoot: {{ .Values.securityContext.runAsNonRoot }}
+        command: [ "/bin/sh", "-c" ]
+        args:
+          - |
+            cp /etc/altiplano/certificates/secrets/cbur-server-trustchain-cert.pem /etc/.certificates/ca-cert.pem
+            cp /etc/altiplano/certificates/secrets/cbur-server-cert.pem /etc/.certificates/client-cert.pem
+            cp /etc/altiplano/certificates/secrets/cbur-server-key.pem /etc/.certificates/client-key.pem
+
+        volumeMounts:
+        - name: cbur-certificates
+          mountPath: /etc/.certificates/
+        - name: altiplano-cbur-certs
+          mountPath: /etc/altiplano/certificates/secrets/
+      containers:
+{{ include "cbur.syslogSidecar" (tuple . "celery") | indent 8  }}
+        - name: {{ include "cbur.proxy.containerName" (tuple . "cbur-redis") }}
+          image: {{ include "cbur.image.mapper" (tuple $ .Values.image.redis .Values.internalCRDBRedisioRegistry) }}
+          imagePullPolicy: {{ .Values.image.redis.pullPolicy | default "IfNotPresent" | quote }}
+{{ include "cbur.containerSecurityContext" . | indent 10 }}
+{{ include "cbur.hookpod.readOnlyRootFilesystem" . | indent 12 }}
+{{ include "cbur.containerRunAsUser" . | indent 12 }}
+{{ include "cbur.containerRunAsGroup" . | indent 12 }}
+{{- if or (and .Values.celery.unifiedLogging.syslog .Values.celery.unifiedLogging.syslog.enabled) (and .Values.global.unifiedLogging.syslog .Values.global.unifiedLogging.syslog.enabled) }}
+{{- if and (.Values.securityContext.enabled) (not (.Capabilities.APIVersions.Has "security.openshift.io/v1")) }}
+{{- if eq ( toString ( .Values.securityContext.runAsUser )) "auto"}}
+            runAsUser: 0
+{{- end }}
+{{- if eq ( toString ( .Values.securityContext.runAsGroup )) "auto" }}
+            runAsGroup: 0
+{{- end }}
+{{- end }}
+{{- end }}
+          volumeMounts:
+{{ include "cbur.redis.tmpemptydirvolumemount" . | indent 10  }}
+          - name: redis-password
+            mountPath: /etc/redis
+            readOnly: true
+          env:
+          - name: TZ
+            value: {{ .Values.global.timeZoneEnv | default "UTC" | quote }}
+          - name: POD_IP
+            #valueFrom:
+            #  fieldRef:
+            #    fieldPath: status.podIP
+            value: "0.0.0.0 ::"
+          ports:
+          - containerPort: 6379
+            name: tcp-redis
+            protocol: TCP
+          command:
+            - "bash"
+            - "-c"
+            - |
+              mkdir -p /tmp/redis/db
+              ls /etc/redis
+              REDIS_PASSWORD=`cat /etc/redis/redis-password`
+              echo "daemonize no" > /tmp/redis/redis.conf
+              echo "dir /tmp/redis/db" >> /tmp/redis/redis.conf
+              echo "bind $POD_IP" >> /tmp/redis/redis.conf
+              echo "protected-mode no" >> /tmp/redis/redis.conf
+              echo "requirepass $REDIS_PASSWORD" >> /tmp/redis/redis.conf
+          {{- if or (and .Values.celery.unifiedLogging.syslog .Values.celery.unifiedLogging.syslog.enabled) (and .Values.global.unifiedLogging.syslog .Values.global.unifiedLogging.syslog.enabled) }}
+              echo "logfile /tmp/container-log/redis.log" >> /tmp/redis/redis.conf
+          {{- end }}
+              redis-server /tmp/redis/redis.conf
+          readinessProbe:
+            tcpSocket:
+              port: 6379
+            initialDelaySeconds: 10
+            periodSeconds: 10
+            failureThreshold: 30
+          resources:
+{{ include "cbur.resources" (tuple . .Values.direct_redis.resources "500m") | indent 12 }}
+        - name: {{ include "cbur.proxy.containerName" (tuple . "cbur") }}
+          image: {{ include "cbur.image.mapper" (tuple $ .Values.image.master .Values.internalCBURMasterRegistry) }}
+          imagePullPolicy: {{ .Values.image.master.pullPolicy | default "IfNotPresent" | quote }}
+{{ include "cbur.containerSecurityContext" . | indent 10 }}
+{{ include "cbur.readOnlyRootFilesystem" . | indent 12 }}
+{{ include "cbur.containerRunAsUser" . | indent 12 }}
+{{ include "cbur.containerRunAsGroup" . | indent 12 }}
+          env:
+          - name: APP_NAME
+            value: "celery"
+          - name: KUBE_VERSION
+            value: {{ include "cbur.kubeVersion" . }}
+          - name: SIDECAR_IMAGE
+            value:  {{ include "cbur.image.mapper" (tuple $ .Values.image.agent .Values.internalCBURSidecarRegistry) }}
+          - name: SIDECAR_IMAGE_PULLPOLICY
+            value: {{ .Values.image.agent.pullPolicy }}
+          - name: USE_CELERY
+            value: "true"
+          - name: CBUR_RELEASE_NAME
+            value: {{ .Release.Name }}
+          - name: CBURM_PORT
+          {{- if eq (include "cbur.proxy.coalesceBoolean" (tuple .Values.tls.enabled .Values.global.tls.enabled false)) "true" }}
+            value: "{{ .Values.tls.port }}"
+          {{- else }}
+            value: "{{ .Values.serverPort }}"
+          {{- end }}
+          - name: CBURM_NAME
+            value: {{ template "cbur.fullname" . }}
+          - name: CBURM_SCOPE
+            value: {{ .Values.cburScope }}
+          - name: INCLUDE_NAMESPACES
+            value: {{ .Values.includeNamespaces | quote }}
+          - name: TZ
+            value: {{ .Values.global.timeZoneEnv | default "UTC" | quote }}
+          {{- if .Values.istio.enabled }}
+          - name: ISTIO_ENABLED
+            value: "true"
+          {{- end }}
+          - name: CELERY_DOMAINNAME
+            value: {{ template "cbur.fullname" . }}-redis
+          - name: CELERY_NAMESPACE
+            value: "{{ .Release.Namespace }}"
+          - name: CRON_IMAGE
+            value:  {{ include "cbur.image.mapper" (tuple $ .Values.image.croncli .Values.internalCBURCliRegistry) }}
+          - name: CRON_IMAGE_PULLPOLICY
+            value: {{ .Values.image.croncli.pullPolicy }}
+{{ include "cbur.cburaImagePullSecret" . | indent 10 }}
+{{- include "cbur.croncliImagePullSecret" . | indent 10 }}
+          {{- if .Values.rbac.enabled }}
+          - name: K8S_RBAC_ENABLED
+            value: "true"
+          - name: SERVICE_ACCOUNT
+            value: {{ template "cbur.fullname" . }}
+          {{- end }}
+          {{- if eq (include "cbur.proxy.coalesceBoolean" (tuple .Values.tls.enabled .Values.global.tls.enabled false)) "true" }}
+          - name: HTTPS_ENABLED
+            value: "YES"
+          {{- end }}
+          {{- if .Values.storageMonitor.enabled }}
+          - name: BACKUP_VOL_LOW_THRESHOLD
+            value: {{ .Values.storageMonitor.backup_low_threshold }}
+          - name: LOCAL_VOL_LOW_THRESHOLD
+            value: {{ .Values.storageMonitor.repo_low_threshold }}
+          - name: CLUSTER_VOL_LOW_THRESHOLD
+            value: {{ .Values.storageMonitor.cluster_backup_low_threshold }}
+          - name: BACKUP_VOL_HIGH_THRESHOLD
+            value: {{ .Values.storageMonitor.backup_high_threshold }}
+          - name: LOCAL_VOL_HIGH_THRESHOLD
+            value: {{ .Values.storageMonitor.repo_high_threshold }}
+          - name: CLUSTER_VOL_HIGH_THRESHOLD
+            value: {{ .Values.storageMonitor.cluster_backup_high_threshold }}
+          {{- end }}
+          - name: COMPRESSION_METHOD
+            value: {{ .Values.dataCompression.method | default "gzip" }}
+          - name: COMPRESSION_LEVEL
+            value: "6"
+          {{- if .Values.dataCompression.pigzThreads }}
+          - name: PIGZ_COMPRESSION_THREADS
+            value: {{ quote .Values.dataCompression.pigzThreads }}
+          {{- end }}
+          {{- if .Values.avamar.enabled }}
+          - name: AVAMAR_ENABLE
+            value: "true"
+          {{- end }}
+          - name: CBUR_REDIS_HOST
+          {{- if .Values.direct_redis.useLocalhost }}
+            value: "localhost"
+          {{- else }}
+            value: {{ template "cbur.redisServiceHost" . }}
+          {{- end }}
+          - name: CBUR_REDIS_PORT
+            value: {{ quote .Values.direct_redis.redis_port }}
+          - name: CBURA_VOLUME_ENABLE
+            {{- if .Values.cburaVolume.enabled }}
+            value: "true"
+            {{- else }}
+            value: "false"
+            {{- end }}
+          {{- if .Values.cburaVolume.enabled }}
+          - name: CBURA_STORAGE
+            value: {{ .Values.cburaVolume.storage }}
+          {{- end }}
+          {{- if ne .Values.CEPHS3.endpoint "" }}
+          - name: S3_ENDPOINT
+            value: {{ .Values.CEPHS3.endpoint }}
+          {{- end }}
+          {{- if .Values.CEPHS3.credentialName }}
+          - name: CEPHS3_CREDENTIAL_NAME
+            value: {{ .Values.CEPHS3.credentialName }}
+          {{- else if and .Values.CEPHS3.access_key .Values.CEPHS3.secret_key }}
+          - name: CEPHS3_CREDENTIAL_NAME_AUTO
+            value: {{ template "cbur.fullname" . }}-secret-cephs3
+          {{- end }}
+          {{- if .Values.AWSS3.credentialName }}
+          - name: AWSS3_CREDENTIAL_NAME
+            value: {{ .Values.AWSS3.credentialName }}
+          {{- else if .Values.AWSS3.region }}
+          - name: AWSS3_CREDENTIAL_NAME_AUTO
+            value: {{ template "cbur.fullname" . }}-secret-awss3
+          {{- end }}
+          {{- if .Values.AWSS3.encryption }}
+          - name: AWSS3_ENCRYPTION
+            value: {{ .Values.AWSS3.encryption }}
+          {{- end }}
+          {{- if .Values.AWSS3.bucketKeyEnabled }}
+          - name: AWSS3_BUCKETEKEYNABLED
+            value: "true"
+          {{- else }}
+          - name: AWSS3_BUCKETEKEYNABLED
+            value: "false"
+          {{- end }}
+          {{- if .Values.swiftS3.credentialName }}
+          - name: SWIFTS3_CREDENTIAL_NAME
+            value: {{ .Values.swiftS3.credentialName }}
+          {{- else if and .Values.swiftS3.accessKeyId .Values.swiftS3.secretAccessKey }}
+          - name: SWIFTS3_CREDENTIAL_NAME_AUTO
+            value: {{ template "cbur.fullname" . }}-secret-swifts3
+          {{- end }}
+          {{- if .Values.SSH.credentialName }}
+          - name: SSH_CREDENTIAL_NAME
+            value: {{ .Values.SSH.credentialName }}
+          {{- else if and .Values.SSH.username .Values.SSH.host }}
+          - name: SSH_CREDENTIAL_NAME_AUTO
+            value: {{ template "cbur.fullname" . }}-secret-ssh
+          {{- end }}
+          {{- if ne .Values.CEPHS3.bucket_prefix "" }}
+          - name: CEPHS3_BUCKET_PREFIX
+            value: {{ .Values.CEPHS3.bucket_prefix }}
+          {{- end }}
+          {{- if .Values.GCS.credentialName }}
+          - name: GCS_CREDENTIAL_NAME
+            value: {{ .Values.GCS.credentialName }}
+          {{- end }}
+          {{- if ne .Values.GCS.bucketPrefix "" }}
+          - name: GCS_BUCKET_PREFIX
+            value: {{ .Values.GCS.bucketPrefix }}
+          {{- end }}
+          {{- if ne .Values.AWSS3.bucket_prefix "" }}
+          - name: AWSS3_BUCKET_PREFIX
+            value: {{ .Values.AWSS3.bucket_prefix }}
+          {{- end }}
+          - name: AWSS3_ACCESS_LOGGING
+            {{- if .Values.AWSS3.access_logging }}
+            value: "true"
+            {{- else }}
+            value: "false"
+            {{- end }}
+          {{- if ne .Values.swiftS3.bucketPrefix "" }}
+          - name: SWIFTS3_BUCKET_PREFIX
+            value: {{ .Values.swiftS3.bucketPrefix }}
+          {{- end }}
+          {{- if ne .Values.GLOBAL_BACKEND "" }}
+          - name: GLOBAL_BACKEND
+            value: {{ .Values.GLOBAL_BACKEND }}
+          {{- end }}
+          - name: AUDITLOG_STANDOUT
+            {{- if .Values.auditLogStdout.enabled }}
+            value:  "true"
+            {{- else }}
+            value:  "false"
+            {{- end }}
+          {{- include "cbur.copyFlags" . | indent 10 }}
+          - name: LOGGING_FILE
+            value: "/CBUR_REPO/log/BR.log"
+          - name: AUDIT_LOGGING_FILE
+            value: "/CBUR_REPO/log/audit.log"
+          - name: ENABLE_UNIFIED_LOGGING
+          {{- if .Values.unifiedLogging.useLegacyFormat }}
+            value: "false"
+          {{- else }}
+            value: "true"
+          {{- end }}
+{{- include "cbur.logging.level" . | indent 10 }}
+          - name: INTEGRITY_KUBE_CP
+            value: {{ quote .Values.integrityCheck.local_enable }}
+          - name: INTEGRITY_S3_TRANSFER
+            value: {{ quote .Values.integrityCheck.s3_enable }}
+          {{- if .Values.integrityCheck.s3Algorithm }}
+          - name: INTEGRITY_CHECKSUM_ALGORITHM
+            value: {{ quote .Values.integrityCheck.s3Algorithm }}
+          {{- end }}
+          {{- if .Values.integrityCheck.e2e  }}
+          - name: E2E_INTEGRITY_ENABLED
+            value: {{ quote .Values.integrityCheck.e2e.enabled }}
+          {{- if .Values.integrityCheck.e2e.appIntegritySecret }}
+          - name: APP_INTEGRITY_SECRET
+            value: {{ quote .Values.integrityCheck.e2e.appIntegritySecret }}
+          {{- end }}
+          {{- if .Values.integrityCheck.e2e.clusterIntegritySecret }}
+          - name: CLUSTER_INTEGRITY_SECRET
+            value: {{ quote .Values.integrityCheck.e2e.clusterIntegritySecret }}
+          {{- end }}
+          {{- end }}
+          - name: CLUSTER_NAME
+            value: {{ quote .Values.clusterName }}
+          - name: CLUSTER_ID
+            value: {{ quote .Values.clusterId }}
+          - name: ONLY_RESTORE
+            value: {{ quote .Values.onlyRestore }}
+          - name: CELERY_WORKER_CONCURRENCY
+            value: {{ quote .Values.celery.workerConcurrency }}
+          {{- if or .Values.celery.unifiedLogging.syslog .Values.global.unifiedLogging.syslog}}
+          - name: SYSLOG_ENABLED
+            {{- if or .Values.celery.unifiedLogging.syslog.enabled (and .Values.global.unifiedLogging.syslog .Values.global.unifiedLogging.syslog.enabled) }}
+            value:  "true"
+            {{- else }}
+            value:  "false"
+            {{- end }}
+          {{- end }}
+          {{- if not .Values.unifiedLogging.useLegacyFormat }}
+{{ include "cbur.unifiedLoggingExt" (tuple . .Values.celery.unifiedLogging.extension) | indent 10 }}
+          {{- end }}
+          volumeMounts:
+{{ include "cbur.tmpemptydirvolumemount" . | indent 10  }}
+          {{- if .Values.istio.enabled }}
+{{ include "cbur.istiocheckvolumemount" . | indent 10  }}
+          {{- end }}
+          - name: redis-password
+            mountPath: /etc/redis
+            readOnly: true
+          - mountPath: /BACKUP
+            name: "cbur-backup"
+          - mountPath: /CBUR_REPO
+            name: "cbur-repo"
+          {{- if .Values.useSubPath }}
+            subPath: repo
+          {{- end }}
+          {{- if and .Values.k8swatcher.enabled .Values.k8swatcher.clusterBrEnabled }}
+          - mountPath: /CLUSTER
+            name: "cbur-backup-cluster"
+          - mountPath: /etc/ncm.secret
+            name: ncm-secret
+            readOnly: True
+          {{- if and .Values.hostPaths .Values.hostPaths.dirs }}
+          {{- range $key, $val := .Values.hostPaths.dirs }}
+          - mountPath: {{ $val | quote }}
+            name: {{ $key }}
+          {{- end }}
+          {{- end }}
+          {{- if and .Values.hostPaths .Values.hostPaths.files }}
+          {{- range $key, $val := .Values.hostPaths.files }}
+          - mountPath: {{ $val | quote }}
+            name: {{ $key }}
+            readOnly: true
+          {{- end }}
+          {{- end }}
+          - mountPath: /root/.helm
+            name: "helm-home"
+          {{- end }}
+          command:
+            - "bash"
+            - "-c"
+            - |
+            {{- if and (or .Release.IsInstall .Release.IsUpgrade) .Values.direct_redis.enabled }}
+              if ls /BACKUP/*/*/*/*/*.tar.gz > /dev/null 2>&1 ; then
+                rm -rf /BACKUP/*/*/*/*
+              fi
+            {{- end }}
+            {{- if .Values.istio.enabled }}
+              source ./set_python_env.sh &&
+              trap "python /tmp/istio_exit.py" EXIT &&
+              python /tmp/istio_ready.py &&
+            {{- end }}
+            {{- if or (and .Values.celery.unifiedLogging.syslog .Values.celery.unifiedLogging.syslog.enabled) (and .Values.global.unifiedLogging.syslog .Values.global.unifiedLogging.syslog.enabled) }}
+              /usr/local/bin/supervisord -c /etc/supervisor/conf.d/celery.conf.syslog
+            {{- else }}
+              /usr/local/bin/supervisord -c /etc/supervisor/conf.d/celery.conf
+            {{- end }}
+          readinessProbe:
+            exec:
+              command:
+              - sh
+              - "-c"
+              - |
+                 work_c={{ quote .Values.celery.workerConcurrency }}
+                 ((work_c++))
+                 res=$(ps -ef |grep swagger_server.mycelery |grep -v grep |wc -l)
+                 [[ $work_c == $res ]]
+            initialDelaySeconds: 10
+            periodSeconds: 10
+            timeoutSeconds: 2
+            failureThreshold: 30
+          resources:
+{{ include "cbur.resources" (tuple . .Values.celery.resources "10") | indent 12 }}
+        - name: {{ include "cbur.proxy.containerName" (tuple . "cbur") }}-mycelery-fluentd-sidecar
+          image: "{{ .Values.global.registry }}/{{ .Values.mycelery_fluentd_sidecar.image.name }}:{{ .Values.mycelery_fluentd_sidecar.image.tag }}"
+          imagePullPolicy: {{ .Values.mycelery_fluentd_sidecar.image.pullPolicy }}
+          securityContext:
+            readOnlyRootFilesystem: true
+            runAsUser: 1000
+            runAsGroup: {{ .Values.securityContext.runAsGroup }}
+            runAsNonRoot: {{ .Values.securityContext.runAsNonRoot }}
+          resources:
+{{ toYaml .Values.mycelery_fluentd_sidecar.resources | indent 12 }}
+          env:
+          {{- if .Values.mycelery_fluentd_sidecar.secrets }}
+          - name: IS_USERNAME
+            valueFrom:
+              secretKeyRef:
+                key: {{ .Values.env.secrets.IS_USERNAME }}
+                name: {{ .Values.mycelery_fluentd_sidecar.secrets.passwordSecret | quote }}
+          - name: IS_PASSWORD
+            valueFrom:
+              secretKeyRef:
+                key: {{ .Values.env.secrets.IS_PASSWORD }}
+                name: {{ .Values.mycelery_fluentd_sidecar.secrets.passwordSecret | quote }}
+          {{- end }}
+          - name: CONTAINER_NAME
+            valueFrom:
+              fieldRef:
+                apiVersion: v1
+                fieldPath: metadata.name
+          - name: MY_POD_IP
+            valueFrom:
+              fieldRef:
+                fieldPath: status.podIP
+          volumeMounts:
+          - name: tmp
+            mountPath: /tmp
+          - name: fluentd-config
+            mountPath: /etc/fluent/
+          - name: cbur-certificates
+            mountPath: /etc/.certificates/
+          - name: altiplano-cbur-certs
+            mountPath: /etc/altiplano/certificates/secrets/ 
+          - mountPath: /CBUR_REPO
+            name: "cbur-repo"
+          {{- if .Values.useSubPath }}
+            subPath: repo
+          {{- end }}
+    {{- if .Values.nodeSelectorOverride }}
+      nodeSelector:
+{{ toYaml .Values.nodeSelectorOverride | indent 8 }}
+    {{- else if .Values.nodeSelector }}
+      nodeSelector:
+{{ toYaml .Values.nodeSelector | indent 8 }}
+    {{- end }}
+    {{- if .Values.celery.affinity }}
+      affinity:
+{{ toYaml .Values.celery.affinity | indent 8 }}
+    {{- else if .Values.celery.podAntiAffinity }}
+      affinity:
+      {{- include "cbur.proxy.podAntiAffinity" (tuple . .Values.celery) | nindent 8}}
+    {{- end }}
+    {{- with .Values.tolerations }}
+      tolerations:
+{{ toYaml . | indent 8 }}
+    {{- end }}
+    {{- with .Values.topologySpreadConstraints }}
+      topologySpreadConstraints:
+{{- toYaml . | nindent 8 }}
+    {{- end }}
+      volumes:
+{{ include "cbur.syslogSidecarVolume" (tuple . "celery") | indent 8  }}
+        {{- if .Values.istio.enabled }}
+{{ include "cbur.istiocheckvolume" . | indent 8  }}
+        {{- end }}
+        - name: tmp
+          emptyDir: {}
+        - name: "cbur-backup"
+          {{- if .Values.volumeType.glusterfs }}
+          glusterfs:
+            endpoints: {{ .Values.volumeType.backupEndpoints | quote }}
+            path: {{ .Values.volumeType.backupPath }}
+          {{- else  }}
+          persistentVolumeClaim:
+            {{- if .Values.directPvc.enabled }}
+            claimName: {{ .Values.directPvc.backupPvcName }}
+            {{- else }}
+            claimName: {{ template "cbur.fullname" . }}-backup
+            {{- end }}
+          {{- end }}
+        - name: "cbur-repo"
+          {{- if .Values.volumeType.glusterfs }}
+          glusterfs:
+            endpoints: {{ .Values.volumeType.repoEndpoints | quote }}
+            path: {{ .Values.volumeType.repoPath }}
+          {{- else  }}
+          persistentVolumeClaim:
+            {{- if .Values.directPvc.enabled }}
+            claimName: {{ .Values.directPvc.repoPvcName }}
+            {{- else }}
+            claimName: {{ template "cbur.fullname" . }}-repo
+            {{- end }}
+          {{- end }}
+        {{- if and .Values.k8swatcher.enabled .Values.k8swatcher.clusterBrEnabled }}
+        - name: "cbur-backup-cluster"
+          {{- if .Values.volumeType.glusterfs }}
+          glusterfs:
+            endpoints: {{ .Values.volumeType.backupClusterEndpoints | quote }}
+            path: {{ .Values.volumeType.backupClusterPath }}
+          {{- else  }}
+          persistentVolumeClaim:
+            {{- if .Values.directPvc.enabled }}
+            claimName: {{ .Values.directPvc.backupClusterPvcName }}
+            {{- else }}
+            claimName: {{ template "cbur.fullname" . }}-backup-cluster
+            {{- end }}
+          {{- end }}
+        - name: ncm-secret
+          secret:
+            secretName: cbur-ncm-secret
+        {{- if and .Values.hostPaths .Values.hostPaths.dirs }}
+        {{- range $key, $val := .Values.hostPaths.dirs }}
+        - name: {{ $key }}
+          hostPath:
+            path: {{ $val | quote }}
+            type: Directory
+        {{- end }}
+        {{- end }}
+        {{- if and .Values.hostPaths .Values.hostPaths.files }}
+        {{- range $key, $val := .Values.hostPaths.files }}
+        - name: {{ $key }}
+          hostPath:
+            path: {{ $val | quote }}
+            type: File
+        {{- end }}
+        {{- end }}
+        - name: "helm-home"
+          {{- include "cbur.helmHome.path" . | indent 10 }}
+        {{- end }}
+        - name: redis-password
+          secret:
+            secretName: cbur-redis
+{{ include "cbur.tmpemptydirvolume" . | indent 8  }}
+            sizeLimit: {{ index .Values.celery.resources.limits "ephemeral-storage" | quote }}
+        {{- if .Values.mycelery_fluentd_sidecar.secrets }}
+        - name: cbur-certificates
+          emptyDir:
+            medium: Memory
+        - name: altiplano-cbur-certs
+          secret:
+            secretName: {{ (tpl .Values.mycelery_fluentd_sidecar.secrets.certSecret .) }}
+        - name: passwords
+          secret:
+            secretName: {{ (tpl .Values.mycelery_fluentd_sidecar.secrets.passwordSecret .) }}
+        {{- end}}
+        - name: fluentd-config
+          configMap:
+            name: {{ include "cbur.proxy.resourceName" (tuple . "Deployment" "mycelery") }}-fluentd-config
+{{- end }}

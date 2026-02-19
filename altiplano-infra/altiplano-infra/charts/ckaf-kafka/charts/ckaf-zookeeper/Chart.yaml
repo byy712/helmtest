@@ -1,0 +1,15 @@
+apiVersion: v2
+appVersion: 3.6.4
+dependencies:
+- name: csf-common-lib
+  repository: https://repo.cci.nokia.net/csf-helm-stable/
+  version: 1.8.0
+description: Centralized service for maintaining configuration information, naming,
+  providing distributed synchronization, and providing group services.
+home: https://zookeeper.apache.org/
+icon: https://zookeeper.apache.org/images/zookeeper_small.gif
+maintainers:
+- email: I_CKAF@internal.nsn.com
+  name: CSF CKAF Team
+name: ckaf-zookeeper
+version: 8.0.2

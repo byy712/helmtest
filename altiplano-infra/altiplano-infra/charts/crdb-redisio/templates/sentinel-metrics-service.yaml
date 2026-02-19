@@ -1,0 +1,133 @@
+{{- include "crdb-redisio.init" . -}}
+{{- if and (not .redis_cluster) (.Values.sentinel.metrics) .Values.sentinel.metrics.enabled (not .Values.sentinel.metrics.usePodServices)}}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "csf-common-lib.v3.resourceName" (tuple . "service" "snt-metrics") }}
+  labels:
+    {{- include "crdb-redisio.labels" (tuple . "sentinel" "metrics" "service") | nindent 4 }}
+    metrics-type: sentinel
+  annotations:
+    {{- include "crdb-redisio.annotations" (tuple . "sentinel" "metrics" "service") | nindent 4 }}
+    {{- toYaml .Values.sentinel.metrics.annotations | nindent 4 }}
+spec:
+  type: ClusterIP
+  {{- include "crdb-redisio.dual-stack" (tuple . .Values.services.sentinel.exporter) | nindent 2 }}
+  ports:
+  - name: tcp-metrics
+    port: {{ .Values.services.sentinel.exporter.port | default 9121 }}
+    targetPort: tcp-metrics
+    appProtocol: tcp
+  selector:
+    {{- include "crdb-redisio.selector_labels" . | nindent 4 }}
+    type: sentinel
+{{- if .Values.istio.enabled }}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "csf-common-lib.v3.resourceName" (tuple . "service" "snt-metrics-hl") }}
+  labels:
+    {{- include "crdb-redisio.labels" (tuple . "sentinel" "metrics" "service") | nindent 4 }}
+    metrics-type: sentinel
+  annotations:
+    {{- include "crdb-redisio.annotations" (tuple . "sentinel" "metrics" "service") | nindent 4 }}
+    {{- toYaml .Values.sentinel.metrics.annotations | nindent 4 }}
+spec:
+  type: ClusterIP
+  clusterIP: None
+  ports:
+  - name: tcp-metrics
+    port: {{ .Values.services.sentinel.exporter.port | default 9121 }}
+    targetPort: tcp-metrics
+    appProtocol: tcp
+  selector:
+    {{- include "crdb-redisio.selector_labels" . | nindent 4 }}
+    type: sentinel
+{{- if .Values.istio.createDrForClient }}
+---
+apiVersion: networking.istio.io/v1beta1
+kind: DestinationRule
+metadata:
+  name: {{ include "csf-common-lib.v3.resourceName" (tuple . "destinationrule" "sentinel-metrics-hl-mtls-dr") }}
+  labels:
+    {{- include "crdb-redisio.labels" (tuple . "sentinel" "metrics" "destinationrule") | nindent 4 }}
+  annotations:
+    {{- include "crdb-redisio.annotations" (tuple . "sentinel" "metrics" "destinationrule") | nindent 4 }}
+spec:
+  host: {{ include "csf-common-lib.v3.resourceName" (tuple . "service" "snt-metrics-hl") }}
+  trafficPolicy:
+    tls:
+      mode: ISTIO_MUTUAL
+{{- end }}
+{{- end }}
+{{- end }}
+{{- if and (not .redis_cluster) (.Values.sentinel.metrics) .Values.sentinel.metrics.enabled .Values.sentinel.metrics.usePodServices}}
+{{- $top := . -}}
+{{- range $i := until (int .Values.sentinel.count) }}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "csf-common-lib.v3.resourceName" (tuple $top "service" (printf "sentinel-%d" $i)) }}
+  labels:
+    {{- include "crdb-redisio.labels" (tuple $top "sentinel" "metrics" "service") | nindent 4 }}
+    metrics-type: sentinel
+  annotations:
+    {{- include "crdb-redisio.annotations" (tuple $top "sentinel" "metrics" "service") | nindent 4 }}
+    {{- toYaml $top.Values.sentinel.metrics.annotations | nindent 4 }}
+spec:
+  type: ClusterIP
+  {{- include "crdb-redisio.dual-stack" (tuple $top $top.Values.services.sentinel) | nindent 2 }}
+  ports:
+  - name: tcp-metrics
+    port: {{ $top.Values.sentinel.metrics.port | default 9121 }}
+    appProtocol: tcp
+  selector:
+    {{- include "crdb-redisio.selector_labels" $top | nindent 4 }}
+    type: sentinel
+    statefulset.kubernetes.io/pod-name: {{ include "csf-common-lib.v3.resourceName" (tuple $top "pod" (printf "%s-%d" $top.Values.sentinel.nameSuffix $i)) }}
+{{- if $top.Values.istio.enabled }}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "csf-common-lib.v3.resourceName" (tuple $top "service" (printf "snt-%d-metrics-hl" $i)) }}
+  labels:
+    {{- include "crdb-redisio.labels" (tuple $top "sentinel" "metrics" "service") | nindent 4 }}
+    metrics-type: sentinel
+  annotations:
+    {{- include "crdb-redisio.annotations" (tuple $top "sentinel" "metrics" "service") | nindent 4 }}
+    {{- toYaml $top.Values.sentinel.metrics.annotations | nindent 4 }}
+spec:
+  type: ClusterIP
+  clusterIP: None
+  ports:
+  - name: tcp-metrics
+    port: {{ $top.Values.sentinel.metrics.port | default 9121 }}
+    appProtocol: tcp
+  selector:
+    {{- include "crdb-redisio.selector_labels" $top | nindent 4 }}
+    type: sentinel
+    statefulset.kubernetes.io/pod-name: {{ include "csf-common-lib.v3.resourceName" (tuple $top "pod" (printf "%s-%d" $top.Values.sentinel.nameSuffix $i)) }}
+
+{{- if $top.Values.istio.createDrForClient }}
+---
+apiVersion: networking.istio.io/v1beta1
+kind: DestinationRule
+metadata:
+  name: {{ include "csf-common-lib.v3.resourceName" (tuple $top "destinationrule" (printf "sentinel-%d-metrics-hl-mtls-dr" $i)) }}
+  labels:
+    {{- include "crdb-redisio.labels" (tuple $top "sentinel" "metrics" "destinationrule") | nindent 4 }}
+  annotations:
+    {{- include "crdb-redisio.annotations" (tuple $top "sentinel" "metrics" "destinationrule") | nindent 4 }}
+spec:
+  host: {{ include "csf-common-lib.v3.resourceName" (tuple $top "service" (printf "snt-%d-metrics-hl" $i)) }}
+  trafficPolicy:
+    tls:
+      mode: ISTIO_MUTUAL
+{{- end }}
+{{- end }}
+{{- end }}
+{{- end }}

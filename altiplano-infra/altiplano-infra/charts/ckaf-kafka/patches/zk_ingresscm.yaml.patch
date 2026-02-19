@@ -1,0 +1,11 @@
+--- ckaf-kafka-8.0.2-origin/charts/ckaf-zookeeper/templates/ingresscm.yaml	2024-02-20 15:47:14.000000000 +0530
++++ ckaf-kafka-8.0.2-nokia-patch-1/charts/ckaf-zookeeper/templates/ingresscm.yaml	2024-03-07 15:44:04.506904470 +0530
+@@ -5,7 +5,7 @@
+ {{- $clientPort := .Values.zookeeperClientPort }}
+ {{- $fullName := include "ckaf-zookeeper.name" . }}
+ {{- $root := . }}
+-{{- $citmName := .Values.ingress.citmPrefixName }}
++{{- $citmName := tpl .Values.ingress.citmPrefixName . }}
+ {{- $releaseNamespace :=  .Release.Namespace }}
+ {{- $chartName :=  .Chart.Name }}
+ {{- $releaseName := .Release.Name }}

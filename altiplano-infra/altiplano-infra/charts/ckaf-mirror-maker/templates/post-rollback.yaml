@@ -1,0 +1,90 @@
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: {{ include "ckaf-mirror-maker.resourceName" (tuple . "Job" "mm-postrbk-job" ) }}
+  labels:
+{{ include "ckaf-mirror-maker.commonLabels" . | indent 4 }}
+{{- include "csf-common-lib.v1.customLabels" (tuple .Values.global.labels) | indent 4 }}
+  annotations:
+    seccomp.security.alpha.kubernetes.io/allowedProfileNames: {{ .Values.global.seccompAllowedProfileNames }}
+    seccomp.security.alpha.kubernetes.io/defaultProfileName: {{ .Values.global.seccompDefaultProfileName }}
+    "helm.sh/hook": post-rollback
+    "helm.sh/hook-delete-policy": before-hook-creation,hook-succeeded
+    "helm.sh/hook-weight": "-5"
+{{- include "csf-common-lib.v1.customAnnotations" (tuple .Values.global.annotations) | indent 4 }}
+spec:
+  template:
+    metadata:
+      annotations:
+        sidecar.istio.io/inject: "false"
+{{- include "csf-common-lib.v1.customAnnotations" (tuple .Values.global.annotations) | indent 8 }}
+      labels:
+        altiplano-role: {{ .Values.accessRoleLabel }}
+{{ include "ckaf-mirror-maker.commonLabels" . | indent 8 }}
+{{- include "csf-common-lib.v1.customLabels" (tuple .Values.global.labels) | indent 8 }}
+    spec:
+      {{- if .Values.mirrorMakerNodeSelector.enable }}
+      nodeSelector:
+{{ toYaml .Values.mirrorMakerNodeSelector.nodeLabel | indent 8 }}
+      {{- end }}
+      {{- include "ckaf-mirror-maker.tolerations" . | indent 6 }}
+      {{- if .Values.global.rbac.enabled }}
+      serviceAccountName: {{ template "ckaf-mirror-maker.serviceAccountName" . }}
+      {{- end }}
+      {{- if eq .Values.security.enabled true }}
+      securityContext:
+        runAsNonRoot: true
+        {{- if ( ne ( toString (.Values.security.fsGroup)) "auto" ) }}
+        fsGroup: {{ .Values.security.fsGroup }}
+        {{- end }}
+        {{- if eq (include "ckaf-mirror-maker.renderSeccompProfile" .) "true" }}
+        seccompProfile:
+          type: {{ .Values.security.seccompProfile.type }}
+        {{- end }}
+      {{- end }}
+      {{- if  coalesce .Values.imagePullSecrets .Values.global.imagePullSecrets }}
+      imagePullSecrets:
+      {{- range coalesce .Values.imagePullSecrets  .Values.global.imagePullSecrets }}
+        - name: {{ . }}
+      {{- end }}
+      {{- end }}
+      automountServiceAccountToken: true
+      restartPolicy: Never
+      containers:
+      - name: ckaf-mirror-maker-postrollback
+        image: {{ include "ckaf-mirror-maker.image" (tuple .Values .Values.global.registry1 .Values.kubectlImageName (include "ckaf-mirror-maker.kubectlImageRepo" .) .Values.kubectlTag .Values.kubectl) }}
+        imagePullPolicy: {{ .Values.kubectl.imagePullPolicy }}
+        {{- if eq .Values.security.enabled true }}
+        securityContext:
+          runAsNonRoot: true
+          readOnlyRootFilesystem: {{ .Values.security.readOnlyRootFilesystem }}
+          {{- if ( ne ( toString ( .Values.security.runAsUser )) "auto" ) }}
+          runAsUser: {{ .Values.security.runAsUser }}
+            {{- if .Values.security.runAsGroup }}
+          runAsGroup: {{ .Values.security.runAsGroup }}
+            {{- end }}
+          {{- end }}
+          allowPrivilegeEscalation: false
+          {{- if eq (include "ckaf-mirror-maker.renderSeccompProfile" .) "true" }}
+          seccompProfile:
+            type: {{ .Values.security.seccompProfile.type }}
+          {{- end }}
+          privileged: false
+          capabilities:
+            drop: ["ALL"]
+             
+        {{- end }}
+        env:
+        - name: TZ
+          value: {{ template "ckaf-mirror-maker.timeZoneEnv" . }}
+        resources:
+{{- include "ckaf-mirror-maker.getResources" (tuple . .Values.jobResources "1") | indent 10 }}
+        command:
+        - sh
+        - -c
+        - |
+          echo "Kafka-mirror-maker rollback changes have been sucessfully applied" 
+          echo "Kafka-mirror-maker post-rollback job in progress..."
+          echo "To monitor the status of the Kafka-mirror-maker pods "
+          echo "kubectl get pods --namespace {{ .Release.Namespace }} -l app={{ .Chart.Name }},release={{ .Release.Name }}"
+

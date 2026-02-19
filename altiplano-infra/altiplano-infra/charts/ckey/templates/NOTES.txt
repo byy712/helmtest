@@ -1,0 +1,17 @@
+Please ensure that you have an external database that is ready and accessible at {{ .Values.dbAddress }}
+The database must be initialized and ready to use by Keycloak.
+
+Please wait for a couple of minutes until Keycloak is totally up. There is a readiness probe set up for this that checks if everything is up and running after an initial delay of 150 seconds. If a large number of replicas is specified, keycloak instances may take longer to be ready, as they all connect to the same shared database.
+    Note that the keycloak server runs about 20 seconds after the docker container is initialized.
+
+If the readiness probe fails, it means that the ingress path (default /access) page at the specified HTTPS Port is not accessible and therefore something is not working as intended.
+    If this occurs, please make sure that correct database information and login credentials are provided; otherwise, Keycloak will not work properly. The keycloak docker image REQUIRES an external shared database.
+
+The following command can help to check keycloak logs:
+    kubectl -n <namespace> logs <pod-name> -c <keycloak-container-name> -f
+
+{{ if .Release.IsInstall }}
+Keycloak admin password is: {{ template "ckey.getAdminPassword" . }}
+{{ end }}
+
+Remember to make sure that correct database information and credentials are provided; otherwise, Keycloak will not work properly.

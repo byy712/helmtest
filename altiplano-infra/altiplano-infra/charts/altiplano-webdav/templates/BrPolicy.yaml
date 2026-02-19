@@ -1,0 +1,30 @@
+{{- if .Values.cbur.enabled }}
+apiVersion: {{ .Values.cbur.apiVersion }}
+kind: BrPolicy
+metadata:
+  name: {{ template "altiplano-webdav.fullname" . }} # <--must have the same name as deployment/statefulset/daemonset which you want to backup
+spec:
+  autoEnableCron: {{ .Values.cbur.autoEnableCron }}
+  autoUpdateCron: {{ .Values.cbur.autoUpdateCron }}
+  volumes:
+    - webdav-storage
+  backend:
+    mode: "{{ .Values.cbur.backendMode }}"     #<--Modes supported now: "local","NETBKUP","AVAMAR","CEPHS3","AWSS3","SWIFTS3","SFTP", case insensitive
+  selector:
+    matchLabels:
+      app: {{ template "altiplano-webdav.name" . }}
+      release: {{ .Release.Name }}
+  cronSpec: "{{ .Values.cbur.cronSpec }}"  #<--cronjob frequency, here means every 10 minutes of every day
+  dataEncryption:
+    enable: {{ .Values.cbur.dataEncryption }}            #<--Whether to encrypt the backed up data or not.
+  k8sType: deployment      #<--deployment/statefulset/daemonset/case insensitive. Please remove this field or leave it empty if the application is not a deployment/daemonset/statefulset. This field is newly added for CSF18.09.
+  maxiCopy: {{ .Values.cbur.maxiCopy}}              #<--the maximum copy you want to saved.
+  ignoreFileChanged: true  #<--Whether to ignore the file change(s) or not when creating tar file in cbura sidecar.
+  hooks:
+  - name:   {{ .Chart.Name }}  #<--container name in the pod where you want to execute hooks.
+    commands:
+      preBackupCmd: ["sh", "-c", "echo backup start"]       #<--command will be executed after sidecar insert
+      postBackupCmd: ["sh", "-c", "echo post-backup"]       #<--command will be executed before removing sidecar and after backup(scp)
+      preRestoreCmd: [ "sh", "-c", "rm -rf /var/webdav/*" ]
+      postRestoreCmd: ["sh", "-c", "echo restore finished"] #<-- command will be executed before removing sidecar and after retore(scp)
+{{- end }}

@@ -1,0 +1,559 @@
+apiVersion: {{ include "ckaf-zookeeper.statefulset.apiVersion" . }}
+kind: StatefulSet
+metadata:
+  name: {{ template "ckaf-zookeeper.statefulset" . }}
+  annotations:
+{{- include "csf-common-lib.v1.customAnnotations" (tuple .Values.zkStatefulset.annotations .Values.custom.zkStatefulset.annotations .Values.global.annotations) | indent 4 }}
+    seccomp.security.alpha.kubernetes.io/allowedProfileNames: {{ .Values.global.seccompAllowedProfileNames }}
+    seccomp.security.alpha.kubernetes.io/defaultProfileName: {{ .Values.global.seccompDefaultProfileName }}
+    reloader.stakater.com/auto: "true"
+  labels:
+{{- include "csf-common-lib.v1.customLabels" (tuple .Values.zkStatefulset.labels .Values.custom.zkStatefulset.labels .Values.global.labels) | indent 4 }}
+{{ include "ckaf-zookeeper.commonlabels" . | indent 4 }}
+    app: {{ .Chart.Name }}
+    release: {{ .Release.Name | quote }}
+    heritage: {{ .Release.Service | quote }}
+spec:
+  serviceName: {{ template "ckaf-zookeeper.name" . }}-headless
+  replicas: {{ .Values.servers }}
+  updateStrategy:
+    type: RollingUpdate
+  selector:
+    matchLabels:
+      app: {{ .Chart.Name }}
+      release: {{ .Release.Name | quote }}
+  template:
+    metadata:
+      labels:
+        altiplano-role: {{ .Values.accessRoleLabel }}
+{{- include "csf-common-lib.v1.customLabels" (tuple .Values.zkPodLevel.labels .Values.custom.zkPodLevel.labels .Values.global.labels) | indent 8 }}
+{{ include "ckaf-zookeeper.commonlabels" . | indent 8 }}
+        app: {{ .Chart.Name }}
+        release: {{ .Release.Name | quote }}
+      annotations:
+{{- include "csf-common-lib.v1.customAnnotations" (tuple .Values.zkPodLevel.annotations .Values.custom.zkPodLevel.annotations .Values.global.annotations) | indent 8 }}
+        {{- if .Values.global.istio.enabled }}
+        sidecar.istio.io/inject: "true"
+        {{- else }}
+        sidecar.istio.io/inject: "false"
+        {{- end }}
+    spec:
+      {{- if eq .Values.security.enabled true }}
+      securityContext:
+      {{- if ( ne ( toString ( .Values.security.runAsUser )) "auto" ) }}
+        runAsUser: {{ .Values.security.runAsUser }}
+      {{- end }}
+        runAsNonRoot: true
+      {{- if ( ne ( toString (.Values.security.fsGroup)) "auto" ) }}
+        fsGroup: {{ .Values.security.fsGroup }}
+      {{- end }}
+      {{- if eq (include "ckaf-zookeeper.renderSeccompProfile" .) "true" }}
+        seccompProfile:
+          type: {{ .Values.security.seccompProfile.type }}
+      {{- end }}
+      {{- if .Values.security.supplementalGroups }}
+        supplementalGroups: {{ .Values.security.supplementalGroups }}
+      {{- end }}
+      {{- if eq .Values.security.seLinuxOptions.enabled true }}
+        seLinuxOptions:
+          level: {{ .Values.security.seLinuxOptions.level }}
+          role: {{ .Values.security.seLinuxOptions.role }}
+          type: {{ .Values.security.seLinuxOptions.type }}
+          user: {{ .Values.security.seLinuxOptions.user }}
+      {{- end }}
+      {{- end }}
+      {{- if .Values.global.rbac.enabled }}
+      serviceAccountName: {{ template "ckaf-zookeeper.serviceAccountName" . }}
+      {{- end }}
+      {{- if .Values.global.istio.enabled }}
+      automountServiceAccountToken: true
+      {{- else }}
+      automountServiceAccountToken: false
+      {{- end }}
+      {{- include "ckaf-zookeeper.tolerations" . | indent 6 }}
+      {{- if eq .Values.antiAffinity "hard" }}
+      affinity:
+        podAntiAffinity:
+          requiredDuringSchedulingIgnoredDuringExecution:
+            - topologyKey: "kubernetes.io/hostname"
+              labelSelector:
+                matchLabels:
+                  app: {{ .Chart.Name }}
+                  release: {{ .Release.Name | quote }}
+      {{- else if eq .Values.antiAffinity "soft" }}
+      affinity:
+        podAntiAffinity:
+          preferredDuringSchedulingIgnoredDuringExecution:
+            - weight: 1
+              podAffinityTerm:
+                topologyKey: "kubernetes.io/hostname"
+                labelSelector:
+                  matchLabels:
+                    app: {{ .Chart.Name }}
+                    release: {{ .Release.Name | quote }}
+      {{- end }}
+      {{- if .Values.topologySpreadConstraints }}
+      topologySpreadConstraints: {{- include "csf-common-lib.v2.topologySpreadConstraints" (tuple . .Values ) | nindent 8 }}
+      {{- end }}
+      {{- if .Values.zookeeperNodeSelector.enable }}
+      nodeSelector:
+{{ toYaml .Values.zookeeperNodeSelector.nodeLabel | indent 8 }}
+      {{- end }}
+      {{- if .Values.priorityClassName }}
+      priorityClassName: {{ .Values.priorityClassName | quote }}
+      {{- else if .Values.global.priorityClassName }}
+      priorityClassName: {{ .Values.global.priorityClassName | quote }}
+      {{- end }}
+      {{- if  coalesce .Values.imagePullSecrets .Values.global.imagePullSecrets }}
+      imagePullSecrets:
+        - name: {{ coalesce .Values.imagePullSecrets .Values.global.imagePullSecrets }}
+      {{- end }}
+      containers:
+      {{- if eq .Values.global.jmx.enabled true }}
+      - name: {{ template "ckaf-zookeeper.jmxContainerName" . }}
+        {{- if eq .Values.global.flatRegistry true }}
+        image: "{{ .Values.global.registry }}/{{ .Values.JmxExporter.imageName }}:{{ .Values.JmxExporter.imageTag }}"
+        {{- else }}
+        image: "{{ coalesce .Values.global.registry1 .Values.global.registry }}/{{ .Values.JmxExporter.imageRepo }}:{{ .Values.JmxExporter.imageTag }}"
+        {{- end }} 
+        imagePullPolicy: {{ .Values.JmxExporter.imagePullPolicy }}
+        {{- if eq .Values.security.enabled true }}
+        securityContext:
+          runAsNonRoot: true
+          readOnlyRootFilesystem: {{ .Values.security.readOnlyRootFilesystem }}
+        {{- if ( ne ( toString ( .Values.security.runAsUser )) "auto" ) }}
+          runAsUser: {{ .Values.security.runAsUser }}
+          {{- if .Values.security.runAsGroup }}
+          runAsGroup: {{ .Values.security.runAsGroup }}
+          {{- end }}
+        {{- end }}  
+          allowPrivilegeEscalation: false
+          {{- if eq (include "ckaf-zookeeper.renderSeccompProfile" .) "true" }}
+          seccompProfile:
+            type: {{ .Values.security.seccompProfile.type }}
+          {{- end }}
+          privileged: false
+          capabilities:
+            drop: ["ALL"]
+        {{- end }}
+        env:
+        - name: TZ
+          value: {{ template "ckaf-zookeeper.timeZoneEnv" . }}
+        volumeMounts:
+        - name: prom-jmx-exporter-volume
+          mountPath: /jmx-exporter
+        resources:
+{{- include "ckaf-zookeeper.getResources" (tuple . .Values.JmxExporter.jmxResources.resources "1") | indent 10 }}
+        ports:
+        - containerPort: {{ .Values.JmxExporter.port }}
+          name: tcp-metrics
+      {{- end }}
+      {{ if (eq .Values.cbur.enabled true) }}
+      - name: "cbura-sidecar"
+        {{- if eq .Values.global.flatRegistry true }}
+        image: "{{ .Values.global.registry }}/{{ .Values.cbur.name }}:{{ .Values.cbur.tag }}"
+        {{- else }}
+        image: "{{ coalesce .Values.global.registry2 .Values.global.registry }}/{{ .Values.cbur.image }}:{{ .Values.cbur.tag }}"
+        {{- end }}
+        imagePullPolicy: {{ .Values.cbur.imagePullPolicy }}
+        {{- if eq .Values.security.enabled true }}
+        securityContext:
+          runAsNonRoot: true
+          readOnlyRootFilesystem: {{ .Values.security.readOnlyRootFilesystem }}
+        {{- if ( ne ( toString ( .Values.security.runAsUser )) "auto" ) }}
+          runAsUser: {{ .Values.security.runAsUser }}
+          {{- if .Values.security.runAsGroup }}
+          runAsGroup: {{ .Values.security.runAsGroup }}
+          {{- end }}
+        {{- end }}
+          allowPrivilegeEscalation: false
+          {{- if eq (include "ckaf-zookeeper.renderSeccompProfile" .) "true" }}
+          seccompProfile:
+            type: {{ .Values.security.seccompProfile.type }}
+          {{- end }}
+          privileged: false
+          capabilities:
+            drop: ["ALL"]
+        {{- end }}
+        env:
+        - name: TZ
+          value: {{ template "ckaf-zookeeper.timeZoneEnv" . }}
+        resources:
+{{- include "ckaf-zookeeper.getResources" (tuple . .Values.cbur.resources "1") | indent 10 }}
+        volumeMounts:
+        - mountPath: /zookeeper-data-dir
+          name: zookeeper-data-dir
+        - mountPath: /zookeeper-log-dir
+          name: zookeeper-log-dir
+        {{- if eq .Values.global.jmx.enabled true }}
+        - mountPath: /prom-jmx-exporter-volume
+          name: prom-jmx-exporter-volume
+        - mountPath: /zookeeper-jmx-config-volume
+          name: zookeeper-jmx-config-volume
+        {{- end }}
+        - mountPath: /zk-transaction-log-backup
+          name: zk-transaction-log-backup
+        - mountPath: /tmp
+          name: cbura-tmp-volume
+      {{end}}
+      - name: {{ template "ckaf-zookeeper.containerName" . }}
+        imagePullPolicy: {{ .Values.imagePullPolicy }}
+        {{- if eq .Values.global.flatRegistry true }}
+        image: "{{ .Values.global.registry }}/{{ .Values.imageName }}:{{ .Values.imageTag }}"
+        {{- else }}
+        image: "{{ coalesce .Values.global.registryInt .Values.global.registry }}/{{ .Values.imageRepo }}:{{ .Values.imageTag }}"
+        {{- end }}
+        {{- if eq .Values.security.enabled true }}
+        securityContext:
+          runAsNonRoot: true
+          readOnlyRootFilesystem: {{ .Values.security.readOnlyRootFilesystem }}
+        {{- if ( ne ( toString ( .Values.security.runAsUser )) "auto" ) }}
+          runAsUser: {{ .Values.security.runAsUser }}
+          {{- if .Values.security.runAsGroup }}
+          runAsGroup: {{ .Values.security.runAsGroup }}
+          {{- end }}
+        {{- end }}
+          allowPrivilegeEscalation: false
+          {{- if eq (include "ckaf-zookeeper.renderSeccompProfile" .) "true" }}
+          seccompProfile:
+            type: {{ .Values.security.seccompProfile.type }}
+          {{- end }}
+          privileged: false
+          capabilities:
+            drop: ["ALL"]
+        {{- end }}
+        resources:
+{{- include "ckaf-zookeeper.getResources" (tuple . .Values.resources "1") | indent 10 }}
+        ports:
+        - containerPort: {{ .Values.zookeeperClientPort }}
+          name: tcp-client
+        - containerPort: {{ .Values.serverPort }}
+          name: tcp-server
+        - containerPort: {{ .Values.leaderElectionPort }}
+          name: tcp-leader
+        env:
+        - name: MY_POD_NAMESPACE
+          valueFrom:
+            fieldRef:
+              fieldPath: metadata.namespace
+        - name: ZOOKEEPER_DYNAMIC_CONFIG_FILE
+          value: "/etc/kafka/dynamicfile.cfg.dynamic"
+        - name : ZOOKEEPER_TICK_TIME
+          value: "{{ .Values.tickTimeMs }}"
+        - name : ZOOKEEPER_INIT_LIMIT
+          value: "{{ .Values.initTicks }}"
+        - name : ZOOKEEPER_SYNC_LIMIT
+          value: "{{ .Values.syncTicks }}"
+        - name : ZOOKEEPER_PRE_ALLOC_SIZE
+          value: "{{ .Values.preAllocSize }}"
+        - name : ZOOKEEPER_MAX_CLIENT_CNXNS
+          value: "{{ .Values.clientCnxns }}"
+        - name: ZOOKEEPER_AUTOPURGE_SNAP_RETAIN_COUNT
+          value: "{{ .Values.snapRetain }}"
+        - name: ZOOKEEPER_AUTOPURGE_PURGE_INTERVAL
+          value: "{{ .Values.purgeHours }}"
+        - name: ZOOKEEPER_CLIENT_PORT
+          value: "{{ .Values.zookeeperClientPort }}"
+        - name: ZOOKEEPER_SERVER_PORT
+          value: "{{ .Values.serverPort }}"
+        - name: ZOOKEEPER_ELECTION_PORT
+          value: "{{ .Values.leaderElectionPort }}"
+        - name : KAFKA_HEAP_OPTS
+          value: "{{ .Values.heapConfig }}"
+        - name: ZK_PURGE_INTERVAL
+          value: "{{ .Values.purgeHours }}"
+        - name: ZOOKEEPER_LOG_LEVEL
+          value: "{{ .Values.logLevel }}"
+        - name: ZOOKEEPER_DATA_DIR
+          value: "/var/lib/zookeeper/data"
+        - name: ZOOKEEPER_LOG_DIR
+          value: "/var/log/zookeeper"
+        - name: LOG_DIR
+          value: "/var/log/zookeeper"
+        - name: CLOG_ENABLE
+          value: "{{ .Values.global.clog.enabled }}"
+        {{- if or .Values.global.unifiedLogging.extension .Values.unifiedLogging.extension }}
+        - name: UNIFIED_LOGGING
+          value:  {{ coalesce .Values.unifiedLogging.extension .Values.global.unifiedLogging.extension  | toJson | trimPrefix "}" | trimSuffix "{" | quote  }}
+        {{- end }}
+        - name: ZOOKEEPER_MAX_FILE_SIZE
+          value: "{{ .Values.maxFileSize }}"
+        - name: ZOOKEEPER_MAX_BACKUP_INDEX
+          value: "{{ .Values.maxBackupIndex }}"
+        - name: ZOOKEEPER_RECONFIG_ENABLED
+          value: "true"
+        - name: ZOOKEEPER_STANDALONE_ENABLED
+          value: "false"
+        - name: ZOOKEEPER_SKIP_ACL
+          value: "yes"
+        - name: ZOOKEEPER_QUORUM_LISTEN_ON_ALL_IPS
+          value: "true"
+        - name: ZOOKEEPER_SNAPSHOT_TRUST_EMPTY
+          value: "{{ .Values.snapshotTrustEmpty }}"
+        - name: ZOOKEEPER_SNAP_COUNT
+          value: "{{ .Values.snapCount }}"
+          {{- if eq .Values.krb.enable true}}
+        - name: KRB_ENABLE
+          value: "enable"
+          {{- else}}
+        - name: KRB_ENABLE
+          value: "disable"
+          {{- end}}
+          {{- if eq .Values.krb.enable true}}
+        - name: KRB_PRINCIPAL
+          valueFrom:
+            secretKeyRef:
+               name: {{ .Values.krb.krbSecretName }}
+               key: {{ .Values.krb.krbPrincipalKey }}
+          {{- end}}
+        {{- if eq .Values.global.jmx.enabled true }}
+        - name: KAFKA_OPTS
+          value: "-javaagent:/jmx-exporter/jmx_prometheus_javaagent.jar={{ .Values.JmxExporter.port }}:/etc/zookeeper/jmx_config/zookeeper-jmx.yaml"
+        {{- end }}
+        - name: TZ
+          value: {{ template "ckaf-zookeeper.timeZoneEnv" . }}
+        - name: IS_RESTORE
+        {{- if (eq .Values.cbur.enabled true) }}
+          valueFrom:
+            configMapKeyRef:
+              name: {{ .Release.Name }}-zk-cbur-conf
+              key: is_restore
+        {{- else }}
+          value: "false"
+        {{- end }}
+        {{- range $key, $value := .Values.configurationOverrides }}
+        - name: {{ printf "ZOOKEEPEROVERRIDE_%s" $key | replace "." "_" | upper | quote }}
+          value: {{ $value | quote }}
+        {{- end }}
+       {{- include "ckaf-zookeeper.syslogEnabled" . }}
+       {{- if eq $.syslogEnabled "true" }}
+        - name: ZOOKEEPER_SYSLOG
+          value: {{ $.syslogEnabled | quote }}
+        - name: ZOOKEEPER_SYSLOG_HOST
+          value: {{ required "provide a valid syslog host" $.syslog.host |quote }} 
+        - name: ZOOKEEPER_SYSLOG_PORT
+          value: {{ required "provide a valid syslog port" $.syslog.port |quote }}
+        - name: ZOOKEEPER_SYSLOG_URL
+          value: "$(ZOOKEEPER_SYSLOG_HOST):$(ZOOKEEPER_SYSLOG_PORT)"
+        - name: ZOOKEEPER_SYSLOG_FACILITY
+          value: {{ required "provide a valid syslog facility" $.syslog.facility |quote }}
+        - name: ZOOKEEPER_SYSLOG_PROTOCOL
+          value: {{ required "provide a valid syslog protocol" $.syslog.protocol |quote }}
+       {{- else }}
+        - name: ZOOKEEPER_SYSLOG
+          value: {{ $.syslogEnabled | quote }}
+       {{- end }}
+        - name: RBAC_ENABLED
+          value: {{ .Values.global.rbac.enabled | quote }}
+        - name: READ_ONLY_ROOTFS
+          value: {{ .Values.security.readOnlyRootFilesystem | quote }}
+        - name: RUN_AS_NON_ROOT
+          value: "true" 
+        {{- if and (eq .Values.global.istio.enabled true) (eq .Values.global.istio.mtls.enabled false) (eq .Values.global.istio.permissive false) }}
+        - name: ISTIO_TLS
+          value: "true"
+        {{- else }}
+        - name: ISTIO_TLS
+          value: "false"
+        {{- end }}
+        - name: POD_HOST_NAME
+          valueFrom:
+            fieldRef:
+              fieldPath: metadata.name
+
+        readinessProbe:
+          exec:
+            command:
+            - sh
+            - -c
+            - /etc/confluent/docker/zk-health-check.sh
+          initialDelaySeconds: {{ .Values.readinessProbe.probeInitialDelaySeconds }}
+          timeoutSeconds: {{ .Values.readinessProbe.probeTimeoutSeconds }}
+          failureThreshold: {{ .Values.readinessProbe.failureThreshold }}
+          periodSeconds: {{ .Values.readinessProbe.periodSeconds}}
+        livenessProbe:
+          exec:
+            command:
+            - sh
+            - -c
+            - /etc/confluent/docker/zk-health-check.sh
+          initialDelaySeconds: {{ .Values.livenessProbe.probeInitialDelaySeconds }}
+          timeoutSeconds: {{ .Values.livenessProbe.probeTimeoutSeconds }}
+          failureThreshold: {{ .Values.livenessProbe.failureThreshold }}
+          periodSeconds: {{ .Values.livenessProbe.periodSeconds}}
+        volumeMounts:
+        - name: zookeeper-data-dir
+          mountPath: /var/lib/zookeeper/data
+        - name: zookeeper-log-dir
+          mountPath: /var/log/zookeeper
+        {{- if eq .Values.global.jmx.enabled true }}
+        - name: prom-jmx-exporter-volume
+          mountPath: /jmx-exporter
+        - name: zookeeper-jmx-config-volume
+          mountPath: /etc/zookeeper/jmx_config
+        {{- end }}
+            {{- if eq .Values.krb.enable true}}
+        - name: zk-svc-keytab
+          mountPath: /etc/kafka/keytab
+        - name: krb5config
+          mountPath: /etc/kafka/krb-conf
+            {{- end}}
+        {{ if (eq .Values.cbur.enabled true) }}
+        - name: zk-transaction-log-backup
+          mountPath: /zk-transaction-log-backup
+        {{ end }}
+        - name: zk-dynamic-config
+          mountPath: /etc/zookeeper/dynamic_config
+        - name: server-configs
+          mountPath: /etc/kafka
+
+      - name: {{ template "ckaf-zookeeper.containerName" . }}-zk-fluentd-sidecar
+        image: {{ .Values.global.registry }}/{{ .Values.zk_fluentd_sidecar.image.name }}:{{ .Values.zk_fluentd_sidecar.image.tag }}
+        imagePullPolicy: {{ .Values.zk_fluentd_sidecar.image.pullPolicy }}
+        securityContext:
+          readOnlyRootFilesystem: {{ .Values.zk_fluentd_sidecar.securityContext.readOnlyRootFilesystem | default true }}
+          runAsUser: {{ .Values.zk_fluentd_sidecar.securityContext.runAsUser | default 1000 }}
+          runAsGroup: {{ .Values.zk_fluentd_sidecar.securityContext.runAsGroup | default 996 }}
+        volumeMounts:
+        - name: tmp
+          mountPath: /tmp
+        - name: fluentd-config
+          mountPath: /etc/fluent/
+        - name: certificates
+          mountPath: "/etc/.certificates/"
+        - name: zookeeper-log-dir
+          mountPath: /logs/zookeeper
+        resources:
+{{ toYaml .Values.zk_fluentd_sidecar.resources | indent 12 }}
+        env:
+        {{- if .Values.zk_fluentd_sidecar.secrets }}
+        - name: IS_USERNAME
+          valueFrom:
+            secretKeyRef:
+              key: {{ .Values.env.secrets.IS_USERNAME }}
+              name: {{ .Values.zk_fluentd_sidecar.secrets.passwordSecret | quote }}
+        - name: IS_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              key: {{ .Values.env.secrets.IS_PASSWORD }}
+              name: {{ .Values.zk_fluentd_sidecar.secrets.passwordSecret | quote }}
+        {{- end }}
+        - name: CONTAINER_NAME
+          valueFrom:
+            fieldRef:
+              apiVersion: v1
+              fieldPath: metadata.name
+        - name: MY_POD_IP
+          valueFrom:
+            fieldRef:
+              fieldPath: status.podIP
+
+      volumes:
+      {{- if not .Values.persistence.enabled }}
+      - name: zookeeper-data-dir
+        emptyDir: {}
+      - name: zookeeper-log-dir
+        emptyDir: {}
+      {{- end }}
+      {{- if eq .Values.global.jmx.enabled true }}
+      - name: zookeeper-jmx-config-volume
+        configMap:
+          name: {{ template "ckaf-zookeeper.name" . }}
+      - name: prom-jmx-exporter-volume
+        emptyDir: {}
+      {{- end }}
+      {{- if eq .Values.krb.enable true}}
+      - name: zk-svc-keytab
+        secret:
+          secretName: {{ .Values.krb.krbSecretName }}
+          items:
+          - key: {{ .Values.krb.krbKeytabKey }}
+            path: zk.keytab
+      - name: krb5config
+        configMap:
+          name: {{ .Values.krb.krbConfigmapName }}
+          items:
+          - key: {{ .Values.krb.KrbConfKeyName }}
+            path: krb5.conf
+      {{- end}}
+{{ if (eq .Values.cbur.enabled true) }}
+{{- if eq (include "ckaf-zookeeper.ephemeralVolume" .) "true" }}
+      - name: cbura-tmp-volume
+        ephemeral:
+          volumeClaimTemplate:
+            spec:
+              accessModes: [ "ReadWriteOnce" ]
+            {{- if .Values.ephemeralVolume.storageClass }}
+              storageClassName: "{{ .Values.ephemeralVolume.storageClass }}"
+            {{- end }}
+              resources:
+                requests:
+                  storage: {{ .Values.ephemeralVolume.storageSize.cburaTmpVolume }}
+      - name: zk-transaction-log-backup
+        ephemeral:
+          volumeClaimTemplate:
+            spec:
+              accessModes: [ "ReadWriteOnce" ]
+            {{- if .Values.ephemeralVolume.storageClass }}
+              storageClassName: "{{ .Values.ephemeralVolume.storageClass }}"
+            {{- end }}
+              resources:
+                requests:
+                  storage: {{ .Values.ephemeralVolume.storageSize.zkTransactionLogBackup }}
+{{- else }}
+      - name: cbura-tmp-volume
+        emptyDir: {}
+      - name: zk-transaction-log-backup
+        emptyDir: {}
+{{- end }}
+{{ end }}
+      - name: tmp
+        emptyDir: {}
+      - name: zk-dynamic-config
+        configMap:
+            name: {{ template "ckaf-zookeeper.name" . }}-dynamic-config
+      - name: server-configs
+        emptyDir: {}
+      - name: fluentd-config
+        configMap:
+          name: {{ template "ckaf-zookeeper.name" . }}-zk-fluentd-config
+      {{- if .Values.zk_fluentd_sidecar.secrets }}
+      - name: certificates
+        secret:
+          secretName: {{ (tpl (.Values.zk_fluentd_sidecar.secrets.certSecret) .) }}
+      - name: passwords
+        secret:
+          secretName: {{ (tpl .Values.zk_fluentd_sidecar.secrets.passwordSecret .) }}
+      {{- end }}
+
+  volumeClaimTemplates:
+  {{- if .Values.persistence.enabled }}
+  - metadata:
+      name: zookeeper-data-dir
+    spec:
+      accessModes: [ "ReadWriteOnce" ]
+      resources:
+        requests:
+          storage: {{ .Values.dataStorage }}
+    {{- if .Values.autoPvEnabledZk }}
+      selector:
+        matchLabels:
+          for: {{ .Values.autoPvEnabledLabelZk }}
+    {{- else if .Values.global.storageClass }}
+      storageClassName: "{{ .Values.global.storageClass }}"
+    {{- end }}
+  - metadata:
+      name: zookeeper-log-dir
+    spec:
+      accessModes: [ "ReadWriteOnce" ]
+      resources:
+        requests:
+          storage: {{ .Values.logStorage }}
+    {{- if .Values.autoPvEnabledZk }}
+      selector:
+        matchLabels:
+          for: {{ .Values.autoPvEnabledLabelZk }}
+    {{- else if .Values.global.storageClass }}
+      storageClassName: "{{ .Values.global.storageClass }}"
+    {{- end }}
+  {{- end }}

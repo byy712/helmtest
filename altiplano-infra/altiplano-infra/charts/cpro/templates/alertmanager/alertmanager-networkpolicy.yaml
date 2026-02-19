@@ -1,0 +1,25 @@
+{{- if and .Values.server.enabled .Values.networkPolicy.enabled }}
+apiVersion: {{ template "cpro.apiVersion.networkPolicy" . }}
+kind: NetworkPolicy
+metadata:
+  name: {{ template "cpro.prometheus.alertmanager.fullname" . }}
+  labels:
+    {{- include "cpro.app.labels.v3" ( dict "root" . "context" .Values.alertmanager ) | nindent 4 }}
+{{- include "cpro.labelsOrAnnotations" (tuple .Values.global.labels) | indent 4}}
+  annotations:
+{{- include "cpro.labelsOrAnnotations" (tuple .Values.global.annotations) | indent 4}}
+spec:
+  podSelector:
+    matchLabels:
+      app: {{ template "cpro.prometheus.name" . }}
+      component: "{{ .Values.alertmanager.name }}"
+      release: {{ .Release.Name }}
+  ingress:
+    - from:
+      - podSelector:
+          matchLabels:
+            release: {{ .Release.Name }}
+            component: "{{ .Values.server.name }}"
+    - ports:
+      - port: {{ .Values.alertmanager.service.webPort }}
+{{- end }}

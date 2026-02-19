@@ -1,0 +1,59 @@
+{{- include "cmdb.init" . -}}
+{{- if and (eq (include "cmdb.has_maxscale" .) "true") (eq (include "cmdb.maxscale_hpa_enabled" .) "true") }}
+---
+apiVersion: {{ .Capabilities.APIVersions.Has "autoscaling/v2/HorizontalPodAutoscaler" | ternary "autoscaling/v2" "autoscaling/v2beta2" }}
+kind: HorizontalPodAutoscaler
+metadata:
+  name: {{ template "cmdb.pod-prefix" . }}-maxscale
+  labels:
+    {{- include "cmdb-maxscale.labels" (tuple . "horizontalpodautoscaler") | nindent 4 }}
+  annotations:
+    {{- include "cmdb-maxscale.annotations" (tuple . "horizontalpodautoscaler") | nindent 4 }}
+{{- with .Values.maxscale.hpa }}
+spec:
+  minReplicas: {{ .minReplicas }}
+  maxReplicas: {{ .maxReplicas }}
+  metrics:
+  {{- if .predefinedMetrics.enabled }}
+  - type: Resource
+    resource:
+      name: cpu
+      target:
+        type: Utilization
+        averageUtilization: {{ .predefinedMetrics.averageCPUThreshold }}
+  - type: Resource
+    resource:
+      name: memory
+      target:
+        type: Utilization
+        averageUtilization: {{ .predefinedMetrics.averageMemoryThreshold }}
+  {{- end }}
+  # may have to filter out old-style default metrics configuration
+  {{- if and .metrics (not (hasKey (first .metrics) "name")) }}
+  {{ toYaml .metrics | nindent 2 }}
+  {{- end }}
+  behavior:
+    scaleDown:
+      stabilizationWindowSeconds: {{ .behavior.scaleDown.stabilizationWindowSeconds }}
+    {{- if .behavior.scaleDown.policies }}
+      policies:
+      {{ toYaml .behavior.scaleDown.policies | nindent 6 }}
+    {{- end }}
+    {{- if .behavior.scaleDown.selectPolicy }}
+      selectPolicy: {{ .behavior.scaleDown.selectPolicy }}
+    {{- end }}
+    scaleUp:
+      stabilizationWindowSeconds: {{ .behavior.scaleUp.stabilizationWindowSeconds }}
+    {{- if .behavior.scaleUp.policies }}
+      policies:
+      {{ toYaml .behavior.scaleUp.policies | nindent 6 }}
+    {{- end }}
+    {{- if .behavior.scaleUp.selectPolicy }}
+      selectPolicy: {{ .behavior.scaleUp.selectPolicy }}
+    {{- end }}
+{{- end }}
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: StatefulSet
+    name: {{ template "cmdb.pod-prefix" . }}-maxscale
+{{- end }}

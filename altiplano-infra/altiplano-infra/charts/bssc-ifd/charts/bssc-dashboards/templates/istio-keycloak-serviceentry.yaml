@@ -1,0 +1,73 @@
+## When istio and security-keycloak authentication are enabled, a service entry is created for ckey hostname.
+#If ckey location is MESH_INTERNAL, a virtual service is created to route the traffic destined for extCkeyHostname to ckeyK8sSvcName within the mesh.
+#If ckey location is MESH_EXTERNAL, the virtual service service is not created.
+{{- include "bssc-dashboards.istio.initIstio" . }}
+{{- if (and ($.istio.enabled) (.Values.security.enable) (.Values.security.keycloak_auth)) }}
+apiVersion: {{ template "bssc-dashboards.apiVersionNetworkIstioV1Alpha3orV1Beta1" . }}
+kind: ServiceEntry
+metadata:
+  name: {{ template "bssc-dashboards.fullname" . }}-ckey-se
+  namespace: {{ .Release.Namespace }}
+  labels:
+{{- include "bssc-dashboards.commonLabels" (tuple .  "dashboards" ) | indent 4 }}
+{{- include "bssc-dashboards.csf-toolkit-helm.labels" (tuple .) | nindent 4 }}
+  annotations:
+{{- include "bssc-dashboards.csf-toolkit-helm.annotations" (tuple .) | nindent 4 }}
+spec:
+  location: {{ default "MESH_INTERNAL" .Values.security.istio.extCkeyLocation }}
+  hosts:
+  - {{ .Values.security.istio.extCkeyHostname }}
+  ports:
+  - number: {{ .Values.security.istio.extCkeyPort }}
+    name: http-extCkey
+    protocol: {{ .Values.security.istio.extCkeyProtocol }}
+  resolution: DNS
+---
+{{- if ne (default "MESH_INTERNAL" .Values.security.istio.extCkeyLocation) "MESH_EXTERNAL" }}
+apiVersion: {{ template "bssc-dashboards.apiVersionNetworkIstioV1Alpha3orV1Beta1" . }}
+kind: VirtualService
+metadata:
+  name: {{ template "bssc-dashboards.fullname" . }}-ckey-vs
+  namespace: {{ .Release.Namespace }}
+  labels:
+{{- include "bssc-dashboards.commonLabels" (tuple .  "dashboards" ) | indent 4 }}
+{{- include "bssc-dashboards.csf-toolkit-helm.labels" (tuple .) | nindent 4 }}
+  annotations:
+{{- include "bssc-dashboards.csf-toolkit-helm.annotations" (tuple .) | nindent 4 }}
+spec:
+  exportTo:
+  - "."
+  hosts:
+  - {{ .Values.security.istio.extCkeyHostname }}
+  {{- if eq .Values.security.istio.extCkeyProtocol "HTTP" }}
+  http:
+  - match:
+    - port: {{ .Values.security.istio.extCkeyPort }}
+      sourceLabels:
+        source: opensearch
+    route:
+    - destination:
+        host: {{ .Values.security.istio.ckeyK8sSvcName }}
+        port:
+          number: {{ .Values.security.istio.ckeyK8sSvcPort }}
+  {{- else }}
+  tls:
+  - match:
+    - port: {{ .Values.security.istio.extCkeyPort }}
+      {{- if semverCompare ">=1.6" $.istioVersion }}
+      sniHosts:
+      {{- else }}
+      sni_hosts:
+      {{- end }}
+      - {{ .Values.security.istio.extCkeyHostname }}
+      sourceLabels:
+        source: opensearch
+    route:
+    - destination:
+        host: {{ .Values.security.istio.ckeyK8sSvcName }}
+        port:
+          number: {{ .Values.security.istio.ckeyK8sSvcPort }}
+  {{- end }}
+{{- end }}
+{{- end }}
+

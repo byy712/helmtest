@@ -1,0 +1,1796 @@
+---
+##
+## Global Parameters
+##
+global:
+  ###### site-specific params #####
+  # Registry for all images
+  registry:
+  # Use flat registry, omits repository path
+  flatRegistry: false
+
+  ## Pod and Container Prefix Flavor (see .podNamePrefix, .containerNamePrefix)
+  podNamePrefix:
+  containerNamePrefix:
+  disablePodNamePrefixRestrictions:
+
+  # ncms-specific parameters
+  jobhookenable: false
+  jobtimeout: 300
+  prerestore: 0
+  postrestore: 0
+
+  ## Enable default pod CPU resources limit on all containers
+  enableDefaultCpuLimits:
+
+  ## Pod priority and preemption class name
+  priorityClassName:
+
+  ##### site-specific params #####
+  ## Image Flavor and Policy (see .imageFlavor, .imageFlavorPolicy)
+  imageFlavor:
+  imageFlavorPolicy:
+
+  ##### #site-specific params #####
+  ## Image Pull Secrets for Registries
+  imagePullSecrets: []
+
+  ###### site-specific params #####
+  ## Service account to use instead of generating one.
+  serviceAccountName:
+
+  ###### site-specific params #####
+  ## set TZ environment variable in containers
+  timeZoneEnv:
+
+  ###### site-specific params #####
+  ## Use generated certificates via cert-manager (see tls.certificates.certManager)
+  certManager:
+    enabled:
+    issuerRef:
+      name:
+      kind:
+      group:
+
+  ###### site-specific params #####
+  # Global Unified Logging Configuration
+  # Here unified logging can be configured at the global level.
+  unifiedLogging:
+    extension: {}
+    syslog:
+      enabled:
+      facility:
+      host:
+      port:
+      protocol:
+      timeout:
+      closeReqType:
+      keyStore: {}
+      keyStorePassword: {}
+      trustStore: {}
+      trustStorePassword: {}
+
+  ##### site-specific params #####
+  ## Istio envoy sidecar configuration
+  istio:
+    sidecar:
+      # healthcheck port.
+      # If not set, default of 15021, or 15020 for Istio versions <1.6
+      healthCheckPort:
+      # admin port on which `quitquitquit` endpoint can be used to stop sidecar container.
+      stopPort: 15000
+
+  ###### site-specific params #####
+  ## Data in Flight TLS Encryption (see .tls)
+  tls:
+    enabled:
+
+accessRoleLabel: internal-access
+
+##
+## Root-Level Parameters
+##
+## If set, take precedence over their same-named counterparts in global Values.
+
+###### site-specific params #####
+## Custom, per-workload Registries to override global/defaults
+## If set, will take precedence over global.registry for a particular workload
+internalRedisioRegistry:
+internalRolemonRegistry:
+internalAdminRegistry:
+internalCburAgentRegistry:
+internalExporterRegistry:
+
+## podNamePrefix is the prefix to add to all pod resources
+podNamePrefix:
+## containerNamePrefix is the prefix to add to all pod containers
+containerNamePrefix:
+## If enabled, then `podNamePrefix` should be added to the pod name without any restrictions
+disablePodNamePrefixRestrictions:
+
+## Enable default pod CPU resources limit on all containers
+enableDefaultCpuLimits:
+
+## Pod priority and preemption class name
+priorityClassName:
+
+###### site-specific params #####
+## imageFlavor is the default image flavor to use for all container images.
+## This flavor determines the suffix to be appended to all image tags to
+## pull the desired flavor of the container image.
+## Defaults to rocky8.
+## Each workload can override this global value by adding image.flavor to
+## the image specification.
+## Can be set to 'custom' to allow for user-defined image tags w/o flavor.
+imageFlavor: rocky8
+## Policy can be Strict or BestMatch (See Helm Best Practices)
+imageFlavorPolicy:
+
+##### #site-specific params #####
+## Image Pull Secrets for Registries
+imagePullSecrets: []
+
+###### site-specific params #####
+rbac:
+  ## RBAC enabled flag
+  enabled: true
+
+  ## PSP creation is needed when istio (no CNI) enabled on NCS/K8s
+  ## Will not be created unless all conditions are met
+  psp:
+    create: true
+    name:
+
+  ## SCC creation is needed when istio (no CNI) enabled on OpenShift
+  ## Will not be created unless all conditions are met
+  scc:
+    create: false
+    name:
+
+
+###### site-specific params #####
+## Service account to use instead of generating one.
+## Only set if a sufficient SA has already been pre-created
+## Can also be set in global
+serviceAccountName:
+
+##### #site-specific params #####
+## Default alarm service name is redisio. If you set any name in alarmServiceName parameter then that value will be take place
+alarmServiceName: ""
+
+###### site-specific params #####
+## Cluster domain (tail end of the hostname, e.g. ...namespace.svc.cluster.local)
+clusterDomain: "cluster.local"
+
+###### site-specific params #####
+## Anti-affinity among all pods to share a node (server+sentinel).  soft/hard
+nodeAntiAffinity: hard
+
+## If this deployment is a partOf an umbrella chart, this should be
+## set to the name of the parent application. Otherwise, the chart
+## name will be used if omitted.
+partOf:
+
+## The master group name for identifying this set of servers
+## If not specified, the chart release/fullname will be used
+## IMPORTANT: Also used for Service names prefix, if specified
+groupName:
+
+## Ability to add additional labels or annotations to the database secret
+## where the (possibly generated) Redis database password(s) would be stored
+## Passed directly through, so should be a single-level key/value dict
+#addlSecretLabels:
+#addlSecretAnnotations:
+
+## Ability to add additional labels or annotations to all/various resources
+## created by the chart (See Helm Best Practices)
+labels: {}
+annotations: {}
+custom:
+  admin:
+    accessRoleLabel: internal-access
+
+## Override for default securityContext settings.  podSecurityContext, if
+## set will be used for all pods created.  containerSecurityContext, if set
+## will be used for all containers.  Further refinement of the securityContexts
+## can be set in the various subsystems below (e.g., server, sentinel, etc.).
+## Use disabled: true to disable the use of a pod/container security context
+podSecurityContext: {}
+containerSecurityContext: {}
+
+## Defines the path for fifos used by various pods for securing sensitive
+## information in config files.  Some environments have security rules in place
+## to only allow fifo creation in certain locations, and this may need to be
+## adjusted to comply with those security rules.
+fifoPath: "/tmp"
+
+###### site-specific params #####
+## set TZ environment variable in containers, overrides global.timeZoneEnv
+timeZone:
+  timeZoneEnv:
+
+
+###### site-specific params #####
+## Use generated certificates via cert-manager (see tls.certificates.certManager)
+certManager:
+  enabled:
+  issuerRef:
+    name:
+    kind:
+    group:
+
+
+###### site-specific params #####
+## Istio environment
+## NOTE: Values structure copied from Helm Best Practices.  Values that are
+##       unsupported and/or unused by the crdb-redisio chart have been commented out below.
+istio:
+    ### version of istio available in the environment.
+    version: 1.5
+
+    # Should istio be enabled for this deployment.
+    enabled: false
+
+    # Whether istio cni is enabled in the environment.
+    cni:
+      enabled: false
+
+    # MTLS section of configuration.
+    mtls:
+      # Is strict MTLS enabled in the environment.
+      enabled: true
+
+    # Should allow mutual TLS as well as clear text for your deployment.
+    permissive: false
+
+    ### This optional flag should only be used when application was installed in istio-injection=enabled namespace, but
+    ### was configured with istio.enabled=false, thus istio sidecar could not be injected into this application.
+    ### Client then would need destinationRule for accessing this application
+    createDrForClient: false
+
+    ### Not used by crdb-redisio
+    ### Optional sharedHttpGateway which should be used if you need to share a gateway.
+    ##sharedHttpGateway:
+    ##  # This section instructs the chart to reuse an already existing gateway for http/https purposes.
+    ##  # This is applicable if you already have a gateway on the same hostname listening on 80/443.
+    ##  # Namespace where the existing gateway object exists.
+    ##  namespace:
+    ##  # Name of the gateway object.
+    ##  name:
+
+    # An optional array of gateways which can be added if needed. These gateways will be created fresh in your install.
+    gateways:
+    # Sample:
+    # Name of the gateway.
+    #- name: sample-gw
+    ## Should this be enabled or not.
+    #  enabled: true
+    ## Optional labels to be added to gateway object.
+    #  labels: {}
+    ## Any annotations to be added to the gateway object.
+    #  annotations: {}
+    ## By default the chart will use label 'istio: ingressgateway' as selector which is the default one deployed in istio-system namespace.
+    ## This should be the label of the istio ingressgateway pod which you want your gateway to attach to.
+    #  ingressPodSelector:
+    #    istio: csf-ingressgateway
+    ## Port number where the gateway should attach to.
+    #  port: 2000
+    ## Protocol to be used for the port(TLS/TCP/HTTP/HTTPS). TLS/HTTPS will need the optional tls section to be filled.
+    #  protocol: TLS
+    ## By default the chart will use '*'. It can be a YAML array of host names.
+    #  host: []
+    ## TLS settings for your gateway. This section is mandatory if protocol is TLS/HTTPS.
+    #  tls:
+    ## This optional flag is only applicable for an HTTP port to force a redirection to HTTPS.
+    #    redirect:
+    ## Mode can be SIMPLE / MUTUAL / PASSTHROUGH/ ISTIO_MUTUAL and it is exactly as per ISTIO documentation.
+    #    mode: SIMPLE
+    ## The name of the kubernetes secret, in the namespace to be used for TLS traffic.
+    #    credentialName: mysecret
+    ## Istio TLS has many other attributes and configurations. If for some reason none of the above fits your
+    ## needs , then use this section to configure as per istio docs. Anything under here will be directly moved
+    ## under TLS section of gateway definition.
+    #    custom: {}
+
+
+###### site-specific params #####
+## unifiedLogging is used to configure pod logging for generation of log
+## messages to a syslog server.
+unifiedLogging:
+  ## map of logging extension to add to each log message
+  extension: {}
+
+  ## Syslog logging parameters
+  syslog:
+    # enable syslog logging (disabled by default)
+    enabled:
+    # Defines which facility will be used for sending the log message.
+    # This is a required option, otherwise the appender will be invalid.
+    facility:
+    # Sets the appender target's host. (Domain name or IP address)
+    host:
+    # Sets the appender target's port.
+    port:
+    # Defines which socket protocol is used for sending the log into the target host.
+    # Can be either UDP, TCP or SSL
+    protocol:
+    # SSL handshake/connection timeout (milliseconds, default 1000)
+    timeout:
+    # SSL close request type (default GNUTLS_SHUT_RDWR, GNUTLS_SHUT_WR also valid)
+    closeReqType:
+    # The keystore is meant to contain your private keys and certificates, and determines which 
+    # authentication credentials to send to the remote host.
+    # 'key' in the Secret named 'secretName' will be used as keystore file. Only PKCS12 file
+    # format is supported.
+    keyStore:
+      secretName:
+      key:
+    # Plain text password to access the keystore stored in 'key' in the Secret named 'secretName'
+    keyStorePassword:
+      secretName:
+      key:
+    # Location should point to file defined in the 'key' in the Secret named 'secretName'
+    # Secret named 'secretName' should be mounted in a container
+    trustStore:
+      secretName:
+      key:
+    # The trust store is meant to contain the CA certificates you are willing to trust when a remote
+    # party presents its certificate. Determines whether the remote authentication credentials 
+    # (and thus the connection) should be trusted. In some cases, they can be one and the same store,
+    # although it is often better practice to use distinct stores
+    # 'key' in the Secret named 'secretName' will be used as truststore file. Only PKCS12 file
+    # format is supported.
+    trustStorePassword:
+      secretName:
+      key:
+
+
+## Defines the users (usernames) to be used for various system functions.
+## Each functon should be associated to exactly one user, which must
+## be defined in the Access Control List (acl.<user>).  The same username
+## can be used for multiple functions, although this is not the ideal
+## behavior.
+systemUsers:
+  # System User for replication among server pods.
+  replication: repl-user
+  # System User for status checking and K8s probes on server pods.
+  probe: probe-user
+  # System User for sentinel pods to connect to servers.
+  sentinel: sentinel-user
+  # Metrics User for exporter containers to connect to servers.
+  metrics: metrics-user
+  # Service User for CRDB tools to interact with servers.
+  tools: crdb-tools-user
+
+
+## Access Control List
+##
+## See redis.io/topics/acl for more information and rule syntax
+##
+## For each user, at a minimum, rules are required
+## The rules is the set of Redis ACL rules, e.g.
+## "on +@all -@dangerous ~*"
+##
+## The password must be base64-encoded
+## If password is left blank/null, one will be generated.
+## To disable password, use the string 'none', e.g. password: none
+## NOTE: It is possible to specify a sha256 hash for a password in the
+## rules, e.g., "on +@all -@dangerous ~* #abc123...".  This cannot be
+## used for system users (included in systemUsers:), but can be used for other
+## users, if needed.  In such a use-case, also specify password: none so a
+## generated password is not added for the user.
+## NOTE: It is also possible to specify a password in clear-text in the
+## rules, e.g., "on +@all -@dangerous ~* >mypass".  This is highly discouraged
+## as it leaves the password exposed as cleartext when the secret is mounted.
+##
+## If enabled=false, that entry is ignored and not added to the ACL, regardless
+## of the "on/off" enablement in the rule.
+##
+## If credentialName is set, a Secret of the specified name will be managed with
+## username, password, and rules keys (data items).
+## NOTE: For non-systemUsers this Secret will be updated on post-* hooks, so
+## during password changes, this Secret will update *after* the new credentials
+## are applied to the database.
+## If credentialName Secret already exists at install, it's contents will be used to
+## populate the ACL.
+##
+## CRDB-redisio disables the 'default' user unless included in the
+## users list.  Special care must be taken when defining the 'default'
+## user (See redis.io/topics/acl) as that is a special user for Redis
+## with special implications regarding certain clients and connections.
+##
+## IMPORTANT - If disabling password for the default user, this will cause
+## Redis to enable protected mode, which will cause all connections to fail,
+## essentially breaking install/upgrade.  If setting acl.default.password to
+## none, you must also include 'protected-mode no' in the server.confInclude
+## Value.
+##
+acl:
+  # NOTE: Do not disable
+  repl-user:
+    enabled: true
+    password:
+    # https://redis.io/topics/acl#acl-rules-for-sentinel-and-replicas
+    rules: "on +psync +replconf +ping"
+  # NOTE: Do not disable
+  probe-user:
+    enabled: true
+    password:
+    rules: "on +info +role +ping +config|get +cluster|info +client|setname +module|list"
+  # NOTE: Do not disable unless deploying in cluster mode
+  sentinel-user:
+    enabled: true
+    password:
+    # https://redis.io/docs/management/sentinel/#redis-access-control-list-authentication
+    rules: "on allchannels +client +subscribe +publish +ping +info +multi +slaveof +config +exec +role +script|kill"
+  # Required by CRDB-redisio
+  # NOTE: Automatically disabled when metrics.enabled=false
+  metrics-user:
+    enabled: true
+    password:
+    rules: "on +client +ping +info +config|get +cluster|info +slowlog +latency +memory +select +get +scan +xinfo +type +pfcount +strlen +llen +scard +zcard +hlen +xlen +eval allkeys"
+  # NOTE: Do not disable
+  crdb-tools-user:
+    enabled: true
+    password:
+    rules: "on +cluster +client +debug +subscribe +publish +ping +info +multi +config +exec +flushall +dbsize +migrate +select +restore-asking +bgsave +acl +bgrewriteaof +shutdown +function +wait ~*"
+  # Default user, if user-less access is needed
+  # NOTE: If default user is enabled without password, you must also disable
+  #       protected mode with 'protected-mode no' in server.confInclude
+  default:
+    enabled: false
+    password:
+    rules: "off"
+  # Default Root-level user for Redis database full-access
+  # Not required
+  db-admin:
+    enabled: true
+    password:
+    rules: "on +@all ~*"
+  # Example additional user
+  #appluser:
+  #  enabled: true
+  #  password: YXBwbA==
+  #  rules: "on ~* +@read +@write"
+  #  secretName: my-appluser-redis-creds
+
+##
+## Workload Parameters
+##
+
+## Redis Server Parameters
+server:
+  image:
+    name: "crdb/crdb-redisio"
+    tag:
+    flavor:
+    flavorPolicy:
+    pullPolicy: IfNotPresent
+
+  # Number of Redis server instances to run
+  count: 3
+  logLevel: "verbose"
+  accessRoleLabel: internal-access
+
+  ## Major Release Rollback Support
+  ## Redis 7.2 introduced data incompatibilities preventing rollback to previous versions.
+  ##
+  ## By default, support has been add to allow rollback between certain Major CRDB
+  ## Redis.io releases when there are data incompatibilies between the Redis releases.
+  ## See the documentation for supported releases, requirements and restrictions.
+  ##
+  ## If a rollback is attempted that does not meet all requirements, it will be blocked
+  ## during the pre-rollback phase
+  ##
+  ## For scenarios where a data rollback is not possible.  Setting this to true
+  ## will allow for the software to rollback while REMOVING ALL DATA.
+  majorRollbackDelDb: false
+
+  ## Temporary socket used for major release rollback support
+  rollbackSocket: "/tmp/redis.sock"
+
+  ## If set to true, the credential related secrets will not be included in the backup
+  ## allowing for a restore of only the data into an existing install
+  dataOnlyBackupRestore: false
+
+  ## If set to true, the working directory where Redis saves the database will use
+  ## a tmpfs-backed emptyDir volume instead of the persistent volume (PVC).
+  ## IMPORTANT: When this is enabled, there is no persistent storage of the database
+  ##            and data loss is highly likely in failure scenarios and node reboots.
+  ## IMPORTANT: When this is enabled, the memory usage of the server pod(s) will
+  ##            be doubled from the perspective of Kubernetes as the database is
+  ##            stored twice in memory.  The size of the tmpfs volume will be limited
+  ##            to half the server memory limit
+  tmpfsWorkingDir: false
+
+  ## Persistence
+  ## IMPORTANT: When this is disabled, there is no persistent storage of the database
+  ##            and data loss is highly likely in failure scenarios and node reboots.
+  ##
+  ## IMPORTANT: If persistence is disabled, the ephemeral storage provided to the 
+  ##            server must be large enough to contain a full copy of the saved 
+  ##            database.  This space is required temporarily in cases where
+  ##            a full resynchronization of the database occurs.
+  ##
+  ##            Alternatively, if the repl-diskless-load configuration is being
+  ##            used, or tmpfsWorkingDir is true, the ephemeral storage may be kept
+  ##            low, but the memory usage could double in some replication scenarios.
+  ##
+  ##            Setting persistence to disabled will, by default, configure redis
+  ##            so it does not persistence data to disk (save "")
+  ##
+  ## IMPORTANT: Backups taken while persistence is disabled will NOT backup any data
+  ##
+  ## If disabling persistence, familiarize yourself with the following and review 
+  ## the cluster.masterRestartDelay value.
+  ## https://redis.io/docs/management/replication/#safety-of-replication-when-master-has-persistence-turned-off
+  persistence:
+    enabled: true
+    accessMode: ReadWriteOnce
+    size: 1Gi
+    storageClass:
+    resourcePolicy: delete
+    preservePvc: false
+
+  resources:
+    requests:
+      memory: 256Mi
+      cpu: 250m
+      ephemeral-storage: 1Gi
+    limits:
+      memory: 256Mi
+      ## Default value for cpu limit should not be set
+      ## Please set it accordingly if you need it.
+      # cpu:
+      ephemeral-storage: 1Gi
+
+  ## Node tolerations for Redis server pods scheduling to nodes with taints
+  ## Ref: https://kubernetes.io/docs/concepts/configuration/taint-and-toleration/
+  tolerations: []
+  ## Node labels for server pod assignment
+  ## Ref: https://kubernetes.io/docs/concepts/configuration/assign-pod-node/#nodeselector
+  nodeSelector: {}
+  ## topologySpreadConstraints allow control of how Pods are spread across
+  ## cluster among failure-domains such as regions, zones, nodes, and other
+  ## user-defined topology domains. This can help to achieve high availability
+  ## as well as efficient resource utilization.
+  ## The following attributes can be defined here:
+  ##   maxSkew           - Describes the degree to which Pods may be unevenly
+  ##                       distributed.  If must be greater than zero.
+  ##   topologyKey       - The key of node labels.
+  ##   whenUnsatisfiable - [optional] Indicates how to deal with a Pod if it
+  ##                       doesn't satisfy the spread constraint.
+  ##                       Defaults to DoNotSchedule.
+  ## NOTE:  The labelSelector attribute will be defaulted by the chart to
+  ##        correctly select the server pods if not specified here.
+  ## Ref: https://kubernetes.io/docs/concepts/workloads/pods/pod-topology-spread-constraints/
+  ##
+  ## Suggested values if set for Redis server pods:
+  ## topologySpreadConstraints:
+  ##   - maxSkew: 1
+  ##     topologyKey: <host-specific>
+  ##     whenUnsatisfiable: ScheduleAnyway
+  topologySpreadConstraints: []
+
+  ## Pod (Inter-pod) anti-affinity allow constrain of which nodes Pods can be scheduled on 
+  ## based on the labels of Pods already running on that node, instead of the node labels.
+  ## Pod anti-affinity rules take the form "this Pod should not run in an X if that X is 
+  ## already running one or more Pods that meet rule Y", where X is a topology domain like node, 
+  ## rack, cloud provider zone or region, or similar and Y is the rule Kubernetes tries to satisfy.
+  ## The following attributes can be defined here:
+  ##  podAntiAffinity:
+  ##    zone:
+  ##      type: soft (Possible options: soft/hard/none)
+  ##      topologyKey: "topology.kubernetes.io/zone"
+  ##    node:
+  ##      type: soft (Possible options: soft/hard/none)
+  ##      topologyKey: "kubernetes.io/hostname"
+  ##    customRules:
+  ##      - type: soft/hard (by default soft)
+  ##        topologyKey: "kubernetes.io/customKey"
+  ##        weight: 100 (by default 100)
+  ##        autoGenerateLabelSelector: true
+  ##        labelSelector: <pod labels> (none by default)
+  ##        namespaceSelector: <namespace labels> (none by default)
+  ##        namespaces: <namespace> (none by default)
+  ##
+  ## Ref: https://kubernetes.io/docs/concepts/scheduling-eviction/assign-pod-node/#inter-pod-affinity-and-anti-affinity
+  ##
+  ## Suggested values if set for Redis server pods:
+  ##  podAntiAffinity:
+  ##    zone:
+  ##      type: soft
+  ##      topologyKey: "topology.kubernetes.io/zone"
+  ##    node:
+  ##      type: hard
+  ##      topologyKey: "kubernetes.io/hostname"
+  podAntiAffinity:
+    zone:
+      type: 
+      topologyKey: "topology.kubernetes.io/zone"
+    node:
+      type: 
+      topologyKey: "kubernetes.io/hostname"
+
+  ## Redis server configuration parameters to include in the server.conf file
+  ## IMPORTANT: Any parameters set here are subject to being overwritten by dynamic
+  ##            configuration changes.  This can cause unexpected behavior as
+  ##            subsequent changes to the following value can trigger update
+  ##            configuration lifecycle event handling yet not actually apply to
+  ##            the real, runtime configuration.
+  confInclude: |
+
+  ## Custom bind directive
+  ## By default server pods bind to all interfaces/IPs.  This Value can be used
+  ## to define a custom bind directive.  Can use $(POD_IP), $(POD_IPS) env variable
+  ## references, which will be resolved.  Commas will be replaced with spaces.
+  customBind:
+
+  ## List of modules to be loaded onto the Redis Servers
+  ## Modules are delivered as container images (used as init-container).
+  ## The name, image, and path are passed through tpl, so that template
+  ## partials can be used, e.g.,
+  ##   image: {{ .Values.registry.global }}/mymodule:{{ .Values.mymodule.version }}
+  ## Module names must be unique
+  loadModules:
+  #  - name: mymodule
+  #    image: "csf-docker-candidates.repo.cci.nokia.net/myapp/mymodule:v1.0"
+  #    path: /modules/mymodule_1.0.so
+
+  ## Readiness/Liveness Probe Configuration (Redis server container)
+  ## ref: https://kubernetes.io/docs/tasks/configure-pod-container/configure-liveness-readiness-startup-probes/#configure-probes
+  ##
+  startupProbe:
+    initialDelaySeconds: 1
+    periodSeconds: 5
+    timeoutSeconds: 1
+    failureThreshold: 60
+    successThreshold: 1
+  livenessProbe:
+    initialDelaySeconds: 180
+    periodSeconds: 10
+    timeoutSeconds: 5
+    failureThreshold: 6
+    successThreshold: 1
+  readinessProbe:
+    initialDelaySeconds: 10
+    periodSeconds: 15
+    timeoutSeconds: 1
+    failureThreshold: 3
+    successThreshold: 1
+
+  ## Termination grace period (in seconds).  Defaults to 120 seconds.
+  ## Must provide enough time for failover and save to disk, which can
+  ## vary greatly depending on the size of the dataset.
+  terminationGracePeriodSeconds: 120
+
+  ## Pod securityContext override for server pods
+  ## Use disabled: true to disable the use of a pod-level security context
+  podSecurityContext: {}
+  ## Container securityContext override for server containers
+  ## Use disabled: true to disable the use of a container-level security context
+  containerSecurityContext: {}
+
+  ## Pod Disruption Budget (PDB) for server pods
+  ## Defines limits to the the number of concurrent disruptions that the
+  ## Redis server pods can experience.
+  ## The following are the options that can be set:
+  ##   enabled        - Enable/disable PDB for server statefulset
+  ##   minAvailable   - The number of pods from that set that must still be
+  ##                    available after the eviction, even in the absence of
+  ##                    the evicted pod. minAvailable can be either an absolute
+  ##                    number or a percentage.
+  ##   maxUnavailable - The number of pods from that set that can be
+  ##                    unavailable after the eviction. It can be either an
+  ##                    absolute number or a percentage
+  ## Ref: https://kubernetes.io/docs/concepts/workloads/pods/disruptions/
+  ##      https://kubernetes.io/docs/tasks/run-application/configure-pdb/
+  pdb:
+    enabled: true
+    minAvailable: 50%
+    #maxUnavailable:
+
+  ## Audit Logging
+  ## If enabled, set events will be logged
+  ## Audit loging is done with a CRDB-provided Redis Module.  Enabling
+  ## auditLogging will load the module into the Redis server(s).  Disabling
+  ## entirely will cause the module to not be loaded at all.
+  auditLogging:
+    enabled: true
+    events:
+    # Logs authentication failures
+    - auth
+    # Logs access-denied (key or command-level)
+    - permission
+
+  # Metrics scraper/exporter sidecar for Server
+  metrics:
+    enabled: true
+
+    # When using CPRO, server metrics, exposed as via a single K8s service, are collected
+    # and separated based on endpoint, allowing for metrics to be cataloged on a
+    # per-node (pod) basis.  However for some collection mechanisms, this single K8s
+    # service, load balancing among pods, can cause metrics to become undistinguishable
+    # at a pod level.  Setting the following to true will disable the single K8s metrics service
+    # and instead, expose the metrics port on the per-pod services.  This allows for
+    # the collection via distinct K8s services for each node (pod).
+    usePodServices: false
+
+    image:
+      name:
+      tag:
+      flavor:
+      flavorPolicy:
+      pullPolicy: IfNotPresent
+
+    annotations:
+      prometheus.io/scrape: "true"
+      prometheus.io/port: "9121"
+
+    # additional arguments to include to the image commandline
+    argsInclude: 
+
+    resources:
+      requests:
+        memory: 64Mi
+        cpu: 250m
+        ephemeral-storage: 64Mi
+      limits:
+        memory: 64Mi
+        ## Default value for cpu limit should not be set
+        ## Please set it accordingly if you need it.
+        # cpu:
+        ephemeral-storage: 64Mi
+
+  dashboard:
+    enabled: true
+    label:
+      grafana_dashboard: "yes"
+
+  ## tls settings for server
+  ## takes precedence over .tls.enabled
+  tls:
+    enabled:
+    ## Required if tls.enabled is true and certManager.enabled is false 
+    secretRef:
+      ## Secret name, pointing to a Secret object of type `kubernetes.io/tls`.
+      ## If empty then automatically generated secret with certificate will be used
+      name:
+      ## Secret key names mapping.
+      ## If the provided Secret is of type `kubernetes.io/tls', then key names do not need to be changed.
+      keyNames:
+        ## Name of Secret key, which contains CA certificate
+        caCrt: "ca.crt"
+        ## Name of Secret key, which contains TLS key
+        tlsKey: "tls.key"
+        ## Name of Secret key, which contains TLS certificate
+        tlsCrt: "tls.crt"
+
+  ## server-side cert-manager certificate for server
+  ## When using generated certificates via cert-manager,
+  ## the following are used to create the Certificate objects.
+  certificate:
+    enabled: true
+    ## Suffix used by common-lib for secretName of certs
+    nameSuffix: server-cert
+    issuerRef:
+      name:
+      kind:
+      group:
+    duration: 8760h # 1 year
+    renewBefore: 360h # 15 days
+    # Not needed in internall communication
+    subject:
+    # It has been deprecated since 2000 and is discouraged from being used. `dnsNames` are used instead.
+    commonName:
+    # If `usages` is not specified, the following will be used:
+    # - server auth
+    # - client auth
+    usages:
+    # If `dnsNames` is not specified then the following internal names will be used:
+    # - localhost
+    # - <service name>.<namespace>
+    # - <service name>.<namespace>.svc
+    # - <service name>.<namespace>.svc.<cluster domain>
+    # If ssl passthrough is used on the Ingress object,
+    # then dnsNames should be set to external DNS names.
+    dnsNames:
+    uris:
+    # If ipAddresses not specified then the following internal local IPs will be used:
+    # - "127.0.0.1"
+    # - "::1"
+    ipAddresses:
+    privateKey:
+      algorithm:
+      encoding:
+      size:
+      rotationPolicy: Always
+
+## Redis Sentinel Parameters
+##
+##  NOTE: When cluster is enabled, sentinel must be disabled and all related values
+##  will be ignored
+##
+sentinel:
+  # Enable Redis Sentinel
+  enabled: true
+
+  image:
+    name: "crdb/crdb-redisio"
+    # If not specified, will use same as server
+    tag:
+    flavor:
+    flavorPolicy:
+    pullPolicy:
+
+  ##
+  ## IMPORTANT: A majority of sentinels must be working and communicating to actually
+  ##            perform the failover, regardless of the quorum value. In other words,
+  ##            a quorum must agree on master=down; but a majority is required to do
+  ##            something about it.
+  ##
+  ## Number of Redis sentinels to run - minimum 3
+  count: 3
+  accessRoleLabel: internal-access
+
+  # Number of sentinels that must agree on a master as down to perform failover
+  quorum: 2
+
+  downAfterMilliseconds: 5000
+  failoverTimeout: 30000
+  parallelSyncs: 1
+
+  clientPort: 26379
+
+  resources:
+    requests:
+      memory: 256Mi
+      cpu: 250m
+      ephemeral-storage: 64Mi
+    limits:
+      memory: 256Mi
+      ## Default value for cpu limit should not be set
+      ## Please set it accordingly if you need it.
+      # cpu:
+      ephemeral-storage: 64Mi
+
+  ## Node tolerations for Redis sentinel pods scheduling to nodes with taints
+  ## Ref: https://kubernetes.io/docs/concepts/configuration/taint-and-toleration/
+  tolerations: []
+  ## Node labels for sentinel pod assignment
+  ## Ref: https://kubernetes.io/docs/concepts/configuration/assign-pod-node/#nodeselector
+  nodeSelector: {}
+  ## topologySpreadConstraints allow control of how Pods are spread across
+  ## cluster among failure-domains such as regions, zones, nodes, and other
+  ## user-defined topology domains. This can help to achieve high availability
+  ## as well as efficient resource utilization.
+  ## The following attributes can be defined here:
+  ##   maxSkew           - Describes the degree to which Pods may be unevenly
+  ##                       distributed.  If must be greater than zero.
+  ##   topologyKey       - The key of node labels.
+  ##   whenUnsatisfiable - [optional] Indicates how to deal with a Pod if it
+  ##                       doesn't satisfy the spread constraint.
+  ##                       Defaults to DoNotSchedule.
+  ## NOTE:  The labelSelector attribute will be defaulted by the chart to
+  ##        correctly select the sentinel pods if not specified here.
+  ## Ref: https://kubernetes.io/docs/concepts/workloads/pods/pod-topology-spread-constraints/
+  ##
+  ## Suggested values if set for Redis sentinel pods:
+  ## topologySpreadConstraints:
+  ##   - maxSkew: 1
+  ##     topologyKey: <host-specific>
+  ##     whenUnsatisfiable: ScheduleAnyway
+  topologySpreadConstraints: []
+
+  ## Pod (Inter-pod) anti-affinity allow constrain of which nodes Pods can be scheduled on 
+  ## based on the labels of Pods already running on that node, instead of the node labels.
+  ## Pod anti-affinity rules take the form "this Pod should not run in an X if that X is 
+  ## already running one or more Pods that meet rule Y", where X is a topology domain like node, 
+  ## rack, cloud provider zone or region, or similar and Y is the rule Kubernetes tries to satisfy.
+  ## The following attributes can be defined here:
+  ##  podAntiAffinity:
+  ##    zone:
+  ##      type: soft (Possible options: soft/hard/none)
+  ##      topologyKey: "topology.kubernetes.io/zone"
+  ##    node:
+  ##      type: soft (Possible options: soft/hard/none)
+  ##      topologyKey: "kubernetes.io/hostname"
+  ##    customRules:
+  ##      - type: soft/hard (by default soft)
+  ##        topologyKey: "kubernetes.io/customKey"
+  ##        weight: 100 (by default 100)
+  ##        autoGenerateLabelSelector: true
+  ##        labelSelector: <pod labels> (none by default)
+  ##        namespaceSelector: <namespace labels> (none by default)
+  ##        namespaces: <namespace> (none by default)
+  ##
+  ## Ref: https://kubernetes.io/docs/concepts/scheduling-eviction/assign-pod-node/#inter-pod-affinity-and-anti-affinity
+  ##
+  ## Suggested values if set for Redis sentinel pods:
+  ##  podAntiAffinity:
+  ##    zone:
+  ##      type: soft
+  ##      topologyKey: "topology.kubernetes.io/zone"
+  ##    node:
+  ##      type: hard
+  ##      topologyKey: "kubernetes.io/hostname"
+  podAntiAffinity:
+    zone:
+      type: 
+      topologyKey: "topology.kubernetes.io/zone"
+    node:
+      type: 
+      topologyKey: "kubernetes.io/hostname"
+
+  ## Redis sentinel configuration parameters to include in the server.conf file
+  ## IMPORTANT: Any parameters set here are subject to being overwritten by dynamic
+  ##            configuration changes.  This can cause unexpected behavior as
+  ##            subsequent changes to the following value can trigger update
+  ##            configuration lifecycle event handling yet not actually apply to
+  ##            the real, runtime configuration.
+  confInclude: |
+
+  ## Custom bind directive
+  ## By default sentinel pods bind to all interfaces/IPs.  This Value can be used
+  ## to define a custom bind directive.  Can use $(POD_IP), $(POD_IPS) env variable
+  ## references, which will be resolved.  Commas will be replaced with spaces.
+  customBind:
+
+  ## Readiness/Liveness Probe Configuration (Redis sentinel container)
+  ## ref: https://kubernetes.io/docs/tasks/configure-pod-container/configure-liveness-readiness-startup-probes/#configure-probes
+  ##
+  livenessProbe:
+    initialDelaySeconds: 180
+    periodSeconds: 10
+    timeoutSeconds: 5
+    failureThreshold: 6
+  readinessProbe:
+    initialDelaySeconds: 10
+    periodSeconds: 20
+    timeoutSeconds: 2
+    failureThreshold: 3
+
+  ## Pod securityContext override for sentinel pods
+  ## Use disabled: true to disable the use of a pod-level security context
+  podSecurityContext: {}
+  ## Container securityContext override for sentinel containers
+  ## Use disabled: true to disable the use of a container-level security context
+  containerSecurityContext: {}
+
+  ## Pod Disruption Budget (PDB) for sentinel pods
+  ## Defines limits to the the number of concurrent disruptions that the
+  ## Redis sentinel pods can experience.
+  ## The following are the options that can be set:
+  ##   enabled        - Enable/disable PDB for sentinel statefulset
+  ##   minAvailable   - The number of pods from that set that must still be
+  ##                    available after the eviction, even in the absence of
+  ##                    the evicted pod. minAvailable can be either an absolute
+  ##                    number or a percentage.
+  ##   maxUnavailable - The number of pods from that set that can be
+  ##                    unavailable after the eviction. It can be either an
+  ##                    absolute number or a percentage
+  ## Ref: https://kubernetes.io/docs/concepts/workloads/pods/disruptions/
+  ##      https://kubernetes.io/docs/tasks/run-application/configure-pdb/
+  pdb:
+    enabled: true
+    minAvailable: 50%
+    #maxUnavailable:
+
+  acl:
+    # enable acl authentication for sentinel
+    # sentinel will be accessible via the 'sentinel-user' username and password
+    # from the main acl configuration
+    enabled: true
+    rules:
+      # rules used for sentinel user on sentinel pods to allow sentinel-to-sentinel communication
+      sentinel: "+@all ~* &*"
+      # restricted acl rules used for the metrics user on sentinel pods
+      metrics: "-@all +sentinel|masters +sentinel|ckquorum +sentinel|sentinels +sentinel|slaves +info +client|setname &*"
+
+  ## Metrics scraper/exporter sidecar for Sentinel
+  metrics:
+    enabled: true
+
+    # When using CPRO, sentinel metrics, exposed as via a single K8s service, are collected
+    # and separated based on endpoint, allowing for metrics to be cataloged on a
+    # per-node (pod) basis.  However for some collection mechanisms, this single K8s
+    # service, load balancing among pods, can cause metrics to become undistinguishable
+    # at a pod level.  Setting the following to true will disable the single K8s metrics service
+    # and instead, expose the metrics port on the per-pod services.  This allows for
+    # the collection via distinct K8s services for each node (pod).
+    usePodServices: false
+
+    image:
+      # If not specified, will use same as server.metrics
+      name:
+      tag:
+      flavor:
+      flavorPolicy:
+      pullPolicy:
+
+    annotations:
+      prometheus.io/scrape: "true"
+      prometheus.io/port: "9121"
+
+    # additional arguments to include to the image commandline
+    argsInclude:
+
+    resources:
+      requests:
+        memory: 64Mi
+        cpu: 250m
+        ephemeral-storage: 64Mi
+      limits:
+        memory: 64Mi
+        ## Default value for cpu limit should not be set
+        ## Please set it accordingly if you need it.
+        # cpu:
+        ephemeral-storage: 64Mi
+
+    ## Container securityContext override for sentinel metrics container
+    containerSecurityContext: {}
+
+  ## tls settings for sentinel
+  ## takes precedence over .tls.enabled
+  tls:
+    enabled:
+    ## Required if tls.enabled is true and certManager.enabled is false 
+    secretRef:
+      # Secret name, pointing to a Secret object of type `kubernetes.io/tls`.
+      # If empty then automatically generated secret with certificate will be used
+      name:
+      # Secret key names mapping.
+      # If the provided Secret is of type `kubernetes.io/tls', then key names do not need to be changed.
+      keyNames:
+        # Name of Secret key, which contains CA certificate
+        caCrt: "ca.crt"
+        # Name of Secret key, which contains TLS key
+        tlsKey: "tls.key"
+        # Name of Secret key, which contains TLS certificate
+        tlsCrt: "tls.crt"
+
+
+  ## server-side cert-manager certificate for sentinel
+  ## When using generated certificates via cert-manager,
+  ## the following are used to create the Certificate objects.
+  certificate:
+    enabled: true
+    ## Suffix used by common-lib for secretName of certs
+    nameSuffix: sentinel-cert
+    issuerRef:
+      name:
+      kind:
+      group:
+    duration: 8760h # 1 year
+    renewBefore: 360h # 15 days
+    # Not needed in internall communication
+    subject:
+    # It has been deprecated since 2000 and is discouraged from being used. `dnsNames` are used instead.
+    commonName:
+    # If `usages` is not specified, the following will be used:
+    # - server auth
+    # - client auth
+    usages:
+    # If `dnsNames` is not specified then the following internal names will be used:
+    # - localhost
+    # - <service name>.<namespace>
+    # - <service name>.<namespace>.svc
+    # - <service name>.<namespace>.svc.<cluster domain>
+    # If ssl passthrough is used on the Ingress object,
+    # then dnsNames should be set to external DNS names.
+    dnsNames:
+    uris:
+    # If ipAddresses not specified then the following internal local IPs will be used:
+    # - "127.0.0.1"
+    # - "::1"
+    ipAddresses:
+    privateKey:
+      algorithm:
+      encoding:
+      size:
+      rotationPolicy: Always
+
+## CRDB Rolemon Parameters
+rolemon:
+  image:
+    name: "crdb/crdb-rolemon"
+    # If not specified, will use same as server
+    tag:
+    flavor:
+    flavorPolicy:
+    pullPolicy:
+
+  resources:
+    requests:
+      memory: 64Mi
+      cpu: 250m
+      ephemeral-storage: 64Mi
+    limits:
+      memory: 256Mi
+      ## Default value for cpu limit should not be set
+      ## Please set it accordingly if you need it.
+      # cpu:
+      ephemeral-storage: 64Mi
+
+  ## Container securityContext override for rolemon containers
+  containerSecurityContext: {}
+
+  ## Liveness Probe Configuration (Redis server container)
+  ## ref: https://kubernetes.io/docs/tasks/configure-pod-container/configure-liveness-readiness-startup-probes/#configure-probes
+  ##
+  livenessProbe:
+    initialDelaySeconds: 180
+    periodSeconds: 60
+    timeoutSeconds: 5
+    failureThreshold: 6
+    successThreshold: 1
+
+## CRDB Administrative Parameters
+## (used for lifecycle and administrative Jobs)
+##
+admin:
+  image:
+    name: "crdb/crdb-admin"
+    # If not specified, will use same as server
+    tag:
+    flavor:
+    flavorPolicy:
+    pullPolicy:
+  accessRoleLabel: internal-access
+
+  ## Resource QOS (per Admin containers)
+  resources:
+    requests:
+      memory: 256Mi
+      cpu: 250m
+      ephemeral-storage: 256Mi
+    limits:
+      memory: 512Mi
+      ## Default value for cpu limit should not be set
+      ## Please set it accordingly if you need it.
+      # cpu:
+      ephemeral-storage: 256Mi
+
+  ## Node tolerations for CRDB admin pods scheduling to nodes with taints
+  ## Ref: https://kubernetes.io/docs/concepts/configuration/taint-and-toleration/
+  tolerations: []
+  ## Node labels for admin pod assignment
+  ## Ref: https://kubernetes.io/docs/concepts/configuration/assign-pod-node/#nodeselector
+  nodeSelector: {}
+  ## topologySpreadConstraints allow control of how Pods are spread across
+  ## cluster among failure-domains such as regions, zones, nodes, and other
+  ## user-defined topology domains. This can help to achieve high availability
+  ## as well as efficient resource utilization.
+  ## The following attributes can be defined here:
+  ##   maxSkew           - Describes the degree to which Pods may be unevenly
+  ##                       distributed.  If must be greater than zero.
+  ##   topologyKey       - The key of node labels.
+  ##   whenUnsatisfiable - [optional] Indicates how to deal with a Pod if it
+  ##                       doesn't satisfy the spread constraint.
+  ##                       Defaults to DoNotSchedule.
+  ## NOTE:  The labelSelector attribute will be defaulted by the chart to
+  ##        correctly select the sentinel pods if not specified here.
+  ## Ref: https://kubernetes.io/docs/concepts/workloads/pods/pod-topology-spread-constraints/
+  ##
+  ## Suggested values if set for CRDB admin pods:
+  ## NOTE:  Currently only 1 admin pod is supported, so this functionality would have no
+  ##        effect.  Included for future use.
+  ## topologySpreadConstraints: []
+
+  ## Pod (Inter-pod) anti-affinity allow constrain of which nodes Pods can be scheduled on 
+  ## based on the labels of Pods already running on that node, instead of the node labels.
+  ## Pod anti-affinity rules take the form "this Pod should not run in an X if that X is 
+  ## already running one or more Pods that meet rule Y", where X is a topology domain like node, 
+  ## rack, cloud provider zone or region, or similar and Y is the rule Kubernetes tries to satisfy.
+  ## The following attributes can be defined here:
+  ##  podAntiAffinity:
+  ##    zone:
+  ##      type: soft (Possible options: soft/hard/none)
+  ##      topologyKey: "topology.kubernetes.io/zone"
+  ##    node:
+  ##      type: soft (Possible options: soft/hard/none)
+  ##      topologyKey: "kubernetes.io/hostname"
+  ##    customRules:
+  ##      - type: soft/hard (by default soft)
+  ##        topologyKey: "kubernetes.io/customKey"
+  ##        weight: 100 (by default 100)
+  ##        autoGenerateLabelSelector: true
+  ##        labelSelector: <pod labels> (none by default)
+  ##        namespaceSelector: <namespace labels> (none by default)
+  ##        namespaces: <namespace> (none by default)
+  ##
+  ## Ref: https://kubernetes.io/docs/concepts/scheduling-eviction/assign-pod-node/#inter-pod-affinity-and-anti-affinity
+  ##
+  ## Suggested values if set for CRDB admin pods:
+  ## NOTE:  Currently only 1 admin pod is supported, so this functionality would have no
+  ##        effect.  Included for future use.
+  ## podAntiAffinity: {}
+
+  ## Node labels for admin pod assignment
+  ## Ref: https://kubernetes.io/docs/concepts/configuration/assign-pod-node/
+  nodeAffinity:
+    enabled: true
+    key: is_worker
+    value: true
+
+  ## If set, administrative jobs will be more verbose to stdout (kubectl logs)
+  debug: false
+  ## If debug is true, you can add a termination delay to all of the pre/port
+  ## job hooks as follows (time in seconds).  To terminate early, create a
+  ## /tmp/exit file in the container [with exit value if want to override].
+  ## Delay will not apply to pre-delete job since that is where old jobs are
+  ## deleted and it will delete itself in the process.
+  #jobDelay: 0
+
+  ## Specify timeout (in seconds) for each job execution.  If job timeout
+  ## occurs. the job will fail, however the job process will run to completion.
+  ## Set to 0 to disable job timing operations.
+  ## NOTE: Not all of these jobs are currently implemented for CRDB-redisio
+  preInstallTimeout: 120
+  postInstallTimeout: 900
+  # IMPORTANT NOTE: upgrade times need to be much higher to handle both
+  # scale-out (on post-upgrade) and scale-in (on pre-upgrade).
+  preUpgradeTimeout: 1800
+  postUpgradeTimeout: 1800
+  preRollbackTimeout: 1800
+  postRollbackTimeout: 1800
+  preDeleteTimeout: 120
+  postDeleteTimeout: 180
+
+  ## The activeDeadlineSeconds applies to the duration of the job, no matter
+  ## how many Pods are created.  Once a Job reaches activeDeadlineSeconds, the
+  ## Job and all of its Pods are terminated.  The result is that the job has a
+  ## status with reason: DeadlineExceeded.  It's used in pre-upgrade hook to
+  ## prevent too many failed pods being started in failure cases.
+  preUpgradeActiveDeadlineSeconds: 1800
+
+  ## Readiness/Liveness Probe Configuration (Admin container)
+  ## ref: https://kubernetes.io/docs/tasks/configure-pod-container/configure-liveness-readiness-startup-probes/#configure-probes
+  ##
+  startupProbe:
+    initialDelaySeconds: 1
+    periodSeconds: 5
+    timeoutSeconds: 1
+    failureThreshold: 60
+    successThreshold: 1
+  livenessProbe:
+    initialDelaySeconds: 300
+    periodSeconds: 10
+    timeoutSeconds: 6
+    failureThreshold: 6
+  readinessProbe:
+    initialDelaySeconds: 10
+    periodSeconds: 10
+    timeoutSeconds: 6
+    failureThreshold: 3
+
+  ## Termination grace period (in seconds).  Defaults to 0 seconds do that
+  ## the simplex admin pod will be automatically rescheduled on another node
+  ## if the hosting node fails.
+  ## WARNING: Changing may cause delayed recovery from hosting node failure.
+  #terminationGracePeriodSeconds: 0
+
+  ## Pod securityContext override for admin pod
+  ## Use disabled: true to disable the use of a pod-level security context
+  podSecurityContext: {}
+  ## Container securityContext override for lcmdb (admin) container of admin pod
+  ## Use disabled: true to disable the use of a container-level security context
+  containerSecurityContext: {}
+
+  ## Pod Disruption Budget (PDB) for admin pods
+  ## Defines limits to the the number of concurrent disruptions that the
+  ## CRDB admin pods can experience.
+  ## The following are the options that can be set:
+  ##   enabled        - Enable/disable PDB for admin deployment
+  ##   minAvailable   - The number of pods from that set that must still be
+  ##                    available after the eviction, even in the absence of
+  ##                    the evicted pod. minAvailable can be either an absolute
+  ##                    number or a percentage.
+  ##   maxUnavailable - The number of pods from that set that can be
+  ##                    unavailable after the eviction. It can be either an
+  ##                    absolute number or a percentage
+  ## Ref: https://kubernetes.io/docs/concepts/workloads/pods/disruptions/
+  ##      https://kubernetes.io/docs/tasks/run-application/configure-pdb/
+  pdb:
+    enabled: false
+    #minAvailable:
+    maxUnavailable: 100%
+
+
+## Backup/Recovery via CBUR Agent
+cbur:
+  enabled: true
+
+  ## apiVersion used for CBUR BrHook and BrPolicy.
+  apiVersion: "cbur.csf.nokia.com/v1"
+
+  ## Exposes legacy NCMS Helm plugin hooks to override the BrHook mechanism added
+  ## to BCMT in 19.03
+  legacyHooks: false
+
+  ## Exposes the BrHook parameters which may be used to control the execution
+  ## and sequencing of the hooks per CBUR logic
+  brHookType: brpolicy
+  brHookWeight: 0
+  brHookEnable: true
+  brHookTimeout: 600
+
+  image:
+    name: cbur/cbur-agent
+    tag:
+    flavor:
+    flavorPolicy:
+    pullPolicy:
+
+  # Override securityContext of CBUR sidecar container
+  ## Use disabled: true to disable the use of container-level security context
+  containerSecurityContext: {}
+
+  # Note: ephemeral-storage for CBURA sidecar must be 1X the server.persistence.size
+  #       for Backup/Restore to function properly.  The requests/limits for
+  #       ephemeral-storage will be auto-calculated if not specified here.  If set
+  #       and not large enough, the chart will fail to render.
+  resources:
+    requests:
+      memory: 256Mi
+      cpu: 250m
+      ephemeral-storage:
+    limits:
+      memory: 256Mi
+      ## Default value for cpu limit should not be set
+      ## Please set it accordingly if you need it.
+      # cpu:
+      ephemeral-storage:
+
+  # Disables the ephemeral-storage size check from causing a chrat render failure.
+  # Use at your own risk - setting to true could create a situation where Backup and/or
+  # Restore of the Release will fail.
+  disableSizeCheck: false
+
+  ## Various CBUR BrPolicy settings (Ref: CBUR Guide -> OAM Guide -> BrPolicy)
+  brPolicy:
+    weight: 0
+    backend:
+      mode: local
+    cronSpec: "0 0 * * *"
+    dataEncryption:
+      enable: true
+      secret: ""
+    maxiCopy: 5
+    autoEnableCron: false
+    autoUpdateCron: false
+    #bypassPod:
+    #  matchLabels:
+    #    redisio_role: master
+    #selectPod:
+    #  matchLabels:
+    #    redisio_role: slave
+
+  ## Automatic backup triggering
+  backup:
+    # Perform automatic backup on (before) upgrade
+    # Triggered during pre-upgrade, only when Server image or count change detected
+    # (Values changed: server.image.* or server.count)
+    # NOTE: User must ensure admin.preUpgradeTimeout and helm timeout sufficient to
+    #       perform backup AND upgrade, or timeout failures will occur.
+    upgrade: false
+
+    # Timeout for performing backup (sec)
+    timeout: 900
+
+  # CBUR Master Service access information used to initiate backup via CBUR API,
+  # e.g., when cbur.backup.upgrade: true
+  service:
+    # The namespace where the CBUR Master Service (ignored if url set)
+    namespace: ncms
+    # The Service name of the CBUR Master Service (ignored if url set)
+    name: cbur-master-cbur
+    # The protocol to use for CBUR API (http/https)
+    protocol: http
+
+    # If unset, will be automatically constructed from name, namespace, and
+    # clusterDomain.  Can be used to set a custom URL
+    url:
+
+    # A secret providing the username/password for accessing the CBUR Master
+    # Service.  Necessary when CBUR is auth enabled
+    authSecret:
+
+
+## Redis Cluster Parameters
+cluster:
+  ## Enable Redis Cluster
+  ## When cluster is enabled, sentinel must be disabled and all related values
+  ## will be ignored
+  enabled: false
+
+  ## Indicates the number of shards to split the database into.
+  ## Redis requires a minimum of 3 shards when using Redis Cluster.
+  ##
+  ## NOTE: server.count must be >= cluster.shardCount
+  ##
+  ## Redis Cluster will distribute the "extra" servers as slaves within each
+  ## shard.  It is recommended to have server.count be a multiple of cluster.shardCount
+  ## to ensure evenly sized shards.
+  ##
+  ## IMPORTANT: A server.count < (2 x cluster.shardCount) will result in a precarious
+  ## condition where a single pod failure/restart can cause a shard failure and thus
+  ## a full cluster failure.  This is not allowed.
+  shardCount: 3
+
+  ## Redis Cluster configuration parameters to include in the server.conf file
+  ## IMPORTANT: Any parameters set here are subject to being overwritten by dynamic
+  ##            configuration changes.  This can cause unexpected behavior as
+  ##            subsequent changes to the following value can trigger update
+  ##            configuration lifecycle event handling yet not actually apply to
+  ##            the real, runtime configuration.
+  confInclude: |
+
+  ## CRDB provides a cluster robustness audit that runs on the admin pod.  This audit
+  ## continually monitors the state of the Redis Cluster with respect to the shard
+  ## configuration and the distribution on Kubernetes nodes.  When less-than-ideal
+  ## conditions are detected, the audit will take corrective action.
+  audit:
+    enabled: true
+    timers:
+      # The number of seconds the audit will wait between subsequent actions
+      no_action_time: 300
+      # The number of seconds to leave a pod labeled for avoidance during a
+      # reschedule action
+      resched_label_time: 30
+      # The number of seconds to wait for a slave to move to a new master
+      # (needs to account for a full replication)
+      slave_movement_wait: 300
+
+    ## When all slaves are found co-located on the same K8s node with the master, the
+    ## robustness audit will attempt to move a slave to another K8s node.
+    ##
+    ## By default, this is done through pod anti-affinity and eviction.
+    ## However, in certain cases of limited resources or a limited number of K8s
+    ## nodes, there may be insufficient overhead to allow a pod to reschedule onto
+    ## another K8s node.
+    ##
+    ## In such cases, the following can be set to 'reconfigure', forcing the audit to
+    ## use an alternate method where slaves are removed from the cluster and re-added
+    ## to a different master, avoiding the need for pod eviction.  This mode comes at
+    ## an increased cost of requiring a full re-replication of the data as well as
+    ## affecting multiple shards as two slaves must be "swapped".  This should only
+    ## be used when the reschedule via pod eviction approach cannot be used.
+    slaveMovementMode: reschedule
+
+  ## In the case where persistence is disabled, this parameters is used to delay the restart
+  ## of a server where the node configuration indicates it was a master prior to restart.
+  ##
+  ## There is the possibility of a master restart resulting in dataloss if it were to become
+  ## master after reboot with an empty dataset
+  ##
+  ## https://redis.io/docs/management/replication/#safety-of-replication-when-master-has-persistence-turned-off
+  masterRestartDelay: 10
+
+
+## Various Kubernetes Service-related Parameters
+services:
+  ##
+  ## Redis service exposes the database-access Service
+  ##
+  redis:
+    ## By default, set to ClusterIP to expose database only within cluster
+    ## Set as NodePort to expose database externally
+    type: ClusterIP
+
+    ## By default, tlsPort or nonTlsPort will be configured to use the default
+    ## Redis port (6379), based on if server tls.enabled or not.
+    ## If server tls.enabled, additionally nonTlsPort can be set to enable
+    ## simultaneous non-TLS access on a different port.
+    ## These valus can also be comma-separated lists of ports.
+    ## Leave blank or set to 0 to disable.
+    tlsPort:
+    nonTlsPort:
+
+    ## If type is NodePort, optionally set a specific nodePort port to use
+    ## instead of having one assigned by the infrastructure.  Ignored if
+    ## not using NodePort, random assigned if commented out.
+    ## NOTE:  If assigning nodePort here, you must ensure that the port
+    ##        is not currently assigned in the assignment range.
+    ## nodePort for standard (RW) redis service
+    # nodePort:
+    ## nodePort for read-only redis service
+    # nodePortReadOnly:
+
+    ## Configure dual-stack for the redis service, if not specified,
+    ## defaults to global settings.
+    ipFamilyPolicy: ""
+    ipFamilies: []
+
+  ##
+  ## Server exposes the per-pod services used for internal connectivity,
+  ## e.g., replication, clustering, etc., as well as Istio.  Includes the
+  ## server exporter metrics service
+  ##
+  server:
+    ## Configure dual-stack for the server per-pod service, if not specified,
+    ## defaults to global settings.
+    ipFamilyPolicy: ""
+    ipFamilies: []
+
+    ## server exporter metrics config (if server.metrics.enabled)
+    exporter:
+      # The port to use for server metrics service
+      port: 9121
+
+      ## Configure dual-stack for the server metrics service, if not specified,
+      ## defaults to global settings.
+      ipFamilyPolicy: ""
+      ipFamilies: []
+
+
+  ##
+  ## Sentinel exposes the Sentinel-access Service
+  ## Typically, this is not used as clients should not need to interface with Sentinels
+  ##
+  sentinel:
+    ## By default, set to ClusterIP to expose sentinels only within cluster
+    ## Set as NodePort to expose externally
+    type: ClusterIP
+
+    port: 26379
+
+    ## If type is NodePort, optionally set a specific nodePort port to use
+    ## instead of having one assigned by the infrastructure.  Ignored if
+    ## not using NodePort, random assigned if commented out.
+    ## NOTE:  If assigning nodePort here, you must ensure that the port
+    ##        is not currently assigned in the assignment range.
+    # nodePort:
+
+    ## sentinel exporter metrics config (if sentinel.metrics.enabled)
+    exporter:
+      # The port to use for sentinel metrics service
+      port: 9121
+
+      ## Configure dual-stack for the sentinel metrics service, if not specified,
+      ## defaults to global settings.
+      ipFamilyPolicy: ""
+      ipFamilies: []
+
+  ##
+  ## Admin exposes the admin container DB interface.
+  ##
+  admin:
+    ## name of admin service.  If not set, will be <release>-admin
+    #name:
+
+    ## By default, set to ClusterIP to expose admin only within cluster
+    ## Set as NodePort to expose externally
+    type: ClusterIP
+
+
+## Helm Hook Parameters
+hooks:
+  ## Exposes the hook-delete-policy.  By default, this is set to delete the
+  ## hooks only upon success, or before a (re)creation.  In helm pre-v2.9,
+  ## however, this should be set to only hook-succeeded.  This can also be
+  ## unset to avoid hook deletion for troubleshooting and debugging purposes
+  #deletePolicy: "before-hook-creation"
+  deletePolicy: "hook-succeeded,before-hook-creation"
+
+  ## Here you can configure the pre- and post- jobs as follows:
+  ##    enabled        - Indicates if the job is enabled to run.
+  ##    name           - The job name with global.podNamePrefix (if defined)
+  ##    containerName  - The job container name with global.containerNamePrefix
+  ##                     (if defined)
+  ##    timeout        - The job timeout (in seconds) allowed for job
+  ##                     execution.  If job timeout occurs. the job will fail,
+  ##                     however the job process will run to completion.
+  ##                     Set to 0 to disable job timing operations.
+  ## This may be useful for umbrella charts where you don't want the
+  ## CRDB upgrade jobs to run when the parent chart upgrade is performed.
+  ## WARNING: Be verify careful when disabling jobs, it may cause unexpected
+  ##          side-effects since the jobs are there to perform the tasks
+  ##          necessary to carry out an action, and this will disable those.
+  preInstallJob:
+    enabled: true
+    name:
+    containerName:
+    timeout: 120
+  postInstallJob:
+    enabled: true
+    name:
+    containerName:
+    timeout: 900
+  preUpgradeJob:
+    enabled: true
+    name:
+    containerName:
+    timeout: 1800
+  postUpgradeJob:
+    enabled: true
+    name:
+    containerName:
+    timeout: 1800
+  preRollbackJob:
+    enabled: true
+    name:
+    containerName:
+    timeout: 1800
+  postRollbackJob:
+    enabled: true
+    name:
+    containerName:
+    timeout: 1800
+  preDeleteJob:
+    enabled: true
+    name:
+    containerName:
+    timeout: 120
+  postDeleteJob:
+    enabled: true
+    name:
+    containerName:
+    timeout: 180
+  preRestoreJob:
+    enabled: true
+    name:
+    containerName:
+    timeout: 180
+  postRestoreJob:
+    enabled: true
+    name:
+    containerName:
+    timeout: 180
+
+  # Helm test Job
+  testJob:
+    enabled: true
+    name:
+    containerName:
+    backoffLimit: 0
+    timeout: 300
+
+
+
+###### site-specific params #####
+## Data in Flight TLS Encryption
+tls:
+  enabled: false
+
+  ## mTLS
+  ##
+  ## Redis enables mutual TLS by default, when TLS is enabled.
+  ## To disable client certificate authentication, set authClients to false
+  ## NOTE: This setting also affects replication of traffic between server
+  ##       pods for replication or clustering.
+  authClients: true
+
+  ###### site-specific params #####
+  ##
+  ## Release-wide certificate expiration monitoring parameters
+  ##
+  certificates:
+    ## If threshold greater than zero, a Major alarm is generated if the
+    ## certificate is about to expire in the specified number of days
+    ## (default 7). A Critical alarm is generated when the certificate is
+    ## expired. The zero value disables certificate alarming.
+    threshold: 7
+
+    server:
+      ## rolloutWait: If a certificate is updated without restarting the
+      ## server pods (a la cmgr), a rollout will be started rolloutWait seconds
+      ## after the update to get redis to reload the certs. The zero value will
+      ## disable the rollout, but the application must take other steps to get the
+      ## new certificate loaded. An alarm threshold of 0 will also disable rollout.
+      ## The condition is only checked for once an hour (certificate alarm loop).
+      rolloutWait: 3600
+
+
+
+
+
+## Client-side site-specific params ###
+clients:
+  ##
+  ## External (workload) clients can be added, if so desired.
+  ##
+  #application1:
+  #  ## Suffix used by common-lib for certs
+  #  nameSuffix: application1
+  #
+  #   tls:
+  #    ## If tls.authClients is true, then the client requires a
+  #    ## certificate passed in via a Secret.
+  #    secretRef:
+  #      ## Secret containing the certificate to be used for this client.
+  #      ## If empty then automatically generated secret with certificate will be used
+  #      name:
+  #      ## Secret key names mapping.
+  #      ## If the provided Secret is of type `kubernetes.io/tls', then key names do not
+  #      ## need to be changed.
+  #      keyNames:
+  #        ## Name of Secret key, which contains CA certificate
+  #        caCrt: "ca.crt"
+  #        ## Name of Secret key, which contains TLS key
+  #        tlsKey: "tls.key"
+  #        ## Name of Secret key, which contains TLS certificate
+  #        tlsCrt: "tls.crt"
+  #  ## When using generated certificates via cert-manager,
+  #  ## the following are used to create the Certificate objects.
+  #  certificate:
+  #    enabled: true
+  #    nameSuffix:
+  #    issuerRef:
+  #      name:
+  #      kind:
+  #      group:
+  #    duration: 8760h # 1 year
+  #    renewBefore: 360h # 15 days
+  #    subject:
+  #    # `commonName` has been deprecated since 2000 and is discouraged from being used.
+  #    # `dnsNames` are used instead.
+  #    commonName:
+  #    # If `usages` is not specified, the following will be used:
+  #    # - client auth
+  #    usages:
+  #    # If `dnsNames` is not specified then the following internal names will be used:
+  #    # - localhost
+  #    # If used by an application and/or with an Ingress object with ssl passthrough,
+  #    # then dnsNames should be set to include external DNS name(s).
+  #    dnsNames:
+  #    uris:
+  #    # If ipAddresses not specified then the following internal local IPs will be used:
+  #    # - "127.0.0.1"
+  #    # - "::1"
+  #    ipAddresses:
+  #    privateKey:
+  #      algorithm:
+  #      encoding:
+  #      size:
+  #      rotationPolicy: Always
+
+  ##
+  ## The internal (workload) client is used by the internal tooling for things like
+  ## LCM/admin events, monitoring, alarming, metrics, etc.
+  ## Applications can use the internal client aspects (e.g., certificates), if so desired.
+  ##
+  internal:
+    nameSuffix: client-internal
+    tls:
+      secretRef:
+        name:
+        keyNames:
+          caCrt: "ca.crt"
+          tlsKey: "tls.key"
+          tlsCrt: "tls.crt"
+    certificate:
+      enabled: true
+      nameSuffix: client-cert
+      issuerRef:
+        name:
+        kind:
+        group:
+      duration: 8760h # 1 year
+      renewBefore: 360h # 15 days
+      subject:
+      commonName:
+      usages:
+      dnsNames:
+      uris:
+      ipAddresses:
+      privateKey:
+        algorithm:
+        encoding:
+        size:
+        rotationPolicy: Always
+
+
+## Helm Test Parameters
+tests:
+  resources:
+    requests:
+      memory: 64Mi
+      cpu: 100m
+      ephemeral-storage: 64Mi
+    limits:
+      memory: 64Mi
+      ## Default value for cpu limit should not be set
+      ## Please set it accordingly if you need it.
+      # cpu:
+      ephemeral-storage: 64Mi

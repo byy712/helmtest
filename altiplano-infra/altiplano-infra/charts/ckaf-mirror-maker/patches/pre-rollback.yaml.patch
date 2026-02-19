@@ -1,0 +1,20 @@
+--- ckaf-mirror-maker-o/templates/pre-rollback.yaml	2024-03-28 23:41:14.000000000 +0530
++++ ckaf-mirror-maker/templates/pre-rollback.yaml	2024-04-05 13:57:50.194854000 +0530
+@@ -19,6 +19,7 @@
+         sidecar.istio.io/inject: "false"
+ {{- include "csf-common-lib.v1.customAnnotations" (tuple .Values.global.annotations) | indent 8 }}
+       labels:
++        altiplano-role: {{ .Values.accessRoleLabel }}
+ {{ include "ckaf-mirror-maker.commonLabels" . | indent 8 }}
+ {{- include "csf-common-lib.v1.customLabels" (tuple .Values.global.labels) | indent 8 }}
+     spec:
+@@ -58,6 +59,9 @@
+           readOnlyRootFilesystem: {{ .Values.security.readOnlyRootFilesystem }}
+           {{- if ( ne ( toString ( .Values.security.runAsUser )) "auto" ) }}
+           runAsUser: {{ .Values.security.runAsUser }}
++            {{- if .Values.security.runAsGroup }}
++          runAsGroup: {{ .Values.security.runAsGroup }}
++            {{- end }}
+           {{- end }}
+           allowPrivilegeEscalation: false
+           {{- if eq (include "ckaf-mirror-maker.renderSeccompProfile" .) "true" }}

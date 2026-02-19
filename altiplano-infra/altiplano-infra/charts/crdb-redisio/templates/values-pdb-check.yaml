@@ -1,0 +1,19 @@
+{{- include "crdb-redisio.init" . -}}
+{{/*
+*
+* A non-manifest helper to check that the values for *.pdb are
+* valid according to HBP_Kubernetes_PDB_1 requirement
+*
+* HBP_Kubernetes_PDB_1
+*/}}
+
+{{- range tuple "server" "sentinel" "admin" -}}
+    {{- $subcomp := . -}}
+    {{ with index $.Values $subcomp "pdb" }}
+        {{- if .enabled -}}
+            {{- if or (and (not .maxUnavailable) (not .minAvailable)) (and .maxUnavailable .minAvailable) -}}
+                {{- required (printf "One and only one of maxUnavailable or minAvailable must be set in %s.pdb" $subcomp) "" -}}
+            {{- end -}}
+        {{- end -}}
+    {{- end -}}
+{{- end -}}

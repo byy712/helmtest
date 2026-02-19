@@ -1,0 +1,24 @@
+apiVersion: v2
+appVersion: 1.24.0-1.4.3-1.1.1-rocky8
+dependencies:
+- condition: defaultBackend.enabled
+  name: default404
+  repository: https://repo.cci.nokia.net/csf-helm-stable
+  tags:
+  - defaultBackend
+  version: 1.8.1
+- name: csf-common-lib
+  repository: https://repo.cci.nokia.net/csf-helm-stable
+  version: 1.10.0
+description: A citm-ingress is an ingress controller for Kubernetes using NGINX as
+  a reverse proxy and load balancer.
+icon: https://upload.wikimedia.org/wikipedia/commons/thumb/c/c5/Nginx_logo.svg/500px-Nginx_logo.svg.png
+keywords:
+- ingress
+- nginx
+- citm-ingress
+maintainers:
+- email: I_CSF_CITM@internal.nsn.com
+  name: CSF CITM Team
+name: citm-ingress
+version: 3.0.1-nokia-patch-2

@@ -1,0 +1,80 @@
+{{- if (and .Values.rbac.enabled (and (not .Values.global.serviceAccountName) (not .Values.global.isuServiceAccountName))) }}
+apiVersion: v1
+kind: ServiceAccount
+automountServiceAccountToken: false
+metadata:
+  name: {{ template "ckey.fullName" . }}-isu-sa
+  namespace: "{{.Release.Namespace}}"
+  labels:
+    app: {{ template "ckey.fullName" . }}
+    heritage: {{ .Release.Service }}
+    release: {{ .Release.Name }}
+    {{- include "ckey.customLabels" (tuple .Values.global.labels ) | indent 4 }}
+    {{- include "ckey.commonLabels" . | indent 4 }}
+  annotations:
+    helm.sh/hook: pre-upgrade, pre-rollback, post-upgrade, post-rollback
+    helm.sh/hook-delete-policy: before-hook-creation, hook-succeeded
+    helm.sh/hook-weight: "-10"
+    {{- include "ckey.customAnnotations" (tuple .Values.global.annotations) | indent 4 }}
+---
+kind: Role
+apiVersion: rbac.authorization.k8s.io/v1
+metadata:
+  namespace: "{{.Release.Namespace}}"
+  name: {{ template "ckey.fullName" . }}-isu-role
+  labels:
+    app: {{ template "ckey.fullName" . }}
+    release: {{ .Release.Name }}
+    {{- include "ckey.customLabels" (tuple .Values.global.labels ) | indent 4 }}
+    {{- include "ckey.commonLabels" . | indent 4 }}
+  annotations:
+    helm.sh/hook: pre-upgrade, pre-rollback, post-upgrade, post-rollback
+    helm.sh/hook-delete-policy: before-hook-creation, hook-succeeded
+    helm.sh/hook-weight: "-10"
+    {{- include "ckey.customAnnotations" (tuple .Values.global.annotations) | indent 4 }}
+rules:
+- apiGroups: [""]
+  resources: ["pods"]
+  verbs: ["get", "list", "delete"]
+- apiGroups: ["apps"]
+  resources: ["statefulsets"]
+  verbs: ["get", "list", "watch", "patch", "create", "delete"]
+- apiGroups: [""]
+  resources: ["services"]
+  verbs: ["get", "patch"]
+- apiGroups: [""]
+  resources: ["secrets"]
+  verbs: ["get", "list", "delete"]
+- apiGroups: [""]
+  resources: ["pods/log"]
+  verbs: ["get"]
+- apiGroups: [""]
+  resources: ["pods/exec"]
+  verbs: ["create"]
+---
+kind: RoleBinding
+apiVersion: rbac.authorization.k8s.io/v1
+metadata:
+  name: {{ template "ckey.fullName" . }}-isu-rolebinding
+  namespace: "{{.Release.Namespace}}"
+  labels:
+    app: {{ template "ckey.fullName" . }}
+    release: {{ .Release.Name }}
+    {{- include "ckey.customLabels" (tuple .Values.global.labels ) | indent 4 }}
+    {{- include "ckey.commonLabels" . | indent 4 }}
+  annotations:
+    helm.sh/hook: pre-upgrade, pre-rollback, post-upgrade, post-rollback
+    helm.sh/hook-delete-policy: before-hook-creation, hook-succeeded
+    helm.sh/hook-weight: "-10"
+    {{- include "ckey.customAnnotations" (tuple .Values.global.annotations) | indent 4 }}
+subjects:
+- kind: ServiceAccount
+  name: {{ template "ckey.fullName" . }}-isu-sa
+  namespace: "{{.Release.Namespace}}"
+  apiGroup: ""
+roleRef:
+  kind: Role
+  name: {{ template "ckey.fullName" . }}-isu-role
+  apiGroup: rbac.authorization.k8s.io
+---
+{{- end }}

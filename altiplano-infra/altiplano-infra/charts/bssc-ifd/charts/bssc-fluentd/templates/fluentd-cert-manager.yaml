@@ -1,0 +1,18 @@
+{{- include "bssc-fluentd.isCertManagerEnable" .}}
+{{- if and (eq $.isCertManagerEnabled "true") (.Values.fluentd.sensitiveInfoInSecret.enabled) ( not $.istio.enabled) }}
+{{- if  (.Values.fluentd.certificate.enabled) }}
+apiVersion: {{ template "bssc-fluentd.apiVersionCertManager" . }}
+kind: Certificate
+metadata:
+  name: {{ template "bssc-fluentd.fullname" . }}-certmgr-cert
+  namespace: {{ .Release.Namespace }}
+  labels:
+{{- include "bssc-fluentd.commonLabels" (tuple . "fluentd" ) | nindent 4 }}
+{{- include "bssc-fluentd.csf-toolkit-helm.labels" (tuple .) | nindent 4 }}
+  annotations:
+{{- include "bssc-fluentd.csf-toolkit-helm.annotations" (tuple .) | nindent 4 }}
+spec:
+{{- include "bssc-fluentd.certificateValues" (tuple . .Values.fluentd) | indent 2}}
+{{- end }}
+{{- end }}
+

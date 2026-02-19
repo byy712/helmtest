@@ -1,0 +1,18 @@
+{{- include "bssc-indexmgr.isCertManagerEnable" . }}
+{{- if and (eq $.isCertManagerEnabled  "true") (.Values.indexmgr.certificate.enabled) ( not $.istio.enabled) }}
+{{- if eq (tpl (.Values.security.sensitiveInfoInSecret.enabled | toString ) .) "true" }}
+apiVersion: {{ template "bssc-indexmgr.apiVersionCertManager" . }}
+kind: Certificate
+metadata:
+  name: {{ template "bssc-indexmgr.fullname" . }}-cert
+  namespace: {{ .Release.Namespace }}
+  labels:
+{{- include "bssc-indexmgr.commonLabels" (tuple .  "indexmgr" ) | indent 4 }}
+{{- include "bssc-indexmgr.csf-toolkit-helm.labels" (tuple .) | nindent 4 }}
+  annotations:
+{{- include "bssc-indexmgr.csf-toolkit-helm.annotations" (tuple .) | nindent 4 }}
+spec:
+{{- include "bssc-indexmgr.certificateValues" (tuple . .Values.indexmgr) | indent 2}}
+{{- end }}
+{{- end }}
+

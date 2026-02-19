@@ -1,0 +1,22 @@
+{{- if .Values.prometheus.enabled }}
+kind: Service
+apiVersion: v1
+metadata:
+  name: {{ include "hdfs.fullname" . }}-datanode-exporter
+  labels:
+    app.kubernetes.io/name: {{ include "hdfs.name" . }}
+    app.kubernetes.io/component: datanode
+    {{- include "hdfs.labels" . | nindent 4 }}
+  annotations:
+    prometheus.io/port: {{ .Values.prometheus.port | quote }}
+    prometheus.io/scrape: "true"
+spec: 
+  selector:
+    app.kubernetes.io/name: {{ include "hdfs.name" . }}
+    app.kubernetes.io/component: datanode
+    app.kubernetes.io/instance: {{ .Release.Name }}
+  ports:
+  - port: {{ .Values.prometheus.port }}
+    name: metrics
+    targetPort: {{ .Values.prometheus.port }}
+{{- end }}

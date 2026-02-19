@@ -1,0 +1,35 @@
+# Render config map only in case of istio enabled env, till the support of istio
+# is provided for TransportIngress CRD.
+{{- if and (eq .Values.ingress.enableExternalAccess true) (or (eq .Values.global.istio.enabled true) (eq .Values.global.istio.createDrForClient true) (eq .Values.ingress.type "IngressConfigMap")) }}
+{{- $servicePort := .Values.ingress.edgeNodePort }}
+{{- $clientPort := .Values.zookeeperClientPort }}
+{{- $fullName := include "ckaf-zookeeper.name" . }}
+{{- $root := . }}
+{{- $citmName := tpl .Values.ingress.citmPrefixName . }}
+{{- $releaseNamespace :=  .Release.Namespace }}
+{{- $chartName :=  .Chart.Name }}
+{{- $releaseName := .Release.Name }}
+{{- $chartVersion := .Chart.Version }}
+{{- $partOf := .Values.partOf }}
+{{- $managedBy := .Values.managedBy }}
+{{- $istioEnabled := .Values.global.istio.enabled }}
+{{- $createDrForClient := .Values.global.istio.createDrForClient }}
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ $citmName }}-tcp-{{ $fullName }}
+  labels:
+{{ include "ckaf-zookeeper.commonlabels" $root | indent 4 }}
+{{- include "csf-common-lib.v1.customLabels" (tuple $root.Values.global.labels) | indent 4 }}
+  annotations:
+{{- include "csf-common-lib.v1.customAnnotations" (tuple $root.Values.global.annotations) | indent 4 }}
+  namespace: {{ $releaseNamespace }}
+data:
+  {{- if or (eq $istioEnabled true) (eq $createDrForClient true) }}
+  {{ $servicePort }}: "{{ $releaseNamespace }}/{{ $fullName }}:{{ $clientPort }}:STREAM-RESPONSE=2,NODE-PORT={{ $servicePort }}"
+  {{- else }}
+  {{ $servicePort }}: "{{ $releaseNamespace }}/{{ $fullName }}:{{ $clientPort }}:STREAM-RESPONSE=2,NODE-PORT={{ $servicePort }}"
+  {{- end }}
+{{- end }}
+

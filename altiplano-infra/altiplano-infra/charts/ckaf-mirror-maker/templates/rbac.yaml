@@ -1,0 +1,150 @@
+{{- if (and ( .Values.global.rbac.enabled) (not .Values.serviceAccountName) ) }}
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: {{ template "ckaf-mirror-maker.name" . }}-pre-mmadmin
+  namespace: "{{.Release.Namespace}}"
+  labels:
+{{ include "ckaf-mirror-maker.commonLabels" . | indent 4 }}
+{{- include "csf-common-lib.v1.customLabels" (tuple .Values.global.labels) | indent 4 }}
+    app: {{ .Chart.Name }}
+    heritage: {{ .Release.Service }}
+    release: {{ .Release.Name }}
+  annotations:
+    helm.sh/hook: pre-install,pre-upgrade
+    helm.sh/hook-weight: "-10"
+    helm.sh/hook-delete-policy: before-hook-creation, hook-succeeded
+    seccomp.security.alpha.kubernetes.io/allowedProfileNames: {{ .Values.global.seccompAllowedProfileNames }}
+    seccomp.security.alpha.kubernetes.io/defaultProfileName: {{ .Values.global.seccompDefaultProfileName }}
+{{- include "csf-common-lib.v1.customAnnotations" (tuple .Values.global.annotations) | indent 4 }}
+automountServiceAccountToken: false
+{{- if  coalesce .Values.imagePullSecrets .Values.global.imagePullSecrets }}
+imagePullSecrets:
+{{- range coalesce .Values.imagePullSecrets  .Values.global.imagePullSecrets }}
+  - name: {{ . }}
+{{- end }}
+{{- end }}
+---
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: {{ template "ckaf-mirror-maker.name" . }}-sa-mmadmin
+  namespace: "{{.Release.Namespace}}"
+  labels:
+{{ include "ckaf-mirror-maker.commonLabels" . | indent 4 }}
+{{- include "csf-common-lib.v1.customLabels" (tuple .Values.global.labels) | indent 4 }}
+    app: {{ .Chart.Name }}
+    heritage: {{ .Release.Service }}
+    release: {{ .Release.Name }}
+  annotations:
+    helm.sh/hook-weight: "-10"
+    seccomp.security.alpha.kubernetes.io/allowedProfileNames: {{ .Values.global.seccompAllowedProfileNames }}
+    seccomp.security.alpha.kubernetes.io/defaultProfileName: {{ .Values.global.seccompDefaultProfileName }}
+{{- include "csf-common-lib.v1.customAnnotations" (tuple .Values.global.annotations) | indent 4 }}
+automountServiceAccountToken: false
+{{- if  coalesce .Values.imagePullSecrets .Values.global.imagePullSecrets }}
+imagePullSecrets:
+{{- range coalesce .Values.imagePullSecrets  .Values.global.imagePullSecrets }}
+  - name: {{ . }}
+{{- end }}
+{{- end }}
+---
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  labels:
+{{ include "ckaf-mirror-maker.commonLabels" . | indent 4 }}
+{{- include "csf-common-lib.v1.customLabels" (tuple .Values.global.labels) | indent 4 }}
+    app: {{ .Chart.Name }}
+    heritage: {{ .Release.Service }}
+    release: {{ .Release.Name }}
+  name: {{ template "ckaf-mirror-maker.name" . }}-role
+  namespace: {{ .Release.Namespace }}
+  annotations:
+{{- include "csf-common-lib.v1.customAnnotations" (tuple .Values.global.annotations) | indent 4 }}
+rules:
+- apiGroups: [""]
+  resources: ["pods", "serviceaccounts"]
+  verbs: ["list", "create", "get", "watch", "delete","deletecollection"]
+- apiGroups: [""]
+  resources: ["persistentvolumeclaims"]
+  verbs: ["get", "list", "delete", "patch"]
+- apiGroups: [""]
+  resources: ["pods/status"]
+  verbs: ["get"]
+- apiGroups: ["apps"]
+  resources: ["deployments", "deployments/scale"]
+  verbs: ["get","patch"]
+- apiGroups: [""]
+  resources: ["services","configmaps"]
+  verbs:  ["get","create","delete","patch","update"]
+- apiGroups: [""]
+  resources: ["secrets"]
+  verbs: ["create", "list", "get", "watch", "delete", "update"]
+- apiGroups: ["extensions","networking.k8s.io"]
+  resources: ["ingresses"]
+  verbs: ["get", "create", "list"]
+- apiGroups: [""]
+  resources: ["services"]
+  verbs: ["get", "create", "delete","list"]
+- apiGroups: ["extensions"]
+  resources: ["replicasets","replicasets/scale"]
+  verbs: ["create", "delete","patch","update"]
+- apiGroups: [""]
+  resources: ["pods/log"]
+  verbs: ["get", "list"]
+- apiGroups: [""]
+  resources: ["pods/exec"]
+  verbs: ["create"]
+- apiGroups: ["batch"]
+  resources: ["jobs","cronjobs"]
+  verbs: ["get","create","delete","deletecollection","patch","update"]
+- apiGroups: ["policy"]
+  resources: ["poddisruptionbudgets"]
+  verbs: ["get","create","delete","deletecollection","patch","update","list"]
+- apiGroups: ["policy"]
+  resources: ["poddisruptionbudgets/status"]
+  verbs: ["get","watch","list"]
+{{- if and ( eq .Values.global.istio.enabled true ) ( eq .Values.global.istio.cni.enabled false ) ( eq (include "ckaf-mirror-maker.PspCreation" .) "true") }}
+- apiGroups:
+  - extensions
+  resourceNames:
+  - {{ template "ckaf-mirror-maker.name" . }}-psp
+  resources:
+  - podsecuritypolicies
+  verbs:
+  - use
+{{- end }}
+
+---
+---
+kind: RoleBinding
+apiVersion: rbac.authorization.k8s.io/v1
+metadata:
+  name: {{ template "ckaf-mirror-maker.name" . }}-mmrolebinding
+  namespace: "{{.Release.Namespace}}"
+  labels:
+{{ include "ckaf-mirror-maker.commonLabels" . | indent 4 }}
+{{- include "csf-common-lib.v1.customLabels" (tuple .Values.global.labels) | indent 4 }}
+    app: {{ .Chart.Name }}
+  annotations:
+    seccomp.security.alpha.kubernetes.io/allowedProfileNames: {{ .Values.global.seccompAllowedProfileNames }}
+    seccomp.security.alpha.kubernetes.io/defaultProfileName: {{ .Values.global.seccompDefaultProfileName }}
+{{- include "csf-common-lib.v1.customAnnotations" (tuple .Values.global.annotations) | indent 4 }}
+subjects:
+- kind: ServiceAccount
+  name: {{ template "ckaf-mirror-maker.name" . }}-pre-mmadmin
+  namespace: "{{ .Release.Namespace }}"
+  apiGroup: ""
+- kind: ServiceAccount
+  name: {{ template "ckaf-mirror-maker.name" . }}-sa-mmadmin
+  namespace: "{{ .Release.Namespace }}"
+  apiGroup: ""
+roleRef:
+  kind: Role
+  name: {{ template "ckaf-mirror-maker.name" . }}-role
+  apiGroup: rbac.authorization.k8s.io
+---
+{{- end }}

@@ -1,0 +1,300 @@
+{{- if and .Release.IsUpgrade .Values.preUpgradeJob.backup.enabled }}
+{{- include "cbur.tls" . }}
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: {{ include "cbur.proxy.resourceName" (tuple . "Job" "preupgrade") }}
+  labels:
+{{- include "cbur.proxy.commonLabels" (tuple .) | indent 4 }}
+{{- include "cbur.customLabels" (tuple .Values.job.labels .Values.global.labels) | indent 4 }}
+  annotations:
+    "helm.sh/hook-weight": "1"
+    "helm.sh/hook": "pre-upgrade,pre-rollback"
+    "helm.sh/hook-delete-policy": before-hook-creation,hook-succeeded
+    {{- include "cbur.customAnnotations" (tuple .Values.job.annotations .Values.global.annotations) | indent 4 }}
+spec:
+  template:
+    metadata:
+      labels:
+{{- include "cbur.proxy.commonLabels" (tuple .) | indent 8 }}
+{{- include "cbur.customLabels" (tuple .Values.job.labels .Values.global.labels) | indent 8 }}
+      annotations:
+{{- include "cbur.customAnnotations" (tuple .Values.job.annotations .Values.global.annotations) | indent 8 }}
+        {{- if .Values.istio.enabled }}
+        sidecar.istio.io/inject: "true"
+        {{- else }}
+        sidecar.istio.io/inject: "false"
+        {{- end }}
+    spec:
+      {{- if .Values.rbac.enabled }}
+      serviceAccountName: {{ template "cbur.fullname" . }}
+      {{- else }}
+      serviceAccountName: {{ .Values.rbac.serviceAccountName }}
+      {{- end }}
+      restartPolicy: Never
+      terminationGracePeriodSeconds: 30
+      automountServiceAccountToken: true
+      {{- if .Values.priorityClassName }}
+      priorityClassName: {{ .Values.priorityClassName }}
+      {{- end }}
+{{ include "cbur.podSecurityContext" . | indent 6 }}
+      {{- if .Values.nodeSelectorOverride }}
+      nodeSelector:
+{{ toYaml .Values.nodeSelectorOverride | indent 8 }}
+      {{- else if .Values.nodeSelector }}
+      nodeSelector:
+{{ toYaml .Values.nodeSelector | indent 8 }}
+      {{- end }}
+      {{- with .Values.tolerations }}
+      tolerations:
+{{ toYaml . | indent 8 }}
+      {{- end }}
+      {{- if .Values.image.croncli.imagePullSecrets }}
+      imagePullSecrets: {{ toYaml .Values.image.croncli.imagePullSecrets | nindent 8 }}
+      {{- else if .Values.global.imagePullSecrets }}
+      imagePullSecrets: {{ toYaml .Values.global.imagePullSecrets | nindent 8 }}
+      {{- end }}
+      containers:
+      - name: {{ include "cbur.proxy.containerName" (tuple . "cbur-preupgrade") }}
+        image: {{ include "cbur.image.mapper" (tuple $ .Values.image.croncli .Values.internalCBURCliRegistry) }}
+        imagePullPolicy: {{ .Values.image.croncli.pullPolicy | default "IfNotPresent" | quote }}
+        resources:
+{{ include "cbur.resources" (tuple . .Values.preUpgradeJob.resources "200m") | indent 12 }}
+        env:
+          - name: CBURM_BRPOLICY
+            {{- if .Values.direct_redis.enabled }}
+            value: {{ include "cbur.proxy.resourceName" (tuple . "Deployment" "mycelery") }}
+            {{- else  }}
+            value: {{ include "cbur.proxy.resourceName" (tuple . "Deployment") }}
+            {{- end }}
+          - name: NAMESPACE
+            value: "{{ .Release.Namespace }}"
+          - name: SERVICE_URL
+            value: {{ template "cbur.fullname" . }}.{{ .Release.Namespace }}.svc
+          {{- if .Values.istio.enabled }}
+          - name: ISTIO_ENABLED
+            value: "True"
+          {{- end }}
+          - name: CBURM_HTTPS_PORT
+            value: "{{ .Values.tls.port }}"
+          - name: CBURM_HTTP_PORT
+            value: "{{ .Values.serverPort }}"
+          {{- if .Values.tls.clientSecretRef.credentialName }}
+          - name: TLS_CLIENT_CA_CRT_NAME
+            value: {{ .Values.tls.clientSecretRef.keyNames.caCrt | default "ca.crt" }}
+          - name: TLS_CLIENT_TLS_CRT_NAME
+            value: {{ .Values.tls.clientSecretRef.keyNames.tlsCrt | default "tls.crt" }}
+          - name: TLS_CLIENT_TLS_KEY_NAME
+            value: {{ .Values.tls.clientSecretRef.keyNames.tlsKey | default "tls.key" }}
+          {{- end }}
+          {{- if .Values.direct_redis.enabled }}
+          - name: CELERY_ENABLED
+            value: "True"
+          {{- end }}
+          - name: COUNTER
+            value: "{{ .Values.preUpgradeJob.backup.timeoutInterval }}"
+{{ include "cbur.containerSecurityContext" . | indent 8 }}
+{{ include "cbur.containerRunAsUser" . | indent 10 }}
+{{ include "cbur.containerRunAsGroup" . | indent 10 }}
+{{ include "cbur.hookpod.readOnlyRootFilesystem" . | indent 10 }}
+{{- if and (.Values.securityContext.enabled) (not (.Capabilities.APIVersions.Has "security.openshift.io/v1")) }}
+{{- if eq ( toString ( .Values.securityContext.runAsUser )) "auto"}}
+          runAsUser: 0
+{{- end }}
+{{- if eq ( toString ( .Values.securityContext.runAsGroup )) "auto" }}
+          runAsGroup: 0
+{{- end }}
+{{- end }}
+        volumeMounts:
+        {{- if .Values.auth.enabled }}
+        - mountPath: /etc/ssl/auth1/cbur
+          name: "auth1"
+          readOnly: true
+        - mountPath: /etc/ssl/auth2/cbur
+          name: "auth2"
+          readOnly: true
+        {{- end }}
+        - mountPath: /etc/ssl/certs/cbur
+          name: "certs"
+          readOnly: true
+        command:
+        - /bin/bash
+        - "-c"
+        - |
+           set_http_connection() {
+             PRE_CMD="curl -sL --post301 --location-trusted --header 'Content-Type: application/json' --header 'Accept: application/json'"
+             PROTOCOL="http"
+             CBURM_PORT=${CBURM_HTTP_PORT}
+           }
+           check_https_connection() {
+             TLS_CREDENTIAL_CA_CRT_NAME=${TLS_CLIENT_CA_CRT_NAME:-"ca.crt"}
+             TLS_CREDENTIAL_TLS_CRT_NAME=${TLS_CLIENT_TLS_CRT_NAME:-"tls.crt"}
+             TLS_CREDENTIAL_TLS_KEY_NAME=${TLS_CLIENT_TLS_KEY_NAME:-"tls.key"}
+             CERTS_PATH=/etc/ssl/certs/cbur
+             if [[ -f ${CERTS_PATH}/${TLS_CREDENTIAL_CA_CRT_NAME} ]] && [[ -f ${CERTS_PATH}/${TLS_CREDENTIAL_TLS_CRT_NAME} ]] && [[ -f ${CERTS_PATH}/${TLS_CREDENTIAL_TLS_KEY_NAME} ]]; then
+               PRE_CMD="curl -sL --post301 --location-trusted --cacert ${CERTS_PATH}/${TLS_CREDENTIAL_CA_CRT_NAME} --cert ${CERTS_PATH}/${TLS_CREDENTIAL_TLS_CRT_NAME} --key ${CERTS_PATH}/${TLS_CREDENTIAL_TLS_KEY_NAME} --header 'Content-Type: application/json' --header 'Accept: application/json'"
+             elif [[ -f ${CERTS_PATH}/ca.pem ]] && [[ -f ${CERTS_PATH}/client.pem ]] && [[ -f ${CERTS_PATH}/client-key.pem ]]; then
+               PRE_CMD="curl -sL --post301 --location-trusted --cacert ${CERTS_PATH}/ca.pem --cert ${CERTS_PATH}/client.pem --key ${CERTS_PATH}/client-key.pem --header 'Content-Type: application/json' --header 'Accept: application/json'"
+             else
+               echo "TLS certificates do not exist"
+               return 1
+             fi
+             PROTOCOL="https"
+             CBURM_PORT=${CBURM_HTTPS_PORT}
+             URL="${PROTOCOL}://${SERVICE_URL}:${CBURM_PORT}/v2/status/"
+             CMD="${PRE_CMD} -X GET --max-time 5 ${URL}"
+             echo "Running command: ${CMD}"
+             ret=$(bash -c "${CMD}")
+             return $?
+           }
+           check_auth() {
+             URL="${PROTOCOL}://${SERVICE_URL}:${CBURM_PORT}/v2/auth/status"
+             CMD="${PRE_CMD} -X GET ${URL}"
+             sleep 3
+             ret=$(bash -c "${CMD}")
+             AUTH=$(echo $ret | jq -r ".message" )
+             echo "AUTH type is $AUTH"
+             if [[ "${AUTH}" == "1" ]]; then
+               URL="${PROTOCOL}://${SERVICE_URL}:${CBURM_PORT}/v2/auth/users/login"
+               USERNAME1=$(bash -c "cat /etc/ssl/auth1/cbur/username")
+               PASSWORD1=$(bash -c "cat /etc/ssl/auth1/cbur/password")
+               CMD="${PRE_CMD} -d '{\"username\":\"${USERNAME1}\",\"password\":\"${PASSWORD1}\"}' -X POST ${URL}"
+               ret=$(bash -c "${CMD}")
+               STATUS_CODE=$(echo $ret | jq -r ".code" )
+               if [[ ${STATUS_CODE} -eq 200 ]]
+               then
+                 TOKEN=$(echo $ret | jq -r ".message.accessToken" )
+                 BASECMD_1="${PRE_CMD} --header 'Authorization: Bearer ${TOKEN}'"
+                 return 0
+               else
+                 BASECMD_1="${PRE_CMD}"
+                 return 1
+               fi
+             elif [[ "${AUTH}" == "2" ]]; then
+               USERNAME2=$(bash -c "cat /etc/ssl/auth2/cbur/username")
+               PASSWORD2=$(bash -c "cat /etc/ssl/auth2/cbur/password")
+               ret="${USERNAME2}:${PASSWORD2}"
+               BASECMD_1="${PRE_CMD} -u ${ret}"
+               return 0
+             else
+               BASECMD_1="${PRE_CMD}"
+               return 0
+             fi
+           }
+           status() {
+             task_id=$1
+             URL="${PROTOCOL}://${SERVICE_URL}:${CBURM_PORT}/v2/task/${task_id}"
+             CMD="${BASECMD_1} -X GET ${URL}"
+             bash -c "${CMD}"
+           }
+           handle_istio() {
+             action=$1
+             if [[ "$ISTIO_ENABLED" == "True" ]];then
+               if [[ $action == "ready" ]];then
+                 cmd="healthz/ready"
+               else
+                 cmd="quitquitquit"
+               fi
+               let retry=0
+               while [ $retry -lt 30 ]
+               do
+                 cmd="curl -s -f -X POST http://localhost:15020/$cmd"
+                 bash -c "${cmd}"
+                 if [[ $? == 0 ]];then
+                   break
+                 fi
+                 let "retry=retry+1"
+                 sleep 2
+                 echo "continue waiting for istio-proxy to be $action"
+               done
+             fi
+           }
+           handle_result() {
+             br_ret=$1
+             rsp_code=$(echo $br_ret | jq -r ".code" )
+             rsp_status=$(echo $br_ret | jq -r ".status" )
+             CELERY_ENABLED=${CELERY_ENABLED:-False}
+             if [[ "$CELERY_ENABLED" == "True" ]]; then
+               if [[ "$rsp_code" == "202" ]] && [[ "$rsp_status" == "Success" ]]; then
+                 taskid=$(echo ${br_ret} | jq -r ".message"|awk '{print $4;}')
+                 if [[ ! "${taskid}" =~ ^\{?[A-F0-9a-f]{8}-[A-F0-9a-f]{4}-[A-F0-9a-f]{4}-[A-F0-9a-f]{4}-[A-F0-9a-f]{12}\}?$ ]]
+                 then
+                   echo "celery is enabled, but no task_id found: $br_ret"
+                   return 1
+                 fi
+                 retry='0'
+                 while [[ $retry -lt $COUNTER ]]; do
+                   br_ret=$(status ${taskid})
+                   br_status=$(echo $br_ret|jq -r ".status")
+                   if [[ "$br_status" == "Success" ]]; then
+                     echo "${br_ret}"
+                     return 0
+                   elif [[ "$br_status" == "InProgress" ]]; then
+                     sleep 5
+                     retry=$((retry + 1))
+                   else
+                     echo "${br_ret}"
+                     return 1
+                   fi
+                 done
+                 echo "Time out waiting the task to complete: $br_ret"
+               else
+                 echo "The BR operation with celery failed: $br_ret"
+                 return 1
+               fi
+             else
+               if [[ "$rsp_code" == "200" ]] && [[ "$rsp_status" == "Success" ]]; then
+                 echo "$br_ret"
+                 return 0
+               else
+                 echo "$br_ret"
+                 return 1
+               fi
+             fi
+           }
+           ISTIO_ENABLED=${ISTIO_ENABLED:-False}
+           handle_istio "ready"
+           echo "Trying to use HTTPS connection"
+           check_https_connection
+           if [[ $? == 0 ]]; then
+             echo "Connection via HTTPS succeeded"
+           else
+             echo "HTTPS connection failed, fallback to HTTP connection"
+             set_http_connection
+           fi
+           check_auth
+           URL="${PROTOCOL}://${SERVICE_URL}:${CBURM_PORT}/v2/backup/$NAMESPACE/${CBURM_BRPOLICY}"
+           CMD="${BASECMD_1} -X POST ${URL}"
+           echo "Running command: ${CMD}"
+           br_ret=$(bash -c "${CMD}")
+           handle_result "$br_ret"
+           ret=$?
+           handle_istio "quit"
+           exit $ret
+      volumes:
+      {{- if .Values.auth.enabled }}
+      - name: "auth1"
+        secret:
+          secretName: "cbur-auth"
+          optional: true
+      - name: "auth2"
+        secret:
+          secretName: "cbur-basic-auth"
+          optional: true
+      {{- end }}
+      {{- if .Values.tls.clientSecretRef.credentialName }}
+      - name: "certs"
+        secret:
+          secretName: {{ .Values.tls.clientSecretRef.credentialName }}
+      {{- else if .Values.tls.certsPath }}
+      - name: "certs"
+        hostPath:
+          path: {{ .Values.tls.certsPath }}
+      {{- else }}
+      - name: "certs"
+        secret:
+          secretName: {{ template "cbur.fullname" . }}-client-srt
+          optional: true
+      {{- end }}
+  backoffLimit: 0
+{{- end }}

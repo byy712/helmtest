@@ -1,0 +1,67 @@
+{{- if (and .Values.rbac.enabled (and (not .Values.global.serviceAccountName) (not .Values.global.preUpgradeServiceAccountName))) }}
+apiVersion: v1
+kind: ServiceAccount
+automountServiceAccountToken: true
+metadata:
+  name: {{ template "ckey.fullName" . }}-pre-upgrade-sa
+  namespace: "{{.Release.Namespace}}"
+  annotations:
+    "helm.sh/hook": pre-upgrade, pre-rollback
+    "helm.sh/hook-delete-policy": {{ .Values.hookDeletePolicy }}
+    "helm.sh/hook-weight": "-10"
+    {{- include "ckey.customAnnotations" (tuple .Values.global.annotations) | indent 4 }}
+  labels:
+    app: {{ template "ckey.fullName" . }}
+    heritage: {{ .Release.Service }}
+    release: {{ .Release.Name }}
+    {{- include "ckey.customLabels" (tuple .Values.global.labels ) | indent 4 }}
+    {{- include "ckey.commonLabels" . | indent 4 }}
+
+---
+
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: {{ template "ckey.fullName" . }}-pre-upgrade-role
+  namespace: "{{.Release.Namespace}}"
+  annotations:
+    "helm.sh/hook": pre-upgrade, pre-rollback
+    "helm.sh/hook-delete-policy": {{ .Values.hookDeletePolicy }}
+    "helm.sh/hook-weight": "-10"
+    {{- include "ckey.customAnnotations" (tuple .Values.global.annotations) | indent 4 }}
+  labels:
+    app: {{ template "ckey.fullName" . }}
+    release: {{ .Release.Name }}
+    {{- include "ckey.customLabels" (tuple .Values.global.labels ) | indent 4 }}
+    {{- include "ckey.commonLabels" . | indent 4 }}
+rules:
+  - apiGroups: [""]
+    resources: ["pods"]
+    verbs: ["watch", "get", "list", "delete"]
+
+---
+
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: {{ template "ckey.fullName" . }}-pre-upgrade-rolebinding
+  namespace: "{{.Release.Namespace}}"
+  annotations:
+    "helm.sh/hook": pre-upgrade, pre-rollback
+    "helm.sh/hook-delete-policy": {{ .Values.hookDeletePolicy }}
+    "helm.sh/hook-weight": "-10"
+    {{- include "ckey.customAnnotations" (tuple .Values.global.annotations) | indent 4 }}
+  labels:
+    app: {{ template "ckey.fullName" . }}
+    release: {{ .Release.Name }}
+    {{- include "ckey.customLabels" (tuple .Values.global.labels ) | indent 4 }}
+    {{- include "ckey.commonLabels" . | indent 4 }}
+subjects:
+- kind: ServiceAccount
+  name: {{ template "ckey.fullName" . }}-pre-upgrade-sa
+  namespace: "{{.Release.Namespace}}"
+roleRef:
+  kind: Role
+  name: {{ template "ckey.fullName" . }}-pre-upgrade-role
+  apiGroup: rbac.authorization.k8s.io
+{{- end }}

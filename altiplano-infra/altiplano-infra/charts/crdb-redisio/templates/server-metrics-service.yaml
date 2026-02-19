@@ -1,0 +1,108 @@
+{{- include "crdb-redisio.init" . -}}
+{{- if and (.Values.server.metrics) .Values.server.metrics.enabled (not .Values.server.metrics.usePodServices) }}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "csf-common-lib.v3.resourceName" (tuple . "service" "svr-metrics") }}
+  labels:
+    {{- include "crdb-redisio.labels" (tuple . "server" "metrics" "service") | nindent 4 }}
+    metrics-type: server
+  annotations:
+    {{- include "crdb-redisio.annotations" (tuple . "server" "metrics" "service") | nindent 4 }}
+    {{- toYaml .Values.server.metrics.annotations | nindent 4 }}
+spec:
+  type: ClusterIP
+  {{- include "crdb-redisio.dual-stack" (tuple . .Values.services.server.exporter) | nindent 2 }}
+  ports:
+  - name: tcp-metrics
+    port: {{ .Values.services.server.exporter.port | default 9121 }}
+    targetPort: tcp-metrics
+    appProtocol: tcp
+  selector:
+    {{- include "crdb-redisio.selector_labels" . | nindent 4 }}
+    type: server
+{{- if .Values.istio.enabled }}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "csf-common-lib.v3.resourceName" (tuple . "service" "svr-metrics-hl") }}
+  labels:
+    {{- include "crdb-redisio.labels" (tuple . "server" "metrics" "service") | nindent 4 }}
+    metrics-type: server
+  annotations:
+    {{- include "crdb-redisio.annotations" (tuple . "server" "metrics" "service") | nindent 4 }}
+    {{- toYaml .Values.server.metrics.annotations | nindent 4 }}
+spec:
+  type: ClusterIP
+  clusterIP: None
+  ports:
+  - name: tcp-metrics
+    port: {{ .Values.services.server.exporter.port | default 9121 }}
+    targetPort: tcp-metrics
+    appProtocol: tcp
+  selector:
+    {{- include "crdb-redisio.selector_labels" . | nindent 4 }}
+    type: server
+{{- if .Values.istio.createDrForClient }}
+---
+apiVersion: networking.istio.io/v1beta1
+kind: DestinationRule
+metadata:
+  name: {{ include "csf-common-lib.v3.resourceName" (tuple . "destinationrule" "server-metrics-hl-mtls-dr") }}
+  labels:
+    {{- include "crdb-redisio.labels" (tuple . "server" "metrics" "destinationrule") | nindent 4 }}
+  annotations:
+    {{- include "crdb-redisio.annotations" (tuple . "server" "metrics" "destinationrule") | nindent 4 }}
+spec:
+  host: {{ include "csf-common-lib.v3.resourceName" (tuple . "service" "svr-metrics-hl") }}
+  trafficPolicy:
+    tls:
+      mode: ISTIO_MUTUAL
+{{- end }}
+{{- end }}
+{{- end }}
+{{- if and (.Values.server.metrics) (.Values.server.metrics.enabled) (.Values.server.metrics.usePodServices) (.Values.istio.enabled) }}
+{{- $top := . -}}
+{{- range $i := until (int .Values.server.count) }}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "csf-common-lib.v3.resourceName" (tuple $top "service" (printf "svr-%d-metrics-hl" $i)) }}
+  labels:
+    {{- include "crdb-redisio.labels" (tuple $top "server" "metrics" "service") | nindent 4 }}
+    metrics-type: server
+  annotations:
+    {{- include "crdb-redisio.annotations" (tuple $top "server" "metrics" "service") | nindent 4 }}
+    {{- toYaml $top.Values.server.metrics.annotations | nindent 4 }}
+spec:
+  type: ClusterIP
+  clusterIP: None
+  ports:
+  - name: tcp-metrics
+    port: {{ $top.Values.server.metrics.port | default 9121 }}
+    appProtocol: tcp
+  selector:
+    {{- include "crdb-redisio.selector_labels" $top | nindent 4 }}
+    type: server
+    statefulset.kubernetes.io/pod-name: {{ include "csf-common-lib.v3.resourceName" (tuple $top "pod" (printf "%s-%d" $top.Values.server.nameSuffix $i)) }}
+{{- if $top.Values.istio.createDrForClient }}
+---
+apiVersion: networking.istio.io/v1beta1
+kind: DestinationRule
+metadata:
+  name: {{ include "csf-common-lib.v3.resourceName" (tuple $top "destinationrule" (printf "server-%d-metrics-hl-mtls-dr" $i)) }}
+  labels:
+    {{- include "crdb-redisio.labels" (tuple $top "server" "metrics" "destinationrule") | nindent 4 }}
+  annotations:
+    {{- include "crdb-redisio.annotations" (tuple $top "server" "metrics" "destinationrule") | nindent 4 }}
+spec:
+  host: {{ include "csf-common-lib.v3.resourceName" (tuple $top "service" (printf "server-%d-metrics-hl" $i)) }}
+  trafficPolicy:
+    tls:
+      mode: ISTIO_MUTUAL
+{{- end }}
+{{- end }}
+{{- end }}

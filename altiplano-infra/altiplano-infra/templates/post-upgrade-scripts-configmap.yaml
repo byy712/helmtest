@@ -1,0 +1,10 @@
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ .Release.Name }}-altiplano-post-upgrade-scripts
+  namespace: {{ .Release.Namespace }}
+data:
+  {{- (.Files.Glob "helpers/*").AsConfig | nindent 2 }}
+
+---

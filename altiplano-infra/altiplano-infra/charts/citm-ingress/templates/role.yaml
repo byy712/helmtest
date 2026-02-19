@@ -1,0 +1,150 @@
+{{- if .Values.rbac.enabled -}}
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  labels:
+    app: {{ template "citm-ingress.name" . }}
+    chart: {{ .Chart.Name }}-{{ .Chart.Version }}
+    heritage: {{ .Release.Service }}
+    release: {{ .Release.Name }}
+    {{- include "citm-ingress.commonLabels" . | indent 4 }}
+  name: {{ template "citm-ingress.fullname" . }}
+rules:
+  - apiGroups:
+      - ""
+    resources:
+      - configmaps
+      - endpoints
+      - pods
+      - secrets
+    verbs:
+      - list
+      - watch
+      - get
+  - apiGroups:
+      - ""
+    resources:
+      - configmaps
+    resourceNames:
+      - {{ tpl .Values.controller.electionID . }}-{{ .Values.controller.ingressClass }}
+      - ingress-controller-leader-{{ .Values.controller.ingressClass }}
+      - {{ tpl .Values.controller.electionID . }}
+    verbs:
+      - get
+      - update
+  - apiGroups:
+      - ""
+    resources:
+      - configmaps
+    verbs:
+      - create
+  - apiGroups:
+      - discovery.k8s.io
+    resources:
+      - endpointslices
+    verbs:
+      - list
+      - watch
+      - get
+  - apiGroups:
+      - ""
+    resources:
+      - endpoints
+    verbs:
+      - create
+      - get
+      - update
+{{- if .Values.controller.scope.enabled }}
+  - apiGroups:
+      - ""
+    resources:
+      - namespaces
+    resourceNames:
+{{- if .Values.controller.scope.namespace }}
+      - "{{ .Values.controller.scope.namespace }}"
+{{- else }}
+      - "{{ .Release.Namespace }}"
+{{- end }}
+    verbs:
+      - get
+{{- end }}
+  - apiGroups:
+      - ""
+    resources:
+      - services
+    verbs:
+      - get
+      - list
+      - patch
+      - update
+      - watch
+  - apiGroups:
+      - extensions
+      - "networking.k8s.io"
+    resources:
+      - ingresses
+    verbs:
+      - get
+      - list
+      - watch
+  - apiGroups:
+      - coordination.k8s.io
+    resources:
+      - leases
+    resourceNames:
+      - {{ tpl .Values.controller.electionID . }}
+    verbs:
+      - get
+      - update
+  - apiGroups:
+      - coordination.k8s.io
+    resources:
+      - leases
+    verbs:
+      - create
+  - apiGroups:
+      - ""
+    resources:
+      - events
+    verbs:
+      - create
+      - patch
+  - apiGroups:
+      - extensions
+      - "networking.k8s.io"
+    resources:
+{{- if eq ( include "citm-ingress.isOpenShift" .) "true" }}
+      - ingresses
+{{- else }}
+      - ingresses/status
+{{- end }}
+    verbs:
+      - update
+{{- if eq (include "citm-ingress.createPSP" .) "true" }}
+{{- if .Values.global.podSecurityPolicy.userProvided }}
+  - apiGroups:
+      - extensions
+    resourceNames:
+      - {{ template "citm-ingress.pspName" . }}
+    resources:
+      - podsecuritypolicies
+    verbs:
+      - use
+{{- else }}
+{{- if .Values.rbac.podSecurityPolicy.enabled }}
+  - apiGroups:
+      - extensions
+    resourceNames:
+  {{- if and .Values.istio.enabled (not .Values.controller.hostNetwork) }}
+      - privileged
+  {{- else }}
+      - {{ template "citm-ingress.fullname" . }}
+  {{- end }}
+    resources:
+      - podsecuritypolicies
+    verbs:
+      - use
+{{- end }}
+{{- end }}
+{{- end }}
+{{- end -}}

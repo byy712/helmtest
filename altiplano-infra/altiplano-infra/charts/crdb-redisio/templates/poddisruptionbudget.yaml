@@ -1,0 +1,60 @@
+{{- include "crdb-redisio.init" . -}}
+{{- if .Values.server.pdb.enabled }}
+---
+apiVersion: {{ .Capabilities.APIVersions.Has "policy/v1/PodDisruptionBudget" | ternary "policy/v1" "policy/v1beta1" }}
+kind: PodDisruptionBudget
+metadata:
+  name: {{ include "csf-common-lib.v3.resourceName" (tuple . "poddisruptionbudget" .Values.server.nameSuffix) }}
+  labels: {{- include "crdb-redisio.labels" (tuple . "server" "poddisruptionbudget") | nindent 4 }}
+  annotations: {{- include "crdb-redisio.annotations" (tuple . "server" "poddisruptionbudget") | nindent 4 }}
+spec:
+  selector:
+    matchLabels:
+      {{- include "crdb-redisio.selector_labels" . | nindent 6 }}
+      type: server
+  {{- if default "" .Values.server.pdb.minAvailable }}
+  minAvailable: {{ .Values.server.pdb.minAvailable }}
+  {{- else }}
+  maxUnavailable: {{ default "" .Values.server.pdb.maxUnavailable }}
+  {{- end }}
+{{- end }}
+
+{{- if (and .Values.sentinel.pdb.enabled .sentinel_enabled (gt (int .Values.server.count) 1)) }}
+---
+apiVersion: {{ .Capabilities.APIVersions.Has "policy/v1/PodDisruptionBudget" | ternary "policy/v1" "policy/v1beta1" }}
+kind: PodDisruptionBudget
+metadata:
+  name: {{ include "csf-common-lib.v3.resourceName" (tuple . "poddisruptionbudget" .Values.sentinel.nameSuffix) }}
+  labels: {{- include "crdb-redisio.labels" (tuple . "sentinel" "poddisruptionbudget") | nindent 4 }}
+  annotations: {{- include "crdb-redisio.annotations" (tuple . "sentinel" "poddisruptionbudget") | nindent 4 }}
+spec:
+  selector:
+    matchLabels:
+      {{- include "crdb-redisio.selector_labels" . | nindent 6 }}
+      type: sentinel
+  {{- if default "" .Values.sentinel.pdb.minAvailable }}
+  minAvailable: {{ .Values.sentinel.pdb.minAvailable }}
+  {{- else }}
+  maxUnavailable: {{ .Values.sentinel.pdb.maxUnavailable }}
+  {{- end }}
+{{- end }}
+
+{{- if .Values.admin.pdb.enabled }}
+---
+apiVersion: {{ .Capabilities.APIVersions.Has "policy/v1/PodDisruptionBudget" | ternary "policy/v1" "policy/v1beta1" }}
+kind: PodDisruptionBudget
+metadata:
+  name: {{ include "csf-common-lib.v3.resourceName" (tuple . "poddisruptionbudget" .Values.admin.nameSuffix) }}
+  labels: {{- include "crdb-redisio.admin.labels" (tuple . "admin" "poddisruptionbudget") | nindent 4 }}
+  annotations: {{- include "crdb-redisio.annotations" (tuple . "admin" "poddisruptionbudget") | nindent 4 }}
+spec:
+  selector:
+    matchLabels:
+      {{- include "crdb-redisio.admin.selector_labels" . | nindent 6 }}
+      type: admin
+  {{- if default "" .Values.admin.pdb.minAvailable }}
+  minAvailable: {{ .Values.admin.pdb.minAvailable }}
+  {{- else }}
+  maxUnavailable: {{ .Values.admin.pdb.maxUnavailable }}
+  {{- end }}
+{{- end }}

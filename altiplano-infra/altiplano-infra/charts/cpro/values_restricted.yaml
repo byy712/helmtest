@@ -1,0 +1,863 @@
+## When the user needs to monitor/scrape the metrics at namespace level 
+## then restrictedToNamespace flag is enabled.
+## By using the values_restricted.yaml file override the existing values in values.yaml file.
+
+## prefix to be used when mounting the root.externalCredentials or workload.externalCredentials or .Values.nodeexporter.auth.credentialName
+## default values is "/secrets"
+secretPathPrefix: "/secrets"
+
+## To limit the kube-state-metrics previleges to namespace level
+kubeStateMetrics:
+  ## kube-state-metrics container arguments
+  ## specify the set of kubernetes objects using the --collectors that serviceaccount has to access,
+  ## comma-separated list of collectors to be enabled.
+  ## 'collectors' flag is renamed with 'resources' in kubestatemetrics latest version (i.e from v2.0)
+  ## Set the namespaces using the --namespace option,Comma-separated list of namespaces to be enabled. Defaults to ""
+  #
+  args:
+    collectors:
+      configmaps: true
+      cronjobs: true
+      daemonsets: true
+      deployments: true
+      endpoints: true
+      horizontalpodautoscalers: true
+      ingresses: true
+      jobs: true
+      limitranges: true
+      networkpolicies: true
+      persistentvolumeclaims: true      
+      poddisruptionbudgets: true
+      pods: true
+      replicasets: true
+      replicationcontrollers: true
+      resourcequotas: true
+      secrets: true
+      services: true
+      statefulsets: true      
+      certificatesigningrequests: false
+      mutatingwebhookconfigurations: false
+      namespaces: false
+      nodes: false
+      persistentvolumes: false
+      storageclasses: false
+      validatingwebhookconfigurations: false
+      verticalpodautoscalers: false
+      volumeattachments: false
+
+    # Comma-separated list of metrics to be exposed.
+    # This list comprises of exact metric names and/or regex patterns.
+    # The allowlist and denylist are mutually exclusive.
+    metricAllowlist: []
+
+    # Comma-separated list of metrics not to be enabled.
+    # This list comprises of exact metric names and/or regex patterns.
+    # The allowlist and denylist are mutually exclusive.
+    metricDenylist: []
+
+    # Comma-separated list of additional Kubernetes label keys that will be used in the resource's
+    # labels metric. By default the metric contains only name and namespace labels.
+    # To include additional labels, provide a list of resource names in their plural form and Kubernetes
+    # label keys you would like to allow for them (Example: '=namespaces=[k8s-label-1,k8s-label-n,...],pods=[app],...)'.
+    # A single '*' can be provided per resource instead to allow any labels, but that has
+    # severe performance implications (Example: '=pods=[*]').
+    metricLabelsAllowlist: []
+    # - namespaces=[k8s-label-1,k8s-label-n]
+
+    # Comma-separated list of Kubernetes annotations keys that will be used in the resource'
+    # labels metric. By default the metric contains only name and namespace labels.
+    # To include additional annotations provide a list of resource names in their plural form and Kubernetes
+    # annotation keys you would like to allow for them (Example: '=namespaces=[kubernetes.io/team,...],pods=[kubernetes.io/team],...)'.
+    # A single '*' can be provided per resource instead to allow any annotations, but that has
+    # severe performance implications (Example: '=pods=[*]').
+    metricAnnotationsAllowList: []
+    # - pods=[k8s-annotation-1,k8s-annotation-n]
+
+    ## Set the namespaces using the --namespace option,Comma-separated list of namespaces to be enabled. Defaults to ""
+    namespace: ""
+
+  # List of additional cli arguments to configure kube-state-metrics
+  # for example: --enable-gzip-encoding, --log-file, etc.
+  # all the possible args can be found here: https://github.com/kubernetes/kube-state-metrics/blob/v2.2.3/docs/cli-arguments.md
+  extraArgs: []
+
+nodeExporter:
+  ## If false, node-exporter will not be installed
+  ##
+  enabled: false
+  auth:
+    credentialName: ""
+    keyNames:
+      username: ""
+      password: ""
+
+server:
+  ## If the restrictedToNamespace flag is set to true, then list the namespaces to monitor in comma-separated value
+  ## Example: namespaceList: ['test1','test2']
+  # namespaceList contains all the namespaces where rbac resources needs to be created.
+  # istio-system namespace needs to be added in both lists namespaceList and nsToExcludeFromCommonJobs
+  # nsToExcludeFromCommonJobs list is for namespaces where scrapping for common jobs(kubernetes-services, kubernetes-pods-insecure etc.) is not needed
+  # kubernetes-apiservers job requires rbac resources in default namespace
+  # __TPL_INCLUDE_NS__ will include all namespaces present in namespaceList except nsToExcludeFromCommonJobs and will be replaced in the scrape jobs wherever this label is present.
+  namespaceList: []
+  nsToExcludeFromCommonJobs: []
+  ## Any other credentials which contain the sensitivedata to be consumed by prometheus server.
+  # externalCredentials:
+  #   # name of the component of which the secret has to be mounted. This will be used as the name of the volume and the mount-path with prefix when mounting
+  #   # When using the externalCredentials in scrape jobs, specify the sensitive data in the below format.
+  #   # usage: username: $__expnd{<externalCredential-section-name>/<KeyNames-values>}
+  #   # example: username: $__expnd{ckey/username} [This is when keyNames are configured]
+  #    ckey:
+  #   ## name of the secret to be mounted
+  #      credentialName: ""
+  #   ## key used when creating the secret.
+  #      keyNames:
+  #        key1: ""
+  #        key2: ""
+
+
+## Prometheus server ConfigMap entries when restrictedToNamespace flag is enabled
+##
+serverFiles:
+  prometheus.yml:
+    global:
+      ## How frequently to scrape targets by default
+      ##
+      scrape_interval: 1m
+      ## How long until a scrape request times out
+      ##
+      scrape_timeout: 10s
+      ## How frequently to evaluate rules
+      ##
+      evaluation_interval: 1m
+      ## external label to deduplicate data from replicas in a high-availability configuration
+      ## A label(prometheus) whose value identifies the name of a high-availability cluster or group of Prometheus servers.
+      ## prometheus_replica label is internally populated. Don't change it's value
+      ## uncomment below 3 lines to add external label with proper value of "prometheus" label
+      ##external_labels:
+      ##  prometheus: cpro
+      ##  prometheus_replica: $(HOSTNAME)
+
+    rule_files:
+      - /etc/config/rules
+      - /etc/config/alerts
+      - /etc/config/prometheus-monitoring-alerts
+
+    scrape_configs:
+      - job_name: prometheus
+        static_configs:
+          - targets:
+            - localhost:9090
+        honor_labels: true
+
+        kubernetes_sd_configs:
+          - role: endpoints
+
+            ## Provide the namespaces in 'names' parameter to scrape the metrics within the listed namespaces
+            ## Example:  names: ['test1','test2']
+            namespaces:
+              own_namespace: true
+              ##names:
+        metric_relabel_configs:
+          - action: labeldrop
+            regex: __cpro_dummy_label_to_drop
+
+      ## Following parameters needs to set if prometheus has to scrape metrices in tls mode
+      #  scheme: https
+      #  tls_config:
+      #    ca_file: /etc/prom/tls-server/ca.crt
+      #    key_file: /etc/prom/tls-server/tls.key
+      #    cert_file: /etc/prom/tls-server/tls.crt
+      #    insecure_skip_verify: true
+
+        relabel_configs:
+          - source_labels: [__meta_kubernetes_service_annotation_prometheus_io_probe]
+            action: keep
+            regex: prometheus
+          - action: replace
+            source_labels:
+            - __meta_kubernetes_service_annotation_prometheus_io_scheme
+            target_label: __scheme__
+          - source_labels: [__meta_kubernetes_pod_container_name]
+            action: drop
+            regex: istio-proxy
+          - source_labels: [__meta_kubernetes_namespace]
+            action: replace
+            target_label: namespace
+          - source_labels: [__meta_kubernetes_service_annotation_prometheus_io_path]
+            action: replace
+            target_label: __metrics_path__
+          - source_labels: [__meta_kubernetes_pod_name]
+            action: replace
+            target_label: kubernetes_pod_name
+      
+      - job_name: 'kubernetes-apiservers'
+
+        kubernetes_sd_configs:
+          - role: endpoints
+
+            ## Provide the namespaces in 'names' parameter to scrape the metrics within the listed namespaces
+            ## Example:  names: ['test1','test2']   
+            namespaces:
+              names: ['default']
+
+        # Default to scraping over https. If required, just disable this or change to
+        # `http`.
+        scheme: https
+
+        # This TLS & bearer token file config is used to connect to the actual scrape
+        # endpoints for cluster components. This is separate to discovery auth
+        # configuration because discovery & scraping are two separate concerns in
+        # Prometheus. The discovery auth config is automatic if Prometheus runs inside
+        # the cluster. Otherwise, more config options have to be provided within the
+        # <kubernetes_sd_config>.
+        tls_config:
+          ca_file: /var/run/secrets/kubernetes.io/serviceaccount/ca.crt
+          # If your node certificates are self-signed or use a different CA to the
+          # master CA, then disable certificate verification below. Note that
+          # certificate verification is an integral part of a secure infrastructure
+          # so this should only be disabled in a controlled environment. You can
+          # disable certificate verification by uncommenting the line below.
+          #
+          insecure_skip_verify: true
+        bearer_token_file: /var/run/secrets/kubernetes.io/serviceaccount/token
+
+        # Keep only the default/kubernetes service endpoints for the https port. This
+        # will add targets for each API server which Kubernetes adds an endpoint to
+        # the default/kubernetes service.
+        metric_relabel_configs:
+          - action: labeldrop
+            regex: __cpro_dummy_label_to_drop
+
+        relabel_configs:
+          - source_labels: [__meta_kubernetes_namespace, __meta_kubernetes_service_name, __meta_kubernetes_endpoint_port_name]
+            action: keep
+            regex: default;kubernetes;https
+          - source_labels: [__meta_kubernetes_namespace]
+            action: replace
+            target_label: namespace
+
+      # Scrape config for service endpoints.
+      #
+      # The relabeling allows the actual service scrape endpoint to be configured
+      # via the following annotations:
+      #
+      # * `prometheus.io/scrape`: Only scrape services that have a value of `true`
+      # * `prometheus.io/scheme`: If the metrics endpoint is secured then you will need
+      # to set this to `https` & most likely set the `tls_config` of the scrape config.
+      # * `prometheus.io/path`: If the metrics path is not `/metrics` override this.
+      # * `prometheus.io/port`: If the metrics are exposed on a different port to the
+      # service then set this appropriately.
+      - job_name: 'kubernetes-service-endpoints-insecure'
+
+        kubernetes_sd_configs:
+          - role: endpoints
+
+            ## Provide the namespaces in 'names' parameter to scrape the metrics within the listed namespaces
+            ## Example:  names: ['test1','test2']
+            namespaces:
+              names: __TPL_INCLUDE_NS__
+
+        metric_relabel_configs:
+          - action: labeldrop
+            regex: __cpro_dummy_label_to_drop
+
+        relabel_configs:
+          - source_labels: [__meta_kubernetes_pod_container_name]
+            action: drop
+            regex: istio-proxy
+          - source_labels: [__meta_kubernetes_service_annotation_prometheus_io_scrape]
+            action: keep
+            regex: true
+          - source_labels: [__meta_kubernetes_service_annotation_prometheus_io_scheme]
+            action: drop
+            target_label: __scheme__
+            regex: https
+          - source_labels: [__meta_kubernetes_endpoint_address_target_kind]
+            regex: Pod
+            action: keep
+          - source_labels: [__meta_kubernetes_service_annotation_prometheus_io_path]
+            action: replace
+            target_label: __metrics_path__
+            regex: (.+)
+          - source_labels: [__address__, __meta_kubernetes_service_annotation_prometheus_io_port]
+            action: replace
+            target_label: __address__
+            regex: (.+)(?::\d+);(\d+)
+            replacement: $1:$2
+          - action: labelmap
+            regex: __meta_kubernetes_service_label_(.+)
+          - source_labels: [__meta_kubernetes_namespace]
+            action: replace
+            target_label: namespace
+          - source_labels: [__meta_kubernetes_service_name]
+            action: replace
+            target_label: kubernetes_name
+          - source_labels: [__meta_kubernetes_pod_node_name]
+            target_label: kubernetes_io_hostname
+            action: replace
+
+      - job_name: 'prometheus-pushgateway'
+        honor_labels: true
+        scheme: http
+        kubernetes_sd_configs:
+          - role: service
+            ## Provide the namespaces in 'names' parameter to scrape the metrics within the listed namespaces
+            ## Example:  names: ['test1','test2']
+            namespaces:
+              names: __TPL_INCLUDE_NS__
+
+        metric_relabel_configs:
+          - action: labeldrop
+            regex: __cpro_dummy_label_to_drop
+
+      ## Following parameters needs to set if prometheus has to scrape metrices in tls mode
+      #  scheme: https
+      #  tls_config:
+      #    ca_file: /etc/pushgateway/tls-pushgateway/ca.crt
+      #    key_file: /etc/pushgateway/tls-pushgateway/tls.key
+      #    cert_file: /etc/pushgateway/tls-pushgateway/tls.crt
+      #    insecure_skip_verify: true
+
+
+        relabel_configs:
+          - source_labels: [__meta_kubernetes_service_annotation_prometheus_io_probe]
+            action: keep
+            regex: pushgateway
+          - action: replace
+            source_labels:
+            - __meta_kubernetes_service_annotation_prometheus_io_scheme
+            target_label: __scheme__
+          - source_labels: [__meta_kubernetes_namespace]
+            action: replace
+            target_label: namespace
+          - source_labels: [__meta_kubernetes_service_annotation_prometheus_io_path]
+            action: replace
+            target_label: __metrics_path__
+
+      - job_name: 'kubernetes-pods-insecure'
+        kubernetes_sd_configs:
+          - role: pod
+
+            ## Provide the namespaces in 'names' parameter to scrape the metrics within the listed namespaces
+            ## Example:  names: ['test1','test2']
+            namespaces:
+              names: __TPL_INCLUDE_NS__
+
+        metric_relabel_configs:
+          - action: labeldrop
+            regex: __cpro_dummy_label_to_drop
+
+        relabel_configs:  # If first two labels are present, pod should be scraped  by the istio-secure job.
+          - source_labels: [__meta_kubernetes_pod_annotation_prometheus_io_scrape]
+            action: keep
+            regex: true
+          - source_labels: [__meta_kubernetes_pod_annotation_sidecar_istio_io_status, __meta_kubernetes_pod_annotation_istio_mtls]
+            action: drop
+            regex: (([^;]+);([^;]*))|(([^;]*);(true))
+          - source_labels: [__meta_kubernetes_pod_annotation_prometheus_io_scheme]
+            action: drop
+            regex: https
+          - source_labels: [__meta_kubernetes_pod_annotation_prometheus_io_path]
+            action: replace
+            target_label: __metrics_path__
+            regex: (.+)
+          - source_labels: [__address__, __meta_kubernetes_pod_annotation_prometheus_io_port]
+            action: replace
+            regex: (.+)(?::\d+);(\d+)
+            replacement: $1:$2
+            target_label: __address__
+          - action: labelmap
+            regex: __meta_kubernetes_pod_label_(.+)
+          - source_labels: [__meta_kubernetes_namespace]
+            action: replace
+            target_label: namespace
+          - source_labels: [__meta_kubernetes_pod_name]
+            action: replace
+            target_label: kubernetes_pod_name
+          - source_labels: [__meta_kubernetes_pod_node_name]
+            action: replace
+            target_label: kubernetes_io_hostname
+
+      # Example scrape config for probing services via the Blackbox Exporter.
+      #
+      # The relabeling allows the actual service scrape endpoint to be configured
+      # via the following annotations:
+      #
+      # * `prometheus.io/probe`: Only probe services that have a value of `true`
+      #
+      #
+      - job_name: 'prometheus-nodeexporter'
+        honor_labels: true
+
+        kubernetes_sd_configs:
+          - role: endpoints
+
+            ## Provide the namespaces in 'names' parameter to scrape the metrics within the listed namespaces
+            ## Example:  names: ['test1','test2']
+            namespaces:
+              own_namespace: true
+              ##names:
+      # Following parameters needs to set if prometheus has to scrape metrices in tls mode
+      #scheme: https
+      #basic_auth:
+      #  username: $(prom-user)
+      #  password: $(pass)
+      #tls_config:
+      #  ca_file: /etc/etcd/tls-nodeexporter/ca.crt
+      #  key_file: /etc/etcd/tls-nodeexporter/tls.key
+      #  cert_file: /etc/etcd/tls-nodeexporter/tls.crt
+      #  insecure_skip_verify: true
+
+        metric_relabel_configs:
+          - action: labeldrop
+            regex: __cpro_dummy_label_to_drop
+
+        relabel_configs:
+          - source_labels: [__meta_kubernetes_service_annotation_prometheus_io_probe]
+            action: keep
+            regex: node-exporter
+          - action: replace
+            source_labels:
+            - __meta_kubernetes_service_annotation_prometheus_io_scheme
+            target_label: __scheme__
+          - source_labels: [__meta_kubernetes_namespace]
+            action: replace
+            target_label: namespace
+          - source_labels: [__meta_kubernetes_pod_node_name]
+            target_label: kubernetes_io_hostname
+            action: replace
+
+
+      - job_name: 'cpro-ksm'
+        honor_labels: true
+        kubernetes_sd_configs:
+          - role: endpoints
+
+            ## Provide the namespaces in 'names' parameter to scrape the metrics within the listed namespaces
+            ## Example:  names: ['test1','test2']
+            namespaces:
+              own_namespace: true
+              ##names: __TPL_INCLUDE_NS__
+
+      ## Following parameters needs to set if prometheus has to scrape metrices in tls mode
+      #  scheme: https
+      #  tls_config:
+      #    ca_file: /etc/ksm/tls-kubestatemetrics/ca.crt
+      #    key_file: /etc/ksm/tls-kubestatemetrics/tls.key
+      #    cert_file: /etc/ksm/tls-kubestatemetrics/tls.crt
+      #    insecure_skip_verify: true
+        relabel_configs:
+          - source_labels: [__meta_kubernetes_service_annotation_prometheus_io_probe]
+            action: keep
+            regex: kube-state-metrics
+          - source_labels: [__meta_kubernetes_endpoint_address_target_kind]
+            regex: Pod
+            action: keep
+          - action: replace
+            source_labels:
+            - __meta_kubernetes_service_annotation_prometheus_io_scheme
+            target_label: __scheme__
+          - action: replace
+            regex: (.+)
+            source_labels:
+            - __meta_kubernetes_service_annotation_prometheus_io_path
+            target_label: __metrics_path__
+          - action: replace
+            regex: (.+)(?::\d+);(\d+)
+            replacement: $1:$2
+            source_labels:
+            - __address__
+            - __meta_kubernetes_service_annotation_prometheus_io_port
+            target_label: __address__
+          - action: labelmap
+            regex: __meta_kubernetes_service_label_(.+)
+          - action: replace
+            source_labels:
+            - __meta_kubernetes_namespace
+            target_label: namespace
+          - action: replace
+            source_labels:
+            - __meta_kubernetes_service_name
+            target_label: kubernetes_name
+          - action: replace
+            source_labels:
+            - __meta_kubernetes_pod_node_name
+            target_label: kubernetes_io_hostname
+
+      - job_name: 'cpro-am'
+        honor_labels: true
+        kubernetes_sd_configs:
+          - role: endpoints
+
+            ## Provide the namespaces in 'names' parameter to scrape the metrics within the listed namespaces
+            ## Example:  names: ['test1','test2']
+            namespaces:
+              own_namespace: true
+              ##names:
+
+      ## Following parameters needs to set if prometheus has to scrape metrices in tls mode
+      #  scheme: https
+      #  tls_config:
+      #    username: $(user)
+      #    password: $(pass)
+      #    ca_file: /etc/am/tls-alertmanager/ca.crt
+      #    key_file: /etc/am/tls-alertmanager/tls.key
+      #    cert_file: /etc/am/tls-alertmanager/tls.crt
+      #    insecure_skip_verify: true
+        relabel_configs:
+          - source_labels: [__meta_kubernetes_service_annotation_prometheus_io_probe]
+            action: keep
+            regex: alert-manager
+          - source_labels: [__meta_kubernetes_endpoint_address_target_kind]
+            regex: Pod
+            action: keep
+          - action: replace
+            source_labels:
+            - __meta_kubernetes_service_annotation_prometheus_io_scheme
+            target_label: __scheme__
+          - action: replace
+            regex: (.+)
+            source_labels:
+            - __meta_kubernetes_service_annotation_prometheus_io_path
+            target_label: __metrics_path__
+          - action: replace
+            regex: (.+)(?::\d+);(\d+)
+            replacement: $1:$2
+            source_labels:
+            - __address__
+            - __meta_kubernetes_service_annotation_prometheus_io_port
+            target_label: __address__
+          - action: labelmap
+            regex: __meta_kubernetes_service_label_(.+)
+          - action: replace
+            source_labels:
+            - __meta_kubernetes_namespace
+            target_label: namespace
+          - action: replace
+            source_labels:
+            - __meta_kubernetes_service_name
+            target_label: kubernetes_name
+          - action: replace
+            source_labels:
+            - __meta_kubernetes_pod_node_name
+            target_label: kubernetes_io_hostname
+
+      - job_name: 'grafana'
+        honor_labels: true
+        kubernetes_sd_configs:
+          - role: endpoints
+
+            ## Provide the namespaces in 'names' parameter to scrape the metrics within the listed namespaces
+            ## Example:  names: ['test1','test2']
+            namespaces:
+              own_namespace: true
+              ##names:
+
+      ## Following parameters needs to set if prometheus has to scrape metrices in tls mode
+      #  scheme: https
+      #  basic auth for grafana is experimental
+      #  basic_auth:
+      #    username: $(user)
+      #    password: $(pass)
+        tls_config:
+      #    ca_file: /etc/grafana/tls-grafana/ca.crt
+      #    key_file: /etc/grafana/tls-grafana/tls.key
+      #    cert_file: /etc/grafana/tls-grafana/tls.crt
+          insecure_skip_verify: true
+        relabel_configs:
+          - source_labels: [__meta_kubernetes_service_annotation_prometheus_io_probe]
+            action: keep
+            regex: grafana
+          - source_labels: [__meta_kubernetes_endpoint_address_target_kind]
+            regex: Pod
+            action: keep
+          - action: replace
+            regex: (.+)
+            source_labels:
+            - __meta_kubernetes_service_annotation_prometheus_io_path
+            target_label: __metrics_path__
+          - action: replace
+            regex: (.+)
+            source_labels:
+            - __meta_kubernetes_service_annotation_prometheus_io_scheme
+            target_label: __scheme__
+          - action: replace
+            regex: (.+)(?::\d+);(\d+)
+            replacement: $1:$2
+            source_labels:
+            - __address__
+            - __meta_kubernetes_service_annotation_prometheus_io_port
+            target_label: __address__
+          - action: labelmap
+            regex: __meta_kubernetes_service_label_(.+)
+          - action: replace
+            source_labels:
+            - __meta_kubernetes_namespace
+            target_label: namespace
+          - action: replace
+            source_labels:
+            - __meta_kubernetes_service_name
+            target_label: kubernetes_name
+          - action: replace
+            source_labels:
+            - __meta_kubernetes_pod_node_name
+            target_label: kubernetes_io_hostname
+
+
+      - job_name: 'cpro-webhook'
+        honor_labels: true
+        kubernetes_sd_configs:
+          - role: endpoints
+
+            ## Provide the namespaces in 'names' parameter to scrape the metrics within the listed namespaces
+            ## Example:  names: ['test1','test2']
+            namespaces:
+              own_namespace: true
+              ##names:
+
+        relabel_configs:
+          - source_labels: [__meta_kubernetes_service_annotation_prometheus_io_probe]
+            action: keep
+            regex: webhook4fluentd
+          - source_labels: [__meta_kubernetes_endpoint_address_target_kind]
+            regex: Pod
+            action: keep
+          - action: replace
+            regex: (.+)
+            source_labels:
+            - __meta_kubernetes_service_annotation_prometheus_io_path
+            target_label: __metrics_path__
+          - action: replace
+            regex: (.+)(?::\d+);(\d+)
+            replacement: $1:$2
+            source_labels:
+            - __address__
+            - __meta_kubernetes_service_annotation_prometheus_io_port
+            target_label: __address__
+          - action: labelmap
+            regex: __meta_kubernetes_service_label_(.+)
+          - action: replace
+            source_labels:
+            - __meta_kubernetes_namespace
+            target_label: namespace
+          - action: replace
+            source_labels:
+            - __meta_kubernetes_service_name
+            target_label: kubernetes_name
+          - action: replace
+            source_labels:
+            - __meta_kubernetes_pod_node_name
+            target_label: kubernetes_io_hostname
+
+      - job_name: 'kubernetes-services'
+
+        metrics_path: /probe
+        params:
+          module: [http_2xx]
+
+        kubernetes_sd_configs:
+          - role: service
+
+            ## Provide the namespaces in 'names' parameter to scrape the metrics within the listed namespaces
+            ## Example:  names: ['test1','test2']
+            namespaces:
+              names: __TPL_INCLUDE_NS__
+
+        metric_relabel_configs:
+          - action: labeldrop
+            regex: __cpro_dummy_label_to_drop
+
+        relabel_configs:
+          - source_labels: [__meta_kubernetes_service_annotation_prometheus_io_probe]
+            action: keep
+            regex: true
+          - source_labels: [__address__]
+            target_label: __param_target
+          - target_label: __address__
+            replacement: blackbox
+          - source_labels: [__param_target]
+            target_label: instance
+          - action: labelmap
+            regex: __meta_kubernetes_service_label_(.+)
+          - source_labels: [__meta_kubernetes_namespace]
+            target_label: namespace
+          - source_labels: [__meta_kubernetes_service_name]
+            target_label: kubernetes_name
+
+      # Example scrape config for pods
+      #
+      # The relabeling allows the actual pod scrape endpoint to be configured via the
+      # following annotations:
+      #
+      # * `prometheus.io/scrape`: Only scrape pods that have a value of `true`
+      # * `prometheus.io/path`: If the metrics path is not `/metrics` override this.
+      # * `prometheus.io/port`: Scrape the pod on the indicated port instead of the default of `9102`.
+      # Mixer scrapping. Defaults to Prometheus and mixer on same namespace.
+      - job_name: 'istio-mesh'
+        kubernetes_sd_configs:
+        - role: endpoints
+          ## Provide the namespaces in 'names' parameter to scrape the metrics within the listed namespaces
+          ## Example:  names: ['test1','test2']
+          namespaces:
+            names: ['istio-system']
+
+        metric_relabel_configs:
+          - action: labeldrop
+            regex: __cpro_dummy_label_to_drop
+
+        relabel_configs:
+        - source_labels: [__meta_kubernetes_service_name, __meta_kubernetes_endpoint_port_name]
+          action: keep
+          regex: istio-telemetry;prometheus
+  
+      # Scrape config for envoy stats
+      - job_name: 'envoy-stats'
+        metrics_path: /stats/prometheus
+        kubernetes_sd_configs:
+        - role: pod
+          ## Provide the namespaces in 'names' parameter to scrape the metrics within the listed namespaces
+          ## Example:  names: ['test1','test2']
+          namespaces:
+            names: ['istio-system']
+  
+        metric_relabel_configs:
+          - action: labeldrop
+            regex: __cpro_dummy_label_to_drop
+
+        relabel_configs:
+        - source_labels: [__meta_kubernetes_pod_container_port_name]
+          action: keep
+          regex: '.*-envoy-prom'
+        - source_labels: [__address__, __meta_kubernetes_pod_annotation_prometheus_io_port]
+          action: replace
+          regex: (.+)(?::\d+);(\d+)
+          replacement: $1:15090
+          target_label: __address__
+        - action: labeldrop
+          regex: __meta_kubernetes_pod_label_(.+)
+        - source_labels: [__meta_kubernetes_namespace]
+          action: replace
+          target_label: namespace
+        - source_labels: [__meta_kubernetes_pod_name]
+          action: replace
+          target_label: pod_name
+  
+      - job_name: 'istio-policy'
+        kubernetes_sd_configs:
+        - role: endpoints
+            ## Provide the namespaces in 'names' parameter to scrape the metrics within the listed namespaces
+            ## Example:  names: ['test1','test2']
+          namespaces:
+            names: ['istio-system']
+  
+        metric_relabel_configs:
+          - action: labeldrop
+            regex: __cpro_dummy_label_to_drop
+
+        relabel_configs:
+        - source_labels: [__meta_kubernetes_service_name, __meta_kubernetes_endpoint_port_name]
+          action: keep
+          regex: istio-policy;http-policy-monitoring
+  
+      - job_name: 'istio-telemetry'
+        kubernetes_sd_configs:
+        - role: endpoints
+          ## Provide the namespaces in 'names' parameter to scrape the metrics within the listed namespaces
+          ## Example:  names: ['test1','test2']
+          namespaces:
+            names: ['istio-system']
+  
+        metric_relabel_configs:
+          - action: labeldrop
+            regex: __cpro_dummy_label_to_drop
+
+        relabel_configs:
+        - source_labels: [__meta_kubernetes_service_name, __meta_kubernetes_endpoint_port_name]
+          action: keep
+          regex: istio-telemetry;http-monitoring
+  
+      - job_name: 'pilot'
+        kubernetes_sd_configs:
+        - role: endpoints
+          ## Provide the namespaces in 'names' parameter to scrape the metrics within the listed namespaces
+          ## Example:  names: ['test1','test2']
+          namespaces:
+            names: ['istio-system']
+  
+        metric_relabel_configs:
+          - action: labeldrop
+            regex: __cpro_dummy_label_to_drop
+
+        relabel_configs:
+        - source_labels: [__meta_kubernetes_service_name, __meta_kubernetes_endpoint_port_name]
+          action: keep
+          regex: istiod;http-monitoring
+        - source_labels: [__meta_kubernetes_service_label_app]
+          target_label: app
+
+      - job_name: 'galley'
+        kubernetes_sd_configs:
+        - role: endpoints
+          ## Provide the namespaces in 'names' parameter to scrape the metrics within the listed namespaces
+          ## Example:  names: ['test1','test2']
+          namespaces:
+            names: ['istio-system']
+  
+        metric_relabel_configs:
+          - action: labeldrop
+            regex: __cpro_dummy_label_to_drop
+
+        relabel_configs:
+        - source_labels: [__meta_kubernetes_service_name, __meta_kubernetes_endpoint_port_name]
+          action: keep
+          regex: istio-galley;http-monitoring
+  
+      - job_name: 'citadel'
+        kubernetes_sd_configs:
+        - role: endpoints
+          ## Provide the namespaces in 'names' parameter to scrape the metrics within the listed namespaces
+          ## Example:  names: ['test1','test2']
+          namespaces:
+            names: ['istio-system']
+  
+        metric_relabel_configs:
+          - action: labeldrop
+            regex: __cpro_dummy_label_to_drop
+
+        relabel_configs:
+        - source_labels: [__meta_kubernetes_service_name, __meta_kubernetes_endpoint_port_name]
+          action: keep
+          regex: istio-citadel;http-monitoring
+  
+      - job_name: 'sidecar-injector'
+  
+        kubernetes_sd_configs:
+        - role: endpoints
+          ## Provide the namespaces in 'names' parameter to scrape the metrics within the listed namespaces
+          ## Example:  names: ['test1','test2']
+          namespaces:
+            names: ['istio-system']
+  
+        metric_relabel_configs:
+          - action: labeldrop
+            regex: __cpro_dummy_label_to_drop
+
+        relabel_configs:
+        - source_labels: [__meta_kubernetes_service_name, __meta_kubernetes_endpoint_port_name]
+          action: keep
+          regex: istio-sidecar-injector;http-monitoring
+
+# Any other credentials which contain the sensitivedata to be consumed all workloads.
+# externalCredentials:
+#   # name of the component of which the secret has to be mounted. This will be used as the name of the volume and the mount-path with prefix when mounting
+#   # When using the externalCredentials in scrape jobs, specify the sensitive data in the below format.
+#   # usage: username: $__expnd{<externalCredential-section-name>/<KeyNames-values>}
+#   # example: username: $__expnd{ckey2/key1} [This is when keyNames are not configured]
+#   ckey2:
+#   # name of the secret to be mounted
+#     credentialName: ""
+#   # key used when creating the secret.
+#     keyNames:
+#       key1: ""
+#       key2: ""

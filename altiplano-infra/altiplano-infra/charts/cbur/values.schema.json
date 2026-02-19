@@ -1,0 +1,40 @@
+{
+  "$schema": "http://json-schema.org/schema#",
+  "type": "object",
+  "required": [
+    "cburScope"
+  ],
+  "properties": {
+    "cburScope": {
+      "type": "string",
+      "enum": ["Cluster", "Namespaced"]
+    },
+    "securityContext": {
+      "type": "object",
+      "default": {},
+      "title": "The securityContext Schema",
+      "required": ["runAsGroup"],
+      "properties": {
+        "runAsGroup": {
+          "type": ["integer", "string"],
+          "default": 1000,
+          "title": "The runAsGroup Schema",
+          "examples": [1000, ""],
+          "enum": [1000, 0, "1000", "0", "auto"]
+        }
+      }
+    },
+    "dataCompression": {
+      "type": "object",
+      "default": {},
+      "title": "The dataCompression schema",
+      "properties": {
+        "method": {
+          "type": "string",
+          "default": "gzip",
+          "enum": ["gzip", "pigz"]
+        }
+      }
+    }
+  }
+}

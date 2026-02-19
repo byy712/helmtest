@@ -1,0 +1,105 @@
+{{- if and (eq (include "ckey.certManagerCheck" . ) "true" ) (.Values.secretCredentials.keystoreSecret) }}
+{{- fail "If certManager is enabled then custom keystore cannot be given" -}}
+{{- end }}
+{{- if not .Values.secretCredentials.keystoreSecret }}
+{{- if (eq (include "ckey.certManagerCheck" . ) "true" ) }}
+---
+apiVersion: {{ template "ckey.certificateVersion" . }}
+kind: Certificate
+metadata:
+  name: {{ template "ckey.fullName" . }}-server-cert
+  namespace: {{ .Release.Namespace }}
+  annotations:
+    {{- include "ckey.customAnnotations" (tuple .Values.global.annotations) | indent 4 }}
+    "helm.sh/hook": pre-install, pre-upgrade, pre-rollback
+    "helm.sh/hook-weight": "-10"
+  labels:
+  {{- include "ckey.customLabels" (tuple .Values.global.labels ) | indent 4 }}
+  {{- include "ckey.commonLabels" . | indent 4 }}
+spec:
+  secretName: {{ template "ckey.fullName" . }}-server-cert
+  {{- if (.Capabilities.APIVersions.Has "cert-manager.io/v1") }}
+  secretTemplate:
+    annotations:
+      restartOnUpdate: "true"
+  {{- end }}
+  issuerRef:
+    name: {{ default "ncms-ca-issuer" .Values.tls.certManager.caIssuer.name }}
+    kind: {{ default "ClusterIssuer" .Values.tls.certManager.caIssuer.kind }}
+    group: {{ default "cert-manager.io" .Values.tls.certManager.caIssuer.group }}
+  duration: {{ default "87600h" .Values.tls.certManager.duration }}
+  renewBefore: {{ default "360h" .Values.tls.certManager.renewBefore }}
+  {{- if .Values.tls.certManager.subject }}
+  subject: {{ .Values.tls.certManager.subject | toYaml | nindent 4 }}
+  {{- end }}
+  {{- if .Values.tls.certManager.commonName }}
+  commonName: {{ default ((printf "%s" (include "ckey.fullName" .)) | quote) .Values.tls.certManager.commonName }}
+  {{- end }}
+  privateKey:
+  {{- if (.Values.tls.certManager.privateKey | default (dict)).algorithm }}
+    algorithm: {{ .Values.tls.certManager.privateKey.algorithm }}
+  {{- end }}
+  {{- if (.Values.tls.certManager.privateKey | default (dict)).encoding }}
+    encoding: {{ .Values.tls.certManager.privateKey.encoding }}
+  {{- end }}
+  {{- if (.Values.tls.certManager.privateKey | default (dict)).size }}
+    size: {{ .Values.tls.certManager.privateKey.size }}
+  {{- end }}
+  {{- if (.Values.tls.certManager.privateKey | default (dict)).rotationPolicy }}
+    rotationPolicy: {{ .Values.tls.certManager.privateKey.rotationPolicy }}
+  {{- else }}
+    rotationPolicy: Always
+  {{- end }}
+
+
+  {{- if .Values.tls.certManager.usages }}
+  usages:
+    {{ .Values.tls.certManager.usages | toYaml | indent 2 }}
+  {{- else }}
+  usages:
+    - server auth
+    - client auth
+  {{- end }}
+  {{- if .Values.tls.certManager.dnsNames }}
+  dnsNames:
+    {{ .Values.tls.certManager.dnsNames | toYaml | indent 2 }}
+  {{- else }}
+  dnsNames:
+    # If kcProxy is passthrough then service entry FQDN in DNSnames of certificate is not added because in browser->certificates it will list the internal service entries and user can know the internal service FQDN of CKEY. So to be DFSec compatible we are not adding it when it's in passthrough mode.
+    {{- if ( ne ( .Values.kcProxy ) "passthrough" ) }}
+    - {{ template "ckey.fullName" . }}.{{ .Release.Namespace }}.svc.{{ .Values.clusterDomain }}
+    - {{ template "ckey.fullName" . }}-headless.{{ .Release.Namespace }}.svc.{{ .Values.clusterDomain }}
+    - "*.{{ template "ckey.fullName" . }}-headless.{{ .Release.Namespace }}.svc.{{ .Values.clusterDomain }}"
+    - {{ template "ckey.fullName" . }}.{{ .Release.Namespace }}.svc
+    - "*.{{ template "ckey.fullName" . }}.{{ .Release.Namespace }}.svc"
+    {{- end }}
+  {{- if .Values.tls.certManager.dnsName1 }}
+    - {{ .Values.tls.certManager.dnsName1 }}
+  {{- end }}
+  {{- if .Values.tls.certManager.dnsName2 }}
+    - {{ .Values.tls.certManager.dnsName2 }}
+  {{- end }}
+  {{- end }}
+  {{- if .Values.tls.certManager.uris }}
+  uris:
+  {{ .Values.tls.certManager.uris | toYaml | indent 2 }}
+  {{- end }}
+  ipAddresses:
+  {{- if .Values.tls.certManager.ipAddresses }}
+  {{ .Values.tls.certManager.ipAddresses | toYaml | indent 2 }}
+  {{- end }}
+{{- end }}
+{{- else if and (.Values.tls.useCaCert) (.Values.tls.caCert) }}
+---
+apiVersion: v1
+kind: Secret
+data:
+  ca.crt: {{ .Values.tls.caCert }}
+metadata:
+  creationTimestamp: null
+  name: {{ template "ckey.fullName" . }}-server-cert
+  namespace: {{ .Release.Namespace }}
+  labels:
+{{ include "ckey.commonLabels" . | indent 4 }}
+type: Opaque
+{{- end }}

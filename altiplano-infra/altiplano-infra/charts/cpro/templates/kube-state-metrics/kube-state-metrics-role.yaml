@@ -1,0 +1,205 @@
+{{- include "cpro.istio.cproInitIstio" . }}
+{{- if and .Values.rbac.enabled .Values.kubeStateMetrics.enabled .Values.restrictedToNamespace }}
+{{- $listNamespaces := list .Release.Namespace }}
+{{- if ne .Values.kubeStateMetrics.args.namespace "" }}
+{{- $addNamespaces := printf "%s,%s" .Values.kubeStateMetrics.args.namespace .Release.Namespace -}}
+{{- $listNamespaces =  split "," $addNamespaces  -}}
+{{- end }}
+{{ $helmList := list }}
+{{- range $key, $value := $listNamespaces -}}
+  {{- $helmList = concat (list $value) $helmList -}}
+{{- end -}}
+{{- $listNamespaces =  $helmList | uniq  -}}
+
+{{- range $watchedNamespace := $listNamespaces }}
+apiVersion: {{ template "cpro.apiVersion.roleApiversion" $ }}
+kind: Role
+metadata:
+  labels:
+    {{- include "cpro.app.labels.v3" ( dict "root" $ "context" $.Values.kubeStateMetrics ) | nindent 4 }}
+{{- include "cpro.labelsOrAnnotations" (tuple $.Values.global.labels) | indent 4}}
+  name: {{ template "cpro.prometheus.kubeStateMetrics.role" $ }}
+  namespace: {{ $watchedNamespace }}
+  annotations:
+{{- include "cpro.labelsOrAnnotations" (tuple $.Values.global.annotations) | indent 4}}
+rules:
+{{ if $.Values.kubeStateMetrics.args.collectors.certificatesigningrequests }}
+- apiGroups: ["certificates.k8s.io"]
+  resources:
+  - certificatesigningrequests
+  verbs: ["list", "watch"]
+{{ end -}}
+{{ if $.Values.kubeStateMetrics.args.collectors.configmaps }}
+- apiGroups: [""]
+  resources:
+  - configmaps
+  verbs: ["list", "watch"]
+{{ end -}}
+{{ if $.Values.kubeStateMetrics.args.collectors.cronjobs }}
+- apiGroups: ["batch"]
+  resources:
+  - cronjobs
+  verbs: ["list", "watch"]
+{{ end -}}
+{{ if $.Values.kubeStateMetrics.args.collectors.daemonsets }}
+- apiGroups: ["extensions", "apps"]
+  resources:
+  - daemonsets
+  verbs: ["get","list", "watch"]
+{{ end -}}
+{{ if $.Values.kubeStateMetrics.args.collectors.deployments }}
+- apiGroups: ["extensions", "apps"]
+  resources:
+  - deployments
+  verbs: ["list", "watch","get"]
+{{ end -}}
+{{ if $.Values.kubeStateMetrics.args.collectors.endpoints }}
+- apiGroups: [""]
+  resources:
+  - endpoints
+  verbs: ["list", "watch"]
+{{ end -}}
+{{ if $.Values.kubeStateMetrics.args.collectors.horizontalpodautoscalers }}
+- apiGroups: ["autoscaling"]
+  resources:
+  - horizontalpodautoscalers
+  verbs: ["list", "watch"]
+{{ end -}}
+{{ if $.Values.kubeStateMetrics.args.collectors.ingresses }}
+- apiGroups: ["extensions", "networking.k8s.io"]
+  resources:
+  - ingresses
+  verbs: ["list", "watch"]
+{{ end -}}
+{{ if $.Values.kubeStateMetrics.args.collectors.jobs }}
+- apiGroups: ["batch"]
+  resources:
+  - jobs
+  verbs: ["list", "watch"]
+{{ end -}}
+{{ if $.Values.kubeStateMetrics.args.collectors.limitranges }}
+- apiGroups: [""]
+  resources:
+  - limitranges
+  verbs: ["list", "watch"]
+{{ end -}}
+{{ if $.Values.kubeStateMetrics.args.collectors.mutatingwebhookconfigurations }}
+- apiGroups: ["admissionregistration.k8s.io"]
+  resources:
+    - mutatingwebhookconfigurations
+  verbs: ["list", "watch"]
+{{ end -}}
+{{ if $.Values.kubeStateMetrics.args.collectors.namespaces }}
+- apiGroups: [""]
+  resources:
+  - namespaces
+  verbs: ["list", "watch"]
+{{ end -}}
+{{ if $.Values.kubeStateMetrics.args.collectors.networkpolicies }}
+- apiGroups: ["networking.k8s.io"]
+  resources:
+  - networkpolicies
+  verbs: ["list", "watch"]
+{{ end -}}
+{{ if $.Values.kubeStateMetrics.args.collectors.nodes }}
+- apiGroups: ["","metrics.k8s.io"]
+  resources:
+  - nodes
+  verbs: ["list", "watch"]
+{{ end -}}
+{{ if $.Values.kubeStateMetrics.args.collectors.persistentvolumeclaims }}
+- apiGroups: [""]
+  resources:
+  - persistentvolumeclaims
+  verbs: ["list", "watch"]
+{{ end -}}
+{{ if $.Values.kubeStateMetrics.args.collectors.persistentvolumes }}
+- apiGroups: [""]
+  resources:
+  - persistentvolumes
+  verbs: ["list", "watch"]
+{{ end -}}
+{{ if $.Values.kubeStateMetrics.args.collectors.poddisruptionbudgets }}
+- apiGroups: ["policy"]
+  resources:
+    - poddisruptionbudgets
+  verbs: ["get","list", "watch"]
+{{ end -}}
+{{ if $.Values.kubeStateMetrics.args.collectors.pods }}
+- apiGroups: [""]
+  resources:
+  - pods
+  verbs: ["list", "watch"]
+{{ end -}}
+{{ if $.Values.kubeStateMetrics.args.collectors.replicasets }}
+- apiGroups: ["extensions", "apps"]
+  resources:
+  - replicasets
+  verbs: ["list", "watch"]
+{{ end -}}
+{{ if $.Values.kubeStateMetrics.args.collectors.replicationcontrollers }}
+- apiGroups: [""]
+  resources:
+  - replicationcontrollers
+  verbs: ["list", "watch"]
+{{ end -}}
+{{ if $.Values.kubeStateMetrics.args.collectors.resourcequotas }}
+- apiGroups: [""]
+  resources:
+  - resourcequotas
+  verbs: ["list", "watch"]
+{{ end -}}
+{{ if $.Values.kubeStateMetrics.args.collectors.secrets }}
+- apiGroups: [""]
+  resources:
+  - secrets
+  verbs: ["list", "watch"]
+{{ end -}}
+{{ if $.Values.kubeStateMetrics.args.collectors.services }}
+- apiGroups: [""]
+  resources:
+  - services
+  verbs: ["list", "watch"]
+{{ end -}}
+{{ if $.Values.kubeStateMetrics.args.collectors.statefulsets }}
+- apiGroups: ["apps"]
+  resources:
+  - statefulsets
+  verbs: ["get","list", "watch"]
+{{ end -}}
+{{ if $.Values.kubeStateMetrics.args.collectors.storageclasses }}
+- apiGroups: ["storage.k8s.io"]
+  resources:
+    - storageclasses
+  verbs: ["list", "watch"]
+{{ end -}}
+{{ if $.Values.kubeStateMetrics.args.collectors.validatingwebhookconfigurations }}
+- apiGroups: ["admissionregistration.k8s.io"]
+  resources:
+    - validatingwebhookconfigurations
+  verbs: ["list", "watch"]
+{{ end -}}
+{{ if $.Values.kubeStateMetrics.args.collectors.volumeattachments }}
+- apiGroups: ["storage.k8s.io"]
+  resources:
+    - volumeattachments
+  verbs: ["list", "watch"]
+{{ end -}}
+{{ if $.Values.kubeStateMetrics.args.collectors.verticalpodautoscalers }}
+- apiGroups: ["autoscaling.k8s.io"]
+  resources:
+    - verticalpodautoscalers
+  verbs: ["list", "watch"]
+{{- if and ($.istio.enabled) (not $.istio.cni.enabled) }}
+- apiGroups: [{{ template "cpro.prometheus.apiGroupVersionExtensionsorPolicy" . }}]
+  resources: ['podsecuritypolicies']
+  verbs:     ['use']
+  {{- if ($.Values.rbac.psp.create) }}
+  resourceNames:
+  - {{ template "cpro.prometheus.kubeStateMetrics.psp" . }}
+  {{- end }}
+{{- end }}
+{{- end }}
+---
+{{- end }}
+{{- end }}

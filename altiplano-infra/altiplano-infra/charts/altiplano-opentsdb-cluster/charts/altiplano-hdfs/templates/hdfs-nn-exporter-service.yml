@@ -1,0 +1,38 @@
+{{- if .Values.prometheus.enabled }}
+kind: Service
+apiVersion: v1
+metadata:
+  name: {{ include "hdfs.fullname" . }}-namenode-exporter
+  labels:
+    app.kubernetes.io/name: {{ include "hdfs.name" . }}
+    app.kubernetes.io/component: namenode
+    {{- include "hdfs.labels" . | nindent 4 }}
+  annotations:
+    prometheus.io/port: {{ .Values.prometheus.port | quote }}
+    prometheus.io/scrape: "true"
+spec: 
+  selector:
+    app.kubernetes.io/name: {{ include "hdfs.name" . }}
+    app.kubernetes.io/component: namenode
+    app.kubernetes.io/instance: {{ .Release.Name }}
+  ports:
+  - port: {{ .Values.prometheus.port }}
+    name: metrics
+    targetPort: {{ .Values.prometheus.port }}
+#dual stack config
+{{- if or ( .Values.ipFamilyPolicy ) ( .Values.ipFamilies ) }}
+  {{- if .Values.ipFamilyPolicy }}
+  ipFamilyPolicy: {{ .Values.ipFamilyPolicy }}
+  {{- end }}
+  {{- if .Values.ipFamilies }}
+  ipFamilies: {{ .Values.ipFamilies | toYaml | nindent 2 }}
+  {{- end }}
+{{- else if or ( .Values.global.ipFamilyPolicy ) ( .Values.global.ipFamilies ) }}
+  {{- if .Values.global.ipFamilyPolicy }}
+  ipFamilyPolicy: {{ .Values.global.ipFamilyPolicy }}
+  {{- end }}
+  {{- if .Values.global.ipFamilies }}
+  ipFamilies: {{ .Values.global.ipFamilies | toYaml | nindent 2 }}
+  {{- end }}
+{{- end }}
+{{- end }}

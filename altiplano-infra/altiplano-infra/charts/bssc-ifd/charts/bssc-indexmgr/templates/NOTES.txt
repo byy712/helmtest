@@ -1,0 +1,21 @@
+{{- include "bssc-indexmgr.isCertManagerEnable" . }}
+
+Indexmgr chart creates a cronjob in {{ .Release.Namespace }} namespace.
+kubectl get cronjob  --namespace {{ .Release.Namespace }} -l  app.kubernetes.io/name={{ default .Chart.Name .Values.nameOverride }},app.kubernetes.io/instance={{ .Release.Name }},role=indexmanager
+
+Indexmgr cronjob is scheduled at "{{ .Values.indexmgr.schedule }}"
+
+Indexmgr uses action.yml, curator.yml configuration files created as configmap in {{ .Release.Namespace }} namespace.
+{{- if empty .Values.indexmgr.configMaps.preCreatedConfigmap }}
+kubectl get cm --namespace {{ .Release.Namespace }} -l  app.kubernetes.io/instance={{ .Release.Name }},role=indexmanager,app.kubernetes.io/name={{ default .Chart.Name .Values.nameOverride }}
+{{- else }}
+kubectl get cm {{ .Values.indexmgr.configMaps.preCreatedConfigmap }} --namespace {{ .Release.Namespace }}
+{{- end }}
+
+{{- if eq $.isCertManagerEnabled "true" }}
+  {{- if not .Values.security.enable }}
+
+WARNING: certManager will not be used in this deployment as it has been enabled without enabling security. 
+  {{- end }}
+{{- end }}
+

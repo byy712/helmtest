@@ -1,0 +1,46 @@
+{{- if and (eq .Values.ingress.enableExternalAccess true) (eq .Values.ingress.type "ocpRoute") }}
+{{- $replicas := .Values.Replicas | int }}
+{{- $hostName := include "ckaf-kafka.statefulset" . }}
+{{- $root := . }}
+{{- $releaseNamespace :=  .Release.Namespace }}
+{{- $chartName :=  .Chart.Name }}
+{{- $releaseName := .Release.Name }}
+{{- $chartVersion := .Chart.Version }}
+{{- $partOf := .Values.partOf }}
+{{- $managedBy := .Values.managedBy }}
+{{- $externalListeners := .Values.ingress.externalListeners }}
+{{- range $extlistener := $externalListeners }}
+{{- range $replica := until $replicas }}
+{{- $externalListenerPort := add $extlistener.startPortRangeOnEdgeNode $replica }}
+---
+apiVersion: route.openshift.io/v1
+kind: Route
+metadata:
+  labels:
+{{ include "ckaf-kafka.commonLabels" $root | indent 4 }}
+{{- include "csf-common-lib.v1.customLabels" (tuple $root.Values.global.labels) | indent 4 }}
+  annotations:
+{{- include "csf-common-lib.v1.customAnnotations" (tuple $root.Values.global.annotations) | indent 4 }}
+  name: {{ $hostName }}-{{ $extlistener.name |lower}}-route-{{ $replica}}
+  namespace: {{ $releaseNamespace }}
+spec:
+  host: {{ $extlistener.ADLprefix }}-{{ $replica }}-{{ $extlistener.externalServiceName }}
+  port:
+    targetPort: {{ $externalListenerPort }}
+  tls:
+    termination: passthrough
+  to:
+    kind: Service
+    {{- if $root.Values.global.istio.enabled }}
+    {{- $istioGatewaySvcName := $extlistener.IstioGateway.ingressGatewaySvcName }}
+    {{- if not $istioGatewaySvcName }}
+    {{- fail ".Values.ingress.externalListeners.IstioGateway.ingressGatewaySvcName must be configured with a valid ingress gateway service name" }}
+    {{- end }}
+    name: {{ $istioGatewaySvcName }}
+    {{- else }}
+    name: {{ $hostName }}-{{ $replica }}-broker-external
+    {{- end }}
+{{- end }}
+{{- end }}
+---
+{{- end }}

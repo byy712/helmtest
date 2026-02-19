@@ -1,0 +1,11 @@
+--- bssc-ifd-13.0.1/bssc-ifd/charts/bssc-fluentd/templates/fluentd-deployment.yaml	2023-12-06 18:41:43.000000000 +0530
++++ bssc-ifd-patch-9/charts/bssc-fluentd/templates/fluentd-deployment.yaml	2024-03-14 14:15:33.871223000 +0530
+@@ -78,7 +78,7 @@
+       {{- if (.Values.fluentd.sensitiveInfoInSecret.enabled) }}
+       initContainers:
+       - name : {{ template "bssc-fluentd.init.container" . }}
+-        image: {{ include "bssc-fluentd.registry" (tuple .Values .Values.internalInitRegistry) }}/{{ .Values.fluentd.image.initRepo }}:{{ (include "bssc-fluentd.imageTag" (tuple .Values.fluentd.image.initTag $.commonSupportedImageFlavor .Values .Values.fluentd .Values.fluentd.image )) }}
++        image: {{ include "bssc-fluentd.registry" (tuple .Values .Values.internalInitRegistry) }}/{{ .Values.fluentd.image.initRepo }}:{{ .Values.fluentd.image.initTag }}
+         imagePullPolicy: {{.Values.fluentd.ImagePullPolicy}}
+         command: ['sh', '-c', "/etc/initContainerMount/encrypt.sh"]
+         securityContext:

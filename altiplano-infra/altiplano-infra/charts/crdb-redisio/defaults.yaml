@@ -1,0 +1,87 @@
+# This file contains internal default values that are subject to change.
+#
+# Values set in this file are merged in and used if the equivalent value is not
+# set in the values.yaml nor in the user-provided values on the Release.
+
+# Default internal Registries
+_internalRedisioRegistry: csf-docker-delivered.repo.cci.nokia.net
+_internalRolemonRegistry: csf-docker-delivered.repo.cci.nokia.net
+_internalAdminRegistry: csf-docker-delivered.repo.cci.nokia.net
+_internalCburAgentRegistry: csf-docker-delivered.repo.cci.nokia.net
+_internalExporterRegistry: registry1-docker-io.repo.cci.nokia.net
+
+server:
+  image:
+    tag: "6.0-4.4453"
+
+  resources:
+    limits:
+      _cpu: 250m
+
+  metrics:
+    image:
+      name: "oliver006/redis_exporter"
+      tag: "v1.57.0"
+      flavor: custom
+
+    resources:
+      limits:
+        _cpu: 250m
+
+  # Default resources for modules containers
+  _loadModules:
+    resources:
+      requests:
+        cpu: 50m
+        memory: 64Mi
+        ephemeral-storage: 64Mi
+      limits:
+        _cpu: 50m
+        memory: 64Mi
+        ephemeral-storage: 64Mi
+
+sentinel:
+  resources:
+    limits:
+      _cpu: 250m
+
+  metrics:
+    image:
+      name: "oliver006/redis_exporter"
+      tag: "v1.57.0"
+      flavor: custom
+
+    resources:
+      limits:
+        _cpu: 250m
+
+rolemon:
+  resources:
+    limits:
+      _cpu: 250m
+
+admin:
+  resources:
+    limits:
+      _cpu: 250m
+
+cbur:
+  image:
+    tag: "1.1.1-alpine-6578"
+    flavor: custom
+
+  resources:
+    limits:
+      _cpu: 250m
+
+tests:
+  resources:
+    limits:
+      _cpu: 100m
+
+# Supported flavors and suffixes
+_supportedFlavors:
+  - flavor: "rocky8"
+    tag: "-rocky8"
+  - flavor: "custom"
+    tag: ""

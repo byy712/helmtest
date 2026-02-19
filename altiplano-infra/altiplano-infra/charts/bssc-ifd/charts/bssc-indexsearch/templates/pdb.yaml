@@ -1,0 +1,58 @@
+{{- if .Values.data.pdb.enabled }}
+apiVersion: {{ template "bssc-indexsearch.apiVersionPolicyV1Beta1orV1" . }} 
+kind: PodDisruptionBudget
+metadata:
+#PDB is created with name <chart fullname>-<values.workload.name>. As the complete name must not exceed resourceNameLimit and must still have the workload suffix, the chart fullname is additionally truncated by the length of suffix -<workload.name>.
+
+  name: {{ include "bssc-indexsearch.fullname" . |trunc ((sub .Values.customResourceNames.resourceNameLimit (add (len .Values.data.name) 1))|int) }}-{{ .Values.data.name }}
+  namespace: {{ .Release.Namespace | quote }}
+  labels:
+{{- include "bssc-indexsearch.csf-toolkit-helm.labels" (tuple .) | nindent 4 }}
+{{- include "bssc-indexsearch.commonLabels" (tuple . .Values.data.name ) | indent 4 }}
+  annotations:
+{{- include "bssc-indexsearch.csf-toolkit-helm.annotations" (tuple .) | nindent 4 }}
+spec:
+{{$ispdb := dict "ispdb_custom" .Values.data.pdb }}
+{{- include "bssc-indexsearch.pdb" $ispdb | nindent 2 }}
+  selector:
+    matchLabels:
+{{- include "bssc-indexsearch.selectorLabels" (tuple . .Values.data.name ) | indent 6 }}
+{{- end }}
+---
+{{- if .Values.manager.pdb.enabled }}
+apiVersion: {{ template "bssc-indexsearch.apiVersionPolicyV1Beta1orV1" . }} 
+kind: PodDisruptionBudget
+metadata:
+  name: {{ include "bssc-indexsearch.fullname" . |trunc ((sub .Values.customResourceNames.resourceNameLimit (add (len .Values.manager.name) 1))|int) }}-{{ .Values.manager.name }}
+  namespace: {{ .Release.Namespace | quote }}
+  labels:
+{{- include "bssc-indexsearch.commonLabels" (tuple . .Values.manager.name ) | indent 4 }}
+{{- include "bssc-indexsearch.csf-toolkit-helm.labels" (tuple .) | nindent 4 }}
+  annotations:
+{{- include "bssc-indexsearch.csf-toolkit-helm.annotations" (tuple .) | nindent 4 }}
+spec:
+{{$ispdb := dict "ispdb_custom" .Values.manager.pdb }}
+{{- include "bssc-indexsearch.pdb" $ispdb | nindent 2 }}
+  selector:
+    matchLabels:
+{{- include "bssc-indexsearch.selectorLabels" (tuple . .Values.manager.name ) | indent 6 }}
+{{- end }}
+---
+{{- if .Values.client.pdb.enabled }}
+apiVersion: {{ template "bssc-indexsearch.apiVersionPolicyV1Beta1orV1" . }} 
+kind: PodDisruptionBudget
+metadata:
+  name: {{ include "bssc-indexsearch.fullname" . |trunc ((sub .Values.customResourceNames.resourceNameLimit (add (len .Values.client.name) 1))|int) }}-{{ .Values.client.name }}
+  namespace: {{ .Release.Namespace | quote }}
+  labels:
+{{- include "bssc-indexsearch.commonLabels" (tuple . .Values.client.name ) | indent 4 }}
+{{- include "bssc-indexsearch.csf-toolkit-helm.labels" (tuple .) | nindent 4 }}
+  annotations:
+{{- include "bssc-indexsearch.csf-toolkit-helm.annotations" (tuple .) | nindent 4 }}
+spec:
+{{$ispdb := dict "ispdb_custom" .Values.client.pdb }}
+{{- include "bssc-indexsearch.pdb" $ispdb | nindent 2 }}
+  selector:
+    matchLabels:
+{{- include "bssc-indexsearch.selectorLabels" (tuple . .Values.client.name ) | indent 6 }}
+{{- end }}

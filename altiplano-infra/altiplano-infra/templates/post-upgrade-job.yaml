@@ -1,0 +1,262 @@
+{{ $indexsearchValues := index .Values "altiplano-indexsearch" "bssc-indexsearch" }}
+{{ $alarmIndexsearchValues := index .Values "altiplano-alarms-indexsearch" "bssc-indexsearch" }}
+{{ $grafanaGlobal := index .Values "global" "altiplano-grafana" }}
+{{ $grafanaValues := index .Values "altiplano-grafana" }}
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: {{ .Release.Name }}-altiplano-infra-postupg-sa
+  namespace: "{{.Release.Namespace}}"
+  labels:
+    app: {{ .Release.Name }}-altiplano-infra
+    release: {{ .Release.Name | quote }}
+    heritage: {{ .Release.Service | quote }}
+  annotations:
+    "helm.sh/hook": post-upgrade
+    "helm.sh/hook-weight": "-8"
+    "helm.sh/hook-delete-policy": before-hook-creation, hook-succeeded
+automountServiceAccountToken: false
+---
+{{- if .Values.global.allowClusterLevelPrivileges }}
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: {{ .Release.Name }}-altiplano-infra-postupg-crb
+  namespace: "{{.Release.Namespace}}"
+  labels:
+    app: {{ .Release.Name }}-altiplano-infra
+    release: {{ .Release.Name | quote }}
+    heritage: {{ .Release.Service | quote }}
+  annotations:
+    "helm.sh/hook": post-upgrade
+    "helm.sh/hook-weight": "-7"
+    "helm.sh/hook-delete-policy": before-hook-creation, hook-succeeded
+subjects:
+- kind: ServiceAccount
+  name: {{ .Release.Name }}-altiplano-infra-postupg-sa
+  namespace: "{{.Release.Namespace}}"
+roleRef:
+  kind: ClusterRole
+  name: {{ .Release.Name }}-altiplano-infra-postupg-cr
+  apiGroup: rbac.authorization.k8s.io
+---
+{{- end }}
+kind: RoleBinding
+apiVersion: rbac.authorization.k8s.io/v1
+metadata:
+  name: {{ .Release.Name }}-altiplano-infra-postupg-rb
+  namespace: "{{.Release.Namespace}}"
+  labels:
+    app: {{ .Release.Name }}-altiplano-infra
+    release: {{ .Release.Name | quote }}
+    heritage: {{ .Release.Service | quote }}
+  annotations:
+    "helm.sh/hook": post-upgrade
+    "helm.sh/hook-weight": "-7"
+    "helm.sh/hook-delete-policy": before-hook-creation, hook-succeeded
+subjects:
+- kind: ServiceAccount
+  name:  {{ .Release.Name }}-altiplano-infra-postupg-sa
+  namespace: "{{.Release.Namespace}}"
+  apiGroup: ""
+roleRef:
+  kind: Role
+  name: {{ .Release.Name }}-altiplano-infra-postupg-role
+  apiGroup: rbac.authorization.k8s.io
+---
+kind: Role
+apiVersion: rbac.authorization.k8s.io/v1
+metadata:
+  namespace: "{{.Release.Namespace}}"
+  name: {{ .Release.Name }}-altiplano-infra-postupg-role
+  labels:
+    app: {{ .Release.Name }}-altiplano-infra
+    release: {{ .Release.Name | quote }}
+    heritage: {{ .Release.Service | quote }}
+  annotations:
+    "helm.sh/hook": post-upgrade
+    "helm.sh/hook-weight": "-8"
+    "helm.sh/hook-delete-policy": before-hook-creation, hook-succeeded
+rules:
+- apiGroups:
+  - ""
+  resources:
+  - persistentvolumeclaims
+  verbs:
+  - delete
+  - list
+- apiGroups: [""]
+  resources: [ "pods"]
+  verbs: ["get", "list"]
+- apiGroups: [""]
+  resources: ["pods/exec"]
+  verbs: ["create"]
+- apiGroups: ["apps"]
+  resources: ["statefulsets", "deployments"]
+  verbs: ["list", "patch"]
+- apiGroups: [""]
+  resources: ["persistentvolumeclaims"]
+  verbs: ["get", "patch"]
+---
+{{- if .Values.global.allowClusterLevelPrivileges }}
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: {{ .Release.Name }}-altiplano-infra-postupg-cr
+  labels:
+    app: {{ .Release.Name }}-altiplano-infra-postupg-sa
+    release: {{ .Release.Name | quote }}
+    heritage: {{ .Release.Service | quote }}
+  annotations:
+    "helm.sh/hook": post-upgrade
+    "helm.sh/hook-weight": "-7"
+    "helm.sh/hook-delete-policy": before-hook-creation, hook-succeeded
+rules:
+- apiGroups:
+  - apps
+  resources:
+  - statefulsets/scale
+  - deployments/scale
+  verbs:
+  - patch
+- apiGroups:
+  - apps
+  resources:
+  - statefulsets
+  - deployments
+  verbs:
+  - get
+- apiGroups:
+  - ""
+  resources:
+  - persistentvolumes
+  - configmaps
+  verbs:
+  - list
+  - delete
+- apiGroups: ["storage.k8s.io"]
+  resources: ["storageclasses"]
+  verbs: ["list"]
+---
+{{- end }}
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: {{ .Release.Name }}-altiplano-infra-postupg-job
+  labels:
+    app: {{ .Release.Name }}-altiplano-infra-postupg-job
+    release: {{ .Release.Name | quote }}
+    heritage: {{ .Release.Service | quote }}
+  annotations:
+    "helm.sh/hook": post-upgrade
+    "helm.sh/hook-weight": "-6"
+    "helm.sh/hook-delete-policy": before-hook-creation, hook-succeeded
+spec:
+  ttlSecondsAfterFinished: 1800
+  backoffLimit: 3
+  template:
+    metadata:
+      labels:
+        app: {{ .Release.Name }}-altiplano-infra-post-upgrade
+    spec:
+      serviceAccountName: {{ .Release.Name }}-altiplano-infra-postupg-sa
+      automountServiceAccountToken: true
+      restartPolicy: Never
+      containers:
+      - name: {{ .Release.Name }}-altiplano-infra-post-upgrade
+        image: "{{ .Values.global.registry }}/{{ .Values.global.kubectl.repo }}:{{ .Values.global.kubectl.tag }}"
+        securityContext:
+          runAsNonRoot: true
+          runAsUser: {{ .Values.global.altiplanoJob.securityContext.runAsUser | default 65534 }}
+          runAsGroup: {{ .Values.global.altiplanoJob.securityContext.runAsGroup | default 65534 }}
+          allowPrivilegeEscalation: false
+        command:
+        - bash
+        - "-c"
+        - |
+{{- if .Values.global.allowClusterLevelPrivileges }}
+          # clean up the pvcs, pvs of the old Elasticsearch pod's.
+          # get the list of pvcs, pvs owned by the release.
+          echo "Deleting obsolete Elasticsearch related objects after migrating"
+          listOfPvcs=`kubectl get pvc -l release={{ .Release.Name }} -n={{ .Release.Namespace }} --no-headers | grep elasticsearch | awk '{print $1}'`
+          for eachpvc in ${listOfPvcs};do
+            kubectl delete pvc ${eachpvc} --namespace {{ .Release.Namespace }}
+            echo "Deleted pvc: ${eachpvc}"
+          done;
+          listOfPvs=`kubectl get pv -n={{ .Release.Namespace }} | grep pv-es-* | awk '{print $1}'`
+          for eachpv in ${listOfPvs};do
+            kubectl delete pv ${eachpv}
+            echo "Deleted pv: ${eachpv}"
+          done;
+
+{{- if or ( .Values.tags.infra ) ( $grafanaGlobal.enabled ) ( $grafanaGlobal.enabled ) }}
+{{- if and (not (hasKey $grafanaGlobal "enabled" )) (not (hasKey $grafanaValues "enabled" )) }}
+          listOfPvs=`kubectl get pv -n={{ .Release.Namespace }} | grep pv-grafana-* | awk '{print $1}'`
+          for eachpv in ${listOfPvs};do
+            kubectl delete pv ${eachpv}
+            echo "Deleted pv: ${eachpv}"
+          done;
+  
+{{- else if (not (hasKey $grafanaGlobal "enabled")) }}
+{{- if not (eq $grafanaValues.enabled false) }}
+          listOfPvs=`kubectl get pv -n={{ .Release.Namespace }} | grep pv-grafana-* | awk '{print $1}'`
+          for eachpv in ${listOfPvs};do
+            kubectl delete pv ${eachpv}
+            echo "Deleted pv: ${eachpv}"
+          done;
+  {{- end }}
+  
+{{- else if (not (hasKey $grafanaValues "enabled" )) }}
+{{- if (not (eq $grafanaGlobal.enabled false)) }}
+          listOfPvs=`kubectl get pv -n={{ .Release.Namespace }} | grep pv-grafana-* | awk '{print $1}'`
+          for eachpv in ${listOfPvs};do
+            kubectl delete pv ${eachpv}
+            echo "Deleted pv: ${eachpv}"
+          done;
+{{- end }}
+  
+{{- else if and (not (eq $grafanaGlobal.enabled false)) (not (eq $grafanaValues.enabled false)) }}
+          listOfPvs=`kubectl get pv -n={{ .Release.Namespace }} | grep pv-grafana-* | awk '{print $1}'`
+          for eachpv in ${listOfPvs};do
+            kubectl delete pv ${eachpv}
+            echo "Deleted pv: ${eachpv}"
+          done;
+  
+{{- end }}
+{{- end }}
+{{- end }}
+          appName="altiplano-indexsearch-client"
+          deploymentExists=$(kubectl get deployments -n {{ .Release.Namespace }} {{ .Release.Name }}-"$appName")
+          if [ -n "$deploymentExists" ]; then
+            kubectl wait -n {{ .Release.Namespace }} --for=condition=ready pod -l  app.kubernetes.io/name=altiplano-indexsearch,app.kubernetes.io/component=client  --timeout=300s
+            echo "Executing reloadSecurityAdminConfig.sh..."
+            bash /scripts/reloadSecurityAdminConfig.sh --releaseName {{ .Release.Name }} --namespace {{ .Release.Namespace }}
+            result=$?
+            if [ $result -ne 0 ]; then
+              echo "Failed to run reloadSecurityAdminConfig.sh"
+              exit 1
+            fi
+          else
+            echo "Deployment $appName does not exist"
+          fi
+
+          {{- if .Values.global.allowClusterLevelPrivileges }}
+            bash /scripts/upgradeInfraWithDynamicStorage.sh {{ .Release.Name }} {{ .Release.Namespace }}
+            result=$?
+            if [ $result -ne 0 ]; then
+              echo "Failed to run upgradeInfraWithDynamicStorage.sh"
+              exit 1
+            fi
+          {{- end }}
+          elasticSearchConfigMapName=$(kubectl get cm -n={{ .Release.Namespace }} | awk '/elasticsearch-upg-sec/ {print $1}')
+          if [ -n "$elasticSearchConfigMapName" ];then
+            kubectl delete cm $elasticSearchConfigMapName --namespace {{ .Release.Namespace }}
+          fi
+        volumeMounts:
+          - name: scripts
+            mountPath: /scripts
+      volumes:
+        - name: scripts
+          configMap:
+            name: {{ .Release.Name }}-altiplano-post-upgrade-scripts

@@ -1,0 +1,163 @@
+{{- if .Values.cbur.enabled }}
+{{- if .Values.cbur.apiVersion }}
+apiVersion: {{ .Values.cbur.apiVersion }}
+{{- else if .Capabilities.APIVersions.Has "cbur.csf.nokia.com/v1/BrPolicy" }}
+apiVersion: cbur.csf.nokia.com/v1
+{{- else }}
+apiVersion: cbur.bcmt.local/v1
+{{- end }}
+kind: BrPolicy
+metadata:
+  name: {{ template "ckey.keycloak.statefulsetName" . }}
+  annotations:
+  {{- include "ckey.customAnnotations" (tuple .Values.global.annotations) | indent 4 }}
+  labels:
+    app: {{ template "ckey.chartName" . }}
+    release: "{{ .Release.Name }}"
+    heritage: "{{ .Release.Service }}"
+    csf-component: ckey
+    csf-subcomponent: keycloak
+    {{- include "ckey.customLabels" (tuple .Values.global.labels ) | indent 4 }}
+    {{- include "ckey.commonLabels" . | indent 4 }}
+spec:
+  weight: {{ .Values.cbur.brPolicyWeight }}
+  volumes:
+  - backup
+  backend:
+    mode: {{ .Values.cbur.backendMode }}
+  cronSpec: "{{ .Values.cbur.cronSpec }}"
+  maxiCopy: {{ .Values.cbur.maxiCopy }}
+  ignoreFileChanged: {{ .Values.cbur.ignoreFileChanged | default "true" }}
+  autoEnableCron: {{ .Values.cbur.autoEnableCron | default "false" }}
+  autoUpdateCron: {{ .Values.cbur.autoUpdateCron | default "false" }}
+  k8sobjects:
+  # Backup all keycloak secrets ( with match-criteria as name ) 
+  # Implementation reference cbur guide ( CNF CBUR Guide > Backup and Restore > Application BR > K8s Objects > BrPolicy Chnages ) 
+  {{- if .Values.secretCredentials.ckeySecret }}
+  - object-type: secret
+    match-criteria: name
+    match-string: {{ .Values.secretCredentials.ckeySecret }}
+  {{- else }}
+  - object-type: secret
+    match-criteria: name
+    match-string: {{ template  "ckey.fullName" . }}
+  {{- end }}
+  {{- if .Values.secretCredentials.dbSecret }}
+  - object-type: secret
+    match-criteria: name
+    match-string: {{ .Values.secretCredentials.dbSecret }}
+  {{- end }}
+  {{- if .Values.secretCredentials.keystoreSecret }}
+  - object-type: secret
+    match-criteria: name
+    match-string: {{ .Values.secretCredentials.keystoreSecret }}
+  {{- end }}
+  {{- if .Values.secretCredentials.dbKeystoreSecret }}
+  - object-type: secret
+    match-criteria: name
+    match-string: {{ .Values.secretCredentials.dbKeystoreSecret }}
+  {{- end }}
+  {{- if .Values.secretCredentials.spiSecret }}
+  - object-type: secret
+    match-criteria: name
+    match-string: {{ .Values.secretCredentials.spiSecret }}
+  {{- end }}
+  {{- if .Values.secretCredentials.truststoreSecret }}
+  - object-type: secret
+    match-criteria: name
+    match-string: {{ .Values.secretCredentials.truststoreSecret }}
+  {{- end }}
+  {{- if .Values.secretCredentials.zeroTrustMetricSecret }}
+  - object-type: secret
+    match-criteria: name
+    match-string: {{ .Values.secretCredentials.zeroTrustMetricSecret }}
+  {{- end }}
+  {{- if .Values.secretCredentials.rabbitMqPushEventListenerSecret }}
+  - object-type: secret
+    match-criteria: name
+    match-string: {{ .Values.secretCredentials.rabbitMqPushEventListenerSecret }}
+  {{- end }}
+  # Backup all keycloak configmaps starting with "ckey.fullName"
+  - object-type: configmap
+    match-criteria: name
+    match-string: {{ template "ckey.fullName" . }}
+  # Backup all custom created configmaps provided in values.yaml
+  {{- if .Values.pushEventListenerData.pushConfigMapName }}
+  - object-type: configmap
+    match-criteria: name
+    match-string: {{ .Values.pushEventListenerData.pushConfigMapName }}
+  {{- end }}
+  {{- if .Values.unifiedLogging.extensionConfigMap }}
+  - object-type: configmap
+    match-criteria: name
+    match-string: {{ .Values.unifiedLogging.extensionConfigMap }}
+  {{- end }}
+  {{- if .Values.unifiedLogging.customLog4jConfigMap }}
+  - object-type: configmap
+    match-criteria: name
+    match-string: {{ .Values.unifiedLogging.customLog4jConfigMap }}
+  {{- end }}
+  {{- if .Values.cacheConfigMap }}
+  - object-type: configmap
+    match-criteria: name
+    match-string: {{ .Values.cacheConfigMap }}
+  {{- end }}
+  hooks:
+  - name: {{ template "ckey.keycloak.containerName" . }}
+    commands:
+      preBackupCmd:
+        - "sh"
+        - "-c"
+        - |
+          echo "pre-backup: \n"
+          {{ if .Values.isuUpgrade.enabled }}
+          if {{ if not .Values.isuUpgrade.preserveBackupRestoreMechanism  }} [ -f /ckey/backup/.isu_inprogress ] && {{ end }} [ -x "$(command -v mysql)" ] && [ -x "$(command -v mysqldump)" ]; then
+            rm -rf /ckey/backup/ckey*
+            cd /ckey/backup
+
+            if [ -f /opt/keycloak/security/ckey-secret/db-password ]; then
+              DB_PASSWORD=$(cat /opt/keycloak/security/ckey-secret/db-password)
+            else
+              DB_PASSWORD="r00tr00t"
+            fi
+
+            DB_ARGS="-u$DB_USER -p$DB_PASSWORD -h $DB_IP -P $DB_PORT"
+
+            { mysqldump $DB_ARGS $DB_NAME --no-data --column-statistics=0; mysqldump $DB_ARGS $DB_NAME --column-statistics=0 --ignore-table=$DB_NAME.EVENT_ENTITY --ignore-table=$DB_NAME.ADMIN_EVENT_ENTITY; } > ckey_db.sql
+            tar -czvf ckey-$(date +%Y%m%d_%H%M%S)-data-backup.tgz ckey_db.sql
+
+            rm -rf ckey_db.sql .isu_inprogress
+          fi
+          {{ end }}
+      postBackupCmd: ["sh", "-c", "echo post-backup"]
+      preRestoreCmd:
+        - "sh"
+        - "-c"
+        - |
+          rm -rf /ckey/backup/*
+      postRestoreCmd:
+        - "sh"
+        - "-c"
+        - |
+          echo "post-restore: \n"
+          {{ if .Values.isuUpgrade.enabled }}
+          cd /ckey/backup
+          DB_BACKUP_TAR_FILE=$(ls -rt *data-backup.tgz | tail -1)
+          if [ ! -z "$DB_BACKUP_TAR_FILE" ] && [ -x "$(command -v mysql)" ]; then
+            if [ -f /opt/keycloak/security/ckey-secret/db-password ]; then
+              DB_PASSWORD=$(cat /opt/keycloak/security/ckey-secret/db-password)
+            else
+              DB_PASSWORD="r00tr00t"
+            fi
+
+            DB_ARGS="-u$DB_USER -p$DB_PASSWORD -h $DB_IP -P $DB_PORT"
+
+            tar -zxf $DB_BACKUP_TAR_FILE
+
+            mysql $DB_ARGS -e "DROP DATABASE IF EXISTS $DB_NAME; CREATE DATABASE IF NOT EXISTS $DB_NAME"
+            mysql $DB_ARGS $DB_NAME < ckey_db.sql
+
+            rm -rf ckey_db.sql
+          fi
+          {{ end }}
+{{- end }}

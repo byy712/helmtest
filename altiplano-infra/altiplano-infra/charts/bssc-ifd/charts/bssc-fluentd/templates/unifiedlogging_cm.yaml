@@ -1,0 +1,54 @@
+{{- if .Values.fluentd.unifiedLogging.enabled }}
+{{- include "bssc-fluentd.syslogValues" . }}
+{{- include "bssc-fluentd.syslogTlsValues" . }}
+kind: ConfigMap
+apiVersion: v1
+data:
+  fluentd.conf: {{ tpl (toYaml .Values.fluentd.unifiedLogging.unifiedLoggingConfig) . | indent 2 }}
+  dest.conf:  |-
+    @type copy
+    <store>
+      @type stdout
+      <format>
+        @type json
+      </format>
+    </store>
+    {{- if $.syslogEnabled }}
+    <store>
+      @type remote_syslog
+      host {{ tpl $.syslog.host . }}
+      {{- if tpl (default "" $.syslog.program) . }}
+      program {{ tpl $.syslog.program . }}
+      {{- end }}
+      severity ${tag[1]}
+      port {{ tpl ($.syslog.port | quote) . }}
+      protocol {{ tpl $.syslog.protocol . | lower }}
+      {{- if tpl (default "" $.syslog.facility) . }}
+      facility {{ tpl $.syslog.facility . }}
+      {{- end }}
+      <format>
+        @type json
+      </format>
+      {{- if and (default "" $.syslogSecretName) (default "" $.syslogSecretKey) }}
+      tls true
+      ca_file /etc/fluent/certs/syslogRootCaPem
+      {{- end }}
+      <buffer tag>
+        @type file
+        path /tmp/appSidecarLogs/buffer
+        flush_interval 5s
+        retry_forever true
+        chunk_limit_size 2MB
+        total_limit_size {{ tpl .Values.fluentd.unifiedLogging.syslog.appLogBufferSize . }}
+        retry_max_interval 30s
+      </buffer>
+    </store>
+    {{- end }}
+metadata:
+  name: {{ template "bssc-fluentd.fullname" .  }}-logging-conf
+  labels:
+{{- include "bssc-fluentd.commonLabels" (tuple .  "fluentd" ) | indent 4 }}
+{{- include "bssc-fluentd.csf-toolkit-helm.labels" (tuple .) | nindent 4 }}
+  annotations:
+{{- include "bssc-fluentd.csf-toolkit-helm.annotations" (tuple .) | nindent 4 }}
+{{- end }}

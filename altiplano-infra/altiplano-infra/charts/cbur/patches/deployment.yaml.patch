@@ -1,0 +1,113 @@
+--- cbur-o/templates/deployment.yaml	2024-03-28 20:26:14.000000000 +0530
++++ cbur/templates/deployment.yaml	2024-05-08 07:47:40.668981321 +0530
+@@ -30,6 +30,7 @@
+     metadata:
+       name: {{ include "cbur.proxy.resourceName" (tuple . "Deployment") }}
+       labels:
++        altiplano-role: {{ .Values.accessRoleLabel }}
+         heritage: {{ .Release.Service }}
+         app: {{ template "cbur.fullname" . }}
+         release: {{ .Release.Name }}
+@@ -73,6 +74,26 @@
+       {{- else if .Values.global.imagePullSecrets }}
+       imagePullSecrets: {{ toYaml .Values.global.imagePullSecrets | nindent 8 }}
+       {{- end }}
++      initContainers:
++      - name: init-{{ .Chart.Name }}
++        image: {{ .Values.global.registry }}/{{ .Values.image.init.name }}:{{ .Values.image.init.tag }}
++        imagePullPolicy: "{{ .Values.image.init.pullPolicy }}"
++        securityContext:
++         runAsUser: {{ .Values.securityContext.runAsUser }}
++         runAsGroup: {{ .Values.securityContext.runAsGroup }}
++         runAsNonRoot: {{ .Values.securityContext.runAsNonRoot }}
++        command: [ "/bin/sh", "-c" ]
++        args:
++          - |
++            cp /etc/altiplano/certificates/secrets/cbur-server-trustchain-cert.pem /etc/.certificates/ca-cert.pem
++            cp /etc/altiplano/certificates/secrets/cbur-server-cert.pem /etc/.certificates/client-cert.pem
++            cp /etc/altiplano/certificates/secrets/cbur-server-key.pem /etc/.certificates/client-key.pem
++
++        volumeMounts:
++        - name: cbur-certificates
++          mountPath: /etc/.certificates/
++        - name: altiplano-cbur-certs
++          mountPath: /etc/altiplano/certificates/secrets/
+       containers:
+ {{ include "cbur.syslogSidecar" (tuple . "cburm") | indent 8 }}
+         - name: {{ include "cbur.proxy.containerName" (tuple . "cbur") }}
+@@ -505,6 +526,50 @@
+               {{- end }}
+           resources:
+ {{ include "cbur.resources" (tuple . .Values.resources "3") | indent 12 }}
++        - name: {{ include "cbur.proxy.containerName" (tuple . "cbur") }}-fluentd-sidecar
++          image: "{{ .Values.global.registry }}/{{ .Values.cbur_fluentd_sidecar.image.name }}:{{ .Values.cbur_fluentd_sidecar.image.tag }}"
++          imagePullPolicy: {{ .Values.cbur_fluentd_sidecar.image.pullPolicy }}
++          securityContext:
++            readOnlyRootFilesystem: true
++            runAsUser: 1000
++            runAsGroup: {{ .Values.securityContext.runAsGroup }}
++            runAsNonRoot: {{ .Values.securityContext.runAsNonRoot }}
++          resources:
++{{ toYaml .Values.cbur_fluentd_sidecar.resources | indent 12 }}
++          env:
++          - name: CONTAINER_NAME
++            valueFrom:
++              fieldRef:
++                apiVersion: v1
++                fieldPath: metadata.name   
++          - name: MY_POD_IP
++            valueFrom:
++              fieldRef:
++                fieldPath: status.podIP
++          {{- if .Values.cbur_fluentd_sidecar.secrets }}       
++          - name: IS_USERNAME
++            valueFrom:
++              secretKeyRef:
++                key: {{ .Values.env.secrets.IS_USERNAME }}
++                name: {{ .Values.cbur_fluentd_sidecar.secrets.passwordSecret | quote }}
++          - name: IS_PASSWORD
++            valueFrom:
++              secretKeyRef:
++                key: {{ .Values.env.secrets.IS_PASSWORD }}
++                name: {{ .Values.cbur_fluentd_sidecar.secrets.passwordSecret | quote }}
++          {{- end}}
++          volumeMounts:
++          - name: tmp
++            mountPath: /tmp
++          - name: fluentd-config
++            mountPath: /etc/fluent/
++          - name: cbur-certificates
++            mountPath: /etc/.certificates/
++          - name: altiplano-cbur-certs
++            mountPath: /etc/altiplano/certificates/secrets/
++          - name: tmpemptydirvolume
++            mountPath: /logs
++            subPath: cbur-log
+     {{- if .Values.nodeSelectorOverride }}
+       nodeSelector:
+ {{ toYaml .Values.nodeSelectorOverride | indent 8 }}
+@@ -531,6 +596,24 @@
+ {{ include "cbur.tmpemptydirvolume" . | indent 8  }}
+             sizeLimit: {{ index .Values.resources.limits "ephemeral-storage" | quote }}
+ {{ include "cbur.syslogSidecarVolume" (tuple . "cburm") | indent 8  }}
++        - name: tmp
++          emptyDir: {}
++        {{- if .Values.cbur_fluentd_sidecar.secrets }}
++        - name: altiplano-cbur-certs
++          secret:
++            secretName: {{ (tpl .Values.cbur_fluentd_sidecar.secrets.certSecret .) }}
++        - name: cbur-certificates
++          emptyDir:
++            medium: Memory
++        - name: passwords
++          secret:
++            secretName: {{ (tpl .Values.cbur_fluentd_sidecar.secrets.passwordSecret .) }}
++        {{- end}}
++        - name: fluentd-config
++          configMap:
++            name: {{ include "cbur.proxy.resourceName" (tuple . "Deployment") }}-fluentd-config
++        - name: logs
++          emptyDir: {}
+         {{- if .Values.istio.enabled }}
+ {{ include "cbur.istiocheckvolume" . | indent 8  }}
+         {{- end }}

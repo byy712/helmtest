@@ -1,0 +1,87 @@
+{{- if and ( .Values.global.istio.enabled ) ( .Values.ingress.enableExternalAccess ) (or (eq .Values.ingress.type "ocpRoute") ( eq "IstioGateway" .Values.ingress.type )) }}
+{{- $replicas := .Values.Replicas | int }}
+{{- $namespace := .Release.Namespace }}
+{{- $hostName := include "ckaf-kafka.statefulset" . }}
+{{- $commonLabels := include "ckaf-kafka.commonLabels" . }}
+{{- range $externalListener := .Values.ingress.externalListeners }}
+{{- include "validate.gateway" $externalListener.IstioGateway }}
+---
+apiVersion: networking.istio.io/v1beta1
+kind: Gateway
+metadata:
+  name: {{ printf "%s-istio-gw-%s" $hostName ( $externalListener.name | lower )  }}
+  namespace: {{ $namespace }}
+  labels:
+{{- if $externalListener.IstioGateway.labels }}
+{{ toYaml ( $externalListener.IstioGateway.labels ) | indent 4 }}
+{{- end }}
+{{ $commonLabels | indent 4 }}
+{{- if $externalListener.IstioGateway.annotations }}
+  annotations:
+{{ toYaml ( $externalListener.IstioGateway.annotations ) | indent 4 }}
+{{- end }}
+spec:
+  selector:
+  {{- if $externalListener.IstioGateway.ingressPodSelector }}
+  {{ toYaml ( $externalListener.IstioGateway.ingressPodSelector ) | indent 4 }}
+  {{- else }}
+    istio: ingressgateway
+  {{- end }}
+  servers:
+  {{- $startPortRange := $externalListener.startPortRangeOnEdgeNode }}
+  {{- $extSvcName := $externalListener.externalServiceName }}
+  {{- $uniqueADL := $externalListener.uniqueADL }}
+  {{- $prefix := $externalListener.ADLprefix }}
+  {{- $istioGatewayTLS := $externalListener.IstioGateway.tls }}
+  {{- include "validate.gateway.tls" $istioGatewayTLS }}
+  {{- $istioGatewayTLSProtocol := include "tls.protocol" $istioGatewayTLS }}
+  {{- range $replica := until $replicas }}
+  {{- $istioGatewayPort := add $startPortRange $replica }}
+  - port:
+      number: {{ $istioGatewayPort }}
+      name: {{ $istioGatewayTLSProtocol  }}-kafka-{{ $replica }}
+      protocol: {{ $istioGatewayTLSProtocol | upper }}
+  {{- if and ( $istioGatewayTLS ) ( $istioGatewayTLS.mode ) }}
+    tls:
+      mode: {{ $istioGatewayTLS.mode }}
+      {{- if $istioGatewayTLS.credentialName }}
+      credentialName: {{ $istioGatewayTLS.credentialName }}
+      {{- end }}
+  {{- end }}
+    hosts:
+  {{- if and ( $istioGatewayTLS ) ( $istioGatewayTLS.mode )  ( $istioGatewayTLS.SANValidation ) }}
+  {{- if $uniqueADL }}
+    - {{ printf "%s-%d-%s" $prefix $replica $extSvcName }}
+  {{- else }}
+    - {{ printf "%s" $extSvcName }}
+  {{- end }}
+  {{- else }}
+    - '*'
+  {{- end }}
+  {{- end }}
+{{- end }}
+---
+{{- end }}
+
+{{- define "tls.protocol" -}}
+{{- if and ( . ) ( .mode ) }}
+{{- printf "tls" }}
+{{- else }}
+{{- printf "tcp" }}
+{{- end }}
+{{- end -}}
+
+{{- define "validate.gateway" -}}
+{{- if ( empty . ) }}
+{{- fail ".Values.ingress.externalListeners.IstioGateway must be configured, when OCP routes or istio gateway features are enabled." }}
+{{- end }}
+{{- end -}}
+
+{{- define "validate.gateway.tls" -}}
+{{- if and ( . ) ( .mode )  ( eq ( .mode | toString ) "ISTIO_MUTUAL" ) ( .SANValidation ) }}
+{{- fail "SANValidation with ISTIO_MUTUAL is not supported" }}
+{{- end }}
+{{- if and ( . ) ( .mode )  ( eq ( .mode | toString ) "ISTIO_MUTUAL" ) ( .credentialName ) }}
+{{- fail "CredentialName with ISTIO_MUTUAL is not supported" }}
+{{- end }}
+{{- end -}}

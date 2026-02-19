@@ -1,0 +1,39 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ template "ckaf-zookeeper.name" . }}-headless
+  labels:
+{{ include "ckaf-zookeeper.commonlabels" . | indent 4 }}
+{{- include "csf-common-lib.v1.customLabels" (tuple .Values.global.labels) | indent 4 }}
+    app: {{ .Chart.Name }}
+    chart: "{{ .Chart.Name }}-{{ .Chart.Version }}"
+    release: {{ .Release.Name | quote }}
+    heritage: {{ .Release.Service | quote }}
+  annotations:
+    {{- if and (eq .Values.global.istio.enabled true) (eq .Values.global.jmx.enabled true) }}
+    prometheus.io/port: "{{ .Values.JmxExporter.port }}"
+    prometheus.io/scrape: "true"
+    prometheus.io/scheme: http
+    {{- end }}
+{{- include "csf-common-lib.v1.customAnnotations" (tuple .Values.global.annotations) | indent 4 }}
+spec:
+  ports:
+  - port: {{ .Values.serverPort }}
+    name: tcp-server
+    targetPort: tcp-server
+  - port: {{ .Values.leaderElectionPort }}
+    name: tcp-leader
+    targetPort: tcp-leader
+  - port: {{ .Values.zookeeperClientPort }}
+    name: tcp-client
+    targetPort: tcp-client
+  {{- if and (eq .Values.global.istio.enabled true) (eq .Values.global.jmx.enabled true) }}
+  - port: {{ .Values.JmxExporter.port }}
+    name: tcp-metrics
+    targetPort: tcp-metrics
+  {{- end }}
+  {{ include "ckaf-zookeeper.dualStack.config" . | indent 2 }}
+  clusterIP: None
+  selector:
+    app: {{ .Chart.Name }}
+    release: {{ .Release.Name | quote }}

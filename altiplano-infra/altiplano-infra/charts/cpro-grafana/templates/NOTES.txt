@@ -1,0 +1,70 @@
+{{- if and (eq .Values.grafana.security.credentialName "") (eq .Values.sensitiveDataSecretName "") }}
+1. Get your grafana user and password respectively by running:
+   kubectl get secret --namespace {{ .Release.Namespace }} {{ template "cpro-grafana.fullname" . }} -o jsonpath="{.data.admin-user}" | base64 --decode ; echo
+   kubectl get secret --namespace {{ .Release.Namespace }} {{ template "cpro-grafana.fullname" . }} -o jsonpath="{.data.admin-password}" | base64 --decode ; echo
+{{- end }}
+
+2. The Grafana server can be accessed via port {{ .Values.service.port }} on the following DNS name from within your cluster:
+
+   {{ template "cpro-grafana.service.name" . }}.{{ .Release.Namespace }}.svc.cluster.local
+{{ if .Values.ingress.enabled }}
+{{ if not (include "cpro-grafana.hosts" .) }}
+   From outside the cluster, the server URL(s) are:
+   {{$path := dict "path" . }}
+{{- range .Values.ingress.hosts }}
+     http://{{ . }}{{- include "cpro-grafana.ingressPathPrefix" $path }}
+{{- end }}
+{{ else }}
+    NOTE: Ingress is enabled, but hosts is not configured, please configure hosts at .Values.ingress.hosts to get the url to access grafana UI from outside the cluster. 
+{{- end }}
+{{ else if include "cpro-grafana.hosts" .}}
+   Get the Grafana URL to visit by running these commands in the same shell:
+{{ if contains "NodePort" .Values.service.type -}}
+     export NODE_PORT=$(kubectl get --namespace {{ .Release.Namespace }} -o jsonpath="{.spec.ports[0].nodePort}" services {{ template "cpro-grafana.service.name" . }})
+     export NODE_IP=$(kubectl get nodes --namespace {{ .Release.Namespace }} -o jsonpath="{.items[0].status.addresses[0].address}")
+     echo http://$NODE_IP:$NODE_PORT
+{{ else if contains "LoadBalancer" .Values.service.type -}}
+   NOTE: It may take a few minutes for the LoadBalancer IP to be available.
+        You can watch the status of by running 'kubectl get svc --namespace {{ .Release.Namespace }} -w {{ template "cpro-grafana.service.name" . }}'
+     export SERVICE_IP=$(kubectl get svc --namespace {{ .Release.Namespace }} {{ template "cpro-grafana.service.name" . }} -o jsonpath='{.status.loadBalancer.ingress[0].ip}')
+     http://$SERVICE_IP:{{ .Values.service.port -}}
+{{ else if contains "ClusterIP" .Values.service.type }}
+     export POD_NAME=$(kubectl get pods --namespace {{ .Release.Namespace }} -l "app={{ template "cpro-grafana.name" . }},release={{ .Release.Name }}" -o jsonpath="{.items[0].metadata.name}")
+     kubectl --namespace {{ .Release.Namespace }} port-forward $POD_NAME 3000
+{{- end }}
+{{- end }}
+
+
+3. Login with the password from step 1 and the username: {{ .Values.adminUser }}
+
+{{- if .Values.seLinuxOptions.enabled }}
+WARNING! Global level seLinux options are deprecated. These are to be configured in securityContext level.
+{{- end }}
+
+{{- if not .Values.persistence.enabled }}
+
+#################################################################################
+######   WARNING: Persistence is disabled!!! You will lose your data when   #####
+######            the Grafana pod is terminated.                            #####
+#################################################################################
+{{- end }}
+
+{{- if or ( .Values.adminUser ) ( .Values.adminPassword ) }}
+#####################################################################################################################################
+######                WARNING: adminUser and adminPassword are no longer used in grafana chart                                  #####
+######            Instead, set them via .Values.grafana_ini.security.admin_user and .Values.grafana_ini.security.admin_password #####
+#####################################################################################################################################
+{{- end }}
+
+{{- if and .Values.istio.enabled .Values.istio.createKeycloakServiceEntry.enabled }}
+WARNING! Following parameters are deprecated and would be deleted in the next major release 
+  - istio.createKeycloakServiceEntry.extCkeyHostname
+  - istio.createKeycloakServiceEntry.hostAlias
+{{- end }}
+
+  {{- template "cpro-grafana.pdb.warnings" . }}
+  {{- template "cpro-grafana.timeZoneEnvName.warnings" . }}
+
+NOTE:
+{{- template "cpro-grafana.selfSigned.warnings" . }}
+

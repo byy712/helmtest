@@ -1,0 +1,83 @@
+{{ if gt (int .Values.global.preheal ) 0 }}
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: {{ include "ckaf-ksql.resourceName" (tuple . "Job" "preheal-job" ) }}
+  labels:
+{{ include "ckaf-ksql.commonlabels" . | indent 4 }}
+{{- include "csf-common-lib.v1.customLabels" (tuple .Values.global.labels) | indent 4 }}
+  annotations:
+    seccomp.security.alpha.kubernetes.io/allowedProfileNames: {{ .Values.global.seccompAllowedProfileNames }} 
+    seccomp.security.alpha.kubernetes.io/defaultProfileName: {{ .Values.global.seccompDefaultProfileName }}
+{{- include "csf-common-lib.v1.customAnnotations" (tuple .Values.global.annotations) | indent 4 }}
+spec:
+  template:
+    metadata:
+      annotations:
+        sidecar.istio.io/inject: "false"
+{{- include "csf-common-lib.v1.customAnnotations" (tuple .Values.global.annotations) | indent 8 }}
+      labels:
+        altiplano-role: {{ .Values.accessRoleLabel }}
+{{ include "ckaf-ksql.commonlabels" . | indent 8 }}
+{{- include "csf-common-lib.v1.customLabels" (tuple .Values.global.labels) | indent 8 }}
+    spec:
+      {{- if .Values.ksqlNodeSelector.enable }}
+      nodeSelector:
+{{ toYaml .Values.ksqlNodeSelector.nodeLabel | indent 8 }}
+      {{- end }}
+      {{- include "ckaf-ksql.tolerations" . | indent 6 }}
+      {{- if .Values.global.rbac.enabled }}
+      serviceAccountName: {{ template "ckaf-ksql.name" . }}-ksqladmin
+      {{- end }}
+      automountServiceAccountToken: true
+      {{- if eq .Values.security.enabled true }}
+      securityContext:
+        runAsNonRoot: true
+        {{- if ( ne ( toString (.Values.security.fsGroup)) "auto" ) }}
+        fsGroup: {{ .Values.security.fsGroup }}
+        {{- end }}
+        {{- if eq (include "ckaf-ksql.renderSeccompProfile" .) "true" }}
+        seccompProfile:
+          type: {{ .Values.security.seccompProfile.type }}
+        {{- end }}
+      {{- end }}
+      {{- if  coalesce .Values.imagePullSecrets .Values.global.imagePullSecrets }}
+      imagePullSecrets:
+      {{- range coalesce .Values.imagePullSecrets  .Values.global.imagePullSecrets }}
+        - name: {{ . }}
+      {{- end }}
+      {{- end }}
+      restartPolicy: Never
+      containers:
+      - name: ckaf-ksql-preheal
+        image: {{ include "ckaf-ksql.image" (tuple .Values .Values.global.registry3 .Values.kubectlImageName (include "ckaf-ksql.kubectlImageRepo" .) .Values.kubectlTag .Values.kubectl) }}
+        imagePullPolicy: {{ .Values.kubectl.imagePullPolicy }}
+        {{- if eq .Values.security.enabled true }}
+        securityContext:
+          runAsNonRoot: true 
+          readOnlyRootFilesystem: {{ .Values.security.readOnlyRootFilesystem }}
+        {{- if ( ne ( toString ( .Values.security.runAsUser )) "auto" ) }}
+          runAsUser: {{ .Values.security.runAsUser }}
+        {{- end }}
+        {{- if .Values.security.runAsGroup }}
+          runAsGroup: {{ .Values.security.runAsGroup }}
+        {{- end }}
+          allowPrivilegeEscalation: false
+        {{- if eq (include "ckaf-ksql.renderSeccompProfile" .) "true" }}
+          seccompProfile:
+            type: {{ .Values.security.seccompProfile.type }}
+        {{- end }}
+          privileged: false
+          capabilities:
+            drop: ["ALL"]
+        {{- end }}
+        env:
+        - name: TZ
+          value: {{ template "ckaf-ksql.timeZoneEnv" . }}        
+        resources:
+{{- include "ckaf-ksql.getResources" (tuple . .Values.jobResources "1") | indent 10 }}
+        command:
+        - sh
+        - -c
+        - "kubectl delete pods --namespace {{ .Release.Namespace }} -l app={{ .Chart.Name }},release={{ .Release.Name }}"
+{{ end }}

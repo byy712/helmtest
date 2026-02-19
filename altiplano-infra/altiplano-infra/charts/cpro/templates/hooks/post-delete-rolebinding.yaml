@@ -1,0 +1,24 @@
+{{- if or .Values.server.enabled .Values.alertmanager.enabled .Values.nodeExporter.enabled .Values.restserver.enabled .Values.kubeStateMetrics.enabled .Values.pushgateway.enabled }}
+{{- if .Values.rbac.enabled }}
+apiVersion: {{ template "cpro.apiVersion.roleBindingApiversion" . }}
+kind: RoleBinding
+metadata:
+  labels:
+    {{- include "cpro.app.labels.v3" ( dict "root" . "context" .Values.server ) | nindent 4 }}
+{{- include "cpro.labelsOrAnnotations" (tuple .Values.global.labels) | indent 4}}
+  name: {{ template "cpro.prometheus.server.postDelete.roleBinding" . }}
+  annotations:
+{{- include "cpro.labelsOrAnnotations" (tuple .Values.global.annotations) | indent 4}}
+    "helm.sh/hook": post-delete
+    "helm.sh/hook-weight": "-8"
+    "helm.sh/hook-delete-policy": before-hook-creation, hook-succeeded
+subjects:
+  - kind: ServiceAccount
+    name: {{ template "cpro.prometheus.server.postDelete.serviceAccount" . }}
+    namespace: {{ .Release.Namespace }}
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: {{ template "cpro.prometheus.server.postDelete.role" . }}
+{{- end }}
+{{- end }}

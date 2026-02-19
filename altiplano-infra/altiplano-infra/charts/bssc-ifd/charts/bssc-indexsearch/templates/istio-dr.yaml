@@ -1,0 +1,127 @@
+{{- include "bssc-indexsearch.istio.properties" . }}
+{{- include "bssc-indexsearch.istio.initIstio" . }}
+{{- if and ($.istio.enabled) (eq $.istioVersion "1.4") }}
+apiVersion: {{ template "bssc-indexsearch.apiVersionNetworkIstioV1Alpha3orV1Beta1" . }}
+kind: "DestinationRule"
+metadata:
+  name: {{ template "bssc-indexsearch.fullname" . }}-chl
+  labels:
+{{- include "bssc-indexsearch.commonLabels" (tuple . .Values.client.name ) | indent 4 }}
+{{- include "bssc-indexsearch.csf-toolkit-helm.labels" (tuple .) | nindent 4 }}
+  annotations:
+{{- include "bssc-indexsearch.csf-toolkit-helm.annotations" (tuple .) | nindent 4 }}
+spec:
+  host: {{ include "bssc-indexsearch.fullname" . |trunc ((sub .Values.customResourceNames.resourceNameLimit 4)|int) }}-chl.{{ .Release.Namespace }}.svc.cluster.local
+  trafficPolicy:
+    tls:
+      mode: ISTIO_MUTUAL
+---
+apiVersion: {{ template "bssc-indexsearch.apiVersionNetworkIstioV1Alpha3orV1Beta1" . }}
+kind: "DestinationRule"
+metadata:
+  name: {{ template "bssc-indexsearch.fullname" . }}-dhl
+  labels:
+{{- include "bssc-indexsearch.commonLabels" (tuple . .Values.data.name ) | indent 4 }}
+{{- include "bssc-indexsearch.csf-toolkit-helm.labels" (tuple .) | nindent 4 }}
+  annotations:
+{{- include "bssc-indexsearch.csf-toolkit-helm.annotations" (tuple .) | nindent 4 }}
+spec:
+  host: {{ include "bssc-indexsearch.fullname" . |trunc ((sub .Values.customResourceNames.resourceNameLimit 4)|int) }}-dhl.{{ .Release.Namespace }}.svc.cluster.local
+  trafficPolicy:
+    tls:
+      mode: ISTIO_MUTUAL
+---
+apiVersion: {{ template "bssc-indexsearch.apiVersionNetworkIstioV1Alpha3orV1Beta1" . }}
+kind: "DestinationRule"
+metadata:
+  name: {{ template "bssc-indexsearch.fullname" . }}-is
+  labels:
+{{- include "bssc-indexsearch.commonLabels" (tuple . .Values.client.name ) | indent 4 }}
+{{- include "bssc-indexsearch.csf-toolkit-helm.labels" (tuple .) | nindent 4 }}
+  annotations:
+{{- include "bssc-indexsearch.csf-toolkit-helm.annotations" (tuple .) | nindent 4 }}
+spec:
+  host: {{.Values.service.name}}.{{ .Release.Namespace }}.svc.cluster.local
+  trafficPolicy:
+    tls:
+      mode: ISTIO_MUTUAL
+---
+apiVersion: {{ template "bssc-indexsearch.apiVersionNetworkIstioV1Alpha3orV1Beta1" . }}
+kind: "DestinationRule"
+metadata:
+  name: {{ template "bssc-indexsearch.fullname" . }}-discovery
+  labels:
+{{- include "bssc-indexsearch.commonLabels" (tuple . .Values.manager.name ) | indent 4 }}
+{{- include "bssc-indexsearch.csf-toolkit-helm.labels" (tuple .) | nindent 4 }}
+  annotations:
+{{- include "bssc-indexsearch.csf-toolkit-helm.annotations" (tuple .) | nindent 4 }}
+spec:
+  host: {{ include "bssc-indexsearch.fullname" . |trunc ((sub .Values.customResourceNames.resourceNameLimit 4)|int) }}-discovery.{{ .Release.Namespace }}.svc.cluster.local
+  trafficPolicy:
+    tls:
+      mode: ISTIO_MUTUAL
+---
+{{- if .Values.service.prometheus_metrics.enabled }}
+apiVersion: {{ template "bssc-indexsearch.apiVersionNetworkIstioV1Alpha3orV1Beta1" . }}
+kind: "DestinationRule"
+metadata:
+  name: {{ template "bssc-indexsearch.fullname" . }}-crh
+  labels:
+{{- include "bssc-indexsearch.commonLabels" (tuple . .Values.client.name ) | indent 4 }}
+{{- include "bssc-indexsearch.csf-toolkit-helm.labels" (tuple .) | nindent 4 }}
+  annotations:
+{{- include "bssc-indexsearch.csf-toolkit-helm.annotations" (tuple .) | nindent 4 }}
+spec:
+  host: {{ include "bssc-indexsearch.fullname" . |trunc ((sub .Values.customResourceNames.resourceNameLimit 4)|int) }}-crh.{{ .Release.Namespace }}.svc.cluster.local
+  trafficPolicy:
+    tls:
+      mode: ISTIO_MUTUAL
+---
+apiVersion: {{ template "bssc-indexsearch.apiVersionNetworkIstioV1Alpha3orV1Beta1" . }}
+kind: "DestinationRule"
+metadata:
+  name: {{ template "bssc-indexsearch.fullname" . }}-mrh
+  labels:
+{{- include "bssc-indexsearch.commonLabels" (tuple . .Values.manager.name ) | indent 4 }}
+{{- include "bssc-indexsearch.csf-toolkit-helm.labels" (tuple .) | nindent 4 }}\
+  annotations:
+{{- include "bssc-indexsearch.csf-toolkit-helm.annotations" (tuple .) | nindent 4 }}
+spec:
+  host: {{ include "bssc-indexsearch.fullname" . |trunc ((sub .Values.customResourceNames.resourceNameLimit 4)|int) }}-mrh.{{ .Release.Namespace }}.svc.cluster.local
+  trafficPolicy:
+    tls:
+      mode: ISTIO_MUTUAL
+---
+apiVersion: {{ template "bssc-indexsearch.apiVersionNetworkIstioV1Alpha3orV1Beta1" . }}
+kind: "DestinationRule"
+metadata:
+  name: {{ template "bssc-indexsearch.fullname" . }}-drh
+  labels:
+{{- include "bssc-indexsearch.commonLabels" (tuple . .Values.data.name ) | indent 4 }}
+{{- include "bssc-indexsearch.csf-toolkit-helm.labels" (tuple .) | nindent 4 }}
+  annotations:
+{{- include "bssc-indexsearch.csf-toolkit-helm.annotations" (tuple .) | nindent 4 }}
+spec:
+  host: {{ include "bssc-indexsearch.fullname" . |trunc ((sub .Values.customResourceNames.resourceNameLimit 4)|int) }}-drh.{{ .Release.Namespace }}.svc.cluster.local
+  trafficPolicy:
+    tls:
+      mode: ISTIO_MUTUAL
+
+{{- end }}
+{{- end }}
+---
+{{- if and (eq $.istio.createDrForClient true) (eq $.istio.enabled false) }}
+apiVersion: {{ template "bssc-indexsearch.apiVersionNetworkIstioV1Alpha3orV1Beta1" . }}
+kind: DestinationRule
+metadata:
+  name: {{ template "bssc-indexsearch.fullname" . }}-is
+  namespace: {{ .Release.Namespace }}
+  labels:
+{{- include "bssc-indexsearch.commonLabels" (tuple . .Values.client.name ) | indent 4 }}
+{{- include "bssc-indexsearch.csf-toolkit-helm.labels" (tuple .) | nindent 4 }}
+  annotations:
+{{- include "bssc-indexsearch.csf-toolkit-helm.annotations" (tuple .) | nindent 4 }}
+spec:
+  host: {{.Values.service.name}}.{{ .Release.Namespace }}.svc.cluster.local
+{{ toYaml $.istio.customDrSpecForClient | indent 2 }}
+{{- end }}

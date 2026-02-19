@@ -1,0 +1,20 @@
+{{- include "cmdb.init" . -}}
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ template "cmdb.fullname" . }}-mariadb-databases
+  labels:
+    {{- include "cmdb-mariadb.labels" (tuple . "configmap") | nindent 4 }}
+  annotations:
+    {{- include "cmdb-mariadb.annotations" (tuple . "configmap") | nindent 4 }}
+data:
+{{- if .Values.mariadb.databases }}
+  {{- range $index, $item := .Values.mariadb.databases }}
+  {{- if contains "-" $item.name  }}
+    {{- $err := (required "Database name invalid, contains hyphen" .err) }}
+  {{- end }}
+  {{ $item.name }}.conf: |-
+    {{ if $item.character_set }}CHARACTER SET = '{{ $item.character_set }}'{{ end }} {{ if $item.collate }}COLLATE = '{{ $item.collate }}'{{ end }}
+  {{- end }}
+{{- end }}

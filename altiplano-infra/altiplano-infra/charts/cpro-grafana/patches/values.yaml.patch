@@ -1,0 +1,30 @@
+--- cpro-grafana/values.yaml	2024-04-12 17:33:07.000000000 +0530
++++ values.yaml	2024-05-06 09:57:03.754411075 +0530
+@@ -1512,6 +1512,13 @@
+     folderAnnotation: "grafana_folderpath"
+     resource: "both"
+     level: INFO
++    # The configuration will be in the form of key-value pairs	
++    # supporting all environment variables provided by Kiwigrid.
++    config:
++    # seconds to wait before watching resources again when an error occurs
++    # Default value is 5 seconds
++    - name: ERROR_THROTTLE_SLEEP
++      value: "5"
+     #description: If specified, the sidecar will search for config-maps inside this namespace.
+     #It's also possible to specify ALL to search in all namespaces.
+     #when restrictedToNamespace flag set to true , sidecar can monitor only in particular namespace. So please provide the correct namespace value.
+@@ -1537,6 +1544,13 @@
+     # label that the configmaps with datasources are marked with
+     label: grafana_datasource
+     level: INFO
++    # The configuration will be in the form of key-value pairs	
++    # supporting all environment variables provided by Kiwigrid.
++    config:
++    # seconds to wait before watching resources again when an error occurs
++    # Default value is 5 seconds
++    - name: ERROR_THROTTLE_SLEEP
++      value: "5"
+ # If container security context needs to be modified the below can be edited.
+   containerSecurityContext:
+     readOnlyRootFilesystem: true

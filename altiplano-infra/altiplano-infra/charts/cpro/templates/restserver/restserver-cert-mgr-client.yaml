@@ -1,0 +1,18 @@
+#variabes used component will have .Values.restserver data(yaml)
+###certificateName with be name of certificate created
+###secretName will be the name of secret created
+###the above variables are used in the cpro.certmanager.template
+{{- if and (.Values.restserver.enabled) (eq (include "csf-common-lib.v1.coalesceBoolean" (tuple .Values.restserver.tls.enabled .Values.tls.enabled .Values.global.tls.enabled .Values.restserver.configs.httpsEnabled false)) "true") (eq (include "csf-common-lib.v1.isEmptyValue" .Values.restserver.tls.secretRef.name) "true") (eq .Values.restserver.certificateSecret "certmanager") }}
+{{- if eq (include "csf-common-lib.v1.coalesceBoolean" (tuple .Values.certManager.enabled .Values.global.certManager.enabled true)) "true" }}
+{{- if .Values.restserver.certificate.enabled }}
+{{ $_ := set . "component" .Values.restserver }}
+{{ $certificateName := include "cpro.restserver.client.resourceName" . }}
+{{ $_ := set . "certificateName" $certificateName }}
+{{ $secretName := include "cpro.restserver.client.secret" . }}
+{{ $_ := set . "secretName" $secretName }}
+{{ $serviceName := printf "%s" (include "cpro.prometheus.restserver.fullname" .) }}
+{{ $_ := set . "serviceName" $serviceName }}
+{{- include "cpro-common-lib.v4.certificate" (tuple . .Values.restserver "pobserve-issuer") }}
+{{- end }}
+{{- end }}
+{{- end }}

@@ -1,0 +1,219 @@
+{{- if (and ( .Values.global.rbac.enabled) (not .Values.serviceAccountName) ) }}
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: {{ template "ckaf-kafka.name" . }}-kfadmin
+  namespace: "{{.Release.Namespace}}"
+  labels:
+{{ include "ckaf-kafka.commonLabels" . | indent 4 }}
+{{- include "csf-common-lib.v1.customLabels" (tuple .Values.global.labels) | indent 4 }}
+    app: {{ .Chart.Name }}
+    heritage: {{ .Release.Service }}
+    release: {{ .Release.Name }}
+  annotations:
+    seccomp.security.alpha.kubernetes.io/allowedProfileNames: {{ .Values.global.seccompAllowedProfileNames }}
+    seccomp.security.alpha.kubernetes.io/defaultProfileName: {{ .Values.global.seccompDefaultProfileName }}
+{{- include "csf-common-lib.v1.customAnnotations" (tuple .Values.global.annotations) | indent 4 }}
+automountServiceAccountToken: false
+{{- if  coalesce .Values.imagePullSecrets .Values.global.imagePullSecrets }}
+imagePullSecrets:
+  - name: {{ coalesce .Values.imagePullSecrets .Values.global.imagePullSecrets }}
+{{- end }}
+---
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  labels:
+    app: {{ .Chart.Name }}
+    heritage: {{ .Release.Service }}
+    release: {{ .Release.Name }}
+{{ include "ckaf-kafka.commonLabels" . | indent 4 }}
+{{- include "csf-common-lib.v1.customLabels" (tuple .Values.global.labels) | indent 4 }}
+  name: {{ template "ckaf-kafka.name" . }}-role
+  namespace: {{ .Release.Namespace }}
+  annotations:
+    seccomp.security.alpha.kubernetes.io/allowedProfileNames: {{ .Values.global.seccompAllowedProfileNames }}
+    seccomp.security.alpha.kubernetes.io/defaultProfileName: {{ .Values.global.seccompDefaultProfileName }}  
+{{- include "csf-common-lib.v1.customAnnotations" (tuple .Values.global.annotations) | indent 4 }}
+rules:
+- apiGroups: [""]
+  resources: ["pods"]
+  verbs: ["list", "create", "get", "watch", "delete","deletecollection"]
+- apiGroups: [""]
+  resources: ["persistentvolumeclaims"]
+  verbs: ["get", "list", "delete", "patch"]
+- apiGroups: [""]
+  resources: ["pods/status"]
+  verbs: ["get"]
+- apiGroups: [""]
+  resources: ["services","configmaps"]
+  verbs:  ["get","create","delete","patch","update"]
+- apiGroups: [""]
+  resources: ["secrets"]
+  verbs: ["create", "list", "get", "watch", "delete", "update"]
+- apiGroups: ["extensions","networking.k8s.io"]
+  resources: ["ingresses"]
+  verbs: ["get", "create", "list"]
+- apiGroups: ["apps"]
+  resources: ["statefulsets/scale","statefulsets"]
+  verbs: ["get", "create", "delete", "deletecollection","patch","update","list"]
+- apiGroups: [""]
+  resources: ["services"]
+  verbs: ["get", "create", "delete","list"]
+- apiGroups: [""]
+  resources: ["pods/log"]
+  verbs: ["get", "list"]
+- apiGroups: [""]
+  resources: ["pods/exec"]
+  verbs: ["create"]
+- apiGroups: ["batch"]
+  resources: ["jobs","cronjobs"]
+  verbs: ["get","create","delete","deletecollection","patch","update"]
+- apiGroups: ["policy"]
+  resources: ["poddisruptionbudgets"]
+  verbs: ["get","create","delete","deletecollection","patch","update","list"]
+- apiGroups: ["policy"]
+  resources: ["poddisruptionbudgets/status"]
+  verbs: ["get","watch","list"]
+{{- if and ( eq .Values.global.istio.enabled true ) ( eq .Values.global.istio.cni.enabled false ) ( eq (include "ckaf-kafka.PspCreation" .) "true") }}
+- apiGroups:
+  - extensions
+  resourceNames:
+  - {{ .Release.Name }}-{{ .Chart.Name }}-istio-psp
+  resources:
+  - podsecuritypolicies
+  verbs:
+  - use  
+{{- end }}
+{{- if ( eq .Values.global.istio.enabled true ) }}
+- apiGroups: ["networking.istio.io"]
+  resources: ["destinationrules"]
+  verbs: ["get","create","delete","patch","update","list"]
+- apiGroups: ["security.istio.io"]
+  resources: ["peerauthentication"]
+  verbs: ["get","create","delete","patch","update","list"]
+{{- end }}
+
+---
+---
+kind: RoleBinding
+apiVersion: rbac.authorization.k8s.io/v1
+metadata:
+  name: {{ template "ckaf-kafka.name" . }}-kafka-rolebinding
+  namespace: "{{.Release.Namespace}}"
+  labels:
+{{ include "ckaf-kafka.commonLabels" . | indent 4 }}
+{{- include "csf-common-lib.v1.customLabels" (tuple .Values.global.labels) | indent 4 }}
+    app: {{ .Chart.Name }}
+  annotations:
+    seccomp.security.alpha.kubernetes.io/allowedProfileNames: {{ .Values.global.seccompAllowedProfileNames }}
+    seccomp.security.alpha.kubernetes.io/defaultProfileName: {{ .Values.global.seccompDefaultProfileName }}
+{{- include "csf-common-lib.v1.customAnnotations" (tuple .Values.global.annotations) | indent 4 }}
+subjects:
+- kind: ServiceAccount
+  name: {{ template "ckaf-kafka.name" . }}-kfadmin
+  namespace: "{{.Release.Namespace}}"
+  apiGroup: ""
+roleRef:
+  kind: Role
+  name: {{ template "ckaf-kafka.name" . }}-role
+  apiGroup: rbac.authorization.k8s.io
+---
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: {{ template "ckaf-kafka.name" . }}-rollback-sa
+  namespace: "{{.Release.Namespace}}"
+  labels:
+{{ include "ckaf-kafka.commonLabels" . | indent 4 }}
+{{- include "csf-common-lib.v1.customLabels" (tuple .Values.global.labels) | indent 4 }}
+    app: ckaf-kafka
+    heritage: {{ .Release.Service }}
+    release: {{ .Release.Name }}
+  annotations:
+    seccomp.security.alpha.kubernetes.io/allowedProfileNames: {{ .Values.global.seccompAllowedProfileNames }}
+    seccomp.security.alpha.kubernetes.io/defaultProfileName: {{ .Values.global.seccompDefaultProfileName }}
+    "helm.sh/hook": pre-rollback
+    "helm.sh/hook-delete-policy": before-hook-creation,hook-succeeded
+    "helm.sh/hook-weight": "0"
+{{- include "csf-common-lib.v1.customAnnotations" (tuple .Values.global.annotations) | indent 4 }}
+automountServiceAccountToken: false
+{{- if  coalesce .Values.imagePullSecrets .Values.global.imagePullSecrets }}
+imagePullSecrets:
+  - name: {{ coalesce .Values.imagePullSecrets .Values.global.imagePullSecrets }}
+{{- end }}
+---
+---
+kind: RoleBinding
+apiVersion: rbac.authorization.k8s.io/v1
+metadata:
+  name: {{ template "ckaf-kafka.name" . }}-rollback-rolebinding
+  namespace: "{{.Release.Namespace}}"
+  labels:
+{{ include "ckaf-kafka.commonLabels" . | indent 4 }}
+{{- include "csf-common-lib.v1.customLabels" (tuple .Values.global.labels) | indent 4 }}
+    app: ckaf-kafka
+    heritage: {{ .Release.Service }}
+    release: {{ .Release.Name }}
+  annotations:
+    seccomp.security.alpha.kubernetes.io/allowedProfileNames: {{ .Values.global.seccompAllowedProfileNames }}
+    seccomp.security.alpha.kubernetes.io/defaultProfileName: {{ .Values.global.seccompDefaultProfileName }}
+    "helm.sh/hook": pre-rollback
+    "helm.sh/hook-delete-policy": before-hook-creation,hook-succeeded
+    "helm.sh/hook-weight": "0"
+{{- include "csf-common-lib.v1.customAnnotations" (tuple .Values.global.annotations) | indent 4 }}
+subjects:
+- kind: ServiceAccount
+  name: {{ template "ckaf-kafka.name" . }}-rollback-sa
+  namespace: "{{.Release.Namespace}}"
+  apiGroup: ""
+roleRef:
+  kind: Role
+  name: {{ template "ckaf-kafka.name" . }}-rollback-role
+  apiGroup: rbac.authorization.k8s.io
+---
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  labels:
+{{ include "ckaf-kafka.commonLabels" . | indent 4 }}
+{{- include "csf-common-lib.v1.customLabels" (tuple .Values.global.labels) | indent 4 }}
+    app: ckaf-kafka
+    release: {{ .Release.Name }}
+  name: {{ template "ckaf-kafka.name" . }}-rollback-role
+  namespace: "{{.Release.Namespace}}"
+  annotations:
+    seccomp.security.alpha.kubernetes.io/allowedProfileNames: {{ .Values.global.seccompAllowedProfileNames }}
+    seccomp.security.alpha.kubernetes.io/defaultProfileName: {{ .Values.global.seccompDefaultProfileName }}
+    "helm.sh/hook": pre-rollback
+    "helm.sh/hook-delete-policy": before-hook-creation,hook-succeeded
+    "helm.sh/hook-weight": "0"
+{{- include "csf-common-lib.v1.customAnnotations" (tuple .Values.global.annotations) | indent 4 }}
+rules:
+- apiGroups: [""]
+  resources: ["pods"]
+  verbs: ["list", "create", "get", "watch", "delete","deletecollection"]
+- apiGroups: [""]
+  resources: ["pods/status"]
+  verbs: ["get"]
+- apiGroups: [""]
+  resources: ["configmaps"]
+  verbs:  ["get","create","delete","patch"]
+- apiGroups: ["batch"]
+  resources: ["jobs"]
+  verbs: ["get","create","delete","deletecollection","patch","update"]
+- apiGroups: ["apps"]
+  resources: ["statefulsets/scale","statefulsets"]
+  verbs: ["get", "create", "delete", "deletecollection","patch","update","list"]
+- apiGroups: [""]
+  resources: ["pods/exec"]
+  verbs: ["create"]
+- apiGroups: ["apps","extensions"]
+  resources: ["deployments"]
+  verbs: ["get","list"]
+---
+---
+{{- end }}

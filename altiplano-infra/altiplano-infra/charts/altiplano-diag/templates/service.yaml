@@ -1,0 +1,52 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ template "altiplano-diag.name" . }}
+  labels:
+    app: {{ template "altiplano-diag.name" . }}
+    chart: {{ template "altiplano-diag.chart" . }}
+    release: {{ .Release.Name }}
+    heritage: {{ .Release.Service }}
+spec:
+  type: {{ .Values.service.type }}
+  ports:
+    - port: {{ .Values.service.ports.diagPort }}
+      targetPort: diagport
+      protocol: TCP
+      name: diagport
+      {{- if and (eq "NodePort" .Values.service.type) .Values.service.ports.diagNodePort }}
+      nodePort: {{ .Values.service.ports.diagNodePort }}
+      {{- end }}
+    - port: {{ .Values.service.ports.httpsPort }}
+      targetPort: https
+      protocol: TCP
+      name: https
+      {{- if and (eq "NodePort" .Values.service.type) .Values.service.ports.httpsNodePort }}
+      nodePort: {{ .Values.service.ports.httpsNodePort }}
+      {{- end }}
+    - port: {{ .Values.service.ports.udpPort }}
+      targetPort: udpport
+      protocol: UDP
+      name: udpport
+      {{- if and (eq "NodePort" .Values.service.type) .Values.service.ports.udpNodePort }}
+      nodePort: {{ .Values.service.ports.udpNodePort }}
+      {{- end }}
+  selector:
+    app: {{ template "altiplano-diag.name" . }}
+    release: {{ .Release.Name }}
+#Fluentd svc dual stack config
+{{- if or ( .Values.ipFamilyPolicy ) ( .Values.ipFamilies ) }}
+  {{- if .Values.ipFamilyPolicy }}
+  ipFamilyPolicy: {{ .Values.ipFamilyPolicy }}
+  {{- end }}
+  {{- if .Values.ipFamilies }}
+  ipFamilies: {{ .Values.ipFamilies | toYaml | nindent 2 }}
+  {{- end }}
+{{- else if or ( .Values.global.ipFamilyPolicy ) ( .Values.global.ipFamilies ) }}
+  {{- if .Values.global.ipFamilyPolicy }}
+  ipFamilyPolicy: {{ .Values.global.ipFamilyPolicy }}
+  {{- end }}
+  {{- if .Values.global.ipFamilies }}
+  ipFamilies: {{ .Values.global.ipFamilies | toYaml | nindent 2 }}
+  {{- end }}
+{{- end }}

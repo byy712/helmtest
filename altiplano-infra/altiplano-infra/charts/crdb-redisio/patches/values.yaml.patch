@@ -1,0 +1,46 @@
+--- crdb-redisio-9.0.3-origin/values.yaml	2024-02-07 16:28:36.000000000 +0530
++++ crdb-redisio-9.0.3-nokia-patch-1/values.yaml	2024-03-28 12:56:36.132303468 +0530
+@@ -85,6 +85,8 @@
+   tls:
+     enabled:
+ 
++accessRoleLabel: internal-access
++
+ ##
+ ## Root-Level Parameters
+ ##
+@@ -184,7 +186,9 @@
+ ## created by the chart (See Helm Best Practices)
+ labels: {}
+ annotations: {}
+-custom: {}
++custom:
++  admin:
++    accessRoleLabel: internal-access
+ 
+ ## Override for default securityContext settings.  podSecurityContext, if
+ ## set will be used for all pods created.  containerSecurityContext, if set
+@@ -466,6 +470,7 @@
+   # Number of Redis server instances to run
+   count: 3
+   logLevel: "verbose"
++  accessRoleLabel: internal-access
+ 
+   ## Major Release Rollback Support
+   ## Redis 7.2 introduced data incompatibilities preventing rollback to previous versions.
+@@ -826,6 +831,7 @@
+   ##
+   ## Number of Redis sentinels to run - minimum 3
+   count: 3
++  accessRoleLabel: internal-access
+ 
+   # Number of sentinels that must agree on a master as down to perform failover
+   quorum: 2
+@@ -1130,6 +1136,7 @@
+     flavor:
+     flavorPolicy:
+     pullPolicy:
++  accessRoleLabel: internal-access
+ 
+   ## Resource QOS (per Admin containers)
+   resources:

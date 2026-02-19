@@ -1,0 +1,16 @@
+{{- if and (.Values.webhook4fluentd.enabled) (eq (include "csf-common-lib.v1.coalesceBoolean" (tuple .Values.webhook4fluentd.tls.enabled .Values.tls.enabled .Values.global.tls.enabled false)) "true") (eq (include "csf-common-lib.v1.coalesceBoolean" (tuple .Values.certManager.enabled .Values.global.certManager.enabled true)) "true") (eq (include "csf-common-lib.v1.isEmptyValue" .Values.tls.secretRef.name ) "true") (eq (include "csf-common-lib.v1.isEmptyValue" .Values.webhook4fluentd.tls.secretRef.name ) "true") }}
+#variabes used component will have .Values.webhook4fluentd data(yaml)
+##certificateName with be name of certificate created
+##secretName will be the name of secret created
+##the above variables are used in the cpro.certmanager.template
+{{- if .Values.webhook4fluentd.certificate.enabled }}
+{{ $_ := set . "component" .Values.webhook4fluentd }}
+{{ $certificateName := include "cpro.webhook4fluentd.client.secretcertificate" . }} 
+{{ $_ := set . "certificateName" $certificateName }}
+{{ $secretName := include "cpro.webhook4fluentd.client.secretcertificate" . }} 
+{{ $_ := set . "secretName" $secretName }}
+{{ $serviceName := printf "%s" (include "cpro.prometheus.webhook4fluentd.fullname" . ) }}
+{{ $_ := set . "serviceName" $serviceName }}
+{{- include "cpro-common-lib.v4.certificate" (tuple . .Values.webhook4fluentd "pobserve-issuer") }}
+{{- end }}
+{{- end }}

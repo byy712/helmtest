@@ -1,0 +1,62 @@
+{{- include "cbur.tls" . }}
+{{- if and (eq (include "cbur.proxy.coalesceBoolean" (tuple .Values.tls.enabled .Values.global.tls.enabled false)) "true") (and (not .Values.tls.certsPath) (not .Values.tls.clientSecretRef.credentialName)) (eq (include "cbur.proxy.coalesceBoolean" (tuple .Values.certManager.enabled .Values.global.certManager.enabled false)) "true") }}
+{{- $certificate := .Values.clientCertificate }}
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  name: {{ template "cbur.fullname" . }}-client-cert
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "cbur.proxy.commonLabels" (tuple $) | indent 4 }}
+    {{- include "cbur.customLabels" (tuple $.Values.global.labels) | indent 4 }}
+  annotations:
+    {{- include "cbur.customAnnotations" (tuple $.Values.global.annotations) | indent 4 }}
+spec:
+  secretName: {{ template "cbur.fullname" . }}-client-srt
+  duration: {{ $certificate.duration }}
+  renewBefore: {{ $certificate.renewBefore }}
+{{- include "cbur.issuer" (tuple . $certificate) | indent 2 }}
+  privateKey:
+  {{- if ($certificate.privateKey | default (dict)).algorithm }}
+    algorithm: {{ $certificate.privateKey.algorithm }}
+  {{- end }}
+  {{- if ($certificate.privateKey | default (dict)).encoding }}
+    encoding: {{ $certificate.privateKey.encoding }}
+  {{- end }}
+  {{- if ($certificate.privateKey | default (dict)).size }}
+    size: {{ $certificate.privateKey.size }}
+  {{- end }}
+{{- if $certificate.usages }}
+  usages:
+{{ $certificate.usages | toYaml | indent 4 }}
+{{- else }}
+  usages:
+  - client auth
+{{- end }}
+{{- if $certificate.uris }}
+  uris:
+{{ $certificate.uris | toYaml | indent 4 }}
+{{- end }}
+  dnsNames:
+{{- if $certificate.dnsNames }}
+{{ $certificate.dnsNames | toYaml | indent 4 }}
+{{- end }}
+    - localhost
+    - {{ template "cbur.fullname" . }}.{{ .Release.Namespace }}
+    - {{ template "cbur.fullname" . }}.{{ .Release.Namespace }}.svc
+    - {{ template "cbur.fullname" . }}.{{ .Release.Namespace }}.svc.{{ .Values.clusterDomain | default "cluster.local" }}
+  ipAddresses:
+  {{- if $certificate.ipAddresses }}
+{{ $certificate.ipAddresses | toYaml | indent 2 }}
+  {{- else }}
+    - "127.0.0.1"
+    - "::1"
+  {{- end }}
+  {{- if $certificate.subject }}
+  subject:
+{{ $certificate.subject | toYaml | indent 4 }}
+  {{- end }}
+  {{- if $certificate.commonName }}
+  commonName: {{ $certificate.commonName | quote }}
+  {{- end }}
+{{- end }}

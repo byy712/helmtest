@@ -1,0 +1,22 @@
+{{- if (and (.Values.ksql.headless) (not .Values.ksql.ksqlQueriesConfigMapName)) }}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ template "ckaf-ksql.name" . }}-ksql-queries-configmap
+  labels:
+{{ include "ckaf-ksql.commonlabels" . | indent 4 }}
+{{- include "csf-common-lib.v1.customLabels" (tuple .Values.global.labels) | indent 4 }}
+    app: {{ .Chart.Name }}
+    release: {{ .Release.Name }}
+    heritage: {{ .Release.Service }}
+  annotations:
+    seccomp.security.alpha.kubernetes.io/allowedProfileNames: {{ .Values.global.seccompAllowedProfileNames }}
+    seccomp.security.alpha.kubernetes.io/defaultProfileName: {{ .Values.global.seccompDefaultProfileName }}
+{{- include "csf-common-lib.v1.customAnnotations" (tuple .Values.global.annotations) | indent 4 }}
+data:
+  {{- $files := .Files }}
+  {{- range tuple "queries.sql" }}
+  {{ . }}: |-
+{{ $files.Get . | indent 4 }}
+  {{- end }}
+{{- end }}

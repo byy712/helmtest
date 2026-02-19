@@ -1,0 +1,85 @@
+{{- include "bssc-indexsearch.ccrEnabled" . }}
+{{- if or ($.ccrEnabled) (.Values.restApi.enabled) }}
+apiVersion: v1
+kind: Pod
+metadata:
+  name: "{{ template "bssc-indexsearch.helmTestPostApiPod.name" . }}"
+  namespace: {{ .Release.Namespace }}
+  labels:
+{{- include "bssc-indexsearch.csf-toolkit-helm.labels" (tuple . .Values.custom.hookJobs.pod.labels) | indent 4 }}
+{{- include "bssc-indexsearch.commonLabels" (tuple .) | nindent 4 }}
+  annotations:
+    "helm.sh/hook": test-success
+    "helm.sh/hook-delete-policy": before-hook-creation, hook-succeeded
+    seccomp.security.alpha.kubernetes.io/allowedProfileNames: {{ .Values.global.seccompAllowedProfileNames }}
+    seccomp.security.alpha.kubernetes.io/defaultProfileName: {{ .Values.global.seccompDefaultProfileName }}
+{{- include "bssc-indexsearch.csf-toolkit-helm.annotations" (tuple . .Values.custom.hookJobs.pod.annotations) | indent 4 }}
+spec:
+  serviceAccountName: {{ template "bssc-indexsearch.inupgServiceAccount.name" . }}
+  automountServiceAccountToken: true
+  securityContext:
+{{ include "bssc-indexsearch.pod.securityContext" . | indent 4 }}
+  {{- if .Values.jobs.affinity }}
+  affinity:
+{{ toYaml .Values.jobs.affinity | indent 4 }}
+  {{- end }}
+  {{- if .Values.jobs.nodeSelector }}
+  nodeSelector:
+{{ toYaml .Values.jobs.nodeSelector | indent 4 }}
+  {{- end }}
+  {{- if .Values.jobs.tolerations }}
+  tolerations:
+{{ toYaml .Values.jobs.tolerations | indent 4 }}
+  {{- end }}
+  {{- with or .Values.imagePullSecrets .Values.global.imagePullSecrets }}
+  imagePullSecrets:
+{{- toYaml . | nindent 4 }}
+  {{- end }}
+
+  containers:
+  - name: {{ template "bssc-indexsearch.helmTestPostApiContainer.name" . }}
+    image: {{ include "bssc-indexsearch.registry" (tuple .Values .Values.internalToolsRegistry) }}/{{ include "bssc-indexsearch.imageRepositoryPath" (tuple .Values.global.flatRegistry .Values.kubectl.image.repo) }}:{{ (include "bssc-indexsearch.imageTag" (tuple .Values.kubectl.image.tag .Values.kubectl.image.supportedImageFlavor .Values .Values.kubectl .Values.kubectl.image )) }}
+    securityContext:
+{{ include "bssc-indexsearch.container.securityContext" . | indent 6 }}
+    resources:
+{{ include "bssc-indexsearch.resources" (tuple . .Values.jobs.hookJobs.resources "120m") | indent 6 }}
+
+    env:
+    - name: TZ
+      value: {{ or .Values.timezone.timeZoneEnv .Values.global.timeZoneEnv "UTC" | quote }}
+    command:
+    - "bash"
+    - "-c"
+    - |
+      echo "Started to check the status of the post setup API job at `date +'%Y-%m-%d %H:%M:%S:%3N'`"
+      postSetupApiPodName=$(kubectl get pods  --namespace {{ .Release.Namespace }} -l app.kubernetes.io/instance={{ .Release.Name }},app.kubernetes.io/name={{ default .Chart.Name .Values.nameOverride }},job-name={{ template "bssc-indexsearch.postSetupApiJob.name" . }}  --no-headers=true | awk '{ print$1 }')
+      #Checking the status of the pod for 60 seconds
+      echo "The Post Setup API Pod name: $postSetupApiPodName"
+      end=$((SECONDS+60)) 
+      RC=1
+      while [ $SECONDS -lt $end ]
+      do
+        podStatus=$(kubectl get pods $postSetupApiPodName --namespace {{ .Release.Namespace }} -ojsonpath={.status.phase})
+        if [[ $podStatus != "Running" ]]; then 
+           if [[ $podStatus == "Succeeded" ]]; then
+              echo "The Post API Job successfully passed at `date +'%Y-%m-%d %H:%M:%S:%3N'`"
+              RC=0
+           else
+              RC=1            
+              echo "The Post API Job Failed at `date +'%Y-%m-%d %H:%M:%S:%3N'`"
+           fi
+           break
+        fi 
+        sleep 5
+      done
+      if [[ $RC == 1 ]]; then
+          if [[ $podStatus == "Running" ]]; then
+              echo "Status of $postSetupApiPodName: $podStatus at `date +'%Y-%m-%d %H:%M:%S:%3N'`. Please re-run the helm test as the job is still running."
+          else
+              echo "Status of $postSetupApiPodName: $podStatus at `date +'%Y-%m-%d %H:%M:%S:%3N'`."
+          fi
+      fi
+      exit $RC
+
+  restartPolicy: Never
+{{- end }}

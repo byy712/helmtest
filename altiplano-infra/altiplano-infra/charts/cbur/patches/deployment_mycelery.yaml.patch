@@ -1,0 +1,139 @@
+--- /home/zafeiri/cbur-charts/cbur-1.17.0/cbur/templates/deployment_mycelery.yaml	2024-03-28 20:26:14.000000000 +0530
++++ /home/zafeiri/cbur-charts/cbur-1.17.0-nokia-patch-5/cbur/templates/deployment_mycelery.yaml	2024-05-30 14:38:32.694160300 +0530
+@@ -31,6 +31,7 @@
+     metadata:
+       name: {{ include "cbur.proxy.resourceName" (tuple . "Deployment" "mycelery") }}
+       labels:
++        altiplano-role: {{ .Values.accessRoleLabel }}
+         heritage: {{ .Release.Service }}
+         app: {{ template "cbur.fullname" . }}-mycelery
+         release: {{ .Release.Name }}
+@@ -71,6 +72,26 @@
+       {{- else if .Values.global.imagePullSecrets }}
+       imagePullSecrets: {{ toYaml .Values.global.imagePullSecrets | nindent 8 }}
+       {{- end }}
++      initContainers:
++      - name: init-{{ .Chart.Name }}
++        image: {{ .Values.global.registry }}/{{ .Values.image.init.name }}:{{ .Values.image.init.tag }}
++        imagePullPolicy: "{{ .Values.image.init.pullPolicy }}"
++        securityContext:
++         runAsUser: {{ .Values.securityContext.runAsUser }}
++         runAsGroup: {{ .Values.securityContext.runAsGroup }}
++         runAsNonRoot: {{ .Values.securityContext.runAsNonRoot }}
++        command: [ "/bin/sh", "-c" ]
++        args:
++          - |
++            cp /etc/altiplano/certificates/secrets/cbur-server-trustchain-cert.pem /etc/.certificates/ca-cert.pem
++            cp /etc/altiplano/certificates/secrets/cbur-server-cert.pem /etc/.certificates/client-cert.pem
++            cp /etc/altiplano/certificates/secrets/cbur-server-key.pem /etc/.certificates/client-key.pem
++
++        volumeMounts:
++        - name: cbur-certificates
++          mountPath: /etc/.certificates/
++        - name: altiplano-cbur-certs
++          mountPath: /etc/altiplano/certificates/secrets/
+       containers:
+ {{ include "cbur.syslogSidecar" (tuple . "celery") | indent 8  }}
+         - name: {{ include "cbur.proxy.containerName" (tuple . "cbur-redis") }}
+@@ -233,10 +254,6 @@
+           - name: CBURA_STORAGE
+             value: {{ .Values.cburaVolume.storage }}
+           {{- end }}
+-          {{- if .Values.cburaVolume.enabled }}
+-          - name: CBURA_STORAGE
+-            value: {{ .Values.cburaVolume.storage }}
+-          {{- end }}
+           {{- if ne .Values.CEPHS3.endpoint "" }}
+           - name: S3_ENDPOINT
+             value: {{ .Values.CEPHS3.endpoint }}
+@@ -379,7 +396,9 @@
+             name: "cbur-backup"
+           - mountPath: /CBUR_REPO
+             name: "cbur-repo"
++          {{- if .Values.useSubPath }}
+             subPath: repo
++          {{- end }}
+           {{- if and .Values.k8swatcher.enabled .Values.k8swatcher.clusterBrEnabled }}
+           - mountPath: /CLUSTER
+             name: "cbur-backup-cluster"
+@@ -437,6 +456,52 @@
+             failureThreshold: 30
+           resources:
+ {{ include "cbur.resources" (tuple . .Values.celery.resources "10") | indent 12 }}
++        - name: {{ include "cbur.proxy.containerName" (tuple . "cbur") }}-mycelery-fluentd-sidecar
++          image: "{{ .Values.global.registry }}/{{ .Values.mycelery_fluentd_sidecar.image.name }}:{{ .Values.mycelery_fluentd_sidecar.image.tag }}"
++          imagePullPolicy: {{ .Values.mycelery_fluentd_sidecar.image.pullPolicy }}
++          securityContext:
++            readOnlyRootFilesystem: true
++            runAsUser: 1000
++            runAsGroup: {{ .Values.securityContext.runAsGroup }}
++            runAsNonRoot: {{ .Values.securityContext.runAsNonRoot }}
++          resources:
++{{ toYaml .Values.mycelery_fluentd_sidecar.resources | indent 12 }}
++          env:
++          {{- if .Values.mycelery_fluentd_sidecar.secrets }}
++          - name: IS_USERNAME
++            valueFrom:
++              secretKeyRef:
++                key: {{ .Values.env.secrets.IS_USERNAME }}
++                name: {{ .Values.mycelery_fluentd_sidecar.secrets.passwordSecret | quote }}
++          - name: IS_PASSWORD
++            valueFrom:
++              secretKeyRef:
++                key: {{ .Values.env.secrets.IS_PASSWORD }}
++                name: {{ .Values.mycelery_fluentd_sidecar.secrets.passwordSecret | quote }}
++          {{- end }}
++          - name: CONTAINER_NAME
++            valueFrom:
++              fieldRef:
++                apiVersion: v1
++                fieldPath: metadata.name
++          - name: MY_POD_IP
++            valueFrom:
++              fieldRef:
++                fieldPath: status.podIP
++          volumeMounts:
++          - name: tmp
++            mountPath: /tmp
++          - name: fluentd-config
++            mountPath: /etc/fluent/
++          - name: cbur-certificates
++            mountPath: /etc/.certificates/
++          - name: altiplano-cbur-certs
++            mountPath: /etc/altiplano/certificates/secrets/ 
++          - mountPath: /CBUR_REPO
++            name: "cbur-repo"
++          {{- if .Values.useSubPath }}
++            subPath: repo
++          {{- end }}
+     {{- if .Values.nodeSelectorOverride }}
+       nodeSelector:
+ {{ toYaml .Values.nodeSelectorOverride | indent 8 }}
+@@ -464,6 +529,8 @@
+         {{- if .Values.istio.enabled }}
+ {{ include "cbur.istiocheckvolume" . | indent 8  }}
+         {{- end }}
++        - name: tmp
++          emptyDir: {}
+         - name: "cbur-backup"
+           {{- if .Values.volumeType.glusterfs }}
+           glusterfs:
+@@ -531,4 +598,18 @@
+             secretName: cbur-redis
+ {{ include "cbur.tmpemptydirvolume" . | indent 8  }}
+             sizeLimit: {{ index .Values.celery.resources.limits "ephemeral-storage" | quote }}
++        {{- if .Values.mycelery_fluentd_sidecar.secrets }}
++        - name: cbur-certificates
++          emptyDir:
++            medium: Memory
++        - name: altiplano-cbur-certs
++          secret:
++            secretName: {{ (tpl .Values.mycelery_fluentd_sidecar.secrets.certSecret .) }}
++        - name: passwords
++          secret:
++            secretName: {{ (tpl .Values.mycelery_fluentd_sidecar.secrets.passwordSecret .) }}
++        {{- end}}
++        - name: fluentd-config
++          configMap:
++            name: {{ include "cbur.proxy.resourceName" (tuple . "Deployment" "mycelery") }}-fluentd-config
+ {{- end }}

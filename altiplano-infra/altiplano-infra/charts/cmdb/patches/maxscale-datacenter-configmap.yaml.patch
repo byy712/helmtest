@@ -1,0 +1,15 @@
+--- cmdb-9.2.1/cmdb-original/templates/maxscale-datacenter-configmap.yaml	2024-04-25 05:27:41.000000000 +0530
++++ /home/chautruo/nokia/helm-dev/altiplano-infra/charts/cmdb/templates/maxscale-datacenter-configmap.yaml	2024-05-07 13:56:47.998621000 +0530
+@@ -38,7 +38,11 @@
+     lag_threshold = {{ .lag_threshold }}
+     slave_purge_interval = {{ .slave_purge_interval | quote }}
+   {{- if .enabled }}
+-    site_position = {{ .site_index }}:{{ add1 (len .remoteSites) }}
++    {{- if .auto_increment_increment }}
++    site_position = {{ .site_index }}:{{ .auto_increment_increment }}
++    {{- else }}
++    site_position = {{ .site_index }}:{{  add1 (len .remoteSites) }}
++    {{- end }}
+     slave_skip_errors = {{ .slave_skip_errors | quote | default "1062" }}
+     auto_reconnect = {{ .autoSiteReconnect }}
+   {{- if $direct }}

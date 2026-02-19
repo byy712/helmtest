@@ -1,0 +1,18 @@
+{{- if and .Values.pushgateway.enabled .Values.pushgateway.pdb.enabled -}}
+apiVersion: {{ template "cpro.apiVersion.pdb" . }}
+kind: PodDisruptionBudget
+metadata:
+  labels:
+    {{- include "cpro.app.labels.v3" ( dict "root" . "context" .Values.pushgateway ) | nindent 4 }}
+{{- include "cpro.labelsOrAnnotations" (tuple .Values.global.labels) | indent 4}}
+  annotations:
+{{- include "cpro.labelsOrAnnotations" (tuple .Values.global.annotations) | indent 4}}
+  name: {{ template "cpro.prometheus.pushgateway.fullname" . }}
+spec:
+  {{- include "cpro.pdb-values" .Values.pushgateway.pdb | indent 2}}
+  selector:
+    matchLabels:
+      app: {{ template "cpro.prometheus.name" . }}
+      component: "{{ .Values.pushgateway.name }}"
+      release: {{ .Release.Name }}
+{{- end }}

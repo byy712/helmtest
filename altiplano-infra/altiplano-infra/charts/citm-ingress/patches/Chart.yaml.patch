@@ -1,0 +1,8 @@
+--- orig/citm-ingress/Chart.yaml	2023-12-06 13:01:58.000000000 +0530
++++ new/citm-ingress/Chart.yaml	2024-01-02 11:16:46.227903484 +0530
+@@ -21,4 +21,4 @@
+ - email: I_CSF_CITM@internal.nsn.com
+   name: CSF CITM Team
+ name: citm-ingress
+-version: 3.0.1
++version: 3.0.1-nokia-patch-1

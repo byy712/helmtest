@@ -1,0 +1,574 @@
+{{- include "crdb-redisio.init" . -}}
+{{- include "crdb-redisio.values-update-acl" . -}}
+{{- $primary_port := include "crdb-redisio.db.port" . -}}
+{{- $alternate_port := include "crdb-redisio.db.alt-port" . -}}
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: {{ include "csf-common-lib.v3.resourceName" (tuple . "statefulset" .Values.server.nameSuffix) }}
+  labels:
+    {{- include "crdb-redisio.labels" (tuple . "server" "statefulset") | nindent 4 }}
+  annotations:
+    {{- include "crdb-redisio.annotations" (tuple . "server" "statefulset") | nindent 4 }}
+spec:
+  serviceName: {{ include "csf-common-lib.v3.resourceName" (tuple . "service" "server-nodes") }}
+  podManagementPolicy: "Parallel"
+  replicas: {{ .Values.server.count }}
+  updateStrategy:
+    type: RollingUpdate
+  selector:
+    matchLabels:
+      {{- include "crdb-redisio.selector_labels" . | nindent 6 }}
+      type: server
+  template:
+    metadata:
+      labels:
+        {{- include "crdb-redisio.labels" (tuple . "server" "pod") | nindent 8 }}
+        type: server
+        altiplano-role: {{ .Values.server.accessRoleLabel }}
+        {{- if eq (int .Values.server.count) 1 }}
+        redisio_role: master
+        redisio_num_slaves: "0"
+        {{- end }}
+      annotations:
+        config/checksum: {{ .Values.server.confInclude | sha256sum }}
+        acl/checksum: {{ include "crdb-redisio.acl" . | sha256sum }}
+        modules/checksum: {{ tpl (toYaml .Values.server.loadModules) . | sha256sum }}
+        {{- include "crdb-redisio.annotations" (tuple . "server" "pod") | nindent 8 }}
+        {{- include "crdb-redisio.istio-annotation" . | nindent 8 }}
+    spec:
+      {{- include "crdb-redisio.get_image_pull_secrets" (tuple . "server") | nindent 6 }}
+      {{- include "crdb-redisio.get_security_context" (tuple . "pod" "server") | nindent 6 }}
+      {{- include "crdb-redisio.sa" (tuple .) | nindent 6 }}
+      automountServiceAccountToken: true
+      {{- include "crdb-redisio.priority-class-name" (tuple . "server") | nindent 6 }}
+      initContainers:
+      {{- $top := . }}
+      {{- range .Values.server.loadModules }}
+      {{- $mod := tpl (toYaml .) $top | fromYaml }}
+      # {{ $mod.name }} Module container
+      - name: {{ include "csf-common-lib.v1.containerName" (tuple $top (printf "moduleload-%s" $mod.name)) }}
+        command:
+        - bash
+        - "-c"
+        - |
+          set -eo pipefail
+          {{ $top.Values.server.debug | default "" | empty | ternary "" "set -x" }}
+          modpath=/redisdb/modules
+          mkdir -p ${modpath}
+          [[ -f ${modpath}/{{- $mod.name -}}.yaml ]] && {
+            # Old/Prev Spec already exists, Remove old file(s)
+            old=$(grep 'path:' ${modpath}/{{- $mod.name -}}.yaml | cut -f2 -d' ')
+            [[ -n $old ]] && rm -f ${modpath}/$(basename $old) ${modpath}/{{- $mod.name -}}.yaml
+          }
+          echo '
+          {{- toYaml $mod | nindent 10 }}
+          ' > ${modpath}/{{- $mod.name -}}.yaml
+          cp {{ $mod.path }} ${modpath}/
+          chmod -R 770 ${modpath}
+        {{- printf "image: %s" $mod.image | nindent 8 }}
+        {{- include "crdb-redisio.get_security_context" (tuple $top "container" "server") | nindent 8 }}
+        env:
+        {{- include "crdb-redisio.tz.env" $top | nindent 8 }}
+        resources: {{- toYaml (coalesce $mod.resources $top.Values.server._loadModules.resources) | nindent 10 }}
+        volumeMounts:
+        - mountPath: /redisdb
+          name: datadir
+      {{- include "crdb-redisio.logging.vm" $top | nindent 8 }}
+      {{- end }}
+      # clean up temp file container
+      - name: {{ include "csf-common-lib.v1.containerName" (tuple . "cleanup") }}
+        {{- include "crdb-redisio.server.image" . | nindent 8 }}
+        command: [ "sh", "-c", "rm -f /redisdb/temp-*.rdb" ]
+        volumeMounts:
+        - name: datadir
+          mountPath: /redisdb
+      # Main init config container
+      - name: {{ include "csf-common-lib.v1.containerName" (tuple . "config") }}
+        {{- include "crdb-redisio.server.image" . | nindent 8 }}
+        command: [ "/usr/bin/harmonize_log", "--service=redisio-init", "/docker-entrypoint.sh"  ]
+        args: [ "init", "server" ]
+        {{- include "crdb-redisio.get_security_context" (tuple . "container" "server") | nindent 8 }}
+        env:
+        - name: DEBUG
+          value: {{ quote (.Values.server.debug | default "") }}
+        - name: AUTH_IMPORT
+          value: /auth-secrets
+        - name: KEYSTORE_DIR
+          value: /auth-share
+        - name: KEYSTORE_KEYFILE
+          value: /var/run/redisio/.encrypt.key
+        - name: MY_POD_NAMESPACE
+          valueFrom:
+            fieldRef:
+              fieldPath: metadata.namespace
+        {{- include "crdb-redisio.tz.env" . | nindent 8 }}
+        {{- if .redis_cluster }}
+        - name: REDIS_CLUSTER
+          value: "yes"
+        {{- end }}
+        {{- if not .Values.server.persistence.enabled }}
+        - name: PVCLESS
+          value: "yes"
+        {{- end }}
+        {{- include "crdb-redisio.admin-access.env" . | nindent 8 }}
+        - name: GROUP_NAME
+          value: {{ template "crdb-redisio.groupname" . }}
+        volumeMounts:
+        {{- include "crdb-redisio.fs.vm" . | nindent 8 }}
+        - name: cluster-cm
+          mountPath: /cluster
+        - name: import-cm
+          mountPath: /import/config
+          readOnly: true
+        - name: auth-secrets
+          mountPath: /auth-secrets/probe.auth
+          subPath: probe.auth
+          readOnly: true
+        - name: auth-secrets
+          mountPath: /auth-secrets/tools.auth
+          subPath: tools.auth
+          readOnly: true
+        - name: auth-secrets
+          mountPath: /auth-secrets/replication.auth
+          subPath: replication.auth
+          readOnly: true
+        {{- if .Values.sentinel.enabled }}
+        - name: auth-secrets
+          mountPath: /auth-secrets/sentinel.auth
+          subPath: sentinel.auth
+          readOnly: true
+        {{- end }}
+        {{- if .Values.server.metrics.enabled }}
+        - name: auth-secrets
+          mountPath: /auth-secrets/metrics.auth
+          subPath: metrics.auth
+          readOnly: true
+        {{- end }}
+        - name: admin-auth-secrets
+          mountPath: /auth-secrets/admin.auth
+          subPath: admin.auth
+          readOnly: true
+        - name: auth-keystore
+          mountPath: /auth-share
+        - name: auth-encrypt-key
+          mountPath: /var/run/redisio/.encrypt.key
+          readOnly: true
+          subPath: .encrypt.key
+        - name: datadir
+          mountPath: /redisdb
+        {{- if not .Values.server.persistence.enabled }}
+        - name: markers
+          mountPath: /import/markers/
+        {{- if .redis_cluster }}
+        - name: cluster-nodes-conf
+          mountPath: /import/cluster-nodes-conf/
+        {{- end }}
+        {{- end }}
+        {{- include "crdb-redisio.logging.vm" . | nindent 8 }}
+        resources: {{- toYaml .Values.server.resources | nindent 10 }}
+      containers:
+      # Primary Redis server container
+      - name:  {{ include "csf-common-lib.v1.containerName" (tuple . "server") }}
+        {{- include "crdb-redisio.server.image" . | nindent 8 }}
+        {{- include "crdb-redisio.get_security_context" (tuple . "container" "server") | nindent 8 }}
+        ports:
+        # Primary port
+        - containerPort: {{ $primary_port }}
+          name: {{ printf "tcp-redis-%s" $primary_port }}
+        # Alternate port, if TLS/non-TLS simultaneously enabled
+        {{- if $alternate_port }}
+        - containerPort: {{ $alternate_port }}
+          name: {{ printf "tcp-redis-%s" $alternate_port }}
+        {{- end }}
+        args: [ "server" ]
+        env:
+        {{- include "crdb-redisio.server.env" . | nindent 8 }}
+        - name: DEBUG
+          value: {{ quote (.Values.server.debug | default "") }}
+        - name: POD_IP
+          valueFrom:
+            fieldRef:
+              fieldPath: status.podIP
+        - name: POD_NAME
+          valueFrom:
+            fieldRef:
+              fieldPath: metadata.name
+        - name: MY_POD_NAMESPACE
+          valueFrom:
+            fieldRef:
+              fieldPath: metadata.namespace
+        - name: ALARM_SERVICE_NAME
+          value: {{ .Values.alarmServiceName | quote }}
+        {{- include "crdb-redisio.fifo.env" . | nindent 8 }}
+        {{- include "crdb-redisio.tz.env" . | nindent 8 }}
+        {{- include "crdb-redisio.cli.env" . | nindent 8 }}
+        {{- include "crdb-redisio.admin-access.env" . | nindent 8 }}
+        - name: DATADIR
+          value: {{ .Values.server.tmpfsWorkingDir | default false | ternary "/redisdb-tmpfs" "/redisdb" | quote }}
+        - name: KEYSTORE_DIR
+          value: /auth-share
+        - name: KEYSTORE_KEYFILE
+          value: /var/run/redisio/.encrypt.key
+        {{- include "crdb-redisio.acl.user.probe.env" . | nindent 8 }}
+        {{- include "crdb-redisio.acl.user.replication.env" . | nindent 8 }}
+        {{- include "crdb-redisio.acl.user.tools.env" . | nindent 8 }}
+        {{- include "crdb-redisio.acl.user.sentinel.env" . | nindent 8 }}
+        - name: GROUP_NAME
+          value: {{ template "crdb-redisio.groupname" . }}
+        {{- if .Values.server.customBind }}
+        - name: _CRDB_REDISIO_SERVER_BIND
+          value: "{{ .Values.server.customBind }}"
+        {{- end }}
+        - name: _CRDB_REDISIO_SERVER_SLAVE_ANNOUNCE_PORT
+          value: {{ $primary_port | quote }}
+        - name: _CRDB_REDISIO_SERVER_CLUSTER_ANNOUNCE_PORT
+          value: {{ $alternate_port | default $primary_port | quote }}
+        - name: _CRDB_REDISIO_SERVER_CLUSTER_ANNOUNCE_TLS_PORT
+          value: {{ $primary_port | quote }}
+        - name: _CRDB_REDISIO_SERVER_CLUSTER_ANNOUNCE_BUS_PORT
+          value: "16379"
+        {{- if .server_tls }}
+        - name: TLS_CERTIFICATE_THRESHOLD
+          value: {{ .Values.tls.certificates.threshold | default "7" | quote }}
+        - name: TLS_CERTIFICATE_CHECK_INTERVAL
+          value: {{ .Values.tls.certificates.polling | default "3600" | quote }}
+        - name: TLS_CERTIFICATE_ROLLOUTWAIT
+          value: {{ .Values.tls.certificates.server.rolloutWait | default "900" | quote }}
+        - name: _CRDB_REDISIO_SERVER_TLS_CERT_FILE
+          value: {{ include "crdb-redisio.tls.cert.server" . }}
+        - name: _CRDB_REDISIO_SERVER_TLS_KEY_FILE
+          value: {{ include "crdb-redisio.tls.key.server" . }}
+        - name: _CRDB_REDISIO_SERVER_TLS_REPLICATION
+          value: "yes"
+        - name: _CRDB_REDISIO_SERVER_TLS_CLUSTER
+          value: "yes"
+        - name: _CRDB_REDISIO_SERVER_TLS_CA_CERT_FILE
+          value: {{ include "crdb-redisio.tls.dir.ca" . }}/server-ca.crt
+          {{- if not .client_tls }}
+        - name: _CRDB_REDISIO_SERVER_TLS_AUTH_CLIENTS
+          value: "optional"
+          {{- end }}
+        {{- end }}
+        - name: _CRDB_REDISIO_SERVER_PORT
+          value: {{ .server_tls | ternary ($alternate_port | default 0) $primary_port | quote }}
+        - name: _CRDB_REDISIO_SERVER_TLS_PORT
+          value: {{ .server_tls | ternary $primary_port 0 | quote }}
+        volumeMounts:
+        {{- include "crdb-redisio.fs.vm" . | nindent 8 }}
+        - name: cluster-cm
+          mountPath: /cluster
+        - name: datadir
+          mountPath: /redisdb
+        - name: acl
+          mountPath: /redisdb/conf/acl_curr
+        - name: auth-keystore
+          mountPath: /auth-share
+        - name: auth-encrypt-key
+          mountPath: /var/run/redisio/.encrypt.key
+          readOnly: true
+          subPath: .encrypt.key
+        {{- include "crdb-redisio.tls.vm.cacerts" . | nindent 8 }}
+        {{- include "crdb-redisio.tls.vm.server" . | nindent 8 }}
+        {{- include "crdb-redisio.tls.vm.client" . | nindent 8 }}
+        {{- include "crdb-redisio.logging.vm" . | nindent 8 }}
+        {{- if .Values.server.tmpfsWorkingDir }}
+        - name: memorydir
+          mountPath: /redisdb-tmpfs
+        {{- end }}
+        {{- with .Values.server }}
+        startupProbe:
+          {{- with .startupProbe }}
+          httpGet:
+            path: /started
+            port: 36379
+          initialDelaySeconds: {{ .initialDelaySeconds | default 1 }}
+          periodSeconds: {{ .periodSeconds | default 5 }}
+          timeoutSeconds: {{ .timeoutSeconds | default 1 }}
+          failureThreshold: {{ .failureThreshold | default 60 }}
+          successThreshold: {{ .successThreshold | default 1 }}
+          {{- end }}
+        livenessProbe:
+          {{- with .livenessProbe }}
+          httpGet:
+            path: /alive
+            port: 36379
+          initialDelaySeconds: {{ .initialDelaySeconds | default 180 }}
+          periodSeconds: {{ .periodSeconds | default 10 }}
+          timeoutSeconds: {{ .timeoutSeconds | default 5 }}
+          failureThreshold: {{ .failureThreshold | default 6 }}
+          successThreshold: {{ .successThreshold | default 1 }}
+          {{- end }}
+        readinessProbe:
+          {{- with .readinessProbe }}
+          httpGet:
+            path: /ready
+            port: 36379
+          initialDelaySeconds: {{ .initialDelaySeconds | default 10 }}
+          periodSeconds: {{ .periodSeconds | default 15 }}
+          timeoutSeconds: {{ .timeoutSeconds | default 1 }}
+          failureThreshold: {{ .failureThreshold | default 3 }}
+          successThreshold: {{ .successThreshold | default 1 }}
+          {{- end }}
+        resources: {{- toYaml .resources | nindent 10 }}
+        {{- end }}
+        lifecycle:
+          preStop:
+            exec:
+              command: [ '/usr/bin/redisio-manage', '--pre-stop' ]
+
+      # Redis server role-monitor container
+      {{- if gt (int .Values.server.count) 1 }}
+      - name: {{ include "csf-common-lib.v1.containerName" (tuple . "rolemon") }} 
+        {{- include "crdb-redisio.rolemon.image" . | nindent 8 }}
+        {{- include "crdb-redisio.get_security_context" (tuple . "container" "rolemon") | nindent 8 }}
+        resources: {{- toYaml .Values.rolemon.resources | nindent 10 }}
+        env:
+        - name: DEBUG
+          value: {{ quote (.Values.rolemon.debug | default "") }}
+        - name: POD_IP
+          valueFrom:
+            fieldRef:
+              fieldPath: status.podIP
+        - name: POD_IPS
+          valueFrom:
+            fieldRef:
+              fieldPath: status.podIPs
+        - name: MY_POD_NAMESPACE
+          valueFrom:
+            fieldRef:
+              fieldPath: metadata.namespace
+        # Set HOME to give kubectl a writable path for caching
+        - name: HOME
+          value: /tmp
+        {{- include "crdb-redisio.tz.env" . | nindent 8 }}
+        {{- include "crdb-redisio.cli.env" . | nindent 8 }}
+        {{- include "crdb-redisio.admin-access.env" . | nindent 8 }}
+        {{- include "crdb-redisio.acl.user.sentinel.env" . | nindent 8 }}
+        - name: KEYSTORE_DIR
+          value: /auth-share
+        - name: KEYSTORE_KEYFILE
+          value: /var/run/redisio/.encrypt.key
+        - name: SENTINEL_QUORUM
+          value: {{ .Values.sentinel.quorum | quote }}
+        - name: GROUP_NAME
+          value: {{ template "crdb-redisio.groupname" . }}
+        {{- include "crdb-redisio.acl.user.probe.env" . | nindent 8 }}
+        volumeMounts:
+        {{- include "crdb-redisio.fs.vm" . | nindent 8 }}
+        - name: auth-keystore
+          mountPath: /auth-share
+        - name: auth-encrypt-key
+          mountPath: /var/run/redisio/.encrypt.key
+          readOnly: true
+          subPath: .encrypt.key
+        {{- include "crdb-redisio.tls.vm.cacerts" . | nindent 8 }}
+        {{- include "crdb-redisio.tls.vm.client" . | nindent 8 }}
+        {{- include "crdb-redisio.logging.vm" . | nindent 8 }}
+        {{- $rm_probe_cmd := "[[ ! -x /usr/local/rolemon/sanity-hook.sh ]] || /usr/local/rolemon/sanity-hook.sh liveness" }}
+        livenessProbe:
+          exec:
+            command:
+            - bash
+            - -c
+            - |
+              {{ .Values.rolemon.livenessProbe.probeCmd | default $rm_probe_cmd }}
+          initialDelaySeconds: {{ .Values.rolemon.livenessProbe.initialDelaySeconds | default 180 }}
+          periodSeconds: {{ .Values.rolemon.livenessProbe.periodSeconds | default 60 }}
+          timeoutSeconds: {{ .Values.rolemon.livenessProbe.timeoutSeconds | default 5 }}
+          failureThreshold: {{ .Values.rolemon.livenessProbe.failureThreshold | default 6 }}
+          successThreshold: {{ .Values.rolemon.livenessProbe.successThreshold | default 1 }}
+        lifecycle:
+          preStop:
+            exec:
+              command: [ '/usr/bin/redisio-prestop-marker', 'set', 'rolemon' ]
+      {{- end }}
+
+      # Redis metrics exporter container
+      {{- if and (.Values.server.metrics) .Values.server.metrics.enabled }}
+      - name: {{ include "csf-common-lib.v1.containerName" (tuple . "metrics") }}
+        {{- include "crdb-redisio.server.metrics.image" . | nindent 8 }}
+        {{- include "crdb-redisio.get_security_context" (tuple . "container" "server.metrics") | nindent 8 }}
+        resources: {{- toYaml .Values.server.metrics.resources | nindent 10 }}
+        env:
+        - name: REDIS_LEGACY_PASS
+          valueFrom:
+            secretKeyRef:
+              name: {{ include "csf-common-lib.v3.resourceName" (tuple . "secret" "redis-secrets") }}
+              key: redis-password
+              optional: true
+        {{- if .Values.common }}
+        - name: REDIS_AUTH
+          value: "default:$(REDIS_LEGACY_PASS)"
+        {{- else }}
+        - name: REDIS_AUTH
+          valueFrom:
+            secretKeyRef:
+              name: {{ include "csf-common-lib.v3.resourceName" (tuple . "secret" "redis-secrets") }}
+              key: metrics-auth
+        {{- end }}
+        {{- include "crdb-redisio.tz.env" . | nindent 8 }}
+        {{- include "crdb-redisio.acl.user.metrics.env" . | nindent 8 }}
+        {{- include "crdb-redisio.cli.env" . | nindent 8 }}
+        - name: REDIS_ADDR
+          value: {{ .server_tls | ternary "rediss" "redis" }}://$(REDIS_AUTH)@127.0.0.1:6379
+        - name: REDIS_EXPORTER_REDIS_ONLY_METRICS
+          value: "true"
+        - name: REDIS_EXPORTER_DEBUG
+          value: {{ quote (.Values.server.metrics.debug | default "") }}
+        {{- if .server_tls }}
+        - name: REDIS_EXPORTER_SKIP_TLS_VERIFICATION
+          value: "true"
+        - name: REDIS_EXPORTER_TLS_CA_CERT_FILE
+          value: "$(REDIS_CLI_CACERTDIR)/server-ca.crt"
+        {{- if .client_tls }}
+        - name: REDIS_EXPORTER_TLS_CLIENT_CERT_FILE
+          value: "$(REDIS_CLI_CERT)"
+        - name: REDIS_EXPORTER_TLS_CLIENT_KEY_FILE
+          value: "$(REDIS_CLI_KEY)"
+        {{- end }}
+        {{- end }}
+        ports:
+        - name: tcp-metrics
+          containerPort: 9121
+        volumeMounts:
+        - name: auth-keystore
+          mountPath: /auth-share
+        - name: auth-encrypt-key
+          mountPath: /var/run/redisio/.encrypt.key
+          readOnly: true
+          subPath: .encrypt.key
+        {{- include "crdb-redisio.tls.vm.cacerts" . | nindent 8 }}
+        {{- include "crdb-redisio.tls.vm.client" . | nindent 8 }}
+      {{- end }}
+
+      # CBUR backup agent container
+      {{- if and (.Values.cbur) .Values.cbur.enabled }}
+      - name: {{ include "csf-common-lib.v1.containerName" (tuple . "cbura-sidecar") }}
+        {{- include "crdb-redisio.cbur.image" . | nindent 8 }}
+        {{- include "crdb-redisio.get_security_context" (tuple . "container" "cbur") | nindent 8 }}
+        resources: {{- toYaml .Values.cbur.resources | nindent 10 }}
+        env:
+        {{- include "crdb-redisio.tz.env" . | nindent 8 }}
+        volumeMounts:
+        {{- include "crdb-redisio.fs.vm" . | nindent 8 }}
+        - name: datadir
+          mountPath: /datadir
+      {{- end }}
+      terminationGracePeriodSeconds: {{ default 120 .Values.server.terminationGracePeriodSeconds }}
+
+      volumes:
+      {{- include "crdb-redisio.fs.vol" . | nindent 6 }}
+      - name: import-cm
+        configMap:
+          name: {{ include "csf-common-lib.v3.resourceName" (tuple . "configmap" "server-config") }}
+      - name: acl
+        secret:
+          secretName: {{ include "csf-common-lib.v3.resourceName" (tuple . "secret" "redis-secrets") }}
+          defaultMode: 0400
+          {{- if .Values.common }}{{/* Upgrade from v5.x.x */}}
+          optional: true
+          {{- end }}
+          items:
+          - key: acl
+            path: acl.conf
+      - name: auth-secrets
+        secret:
+          secretName: {{ include "csf-common-lib.v3.resourceName" (tuple . "secret" "redis-secrets") }}
+          defaultMode: 0400
+          {{- if .Values.common }}{{/* Upgrade from v5.x.x */}}
+          optional: true
+          {{- end }}
+          items:
+          - key: probe-auth
+            path: probe.auth
+          - key: tools-auth
+            path: tools.auth
+          {{/* Include even for single-server to protect masterauth */}}
+          - key: replication-auth
+            path: replication.auth
+          {{- if .Values.sentinel.enabled }}
+          - key: sentinel-auth
+            path: sentinel.auth
+          {{- end }}
+          {{- if .Values.server.metrics.enabled }}
+          - key: metrics-auth
+            path: metrics.auth
+          {{- end }}
+      - name: admin-auth-secrets
+        secret:
+          secretName: {{ include "csf-common-lib.v3.resourceName" (tuple . "secret" "admin-secrets") }}
+          defaultMode: 0400
+          items:
+          - key: server
+            path: admin.auth
+      - name: auth-encrypt-key
+        secret:
+          secretName: {{ include "csf-common-lib.v3.resourceName" (tuple . "secret" "auth-encrypt") }}
+          defaultMode: 0400
+          items:
+          - key: server-key
+            path: .encrypt.key
+      - name: auth-keystore
+        emptyDir:
+          medium: "Memory"
+      - name: cluster-cm
+        configMap:
+          name: {{ include "csf-common-lib.v3.resourceName" (tuple . "configmap" "cluster-config") }}
+      {{- if .Values.server.tmpfsWorkingDir }}
+      - name: memorydir
+        emptyDir:
+          medium: "Memory"
+      {{- end }}
+      {{- if not .Values.server.persistence.enabled }}
+      - name: datadir
+        emptyDir: {}
+      - name: markers
+        configMap:
+          name: {{ include "csf-common-lib.v3.resourceName" (tuple . "configmap" "server-markers") }}
+      {{- if .redis_cluster }}
+      - name: cluster-nodes-conf
+        configMap:
+          name: {{ include "csf-common-lib.v3.resourceName" (tuple . "configmap" "server-cluster-nodes-conf") }}
+      {{- end }}
+      {{- end }}
+      {{- include "crdb-redisio.tls.vol" (tuple . "server") | nindent 6 }}
+      {{- include "crdb-redisio.logging.vol" (tuple . "server") | nindent 6 }}
+      {{- if .Values.server.tolerations }}
+      tolerations: {{- toYaml .Values.server.tolerations | nindent 8 }}
+      {{- end }}
+      {{- include "crdb-redisio.node-selector" (tuple . "server") | nindent 6 }}
+      {{- include "crdb-redisio.spread-constraints" (tuple . "server") | nindent 6 }}
+      affinity:
+      {{/* Construct a podAntiAffinity.customRule for node avoidance */}}
+      {{- $sel_labels := (include "csf-common-lib.v1.selectorLabels" (tuple . .Values.server.name)) | fromYaml }}
+      {{- $_ := set $sel_labels "crdb.csf.nokia/node-control" "avoid" -}}
+      {{- $new_custom_rule := dict "type" "hard" "topologyKey" "kubernetes.io/hostname" "autoGenerateLabelSelector" false "labelSelector" $sel_labels -}}
+      {{/* Inject node avoidance rule into a copy of .Values.server to pass to podAntiAffinity library function */}}
+      {{- $server_values := deepCopy .Values.server -}}
+      {{- $server_rules := $server_values.podAntiAffinity.customRules | default (list) -}}
+      {{- $server_rules = append $server_rules $new_custom_rule -}}
+      {{- $_ := set $server_values.podAntiAffinity "customRules" $server_rules -}}
+      {{- include "csf-common-lib.v2.podAntiAffinity" (tuple . $server_values) | nindent 8 -}}
+
+  {{- if .Values.server.persistence.enabled }}
+  volumeClaimTemplates:
+  - metadata:
+      annotations:
+        "helm.sh/resource-policy": {{ default "delete" .Values.server.persistence.resourcePolicy }}
+      name: datadir
+      labels:
+        {{- include "crdb-redisio.selector_labels" . | nindent 8 }}
+    spec:
+      accessModes:
+      - {{ .Values.server.persistence.accessMode | quote }}
+      resources:
+        requests:
+          storage: {{ .Values.server.persistence.size | quote }}
+  {{- if .Values.server.persistence.storageClass }}
+      storageClassName: "{{ .Values.server.persistence.storageClass }}"
+  {{- else if .Values.compaas }}
+      storageClassName: "{{ .Values.compaas.storageClass | default "" }}"
+  {{- end }}
+  {{- end }}

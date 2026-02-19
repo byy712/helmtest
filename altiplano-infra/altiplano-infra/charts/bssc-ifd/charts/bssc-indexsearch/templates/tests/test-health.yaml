@@ -1,0 +1,84 @@
+{{- include "bssc-indexsearch.istio.initIstio" . }}
+{{- include "bssc-indexsearch.supportedImageFlavor" . }}
+apiVersion: v1
+kind: Pod
+metadata:
+  name: "{{ template "bssc-indexsearch.helmTestPod.name" . }}"
+  namespace: {{ .Release.Namespace }}
+  labels:
+{{- include "bssc-indexsearch.csf-toolkit-helm.labels" (tuple . .Values.custom.hookJobs.pod.labels) | indent 4 }}
+{{- include "bssc-indexsearch.commonLabels" (tuple .) | nindent 4 }}
+  annotations:
+    "helm.sh/hook": test-success
+    "helm.sh/hook-delete-policy": before-hook-creation, hook-succeeded
+    sidecar.istio.io/inject: "{{ $.istio.enabled }}"
+    seccomp.security.alpha.kubernetes.io/allowedProfileNames: {{ .Values.global.seccompAllowedProfileNames }}
+    seccomp.security.alpha.kubernetes.io/defaultProfileName: {{ .Values.global.seccompDefaultProfileName }}
+{{- include "bssc-indexsearch.csf-toolkit-helm.annotations" (tuple . .Values.custom.hookJobs.pod.annotations) | indent 4 }}
+spec:
+  serviceAccountName: {{ template "bssc-indexsearch.serviceAccount.name" . }}
+  {{- if ($.istio.enabled) }}
+  automountServiceAccountToken: true
+  {{- else }}
+  automountServiceAccountToken: false
+  {{- end }}
+  securityContext:
+{{ include "bssc-indexsearch.pod.securityContext" . | indent 4 }}
+  {{- if .Values.jobs.affinity }}
+  affinity:
+{{ toYaml .Values.jobs.affinity | indent 4 }}
+  {{- end }}
+  {{- if .Values.jobs.nodeSelector }}
+  nodeSelector:
+{{ toYaml .Values.jobs.nodeSelector | indent 4 }}
+  {{- end }}
+  {{- if .Values.jobs.tolerations }}
+  tolerations:
+{{ toYaml .Values.jobs.tolerations | indent 4 }}
+  {{- end }}
+  {{- with or .Values.imagePullSecrets .Values.global.imagePullSecrets }}
+  imagePullSecrets:
+{{- toYaml . | nindent 4 }}
+  {{- end }}
+  containers:
+  - name: {{ template "bssc-indexsearch.helmTestContainer.name" . }}
+    image: {{ include "bssc-indexsearch.registry" (tuple .Values .Values.internalAppRegistry) }}/{{.Values.manager.image.repo}}:{{.Values.manager.image.tag}}
+    securityContext:
+{{ include "bssc-indexsearch.container.securityContext" . | indent 6 }}
+    resources:
+{{ include "bssc-indexsearch.resources" (tuple . .Values.jobs.hookJobs.resources "120m") | indent 6 }}
+    imagePullPolicy: {{.Values.manager.ImagePullPolicy}}
+    env:
+    - name: TZ
+      value: {{ or .Values.timezone.timeZoneEnv .Values.global.timeZoneEnv "UTC" | quote }}
+    command:
+    - "bash"
+    - "-c"
+    - |
+      {{- if $.istio.enabled }}
+      until curl -s http://localhost:{{ $.istio.envoy.healthCheckPort }}/healthz/ready
+          do
+            echo "Waiting for istio-proxy to be ready..."
+            sleep 1
+          done
+      echo "Istio proxy ready at  `date +'%Y-%m-%d %H:%M:%S:%3N'`, waiting for 30s more.."
+      sleep 30
+      {{- end }}
+      {{- if .Values.security.enable }}
+      curl -s -k --connect-timeout 60 https://{{ .Values.service.name }}:{{.Values.service.client_port}}/_plugins/_security/health?pretty | jq .status | grep -w UP
+      {{- else }}
+      curl -s --connect-timeout 60 http://{{ .Values.service.name }}:{{.Values.service.client_port}}/_cluster/health?pretty | jq .status | grep -E "green|yellow"
+      {{- end }}
+      RC=$?
+      if [ $RC -ne 0 ]; then
+        echo "Indexsearch cluster is not healthy yet!"
+      else
+        echo "Indexsearch cluster is up and running"
+      fi
+      {{- if $.istio.enabled }}
+      echo "Terminating istio proxy at `date +'%Y-%m-%d %H:%M:%S:%3N'`"
+      curl -s -X POST http://localhost:{{ $.istio.envoy.stopPort }}/quitquitquit
+      {{- end }}
+      exit $RC
+  restartPolicy: Never
+

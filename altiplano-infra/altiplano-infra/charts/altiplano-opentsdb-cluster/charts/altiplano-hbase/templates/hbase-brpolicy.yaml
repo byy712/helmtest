@@ -1,0 +1,32 @@
+{{- if .Values.cbur.enabled }}
+apiVersion: {{ .Values.cbur.apiVersion }}
+kind: BrPolicy
+metadata:
+  name: {{ include "hbase.fullname" . }}-master
+spec:
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: {{ include "hbase.name" . }}
+      app.kubernetes.io/component: master
+      app.kubernetes.io/instance: {{ .Release.Name | quote }}
+  autoEnableCron: {{ .Values.cbur.autoEnableCron }}
+  autoUpdateCron: {{ .Values.cbur.autoUpdateCron }}
+  volumes:
+    - backup
+  backend:
+    mode: "{{ .Values.cbur.backendMode }}"
+  cronSpec: "{{ .Values.cbur.cronSpec }}"
+  dataEncryption:
+    enable: {{ .Values.cbur.dataEncryption }}
+  k8sType: statefulset
+  brOption: {{ .Values.cbur.brOption }}
+  maxiCopy: {{ .Values.cbur.maxiCopy}}
+  ignoreFileChanged: true
+  hooks:
+    - name: master
+      commands:
+        preBackupCmd: ["sh", "-c", "/opt/hbase/cbur-prebackup.sh"]
+        postBackupCmd: ["sh", "-c", "echo hbase-post-backup"]
+        preRestoreCmd: ["sh", "-c", "/opt/hbase/cbur-prerestore.sh"]
+        postRestoreCmd: ["sh", "-c", "/opt/hbase/cbur-postrestore.sh"]
+{{- end }}

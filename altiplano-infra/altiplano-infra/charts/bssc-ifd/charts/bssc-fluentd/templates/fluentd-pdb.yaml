@@ -1,0 +1,21 @@
+{{- if or (eq .Values.fluentd.kind "Deployment") (eq .Values.fluentd.kind "StatefulSet") }}
+{{- if .Values.fluentd.pdb.enabled }}
+apiVersion: {{ template "bssc-fluentd.apiVersionPolicyV1Beta1orV1" . }}
+kind: PodDisruptionBudget
+metadata:
+  labels:
+{{- include "bssc-fluentd.commonLabels" (tuple . "fluentd" ) | nindent 4 }}
+{{- include "bssc-fluentd.csf-toolkit-helm.labels" (tuple .) | nindent 4 }}
+  annotations:
+{{- include "bssc-fluentd.csf-toolkit-helm.annotations" (tuple .) | nindent 4 }}
+  name: {{ template "bssc-fluentd.fullname" . }}
+  namespace: {{ .Release.Namespace | quote }}
+spec:
+  {{- include "bssc-fluentd.PodDisruptionBudgetPolicy" . | indent 2 }}
+  selector:
+    matchLabels:
+{{- include "bssc-fluentd.selectorLabels" (tuple . "fluentd" ) | indent 6 }}
+      role: fluentd-logprocessor
+{{- end }}
+{{- end }}
+

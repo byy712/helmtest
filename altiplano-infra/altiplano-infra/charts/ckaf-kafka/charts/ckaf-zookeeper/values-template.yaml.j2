@@ -1,0 +1,148 @@
+---
+global:
+  # This registry is used for zookeeper-server container image
+  registry: {{ (resources | default("")).zookeeperServerRegistry | default(model.properties.resources.properties.zookeeperServerRegistry.default) }}
+  # This registry is used for jmx-exporter container image
+  registry1: {{ (resources | default("")).jmxExporterRegistry | default(model.properties.resources.properties.jmxExporterRegistry.default) }}
+  # This registry is used for cbur-agent container image
+  registry2: {{ (resources | default("")).cburAgentRegistry | default(model.properties.resources.properties.cburAgentRegistry.default) }}
+  # This registry is used for pre/post hook container image
+  registry3: {{ (resources | default("")).lcmHookRegistry | default(model.properties.resources.properties.lcmHookRegistry.default) }}
+  # Not used. Reserved for future
+  registry4:
+  # Not used. Reserved for future
+  registry5:
+  storageClass: {{ (config | default("")).storageClass | default(model.properties.config.properties.storageClass.default) }}
+  rbac:
+   enabled: {{ (config | default("")).enableRbac | default(model.properties.config.properties.enableRbac.default) }}
+  cbur:
+   enabled: {{ (lcm | default("")).enableCbur | default(model.properties.lcm.properties.enableCbur.default) }}
+  kerberosEnable: {{ (kerberos | default("")).enableKrb | default(model.properties.kerberos.properties.enableKrb.default) }}
+  preheal: 0
+  postheal: 0
+  clog:
+   enabled: {{ (lcm | default(false)).clogEnable | default(model.properties.lcm.properties.clogEnable.default) }}
+servers: {{ (config | default("")).numberOfZookeeperServers | default(model.properties.config.properties.numberOfZookeeperServers.default) }}
+serviceAccountName: {{ (lcm | default("")).serviceAccountName | default(model.properties.lcm.properties.serviceAccountName.default) }}
+antiAffinity: "hard"
+clusterDomain: {{ (config | default("")).clusterDomain | default(model.properties.config.properties.clusterDomain.default) }}
+
+# Add user defined label under nodeLabel as key value pair.
+# Always quote the value part. Example nodeType: "zk-enable"
+zookeeperNodeSelector:
+  enable: {{ (lcm | default("")).enableNodeSelector | default(model.properties.lcm.properties.enableNodeSelector.default) }}
+  nodeLabel: {}
+resources:
+  requests:
+    cpu: {{ (resources | default("")).zookeeperServerCpu | default(model.properties.resources.properties.zookeeperServerCpu.default) }}
+    memory: {{ (resources | default("")).zookeeperServerMemory | default(model.properties.resources.properties.zookeeperServerMemory.default) }}
+  limits:
+    cpu: {{ (resources | default("")).zookeeperServerCpuLimit | default(model.properties.resources.properties.zookeeperServerCpuLimit.default) }}
+    memory: {{ (resources | default("")).zookeeperServerMemoryLimit | default(model.properties.resources.properties.zookeeperServerMemoryLimit.default) }}
+heapConfig: {{ (config | default("")).zookeeperHeapSize | default(model.properties.config.properties.zookeeperHeapSize.default) }}
+dataStorage: {{ (resources | default("")).zookeeperStorageSize_data | default(model.properties.resources.properties.zookeeperStorageSize_data.default) }}
+logStorage: {{ (resources | default("")).zookeeperStorageSize_log | default(model.properties.resources.properties.zookeeperStorageSize_log.default) }}
+# This section allows to configure user defined name for component resources
+# Options include:
+# 1) nameOverride use this to have 'ckaf-zk'-'user-defined' naming convention.
+# 2) fullnameOverride use this to have custom name for all the resources.
+# 3) default (below parameters commented) 'zk'-'release-name' naming convention.
+# If specified both fullnameOverride would take the precedence.
+nameOverride: {{ (resources | default("")).zookeeperNameOverride | default(model.properties.resources.properties.zookeeperNameOverride.default) }}
+fullnameOverride: {{ (resources | default("")).zookeeperFullNameOverride | default(model.properties.resources.properties.zookeeperFullNameOverride.default) }}
+serverPort: 2888
+leaderElectionPort: 3888
+zookeeperClientPort: {{ (config | default("")).zookeeperClientPort | default(model.properties.config.properties.zookeeperClientPort.default) }}
+imagePullPolicy: "IfNotPresent"
+tickTimeMs: 2000
+initTicks: 10
+syncTicks: 5
+preAllocSize: {{ (config | default("")).preAllocSize | default(model.properties.config.properties.preAllocSize.default) }}
+clientCnxns: 60
+snapRetain: 3
+purgeHours: 1
+probeInitialDelaySeconds: 15
+probeTimeoutSeconds: 5
+snapshotTrustEmpty: {{ (config | default("")).snapshotTrustEmpty | default(model.properties.config.properties.snapshotTrustEmpty.default) }}
+antiAffinity: {{ (config | default("")).antiAffinity | default(model.properties.config.properties.antiAffinity.default) }}
+krb:
+  enable: {{ (kerberos | default("")).enable | default(model.properties.kerberos.properties.enable.default) }}
+  {%- if (kerberos | default("")).enable | default(model.properties.kerberos.properties.krb_enable.default) %}
+  krbSecretName: {{ (kerberos | default("")).krbSecretName | default(model.properties.kerberos.properties.krbSecretName.default) }}
+  krbPrincipalKey: {{ (kerberos | default("")).krbPrincipalKey | default(model.properties.kerberos.properties.krbPrincipalKey.default) }}
+  krbKeytabKey: {{ (kerberos | default("")).krbKeytabKey | default(model.properties.kerberos.properties.krbKeytabKey.default) }}
+  krbConf: {{ (kerberos | default("")).krbConf | default(model.properties.kerberos.properties.krbConf.default) }}
+  {%- else %}
+  krbSecretName: ""
+  krbPrincipalKey: ""
+  krbKeytabKey: ""
+  krbConf: ""
+  {%- endif %}
+logLevel: {{ (config | default("")).logLevel | default(model.properties.config.properties.logLevel.default) }}
+maxFileSize: {{ (config | default("")).maxFileSize | default(model.properties.config.properties.maxFileSize.default) }}
+maxBackupIndex: {{ (config | default("")).maxBackupIndex | default(model.properties.config.properties.maxBackupIndex.default) }}
+autoPvEnabledZk: {{ (config | default("")).autoPvEnabledZk | default(model.properties.config.properties.autoPvEnabledZk.default) }}
+autoPvEnabledLabelZk: {{ (config | default("")).autoPvEnabledLabelZk | default(model.properties.config.properties.autoPvEnabledLabelZk.default) }}
+security:
+  enabled: true
+  runAsUser: 999
+  fsGroup: 998
+
+JmxExporter:
+   imagePullPolicy: "IfNotPresent"
+   port: 7072
+   jmxResources:
+     resources:
+       requests:
+         cpu: {{ (resources | default("")).jmxExporterCpu | default(model.properties.resources.properties.jmxExporterCpu.default) }}
+         memory: {{ (resources | default("")).jmxExporterMemory | default(model.properties.resources.properties.jmxExporterMemory.default) }}
+       limits:
+         cpu: {{ (resources | default("")).jmxExporterCpuLimit | default(model.properties.resources.properties.jmxExporterCpuLimit.default) }}
+         memory: {{ (resources | default("")).jmxExporterMemoryLimit | default(model.properties.resources.properties.jmxExporterMemoryLimit.default) }}
+
+jobResources:
+  requests:
+    cpu: {{ (lcm | default("")).lcmEventCpu | default(model.properties.lcm.properties.lcmEventCpu.default) }}
+    memory: {{ (lcm | default("")).lcmEventMemory | default(model.properties.lcm.properties.lcmEventMemory.default) }}
+  limits:
+    cpu: {{ (lcm | default("")).lcmEventCpuLimit | default(model.properties.lcm.properties.lcmEventCpuLimit.default) }}
+    memory: {{ (lcm | default("")).lcmEventMemoryLimit | default(model.properties.lcm.properties.lcmEventMemoryLimit.default) }}
+
+deleteZookeeperJob:
+  auto_remove_zk_pvc: {{ (lcm | default("")).removePvc | default(model.properties.lcm.properties.removePvc.default) }}
+
+jobtimeout: 60
+
+prescalein: 0
+postscalein: 0
+lcm: 
+  scale_hooks: all
+  scale_timeout: 180
+cbur:
+  {%- if (lcm | default("")).enableCbur is defined and lcm.enableCbur %}
+  name: cbura-sidecar
+  imagePullPolicy: IfNotPresent
+  resources:
+    requests:
+      cpu: {{ (lcm | default("")).cburCpu | default(model.properties.lcm.properties.cburCpu.default) }}
+      memory: {{ (lcm | default("")).cburMemory | default(model.properties.lcm.properties.cburMemory.default) }}
+    limits:
+      cpu: {{ (lcm | default("")).cburCpuLimit | default(model.properties.lcm.properties.cburCpuLimit.default) }}
+      memory: {{ (lcm | default("")).cburMemoryLimit | default(model.properties.lcm.properties.cburMemoryLimit.default) }}
+  maxCopy: {{ (lcm | default("")).cburMaxBackupCopies | default(model.properties.lcm.properties.cburMaxBackupCopies.default) }}
+  backendMode: {{ (lcm | default("")).cburBackendMode | default(model.properties.lcm.properties.cburBackendMode.default) }}
+  cronJob: {{ (lcm | default("")).cburCronJob | default(model.properties.lcm.properties.cburCronJob.default) }}
+  {%- else %}
+  name: ""
+  imagePullPolicy: ""
+  resources:
+    requests:
+      cpu: ""
+      memory: ""
+    limits:
+      cpu: ""
+      memory: ""
+  maxCopy: ""
+  backendMode: ""
+  cronJob: ""
+  {%- endif %}

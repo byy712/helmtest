@@ -1,0 +1,39 @@
+{{- include "cpro-grafana.istio.grafanaInitIstio" . }}
+{{- if and .Values.rbac.enabled (not .Values.restrictedToNamespace) }}
+apiVersion: {{ template "cpro-grafana.grafanaApiVersion.clusterRole" . }}
+kind: ClusterRole
+metadata:
+  name: {{ template "cpro-grafana.clusterRole" . }} 
+  labels:
+    {{- include "cpro-grafana.app.labels-v3" . | nindent 4 }}
+    {{- include "cpro-grafana.labelsOrAnnotations" (tuple .Values.global.labels) | indent 4}}
+  annotations:
+{{- include "cpro-grafana.labelsOrAnnotations" (tuple .Values.global.annotations) | indent 4}}
+rules:
+{{- if and ($.istio.enabled) (not $.istio.cni.enabled) (.Values.rbac.psp.create) (.Capabilities.APIVersions.Has "policy/v1beta1/PodSecurityPolicy") }}
+- apiGroups: [{{ template "cpro-grafana.apiGroupVersionExtensionsorPolicy" . }}]
+  resources: ['podsecuritypolicies']
+  verbs: ['use']
+  resourceNames: [{{ template "cpro-grafana.fullname" . }}]
+{{- end }}
+{{- if or .Values.sidecar.dashboards.enabled .Values.sidecar.datasources.enabled }}
+- apiGroups: [""]
+  resources: ["configmaps"]
+  verbs: ["get", "watch", "list"]
+{{- end }}
+- apiGroups: [""]
+  resources: ["secrets"]
+  verbs: ["get", "watch", "list"]
+{{- if $.Values.cbur.enabled }}
+- apiGroups:
+    - ""
+  resources:
+    - pods/exec
+    - pods
+  verbs:
+    - get
+    - list
+    - watch
+    - create
+{{- end }}
+{{- end }}

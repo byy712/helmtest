@@ -1,0 +1,28 @@
+{{- if not .Values.ha.enabled -}}
+{{- if and .Values.alertmanager.enabled .Values.alertmanager.persistentVolume.enabled -}}
+{{- if not .Values.alertmanager.persistentVolume.existingClaim -}}
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  annotations:
+{{- include "cpro.labelsOrAnnotations" (tuple .Values.alertmanager.persistentVolume.annotations .Values.global.annotations) | indent 4}}
+  labels:
+    {{- include "cpro.app.labels.v3" ( dict "root" . "context" .Values.alertmanager ) | nindent 4 }}
+{{- include "cpro.labelsOrAnnotations" (tuple .Values.global.labels) | indent 4}}
+  name: {{ template "cpro.prometheus.alertmanager.fullname" . }}
+spec:
+  accessModes:
+{{ toYaml .Values.alertmanager.persistentVolume.accessModes | indent 4 }}
+{{- if .Values.alertmanager.persistentVolume.storageClass }}
+{{- if (eq "-" .Values.alertmanager.persistentVolume.storageClass) }}
+  storageClassName: ""
+{{- else }}
+  storageClassName: "{{ .Values.alertmanager.persistentVolume.storageClass }}"
+{{- end }}
+{{- end }}
+  resources:
+    requests:
+      storage: "{{ .Values.alertmanager.persistentVolume.size }}"
+{{- end -}}
+{{- end -}}
+{{- end -}}

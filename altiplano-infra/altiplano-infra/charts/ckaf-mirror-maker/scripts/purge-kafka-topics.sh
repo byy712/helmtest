@@ -1,0 +1,35 @@
+#!/bin/bash
+K8S_CMD="kubectl"
+NAME_SPACE=$1
+BOOTSTRAP_SERVER=$2
+kafka_pod=$($K8S_CMD get pod -n $NAME_SPACE | grep altiplano-kafka-0 | cut -d ' ' -f1)
+$K8S_CMD exec -i $kafka_pod -n $NAME_SPACE -c ckaf-kafka-broker -- cp /etc/kafka/kafka.properties /etc/kafka/kafka-decrypted-for-purging-topics.properties
+$K8S_CMD exec -i $kafka_pod -n $NAME_SPACE -c ckaf-kafka-broker -- java -cp /etc/kafka/shared/encrypter.jar com.nokia.fileencrypter.Decrypter /etc/kafka/shared/.secretKey /etc/kafka/kafka-decrypted-for-purging-topics.properties
+
+echo "Getting Topics to be purged ..."
+
+topics=$($K8S_CMD exec -i $kafka_pod -n $NAME_SPACE -c ckaf-kafka-broker -- bash -c "kafka-topics.sh -bootstrap-server $BOOTSTRAP_SERVER  --command-config /etc/kafka/kafka-decrypted-for-purging-topics.properties --list 2>/dev/null | grep '.*_ALARM$\|.*_INTERNAL_Intent_Changes$'")
+
+echo "$topics"
+
+echo "Preparing for purge ..."
+delete_records_json=""
+for topic in $topics; do
+  trimmed_topic=$(tr -d '[:space:]' <<< "$topic")
+  data='{"topic":"'$trimmed_topic'","partition":0,"offset":-1}'
+  if [[ $delete_records_json ]]; then
+    delete_records_json=$delete_records_json","$data
+  else
+    delete_records_json=$data
+  fi
+done
+
+delete_records_json='{"partitions": ['$delete_records_json'], "version":1 }'
+$K8S_CMD exec -i $kafka_pod -n $NAME_SPACE -c ckaf-kafka-broker -- bash -c "echo '$delete_records_json' > /etc/kafka/delete_records.json"
+
+echo "Purging the topics ..."
+$K8S_CMD exec -i $kafka_pod -n $NAME_SPACE -c ckaf-kafka-broker -- bash -c "kafka-delete-records.sh --bootstrap-server $BOOTSTRAP_SERVER --command-config /etc/kafka/kafka-decrypted-for-purging-topics.properties --offset-json-file /etc/kafka/delete_records.json 2>/dev/null"
+
+$K8S_CMD exec -i $kafka_pod -n $NAME_SPACE -c ckaf-kafka-broker -- bash -c "rm -rf /etc/kafka/kafka-decrypted-for-purging-topics.properties"
+
+echo "Done!!"

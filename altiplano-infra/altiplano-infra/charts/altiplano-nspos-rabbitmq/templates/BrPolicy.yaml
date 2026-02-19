@@ -1,0 +1,39 @@
+{{- if .Values.rabbitmq.backuprestore.enabled }}
+apiVersion: {{ template "crmq.cbur.apiVersion" . }}
+kind: BrPolicy
+metadata:
+  name: {{ template "crmq.fullname" . }}
+  labels:
+    app: {{ template "crmq.fullname" . }}
+    chart: "{{ .Chart.Name }}-{{ .Chart.Version }}"
+    component: Message_Broker
+    release: "{{ .Release.Name }}"
+    heritage: "{{ .Release.Service }}"
+    {{- include "crmq.commonLabels" . | indent 4 }}
+    {{- include "csf-common-lib.v1.customLabels" (tuple .Values.global.labels) | indent 4 }}
+  annotations:
+    {{- include "csf-common-lib.v1.customAnnotations" (tuple .Values.global.annotations) | indent 4 }}
+spec:
+  selector:
+    matchLabels:
+      app: {{ template "crmq.name" . }}
+      release: "{{ .Release.Name }}"
+  volumes:
+  - config-volume
+  backend:
+    mode: "{{ .Values.rabbitmq.backuprestore.backendMode }}"
+  cronSpec: "{{ .Values.rabbitmq.backuprestore.cronJob }}"
+  autoEnableCron: {{ .Values.rabbitmq.backuprestore.autoEnableCron }}
+  autoUpdateCron: {{ .Values.rabbitmq.backuprestore.autoUpdateCron }}
+  k8sType: statefulset
+  brOption: {{ .Values.rabbitmq.backuprestore.brOption}}
+  maxiCopy: {{ .Values.rabbitmq.backuprestore.maxCopy}}
+  hooks:
+  - name: {{ template "crmq.fullname" . }}
+    commands:
+      preBackupCmd: ["sh", "-c", "/usr/lib/rabbitmq/bin/backup.sh"]
+      postBackupCmd: []
+      preRestoreCmd: []
+      postRestoreCmd: ["sh", "-c", "/usr/lib/rabbitmq/bin/restore.sh"]
+  backupHistory: []
+{{- end }}

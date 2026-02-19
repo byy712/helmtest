@@ -1,0 +1,108 @@
+{{- include "cmdb.init" . -}}
+{{ $service_name := .Values.services.mysql.name | default (printf "%s-mysql" (include "cmdb.fullname" .)) }}
+{{- $mtls_mode := include "cmdb.istio_mtls_mode" . }}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ $service_name }}
+  labels:
+  # Service provided by MaxScale acting as a proxy or
+  # by MariaDB itself if MaxScale not in use
+  {{- if eq (include "cmdb.has_maxscale" .) "true" }}
+    {{- include "cmdb-maxscale.labels" (tuple . "service") | nindent 4 }}
+  {{- else }}
+    {{- include "cmdb-mariadb.labels" (tuple . "service") | nindent 4 }}
+  {{- end }}
+  {{- include "cmdb.get_mtls_labels" . | nindent 4 }}
+  annotations:
+  {{- if eq (include "cmdb.has_maxscale" .) "true" }}
+    {{- include "cmdb-maxscale.annotations" (tuple . "service") | nindent 4 }}
+  {{- else }}
+    {{- include "cmdb-mariadb.annotations" (tuple . "service") | nindent 4 }}
+  {{- end }}
+spec:
+  type: {{ .Values.services.mysql.type }}
+  {{- include "cmdb.dual-stack" (tuple . .Values.services.mysql) | nindent 2 }}
+  ports:
+{{- if eq (include "cmdb.has_maxscale" .) "true" }}
+  {{- include "cmdb-maxscale.listener-svc-ports" (tuple . "rwSplit" 3306) | nindent 2 }}
+  {{- include "cmdb-maxscale.listener-svc-ports" (tuple . "readOnly" 3307) | nindent 2 }}
+  {{- include "cmdb-maxscale.listener-svc-ports" (tuple . "masterOnly" 3308) | nindent 2 }}
+{{- else }}
+  # Simplex MySQL Service
+  - name: tcp-mysql
+    port: 3306
+    targetPort: tcp-mysql
+    {{- if and (eq .Values.services.mysql.type "NodePort") (.Values.services.mysql.nodePort) }}
+    nodePort: {{ .Values.services.mysql.nodePort }}
+    {{- end }}
+{{- end }}
+  selector:
+  # Point the mysql service at maxscale, if used
+  {{- if eq (include "cmdb.has_maxscale" .) "true" }}
+    {{- include "cmdb-maxscale.selector_labels" . | nindent 4 }}
+    type: maxscale
+  {{- else }}
+    {{- include "cmdb-mariadb.selector_labels" . | nindent 4 }}
+    type: mariadb
+  {{- end }}
+{{- if .Values.services.mysql.sessionAffinity.enabled }}
+  sessionAffinity: ClientIP
+  {{- if .Values.services.mysql.sessionAffinity.timeout }}
+  sessionAffinityConfig:
+    clientIP:
+      timeoutSeconds: {{ .Values.services.mysql.sessionAffinity.timeout }}
+  {{- end }}
+{{- end }}
+
+{{- if .Values.istio.enabled }}
+{{- if semverCompare "<1.5" (toString .Values.istio.version) }}
+---
+apiVersion: "authentication.istio.io/v1alpha1"
+kind: "Policy"
+metadata:
+  name: {{ $service_name }}-mlts-authn
+  labels:
+  {{- if eq (include "cmdb.has_maxscale" .) "true" }}
+    {{- include "cmdb-maxscale.labels" (tuple . "policy") | nindent 4 }}
+  {{- else }}
+    {{- include "cmdb-mariadb.labels" (tuple . "policy") | nindent 4 }}
+  {{- end }}
+  annotations:
+  {{- if eq (include "cmdb.has_maxscale" .) "true" }}
+    {{- include "cmdb-maxscale.annotations" (tuple . "policy") | nindent 4 }}
+  {{- else }}
+    {{- include "cmdb-mariadb.annotations" (tuple . "policy") | nindent 4 }}
+  {{- end }}
+spec:
+  targets:
+  - name: {{ $service_name }}
+  peers:
+  - mtls:
+      mode: {{ $mtls_mode }}
+{{- end }}
+---
+apiVersion: networking.istio.io/v1beta1
+kind: DestinationRule
+metadata:
+  name: {{ $service_name }}-mlts-dr
+  labels:
+  {{- if eq (include "cmdb.has_maxscale" .) "true" }}
+    {{- include "cmdb-maxscale.labels" (tuple . "destinationrule") | nindent 4 }}
+  {{- else }}
+    {{- include "cmdb-mariadb.labels" (tuple . "destinationrule") | nindent 4 }}
+  {{- end }}
+  annotations:
+  {{- if eq (include "cmdb.has_maxscale" .) "true" }}
+    {{- include "cmdb-maxscale.annotations" (tuple . "destinationrule") | nindent 4 }}
+  {{- else }}
+    {{- include "cmdb-mariadb.annotations" (tuple . "destinationrule") | nindent 4 }}
+  {{- end }}
+spec:
+  host: {{ $service_name }}
+  trafficPolicy:
+    tls:
+      mode: ISTIO_MUTUAL
+{{- end }}
+

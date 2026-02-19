@@ -1,0 +1,109 @@
+--- ckaf-kafka-8.0.2-origin/values.yaml	2024-02-20 15:47:14.000000000 +0530
++++ ckaf-kafka-8.0.2-nokia-patch-1/values.yaml	2024-03-29 15:49:37.894360517 +0530
+@@ -49,7 +49,7 @@
+       facility:
+       protocol: "UDP"
+   #Enable this flag to set default pod CPU resources limit in all containers. Default value is set to false
+-  enableDefaultCpuLimits: false
++  enableDefaultCpuLimits: true
+   # To ensure that logs and other data use a common timezone configure timeZoneEnv.Defaults to UTC  
+   timeZoneEnv: ""
+   jobtimeout: 600
+@@ -105,6 +105,29 @@
+ # - IPv6
+   imagePullSecrets:
+ 
++initContainer:
++  image:
++    name: fnms-init-container
++    tag: nokia-1.0.9
++    pullPolicy: IfNotPresent
++certificates:
++  secrets:
++    altiplano_keystore_secrets: altiplano-keystore-secrets
++  fileNames:
++    kafka_server_key_pem: kafka-server-key.pem
++    kafka_server_key_pass: kafka-server-key.pass
++    kafka_server_cert_pem: kafka-server-cert.pem
++    altiplano_keystore_password: keystore-password
++    kafka_server_keystore_jks: server.jks
++    kafka_server_trustchain_cert_pem: kafka-server-trustchain-cert.pem
++    kafka_server_truststore_jks: trustchain.jks
++    
++defaultSecurity:
++  enabled: true
++  runAsUser: 1000
++  fsGroup: 1000
++  runAsGroup: 1000
++  
+ # workload level scope
+ ipFamilyPolicy:
+ ipFamilies: [] 
+@@ -129,8 +152,10 @@
+     facility:
+     protocol: "UDP"
+ 
++accessRoleLabel: internal-access
++
+ #Enable this flag to set default pod CPU resources limit in all containers. Default value is set to false
+-enableDefaultCpuLimits:
++enableDefaultCpuLimits: true
+ 
+ Replicas: 3
+ #User can configure the precreated SA specifically for this chart here.
+@@ -191,6 +216,10 @@
+     topicBackup: 2Gi
+     cburaTmpVolume: 1Gi
+ 
++persistence:
++  ## If true, use a Persistent Volume Claim, If false, use emptyDir
++  enabled: true
++
+ managedBy: Helm
+ name: Analytics
+ 
+@@ -444,6 +473,8 @@
+ 
+ security:
+   enabled: true
++  runAsUserInitZookeeperConnectionCheck: 65534
++  runAsGroupInitZookeeperConnectionCheck: 65534
+   runAsUser: 999
+   fsGroup: 998
+   runAsGroup: 997
+@@ -461,6 +492,15 @@
+ DataStorage: "10Gi"
+ LogStorage: "10Gi"
+ 
++fluentd_sidecar:
++  image:
++    name: "fnms-fluent"
++    tag: "nokia-4.1.4"
++    pullPolicy: IfNotPresent
++  securityContext:
++    runAsUser: 1000
++    runAsGroup: 997
++
+ #Jmx Exporter
+ #New metrics file with limited number of metrics is introduced. This file will be used by default. If you require full set of metrics emitted by Kafka, disable the metrics_limited flag.
+ JmxExporter:
+@@ -568,8 +608,10 @@
+ QuotaConsumerDefault: "9223372036854775807"
+ QuotaProducerDefault: "9223372036854775807"
+ MinInsyncReplicas: 1
++MaxRequestSize: "10485760"
+ # <Optional> set the port to enable kafka's own jmx.
+ kafkaJmxPort: ""
++KafkaZookeeperConnectSuffix: "/nokia/altiplano/kafka"
+ 
+ configurationOverrides: {}
+   # override confluent kafka configurations.
+@@ -865,7 +907,7 @@
+       facility:
+       protocol: "UDP"
+   #Enable this flag to set default pod CPU resources limit in all containers. Default value is set to false
+-  enableDefaultCpuLimits:
++  enableDefaultCpuLimits: true
+ # workload level annotations/labels
+   zkStatefulset:
+     annotations: {}

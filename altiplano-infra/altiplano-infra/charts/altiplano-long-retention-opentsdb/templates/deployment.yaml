@@ -1,0 +1,372 @@
+{{ $hbaseReleaseName := .Values.global.hbaseReleaseName | default .Release.Name }}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ template "altiplano-long-retention-opentsdb.fullname" . }}
+  labels:
+    app: {{ template "altiplano-long-retention-opentsdb.name" . }}
+    chart: {{ template "altiplano-long-retention-opentsdb.chart" . }}
+    release: {{ .Release.Name }}
+    heritage: {{ .Release.Service }}
+spec:
+  strategy:
+    type: Recreate
+  replicas: {{ .Values.replicaCount }}
+  selector:
+    matchLabels:
+      app: {{ template "altiplano-long-retention-opentsdb.name" . }}
+      release: {{ .Release.Name }}
+  template:
+    metadata:
+      labels:
+        altiplano-role: {{ .Values.accessRoleLabel }}
+        app: {{ template "altiplano-long-retention-opentsdb.name" . }}
+        release: {{ .Release.Name }}
+    spec:
+      initContainers:
+      {{- if .Values.global.clustered_opentsdb }}
+        - name: create-opentsdb-tables
+          image: {{ .Values.global.registry }}/{{ .Values.env.init.HBASE_IMAGE }}:{{ .Values.env.init.HBASE_IMAGE_TAG }}
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          securityContext:
+            runAsUser: {{ .Values.securityContext.runAsUser | default 201 }}
+            runAsGroup: {{ .Values.securityContext.runAsGroup | default 114 }}
+          command: [ "sh", "-c", "until curl --silent --output /dev/null http://{{ $hbaseReleaseName }}-altiplano-hbase-regionserver:16030; do echo `date` waiting for {{ $hbaseReleaseName }}-altiplano-hbase-regionserver; sleep 5; done;/tmp/init/create_hbase_tables.sh" ]
+          env:
+          {{- range $key, $value := .Values.env.init }}
+            - name: {{ $key | quote }}
+              value: {{ $value | quote }}
+          {{- end }}
+          volumeMounts:
+            - name: opentsdb-init
+              mountPath: /tmp/init
+            - name: hbase-config
+              mountPath: /tmp/hbase-config
+            - name: opentsdb-conf
+              mountPath: "/opt/opentsdb/etc/opentsdb/opentsdb.conf"
+              subPath: opentsdb.conf
+          resources:
+            limits:
+              cpu: 300m
+              memory: 400Mi
+            requests:
+              cpu: 200m
+              memory: 300Mi
+      {{- end }}
+      containers:
+        - name: {{ .Chart.Name }}
+          image: {{ template "image.fullname" . }}
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          securityContext:
+            runAsUser: {{ .Values.securityContext.runAsUser | default 201 }}
+            runAsGroup: {{ .Values.securityContext.runAsGroup | default 114 }}
+          ports:
+            - name: opentsdbport
+              containerPort: 4242
+              protocol: TCP
+          env:
+            - name: TZ
+              {{- if .Values.env.timeZoneEnv}}
+              value: {{ .Values.env.timeZoneEnv }}
+              {{- else if .Values.global.timeZoneEnv }}
+              value: {{ .Values.global.timeZoneEnv }}
+              {{- else }}
+              value: "UTC"
+              {{- end }}
+            - name: HBASE_CB_TIMEOUT_SECOND
+              {{- if .Values.env.HBASE_CB_TIMEOUT_SECOND }}
+              value: {{ .Values.env.HBASE_CB_TIMEOUT_SECOND | quote }}
+              {{- else }}
+              value: "1"
+              {{- end }}
+            - name: FLUENTD_LOG_DIRECT_URL
+              {{- if .Values.env.FLUENTD_LOG_DIRECT_URL }}
+              value: {{ .Values.env.FLUENTD_LOG_DIRECT_URL }}
+              {{- else if .Values.global.FLUENTD_LOG_DIRECT_URL }}
+              value: {{ .Values.global.FLUENTD_LOG_DIRECT_URL }}
+              {{- else }}
+              value: altiplano-fluentd:24224
+              {{- end }}
+            - name: EMBEDDED_HBASE
+              {{- if .Values.global.clustered_opentsdb }}
+              value: "no"
+              {{- else }}
+              value: "yes"
+              {{- end }}
+{{- if not .Values.global.clustered_opentsdb }}
+            - name: TSDB_TTL
+              value: {{ .Values.env.init.TSDB_TTL | quote }}
+{{- end }}
+{{- if not .Values.global.clustered_opentsdb }}
+{{- range $name, $value := .Values.long_retention_opentsdb_backup }}
+{{- if not (empty $value) }}
+            - name: {{ $name | quote }}
+              value: {{ $value | quote }}
+{{- end }}
+{{- end }}
+{{- end}}
+{{- range $name, $value := .Values.env.open }}
+{{- if not (empty $value) }}
+            - name: {{ $name | quote }}
+              value: {{ $value | quote }}
+{{- end }}
+{{- end }}
+
+          volumeMounts:
+            - name: opentsdb-conf
+              mountPath: "/opt/opentsdb/etc/opentsdb/opentsdb.conf"
+              subPath: opentsdb.conf
+            - name: logback
+              mountPath: "/opt/opentsdb/etc/opentsdb/logback.xml"
+              subPath: logback.xml
+            - name: logdir
+              mountPath: /var/log/opentsdb/
+            {{- if not .Values.global.clustered_opentsdb }}
+            {{- if (or .Values.persistence.enabled .Values.global.persistence) }}
+            - name: opentsdb-storage
+              mountPath: /data/hbase
+            {{- if .Values.cbur.enabled }}
+            - name: backup
+              mountPath: /opt/hbase/backup
+            {{- end }}
+            {{- end }}
+            {{- end }}
+          {{- if semverCompare ">=1.18.0-0" .Capabilities.KubeVersion.GitVersion }}
+          startupProbe:
+            httpGet:
+              path: /api/stats
+              port: opentsdbport
+            initialDelaySeconds: {{ .Values.startupProbe.initialDelaySeconds }}
+            periodSeconds: {{ .Values.startupProbe.periodSeconds }}
+            timeoutSeconds: {{ .Values.startupProbe.timeoutSeconds }}
+            failureThreshold: {{ .Values.startupProbe.failureThreshold }}
+          {{- end }}
+          livenessProbe:
+            httpGet:
+              path: /api/stats
+              port: opentsdbport
+            {{- if semverCompare ">=1.18.0-0" .Capabilities.KubeVersion.GitVersion }}
+            initialDelaySeconds: {{ .Values.livenessProbe.initialDelaySeconds.k8sversiongt118 }}
+            {{- else }}
+            initialDelaySeconds: {{ .Values.livenessProbe.initialDelaySeconds.k8sversionlt118 }}
+            {{- end }}
+            periodSeconds: {{ .Values.livenessProbe.periodSeconds }}
+            timeoutSeconds: {{ .Values.livenessProbe.timeoutSeconds }}
+            failureThreshold: {{ .Values.livenessProbe.failureThreshold }}
+          readinessProbe:
+            httpGet:
+              path: /api/stats
+              port: opentsdbport
+            initialDelaySeconds: {{ .Values.readinessProbe.initialDelaySeconds }}
+            periodSeconds: {{ .Values.readinessProbe.periodSeconds }}
+            timeoutSeconds: {{ .Values.readinessProbe.timeoutSeconds }}
+            failureThreshold: {{ .Values.readinessProbe.failureThreshold }}
+
+          resources:
+{{ toYaml .Values.resources | indent 12 }}
+        - name: {{ .Chart.Name }}-reload-caches
+          image: {{ template "image.fullname" . }}
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          securityContext:
+            runAsUser: {{ .Values.securityContext.runAsUser | default 201 }}
+            runAsGroup: {{ .Values.securityContext.runAsGroup | default 114 }}
+          command:
+            - sh
+            - -c
+            - |
+              while [[ $(curl -s -m 10 http://127.0.0.1:4242/api/stats) != *"tsd.connectionmgr.connections"* ]]; do
+                echo "OpenTSDB not ready, wait for 5s."
+                sleep 5s
+              done
+              if [[ $(curl -s -m 10 http://127.0.0.1:4242/api/stats) == *"tsd.connectionmgr.connections"* ]]; then
+              echo -e 'Reloading metrics\n'
+              curl -k -sS -o /dev/null "http://127.0.0.1:4242/api/suggest?type=metrics&max=$API_MAX_PARAM"
+              echo "Sleeping for 1 minutes for between reload metrics and tagv"
+              sleep 1m
+              echo -e 'Reloading tagv\n'
+              curl -k -sS -o /dev/null "http://127.0.0.1:4242/api/suggest?type=tagv&max=$API_MAX_PARAM"
+              echo -e '\nUID Caches Reloaded'
+              fi
+              #to make the container always running as it will be terminated when completed. if that, the OpenTSDB pod will crash
+              while true; do
+                sleep 30s
+              done
+          env:
+            - name: API_MAX_PARAM
+              value: {{ .Values.env.API_MAX_PARAM | quote }}
+        {{- if .Values.metricsExporter.enabled }}
+        - name: altiplano-opentsdb-metrics-exporter
+          image: {{ .Values.global.registry }}/{{ .Values.metricsExporter.image.repository }}:{{ .Values.metricsExporter.image.tag }}
+          imagePullPolicy: {{ .Values.metricsExporter.image.pullPolicy }}
+          securityContext:
+            runAsUser: {{ .Values.securityContext.runAsUser | default 201 }}
+            runAsGroup: {{ .Values.securityContext.runAsGroup | default 114 }}
+          ports:
+            - name: tcp-tsd-metrics
+              containerPort: {{ .Values.metricsExporter.port }}
+              protocol: TCP
+          env:
+            - name: OPENTSDB_URL
+              {{- if .Values.env.OPENTSDB_URL }}
+              value: {{ .Values.env.OPENTSDB_URL }}
+              {{- else if .Values.global.OPENTSDB_URL }}
+              value: {{ .Values.global.OPENTSDB_URL }}
+              {{- else }}
+              value: http://localhost:4242
+              {{- end }}
+            - name: PORT
+              value: {{ .Values.metricsExporter.port | quote}}
+            - name: CONFIG_FILE_PATH
+              value: "configs/opentsdb-metrics-mapper-auto-sanitize-name.json"
+            - name: MY_POD_NAME
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.name
+
+          volumeMounts:
+          - name: prom-opentsdb-exporter-volume
+            mountPath: /prometheus-opentsdb-exporter/configs
+          resources:
+          {{ toYaml .Values.metricsExporter.resources | indent 12 }}
+        {{- end }}
+        {{- if not .Values.global.clustered_opentsdb }}
+        {{- if .Values.cbur.enabled }}
+        - name: cbura-sidecar
+          image: {{ template "cbura.image.fullname" . }}
+          imagePullPolicy: {{ .Values.cbur.cbura.imagePullPolicy }}
+          resources:
+{{ toYaml .Values.cbur.cbura.resources | indent 12 }}
+          securityContext:
+            runAsUser: 201
+            runAsGroup: 114
+          volumeMounts:
+            {{- if (or .Values.persistence.enabled .Values.global.persistence) }}
+            - mountPath: /backup
+              name: backup
+            {{- if .Values.cbur.persistence.cburtmp.enabled }}
+            - name: cburtmp
+              mountPath: {{ default "/tmp" .Values.cbur.persistence.cburtmp.dir }}
+            {{- end }}
+            {{- end }}
+        {{- end }}
+        {{- end }}
+
+    {{- with .Values.nodeSelector }}
+      nodeSelector:
+{{ toYaml . | indent 8 }}
+    {{- end }}
+    {{- with .Values.affinity }}
+      affinity:
+{{ toYaml . | indent 8 }}
+    {{- end }}
+    {{- with .Values.tolerations }}
+      tolerations:
+{{ toYaml . | indent 8 }}
+    {{- end }}
+        - name: fluentd-sidecar
+          image: {{ .Values.global.registry }}/{{ .Values.fluentd_sidecar.image.name }}:{{ .Values.fluentd_sidecar.image.tag }}
+          imagePullPolicy: {{ .Values.fluentd_sidecar.image.pullPolicy }}
+          securityContext:
+            runAsUser: {{ .Values.fluentd_sidecar.securityContext.runAsUser | default 1000 }}
+            runAsGroup: {{ .Values.fluentd_sidecar.securityContext.runAsGroup | default 114 }}
+          volumeMounts:
+          - name: fluentd-config
+            mountPath: /etc/fluent/
+          {{- if .Values.fluentd_sidecar.secrets }}
+          - name: certificates
+            mountPath: /etc/.certificates/
+          {{- end }}
+          - name: logdir
+            mountPath: /logs
+          resources:
+{{ toYaml .Values.fluentd_sidecar.resources | indent 12 }}
+          env:
+          {{- if .Values.fluentd_sidecar.secrets }}
+          - name: IS_USERNAME
+            valueFrom:
+              secretKeyRef:
+                key: {{ .Values.env.secrets.IS_USERNAME }}
+                name: {{ .Values.fluentd_sidecar.secrets.passwordSecret | quote }}
+          - name: IS_PASSWORD
+            valueFrom:
+              secretKeyRef:
+                key: {{ .Values.env.secrets.IS_PASSWORD }}
+                name: {{ .Values.fluentd_sidecar.secrets.passwordSecret | quote }}
+          {{- end }}
+          - name: CONTAINER_NAME
+            valueFrom:
+              fieldRef:
+                apiVersion: v1
+                fieldPath: metadata.name
+          - name: MY_POD_IP
+            valueFrom:
+              fieldRef:
+                fieldPath: status.podIP
+      volumes:
+        - name: opentsdb-conf
+          configMap:
+            name: {{ template "altiplano-long-retention-opentsdb.fullname" . }}-conf
+            defaultMode: 0777
+            items:
+              - key: opentsdb.conf
+                path: opentsdb.conf
+        - name: logback
+          configMap:
+            name: {{ template "altiplano-long-retention-opentsdb.fullname" . }}-conf
+            defaultMode: 0777
+            items:
+              - key: logback.xml
+                path: logback.xml
+{{- if .Values.global.clustered_opentsdb }}
+        - name: opentsdb-init
+          configMap:
+            name: {{ template "altiplano-long-retention-opentsdb.fullname" . }}-init
+            defaultMode: 0777
+            items:
+              - key: create_hbase_tables.sh
+                path: create_hbase_tables.sh
+              - key: hbase_script.txt
+                path: hbase_script.txt
+        - name: hbase-config
+          configMap:
+          {{- if .Values.hbaseConfigMapName  }}
+            name: {{ .Values.hbaseConfigMapName }}
+          {{- else }}
+            name: {{ $hbaseReleaseName }}-altiplano-hbase
+          {{- end}}
+{{- end }}
+{{- if not .Values.global.clustered_opentsdb }}
+{{- if (or .Values.persistence.enabled .Values.global.persistence) }}
+        - name: opentsdb-storage
+          persistentVolumeClaim:
+            claimName: long-retention-opentsdb-pvclaim
+        {{- if .Values.cbur.enabled }}
+        - name: cburtmp
+          persistentVolumeClaim:
+            claimName: long-retention-opentsdb-cburtmp-pvclaim
+        - name: backup
+          persistentVolumeClaim:
+            claimName: long-retention-opentsdb-backup-pvclaim
+        {{- end }}
+{{- end }}
+{{- end }}
+        {{- if .Values.metricsExporter.enabled }}
+        - name: prom-opentsdb-exporter-volume
+          configMap:
+            name: {{ template "altiplano-long-retention-opentsdb.fullname" . }}-metrics-exporter
+        {{- end }}
+        - name: logdir
+          emptyDir: {}
+        - name: fluentd-config
+          configMap:
+            name: {{ template "altiplano-long-retention-opentsdb.fullname" . }}-fluentd-config
+        {{- if .Values.fluentd_sidecar.secrets }}
+        - name: certificates
+          secret:
+            secretName: {{ (tpl .Values.fluentd_sidecar.secrets.certSecret .) }}
+        - name: passwords
+          secret:
+            secretName: {{ (tpl .Values.fluentd_sidecar.secrets.passwordSecret .) }}
+        {{- end }}
+
+

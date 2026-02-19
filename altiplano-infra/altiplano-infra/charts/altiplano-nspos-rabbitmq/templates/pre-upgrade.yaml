@@ -1,0 +1,133 @@
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: altiplano-nspos-rabbitmq-pre-upgrade-sa
+  labels:
+    app: {{ template "crmq.name" . }}-pre-upgrade
+    chart: {{ template "crmq.chart" .  }}
+    release: "{{ .Release.Name }}"
+  annotations:
+    "helm.sh/hook": pre-upgrade
+    "helm.sh/hook-weight": "-8"
+    # hhok-failed is not working so using before-hook-creation
+    "helm.sh/hook-delete-policy": before-hook-creation, hook-succeeded
+---
+kind: ClusterRoleBinding
+apiVersion: rbac.authorization.k8s.io/v1
+metadata:
+  name: altiplano-nspos-rabbitmq-pre-upgrade-rolebinding
+  namespace: {{ .Release.Namespace }}
+  labels:
+    app: {{ template "crmq.name" . }}-pre-upgrade
+    chart: {{ template "crmq.chart" .  }}
+    release: {{ .Release.Name }}
+  annotations:
+    "helm.sh/hook": pre-upgrade
+    "helm.sh/hook-weight": "-7"
+    "helm.sh/hook-delete-policy": before-hook-creation, hook-succeeded
+subjects:
+  - kind: ServiceAccount
+    name: altiplano-nspos-rabbitmq-pre-upgrade-sa
+    namespace: {{ .Release.Namespace }}
+    apiGroup: ""
+roleRef:
+  kind: ClusterRole
+  name: altiplano-nspos-rabbitmq-pre-upgrade-role
+  apiGroup: ""
+
+---
+kind: ClusterRole
+apiVersion: rbac.authorization.k8s.io/v1
+metadata:
+  name: altiplano-nspos-rabbitmq-pre-upgrade-role
+  namespace: {{ .Release.Namespace }}
+  labels:
+    app: {{ template "crmq.name" . }}-pre-upgrade
+    chart: {{ template "crmq.chart" .  }}
+    release: {{ .Release.Name }}
+  annotations:
+    "helm.sh/hook": pre-upgrade
+    "helm.sh/hook-weight": "-8"
+    "helm.sh/hook-delete-policy": before-hook-creation, hook-succeeded
+rules:
+  - apiGroups: ["apiextensions.k8s.io"]
+    resources: ["customresourcedefinitions"]
+    verbs: ["get","create","watch", "list"]
+
+  - apiGroups: ["", "extensions", "apps", "batch"]
+    resources: ["*"]
+    verbs: ["*"]
+
+  - apiGroups: ["storage.k8s.io"]
+    resources: ["storageclasses"]
+    verbs: ["list"]
+---
+
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: {{ template "preUpgradeJobName" . }}
+  labels:
+    app: {{ template "crmq.name" . }}-pre-upgrade
+    chart: {{ template "crmq.chart" .  }}
+    release: "{{ .Release.Name }}"
+    heritage: "{{ .Release.Service }}"
+    {{- include "crmq.commonLabels" . | indent 4 }}
+  annotations:
+    "helm.sh/hook": pre-upgrade
+    "helm.sh/hook-weight": "-6"
+    {{- if .Values.hooks.deletePolicy }}
+    "helm.sh/hook-delete-policy": {{ .Values.hooks.deletePolicy }}
+    {{- else }}
+    "helm.sh/hook-delete-policy": hook-succeeded, before-hook-creation
+    {{- end }}
+spec:
+  template:
+    metadata:
+      {{- if .Values.istio.enabled }}
+      annotations:
+        sidecar.istio.io/inject: "false"
+      {{- end }}
+      labels:
+        altiplano-role: {{ .Values.accessRoleLabel }}
+        app: {{ template "crmq.name" . }}-pre-ugrade-job
+        chart: {{ template "crmq.chart" .  }}
+        release: "{{ .Release.Name }}"
+        heritage: "{{ .Release.Service }}"
+        {{- include "crmq.commonLabels" . | indent 8 }}
+    spec:
+      hostname: {{ template "crmq.fullname" . }}-pre-upgrade-pod
+      subdomain: {{ template "crmq.fullname" . }}
+      restartPolicy: Never
+      serviceAccountName: altiplano-nspos-rabbitmq-pre-upgrade-sa
+      containers:
+      - name: {{ template "preUpgradeContainerName" . }}
+        image: "{{ .Values.global.registry1 }}/{{ .Values.kubectlImage.repository }}:{{ .Values.kubectlImage.tag }}"
+        command:
+          - bash
+          - -c
+          - |
+            # if there is change in rabbitmq statefulset volumeClaimTemplates, delete and recreate it.
+            isResourcePolicyChangesExists={{ index .Values "persistence" "resourcePolicy" }}
+            isRabbitMqExists=$(kubectl get sts -n {{ .Release.Namespace }} altiplano-nspos-rabbitmq | tail -n +2 | awk '{print $1}' 2>/dev/null)
+            echo "isResourcePolicyChangesExists =$isResourcePolicyChangesExists and isRabbitMqExists = $isRabbitMqExists"
+            
+            accessModeConfigured={{ index .Values "persistence" "data" "accessMode" }}
+            echo "accessModeConfigured=$accessModeConfigured"
+            
+            if [ $isRabbitMqExists != *"not found"* ] && [ $isRabbitMqExists == "altiplano-nspos-rabbitmq" ]; then
+              isExistingVCTResourcePolicy=$(kubectl get sts -n {{ .Release.Namespace }} altiplano-nspos-rabbitmq -o=jsonpath='{.spec.volumeClaimTemplates[0].metadata.annotations}' 2>/dev/null)
+              echo "isExistingVCTResourcePolicy = $isExistingVCTResourcePolicy"
+              accessModeInExistingSts=$(kubectl get sts -n {{ .Release.Namespace }} altiplano-nspos-rabbitmq -o=jsonpath='{.spec.volumeClaimTemplates[0].spec.accessModes[0]}' 2>/dev/null)
+              echo "accessModeInExistingSts=$accessModeInExistingSts"
+              if [ $accessModeConfigured != $accessModeInExistingSts ] || ([ -n $isResourcePolicyChangesExists ] && [ -z $isExistingVCTResourcePolicy ]); then
+                echo "There are some new changes in altiplano-nspos-rabbitmq statefulset, deleting the old one and recreating it."
+                kubectl delete sts -n {{ .Release.Namespace }} altiplano-nspos-rabbitmq
+              fi
+            fi
+        {{- if .Values.resources }}
+        resources:
+{{ toYaml .Values.resources | indent 10 }}
+        {{- end }}
+

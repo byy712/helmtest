@@ -1,0 +1,22 @@
+# added as a workaround for istio 1.6.8 headless service issue(CSFS-31731)
+{{- include "ckaf-kafka.istio.initIstio" . }}
+{{- if eq $.istio.enabled true  }}
+apiVersion: networking.istio.io/v1beta1
+kind: ServiceEntry
+metadata:
+  name: {{ template "ckaf-kafka.name" . }}-headless-se
+  labels:
+{{ include "ckaf-kafka.commonLabels" . | indent 4 }}
+{{- include "csf-common-lib.v1.customLabels" (tuple .Values.global.labels) | indent 4 }}
+  namespace: {{ .Release.Namespace }}
+  annotations:
+{{- include "csf-common-lib.v1.customAnnotations" (tuple .Values.global.annotations) | indent 4 }}
+spec:
+  location: MESH_INTERNAL
+  hosts:
+  - {{ template "ckaf-kafka.name" . }}-headless.{{ .Release.Namespace }}.svc.{{ .Values.clusterDomain }}
+  ports:
+  - number: {{ .Values.KafkaPort }}
+    name: kf-tcp
+    protocol: TCP
+{{- end }}

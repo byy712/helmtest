@@ -1,0 +1,45 @@
+--- bssc-ifd-13.0.1/bssc-ifd/charts/bssc-indexmgr/templates/indexmgr-job.yaml	2023-12-06 18:41:43.000000000 +0530
++++ bssc-ifd-patch/bssc-ifd/charts/bssc-indexmgr/templates/indexmgr-job.yaml	2024-01-17 13:31:38.592792112 +0530
+@@ -81,7 +81,7 @@
+       {{- if eq (tpl (.Values.security.sensitiveInfoInSecret.enabled | toString ) .) "true" }}
+       initContainers:
+       - name : {{ template "bssc-indexmgr.initContainer.name" . }}
+-        image: {{ include "bssc-indexmgr.registry" (tuple .Values .Values.internalInitRegistry) }}/{{ .Values.indexmgr.image.initRepo }}:{{ include "bssc-indexmgr.imageTag" (tuple .Values.indexmgr.image.initTag $.commonSupportedImageFlavor .Values .Values.indexmgr .Values.indexmgr.image) }}
++        image: {{ include "bssc-indexmgr.registry" (tuple .Values .Values.internalInitRegistry) }}/{{ .Values.indexmgr.image.initRepo }}:{{ .Values.indexmgr.image.initTag }}
+         command: ['sh', '-c', "/etc/initContainerMount/encrypt.sh"]
+         securityContext:
+ {{- include "bssc-indexmgr.container.securityContext" . | indent 10 }}
+@@ -93,7 +93,9 @@
+         volumeMounts:
+         - name: shared-volume
+           mountPath: "/etc/sharedMount/"
+-        - name: indexmgr-secret
++        - name: indexmgr-passwordsecret
++          mountPath: "/etc/initContainerMount/passwords"
++        - name: indexmgr-certsecrets
+           mountPath: "/etc/initContainerMount/secrets"
+         {{- if and (eq $.isCertManagerEnabled "true") (.Values.indexmgr.certificate.enabled) (not $.istio.enabled) ( not .Values.security.sensitiveInfoInSecret.ca_certificate) }}
+         - name: cert-manager-secret
+@@ -242,9 +244,9 @@
+       - name: shared-volume
+         emptyDir:
+           sizeLimit: {{ default "10Mi"  .Values.emptyDirSizeLimit.sharedVolume }}
+-      - name: indexmgr-secret
++      - name: indexmgr-passwordsecret
+         secret:
+-          secretName: {{ .Values.security.sensitiveInfoInSecret.credentialName }}
++          secretName: {{ .Values.security.sensitiveInfoInSecret.credentialNamePassword }}
+           items:
+           - key: {{ .Values.security.sensitiveInfoInSecret.indexmgrIsUsername }}
+             path: .indexmgrIsUsername
+@@ -252,6 +254,10 @@
+             path: .indexmgrIsPassword
+             {{- if not $.istio.enabled }}
+               {{- if .Values.security.sensitiveInfoInSecret.ca_certificate }}
++      - name: indexmgr-certsecrets
++        secret:
++          secretName: {{ .Values.security.sensitiveInfoInSecret.credentialNameCert }}
++          items:
+           - key: {{ .Values.security.sensitiveInfoInSecret.ca_certificate }}
+             path: .ca_certificate
+               {{- else }}

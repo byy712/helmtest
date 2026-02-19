@@ -1,0 +1,717 @@
+{{ $schema_wl1 := (default .Values.KafkaKsql.ssl dict).schema }} 
+{{ $schema_wl2 := .Values.KafkaKsql.security.schema }} 
+{{ $kafkarest_wl1 := (default .Values.KafkaKsql.ssl dict).kafkarestssl }} 
+{{ $kafkarest_wl2 := .Values.KafkaKsql.security.kafkaRest }} 
+{{ $kafka_wl := .Values.KafkaKsql.security.kafka }} 
+{{ $rest_wl := .Values.KafkaKsql.security.rest }} 
+
+apiVersion: {{ include "ckaf-ksql.deployment.apiVersion" . }}
+kind: Deployment
+metadata:
+  name: {{ include "ckaf-ksql.resourceName" (tuple . "Deployment" "") }}
+  labels:
+{{- include "csf-common-lib.v1.customLabels" (tuple .Values.ksqlDeploymentset.labels .Values.custom.ksqlDeploymentset.labels .Values.global.labels) | indent 4 }}
+{{ include "ckaf-ksql.commonlabels" . | indent 4 }}
+    app: {{ .Chart.Name }}
+    release: {{ .Release.Name }}
+    heritage: {{ .Release.Service }}
+  annotations:
+{{- include "csf-common-lib.v1.customAnnotations" (tuple .Values.ksqlDeploymentset.annotations .Values.custom.ksqlDeploymentset.annotations .Values.global.annotations) | indent 4 }}
+    seccomp.security.alpha.kubernetes.io/allowedProfileNames: {{ .Values.global.seccompAllowedProfileNames }} 
+    seccomp.security.alpha.kubernetes.io/defaultProfileName: {{ .Values.global.seccompDefaultProfileName }}
+spec:
+  affinity: {{- include "csf-common-lib.v3.podAntiAffinity" (tuple . .Values) | indent 4}}
+  {{- if not .Values.replicasManagedByHpa  }}
+  replicas: {{ .Values.replicaCount }}
+  {{- end }}
+  selector:
+    matchLabels:
+      app: {{ .Chart.Name }}
+      release: {{ .Release.Name }}
+  template:
+    metadata:
+      labels:
+        altiplano-role: {{ .Values.accessRoleLabel }}
+{{- include "csf-common-lib.v1.customLabels" (tuple .Values.ksqlPodLevel.labels .Values.custom.ksqlPodLevel.labels .Values.global.labels) | indent 8 }}
+{{ include "ckaf-ksql.commonlabels" . | indent 8 }}
+        app: {{ .Chart.Name }}
+        release: {{ .Release.Name }}
+      annotations:
+{{- include "csf-common-lib.v1.customAnnotations" (tuple .Values.ksqlPodLevel.annotations .Values.custom.ksqlPodLevel.annotations .Values.global.annotations) | indent 8 }}
+      {{- if .Values.podAnnotations }}
+      {{- range $key, $value := .Values.podAnnotations }}
+        {{ $key }}: {{ $value | quote }}
+      {{- end }}
+      {{- end }}
+      {{- if .Values.global.istio.enabled }}
+        sidecar.istio.io/inject: "true"
+      {{- else }}
+        sidecar.istio.io/inject: "false"
+      {{- end }}
+    spec:
+      {{- if .Values.hostAliases }}
+      hostAliases:
+{{ toYaml .Values.hostAliases | indent 6 }}
+      {{- end }}
+      {{- if .Values.global.rbac.enabled }}
+      serviceAccountName: {{ template "ckaf-ksql.name" . }}-ksqladmin
+      {{- end }}
+      {{- if .Values.global.istio.enabled }}
+      automountServiceAccountToken: true
+      {{- else }}
+      automountServiceAccountToken: false
+      {{- end }}
+      {{- if eq .Values.security.enabled true }}
+      securityContext:
+        runAsNonRoot: true
+        {{- if ( ne ( toString (.Values.security.fsGroup)) "auto" ) }}
+        fsGroup: {{ .Values.security.fsGroup }}
+        {{- end }}
+        {{- if eq (include "ckaf-ksql.renderSeccompProfile" .) "true" }}
+        seccompProfile:
+          type: {{ .Values.security.seccompProfile.type }}
+        {{- end }}
+      {{- end }}
+      {{- include "ckaf-ksql.tolerations" . | indent 6 }}
+      {{- if .Values.ksqlNodeSelector.enable }}
+      nodeSelector:
+{{ toYaml .Values.ksqlNodeSelector.nodeLabel | indent 8 }}
+      {{- end }}
+      {{- if .Values.priorityClassName }}
+      priorityClassName: {{ .Values.priorityClassName | quote }}
+      {{- else if .Values.global.priorityClassName }}
+      priorityClassName: {{ .Values.global.priorityClassName | quote }}
+      {{- end }}
+      {{- if  coalesce .Values.imagePullSecrets .Values.global.imagePullSecrets }}
+      imagePullSecrets:
+      {{- range coalesce .Values.imagePullSecrets  .Values.global.imagePullSecrets }}
+        - name: {{ . }}
+      {{- end }}
+      {{- end }}
+      {{- if .Values.topologySpreadConstraints }}
+      topologySpreadConstraints: {{- include "csf-common-lib.v2.topologySpreadConstraints" (tuple . .Values ) | nindent 8 }}
+      {{- end }}
+      initContainers:
+      - name: fnms-init-container
+        image: {{ .Values.global.registry }}/{{ .Values.initContainer.image.name }}:{{ .Values.initContainer.image.tag }}
+        securityContext:
+          runAsNonRoot: true
+          runAsUser: {{ .Values.defaultSecurity.runAsUser }}
+          runAsGroup: {{ .Values.defaultSecurity.runAsUser }}
+        env:
+        - name: keystore_jks_pass
+          valueFrom:
+            secretKeyRef:
+              name: {{ .Values.certificates.secrets.altiplano_keystore_secrets }}
+              key: {{ .Values.certificates.fileNames.altiplano_keystore_password }}
+        - name: keyfile
+          value: /etc/altiplano/certificates/secrets/{{ .Values.certificates.fileNames.kafka_server_key_pem }}
+        - name: keyfilepass
+          value: /etc/altiplano/certificates/secrets/{{ .Values.certificates.fileNames.kafka_server_key_pass }}
+        - name: certfile
+          value: /etc/altiplano/certificates/secrets/{{ .Values.certificates.fileNames.kafka_server_cert_pem }}
+        - name: keystore_jks
+          value: /etc/ksql/ssl/kafka/..data/{{ .Values.certificates.fileNames.kafka_server_keystore_jks }}
+        - name: truststore
+          value: /etc/altiplano/certificates/secrets/{{ .Values.certificates.fileNames.kafka_server_trustchain_cert_pem }}
+        - name: truststore_jks
+          value: /etc/ksql/ssl/kafka/..data/{{ .Values.certificates.fileNames.kafka_server_truststore_jks }}
+        command: [ "/bin/sh", "-c" ]
+        args:
+          - |
+            /opt/init-container/pem-to-keystore.sh $keyfile $keyfilepass $certfile $keystore_jks_pass $keystore_jks $truststore $keystore_jks_pass $truststore_jks
+            cp /etc/ksql/ssl/kafka/..data/{{ .Values.certificates.fileNames.kafka_server_keystore_jks }} /etc/ksql/ssl/kafka/..data/restKeystore
+            cp /etc/ksql/ssl/kafka/..data/{{ .Values.certificates.fileNames.kafka_server_truststore_jks }} /etc/ksql/ssl/kafka/..data/restTruststore
+            cp /etc/altiplano/certificates/storepass/{{ .Values.certificates.fileNames.altiplano_keystore_password }} /etc/ksql/ssl/kafka/..data/.restKeyStoreCred
+            cp /etc/altiplano/certificates/storepass/{{ .Values.certificates.fileNames.altiplano_keystore_password }} /etc/ksql/ssl/kafka/..data/.restKeyCred
+            cp /etc/altiplano/certificates/storepass/{{ .Values.certificates.fileNames.altiplano_keystore_password }} /etc/ksql/ssl/kafka/..data/.restTrustStoreCred
+            cp /etc/ksql/ssl/kafka/..data/restKeystore /etc/ksql/ssl/kafka/restKeystore
+            cp /etc/ksql/ssl/kafka/..data/restTruststore /etc/ksql/ssl/kafka/restTruststore
+            cp /etc/ksql/ssl/kafka/..data/.restKeyStoreCred /etc/ksql/ssl/kafka/.restKeyStoreCred
+            cp /etc/ksql/ssl/kafka/..data/.restKeyCred /etc/ksql/ssl/kafka/.restKeyCred
+            cp /etc/ksql/ssl/kafka/..data/.restTrustStoreCred /etc/ksql/ssl/kafka/.restTrustStoreCred
+
+        volumeMounts:
+          - name: ssl-data
+            mountPath: /etc/ksql/ssl/kafka/..data/
+          - name: altiplano-kafka-certs
+            mountPath: /etc/altiplano/certificates/secrets/
+          - name: altiplano-keystore-password
+            mountPath: /etc/altiplano/certificates/storepass/
+          - name: kafkarestssl
+            mountPath: {{ .Values.KafkaKsql.ssl.kafkarestssl.sslBasePath }}
+            #/etc/ksql/ssl/kafka
+      - name: init-ckaf-ksql-connection-check
+        image: "{{ .Values.global.registry }}/{{ .Values.init.imageRepo }}:{{ .Values.init.imageTag }}"
+        {{- if eq .Values.security.enabled true }}
+        securityContext:
+          runAsNonRoot: true          
+          readOnlyRootFilesystem: {{ .Values.security.readOnlyRootFilesystem }}
+        {{- if ( ne ( toString ( .Values.security.runAsUser )) "auto" ) }}
+          runAsUser: {{ .Values.security.runAsUser }}
+        {{- end }}
+        {{- if ( ne ( toString ( .Values.security.runAsGroup )) "auto" ) }}
+          runAsGroup: {{ .Values.security.runAsGroup }}
+        {{- end }}
+          allowPrivilegeEscalation: false
+        {{- if eq (include "ckaf-ksql.renderSeccompProfile" .) "true" }}
+          seccompProfile:
+            type: {{ .Values.security.seccompProfile.type }}
+        {{- end }}
+          privileged: false
+          capabilities:
+             drop: ["ALL"]
+        {{- end }}
+        command: ["sh","-c","until timeout 3 sh -c '2>/dev/null </dev/tcp/altiplano-kafka-headless/9092'; do echo 'Waiting for Kafka at altiplano-kafka-headless:9092'; sleep 3; done"]
+        resources:
+{{ toYaml .Values.initContainerResources | indent 10 }}
+        env:
+        - name: TZ
+          value: {{ template "ckaf-ksql.timeZoneEnv" . }} 
+      {{- if eq .Values.loadPluginsFromInitContainer true }}
+      - name: ckaf-ksql-plugins-loader
+        image: "{{  coalesce .Values.global.registry4 .Values.global.registry }}/{{.Values.pluginsInitContainerImageName }}:{{ .Values.pluginsInitContainerImageTag }}"
+        imagePullPolicy: {{ .Values.pluginsInitContainerImagePullPolicy }}
+        {{- if eq .Values.security.enabled true }}
+        securityContext:
+          runAsNonRoot: true
+          readOnlyRootFilesystem: {{ .Values.security.readOnlyRootFilesystem }}
+        {{- if ( ne ( toString ( .Values.security.runAsUser )) "auto" ) }}
+          runAsUser: {{ .Values.security.runAsUser }}
+        {{- end }}
+          allowPrivilegeEscalation: false
+        {{- if eq (include "ckaf-ksql.renderSeccompProfile" .) "true" }}
+          seccompProfile:
+            type: {{ .Values.security.seccompProfile.type }}
+        {{- end }}
+          privileged: false
+          capabilities:
+            drop: ["ALL"]
+        {{- end }}
+        resources:
+{{- include "ckaf-ksql.getResources" (tuple . .Values.pluginsInitContainerResources "400m") | indent 10 }}
+        env:
+        - name: TZ
+          value: {{ template "ckaf-ksql.timeZoneEnv" . }}
+        - name: EMPTY_DIR_MOUNT
+          value: /opt/plugins/
+        - name: MOUNT_DIR
+          value: "{{ .Values.pluginsBasePath }}"
+        command: ['sh', '-c', 'cp -rf $MOUNT_DIR/* ${EMPTY_DIR_MOUNT}']
+        volumeMounts:
+        - name: pluginsmount
+          mountPath: /opt/plugins/
+      {{ end }}
+      - name: init
+        image: {{ include "ckaf-ksql.image" (tuple .Values .Values.global.registry5 .Values.init.imageName .Values.init.imageRepo .Values.init.imageTag .Values.init) }}
+        {{- if eq .Values.security.enabled true }}
+        securityContext:
+          runAsNonRoot: true          
+          readOnlyRootFilesystem: {{ .Values.security.readOnlyRootFilesystem }}
+        {{- if ( ne ( toString ( .Values.security.runAsUser )) "auto" ) }}
+          runAsUser: {{ .Values.security.runAsUser }}
+        {{- end }}
+        {{- if ( ne ( toString ( .Values.security.runAsGroup )) "auto" ) }}
+          runAsGroup: {{ .Values.security.runAsGroup }}
+        {{- end }}
+          allowPrivilegeEscalation: false
+        {{- if eq (include "ckaf-ksql.renderSeccompProfile" .) "true" }}
+          seccompProfile:
+            type: {{ .Values.security.seccompProfile.type }}
+        {{- end }}
+          privileged: false
+          capabilities:
+            drop: ["ALL"]
+        {{- end }}
+        command: ["sh","-c","/etc/kafka/encrypt.sh"]
+        resources:
+{{- include "ckaf-ksql.getResources" (tuple . .Values.initContainerResources "200m") | indent 10 }}
+        volumeMounts:
+        - name: ssl-data
+          mountPath: /etc/ksql/ssl/kafka/..data/
+        - name: altiplano-kafka-certs
+          mountPath: /etc/altiplano/certificates/secrets/
+        - name: altiplano-keystore-password
+          mountPath: /etc/altiplano/certificates/storepass/
+        {{- if or (eq (include "ckaf-ksql.tls.enabled" (tuple $kafka_wl)) "true") (and (eq (include "ckaf-ksql.tls.enabled" (tuple $rest_wl)) "true")  (not .Values.ksql.headless)) }}
+        - name: kafkarestssl
+          mountPath: {{ (include "ckaf-ksql.tls.basePath" (tuple $kafkarest_wl1 $kafkarest_wl2)) }}
+        {{- end }}
+        {{- if eq (include "ckaf-ksql.tls.enabled" (tuple $schema_wl2)) "true" }}
+        - name: sslschema
+          mountPath: {{ (include "ckaf-ksql.tls.basePath" (tuple $schema_wl1 $schema_wl2)) }}
+        {{- end }}
+        {{- if and (eq $kafka_wl.sasl.enabled true) (eq $kafka_wl.sasl.mechanism "PLAIN") }}
+        - name: keycloak
+          mountPath: /etc/ksql/plain
+        {{- end }}
+        {{- if eq $schema_wl2.basicAuth.saslInheritAuthentication true }}
+        - name: basic
+          mountPath: /etc/ksql/basic
+        {{- end }}
+        - name: shared
+          mountPath: /etc/kafka/shared
+        env:
+        - name: ENC_PATH
+          value: {{ template "ckaf-ksql.enc.paths" . }}
+        - name: TZ
+          value: {{ template "ckaf-ksql.timeZoneEnv" . }}          
+      containers:
+        {{- if .Values.JmxExporter.enabled }}
+        - name: ckaf-ksql-jmx-exporter
+          image: {{ include "ckaf-ksql.image" (tuple .Values .Values.global.registry1 .Values.JmxExporter.imageName .Values.JmxExporter.imageRepo .Values.JmxExporter.imageTag .Values.JmxExporter) }}
+          imagePullPolicy: {{ .Values.JmxExporter.imagePullPolicy }}
+          {{- if eq .Values.security.enabled true }}
+          securityContext:
+            runAsNonRoot: true
+            readOnlyRootFilesystem: {{ .Values.security.readOnlyRootFilesystem }}
+          {{- if ( ne ( toString ( .Values.security.runAsUser )) "auto" ) }}
+            runAsUser: {{ .Values.security.runAsUser }}
+          {{- end }}
+          {{- if ( ne ( toString ( .Values.security.runAsGroup )) "auto" ) }}
+            runAsGroup: {{ .Values.security.runAsGroup }}
+          {{- end }}
+            allowPrivilegeEscalation: false
+          {{- if eq (include "ckaf-ksql.renderSeccompProfile" .) "true" }}
+            seccompProfile:
+              type: {{ .Values.security.seccompProfile.type }}
+          {{- end }}
+            privileged: false
+            capabilities:
+               drop: ["ALL"]
+          {{- end }}
+          env:
+          - name: TZ
+            value: {{ template "ckaf-ksql.timeZoneEnv" . }}
+          resources:
+{{- include "ckaf-ksql.getResources" (tuple . .Values.JmxExporter.jmxResources.resources "1") | indent 12 }}
+          volumeMounts:          
+          - name: ksqlserver-jmx-config-volume
+            mountPath: "/etc/ksql/jmx_config"
+          - name: ksqlserver-jmx-exporter-volume
+            mountPath: /jmx-exporter
+        {{- end }}
+        - name: ckaf-ksql
+          image: {{ include "ckaf-ksql.image" (tuple .Values .Values.global.registry5 .Values.imageName (coalesce .Values.image .Values.imageRepo) .Values.imageTag .Values.ksql) }}
+          imagePullPolicy: "{{ .Values.imagePullPolicy }}"
+          {{- if eq .Values.security.enabled true }}
+          securityContext:
+            runAsNonRoot: true
+            readOnlyRootFilesystem: {{ .Values.security.readOnlyRootFilesystem }}
+          {{- if ( ne ( toString ( .Values.security.runAsUser )) "auto" ) }}
+            runAsUser: {{ .Values.security.runAsUser }}
+          {{- end }}
+          {{- if ( ne ( toString ( .Values.security.runAsGroup )) "auto" ) }}
+            runAsGroup: {{ .Values.security.runAsGroup }}
+          {{- end }}
+            allowPrivilegeEscalation: false
+          {{- if eq (include "ckaf-ksql.renderSeccompProfile" .) "true" }}
+            seccompProfile:
+              type: {{ .Values.security.seccompProfile.type }}
+          {{- end }}
+            privileged: false
+            capabilities:
+              drop: ["ALL"]
+          {{- end }}
+          ports:
+            - containerPort: {{ .Values.servicePort}}
+              name: tcp-ksql
+              protocol: TCP
+            {{- if .Values.JmxExporter.enabled }}
+            - containerPort: {{ .Values.JmxExporter.port }}
+              name: tcp-metrics
+            {{- end }}
+          resources:
+{{- include "ckaf-ksql.getResources" (tuple . .Values.resources "1") | indent 12 }}
+          volumeMounts:
+          {{- if .Values.ksql.headless }}
+          - name: ksql-queries
+            mountPath: /etc/ksql/queries
+          {{- end }}
+          {{- if .Values.JmxExporter.enabled }}
+          - name: ksqlserver-jmx-config-volume
+            mountPath: "/etc/ksql/jmx_config"
+          - name: ksqlserver-jmx-exporter-volume
+            mountPath: /jmx-exporter
+          {{- end }}
+          {{- if (and (eq $kafka_wl.sasl.enabled true)  (eq $kafka_wl.sasl.mechanism "GSSAPI")) }}
+          - name: krb5config
+            mountPath: "/etc/ksql/krb-conf"
+          - name: kafka-client-keytab
+            mountPath: "/etc/ksql/keytabs"
+          {{- end }}
+          - name: shared
+            mountPath: /etc/kafka/shared
+          {{- if eq .Values.loadPluginsFromInitContainer true }}
+          - name: pluginsmount
+            mountPath: /opt/plugins/
+          {{- end }}
+          - name: server-config
+            mountPath: /etc/ksql
+          - name: log4j
+            mountPath: /etc/ksqldb/
+          - name: tmpdir
+            mountPath: /tmp
+          - name: logdir
+            mountPath: /var/log/ksql 
+          - name: scratchspace
+            mountPath: /etc/ksql/ssl/scratchspace
+          {{- if eq (include "ckaf-ksql.jmx.tls.enabled" .) "true"}}
+          - name: jmx-tls
+            mountPath: /etc/ksql/ssl/jmx-tls
+          {{- end }}
+          env:
+          - name: MY_POD_NAMESPACE
+            valueFrom:
+              fieldRef:
+                fieldPath: metadata.namespace
+          - name: CLOG_ENABLE
+            value: "{{ .Values.global.clog.enabled }}"
+          {{- if or .Values.global.unifiedLogging.extension .Values.unifiedLogging.extension }}
+          - name: UNIFIED_LOGGING
+            value:  {{ coalesce .Values.unifiedLogging.extension .Values.global.unifiedLogging.extension  | toJson | trimPrefix "}" | trimSuffix "{" | quote  }}
+          {{- end }}
+          - name: KSQL_LOG4J_ROOT_LOGLEVEL
+            value: "{{ .Values.LogLevel }}"
+          - name: KSQL_MAX_BACKUP_INDEX
+            value: "{{ .Values.MaxBackupIndex }}"
+          - name: KSQL_MAX_FILE_SIZE
+            value: "{{  .Values.MaxFileSize }}"
+          - name: LOG_DIR
+            value: "/var/log/ksql/"
+          - name: GC_LOG_ENABLED
+            value: "{{ .Values.gcLog.enabled }}"
+          {{- if eq .Values.gcLog.enabled true }}
+          - name: KSQL_GC_LOG_OPTS
+            value: "{{ .Values.gcLog.ksqlGcLogOpts }}"
+          {{- end }}
+          - name: KSQL_BOOTSTRAP_SERVERS
+            value: {{ template "ckaf-ksql.kafkaBootstrapServers" . }}
+          - name: KSQL_KSQL_SERVICE_ID
+            value: {{ template "ckaf-ksql.serviceId" . }}
+          - name: KSQL_KSQL_SCHEMA_REGISTRY_URL
+            value: {{ template "ckaf-ksql.schema-registry.serviceName" . }}
+          - name: KSQL_KRB5_CONF_BASE64
+            value: ""
+          - name: KSQL_HEAP_OPTS
+            value: "{{ .Values.heapOptions }}"
+          - name: TZ
+            value: {{ template "ckaf-ksql.timeZoneEnv" . }}
+          {{- if .Values.ksql.headless }}
+          - name: KSQL_KSQL_QUERIES_FILE
+          {{- if .Values.ksql.queriesFileKey }}
+            value: "/etc/ksql/queries/{{ .Values.ksql.queriesFileKey }}"
+          {{- else }}
+            value: /etc/ksql/queries/queries.sql
+          {{- end }}
+          {{- else }}
+          - name: KSQL_LISTENERS
+            value: {{ template "ckaf-ksql.listeners" . }}
+          {{- end }}
+          - name: KSQL_SSL_ENABLED_PROTOCOLS
+            value: {{ coalesce (default .Values.KafkaKsql.ssl dict).enabledProtocols .Values.KafkaKsql.tls.enabledProtocols }}
+          - name: KSQL_SSL_PROTOCOL
+            value: {{ coalesce (default .Values.KafkaKsql.ssl dict).protocol .Values.KafkaKsql.tls.protocol }}
+          - name: SCHEMA_SSL_ENABLED_PROTOCOLS
+            value: {{ coalesce (default $schema_wl1 dict).sslEnabledProtocols $schema_wl2.tls.enabledProtocols }}
+          - name: SCHEMA_SSL_PROTOCOL
+            value: {{ coalesce (default $schema_wl1 dict).sslProtocol $schema_wl2.tls.protocol }}
+          - name: KSQL_SECURITY_PROTOCOL
+            value: {{ template "ckaf-ksql.securityProtocol" . }}
+          {{- if eq $kafka_wl.sasl.enabled true}}
+          {{- if eq $kafka_wl.sasl.mechanism "GSSAPI" }}
+          - name: ENABLE_KRB_BROKERS
+            value: "true"
+          - name: CLIENT_KT_PATH
+            value: "/etc/ksql/keytabs/client.keytab"
+          - name: CLIENT_PRINC
+            valueFrom:
+              secretKeyRef:
+                name: {{ .Values.KafkaKsql.sasl.krb.kafka.krbSecretName }}
+                key: {{ .Values.KafkaKsql.sasl.krb.kafka.krbPrincipalKeyName }}
+          - name: KSQL_SASL_KERBEROS_SERVICE_NAME
+            value: {{ .Values.KafkaKsql.sasl.krb.kafka.krbSaslKerberosServiceName }}
+          {{- end }}
+          - name: KSQL_SASL_MECHANISM
+            value: {{ $kafka_wl.sasl.mechanism }}
+          {{- if eq $kafka_wl.sasl.mechanism "PLAIN" }}
+          - name : ENABLE_PLAIN_BROKERS
+            value: "true"
+          {{- else }}
+          - name: ENABLE_PLAIN_BROKERS
+            value: "false"
+          {{- end }}
+          {{- else }}
+          - name: ENABLE_KRB_BROKERS
+            value: "false"
+          - name: ENABLE_PLAIN_BROKERS
+            value: "false"
+          {{- end }}
+          {{- if eq (include "ckaf-ksql.tls.enabled" (tuple $kafka_wl)) "true" }}
+          - name: ENABLE_SSL_BROKERS
+            value: "true"
+          {{- else }}
+          - name: ENABLE_SSL_BROKERS
+            value: "false"
+          {{- end }}
+          {{- if eq (include "ckaf-ksql.tls.enabled" (tuple $schema_wl2)) "true" }}
+          - name: SSL_ENABLED_SCHEMA_URL
+            value: "true"
+          {{- else }}
+          - name: SSL_ENABLED_SCHEMA_URL
+            value: "false"
+          {{- end }}
+          {{- if (and (eq (include "ckaf-ksql.tls.enabled" (tuple $rest_wl)) "true") (not .Values.ksql.headless)) }}
+          - name: ENABLE_REST_SSL
+            value: "true"
+          {{- else }}
+          - name: ENABLE_REST_SSL
+            value: "false"
+          {{- end }}
+
+          {{- if eq (include "ckaf-ksql.tls.enabled" (tuple $schema_wl2)) "true" }}
+          - name: KSQL_KSQL_SCHEMA_REGISTRY_SSL_KEYSTORE_FILENAME
+            value: {{ (include "ckaf-ksql.tls.basePath" (tuple $schema_wl1 $schema_wl2)) }}/schemaClientKeystore
+          - name: KSQL_KSQL_SCHEMA_REGISTRY_SSL_TRUSTSTORE_FILENAME
+            value: {{ (include "ckaf-ksql.tls.basePath" (tuple $schema_wl1 $schema_wl2)) }}/schemaClientTruststore
+          {{- end }}
+          {{- if or (eq (include "ckaf-ksql.tls.enabled" (tuple $kafka_wl)) "true") (and (eq (include "ckaf-ksql.tls.enabled" (tuple $rest_wl)) "true")  (not .Values.ksql.headless)) }}
+          - name: KSQL_SSL_TRUSTSTORE_FILENAME
+            value: /etc/kafka/shared/restTruststore
+          - name: KSQL_SSL_KEYSTORE_FILENAME
+            value: /etc/kafka/shared/restKeystore
+          - name: KSQL_SSL_ENDPOINT_IDENTIFICATION_ALGORITHM
+            value: ""
+          {{- end }}
+          {{- if eq $schema_wl2.basicAuth.saslInheritAuthentication true }}
+          - name: SCHEMA_BASIC_AUTH_SASL_INHERIT
+            value: {{ $schema_wl2.basicAuth.saslInheritAuthentication | quote }}
+          - name: KSQL_KSQL_SCHEMA_REGISTRY_BASIC_AUTH_CREDENTIALS_SOURCE
+            value: "SASL_INHERIT"
+          {{- end }} 
+          {{- range $key, $value := .Values.configurationOverrides }}
+          - name: {{ printf "KSQL_%s" $key | replace "." "_" | upper | quote }}
+            value: {{ $value | quote }}
+          {{- end }}
+          {{- if .Values.JmxExporter.enabled }}
+          - name: KSQL_JMX_OPTS
+            value:  "-javaagent:/jmx-exporter/jmx_prometheus_javaagent.jar={{ .Values.JmxExporter.port }}:/etc/ksql/ssl/scratchspace/ksql-server-jmx.yaml"
+          {{- end }}
+          {{- if (and (eq (include "ckaf-ksql.tls.enabled" (tuple $rest_wl)) "true") (not .Values.ksql.headless)) }}
+          - name: KSQL_SSL_CLIENT_AUTH
+            value: {{ include "csf-common-lib.v1.coalesceBoolean" (tuple (default $kafkarest_wl1 dict).clientAuth $kafkarest_wl2.tls.clientAuth ) | quote }}
+          {{- end }}
+          - name: HEADLESS_ENABLED
+            value: {{ .Values.ksql.headless | quote }}
+          {{- if eq .Values.loadPluginsFromInitContainer true }}
+          - name: KSQL_KSQL_EXTENSION_DIR
+            value: "/opt/plugins/"
+          {{- end }}
+          {{- if eq .Values.ksql.headless true }}
+          - name: HEADLESS_MODE_SLEEPTIME
+            value: "{{ .Values.ksql.sleepTime }}"
+          {{- end }}
+          {{- include "ckaf-ksql.syslogEnabled" . }}
+          {{- if eq $.syslogEnabled "true" }}
+          - name: KSQL_SYSLOG
+            value: {{ $.syslogEnabled | quote }}
+          - name: KSQL_SYSLOG_HOST
+            value: {{ required "provide a valid syslog host" $.syslog.host |quote }}
+          - name: KSQL_SYSLOG_PORT
+            value: {{ required "provide a valid syslog port" $.syslog.port |quote }}
+          - name: KSQL_SYSLOG_URL
+            value: "$(KSQL_SYSLOG_HOST):$(KSQL_SYSLOG_PORT)"
+          - name: KSQL_SYSLOG_FACILITY
+            value: {{ required "provide a valid syslog facility" $.syslog.facility |quote }}
+          - name: KSQL_SYSLOG_PROTOCOL
+            value: {{ required "provide a valid syslog protocol" $.syslog.protocol |quote }}
+          {{- else }}
+          - name: KSQL_SYSLOG
+            value: {{ $.syslogEnabled | quote }}
+          {{- end }}
+          - name: RBAC_ENABLED
+            value: {{ .Values.global.rbac.enabled | quote }}
+          - name: READ_ONLY_ROOTFS
+            value: {{ .Values.security.readOnlyRootFilesystem | quote }}
+          - name: RUN_AS_NON_ROOT
+            value: "true"
+          - name: ISTIO_TLS
+            value: "{{ include "ckaf-ksql.istioTlsEnabled" (list . .Values.global.istio)  }}"
+          - name: POD_HOST_NAME
+            valueFrom:
+              fieldRef:
+                fieldPath: metadata.name
+          - name: JMX_TLS
+            value: {{ .Values.JmxExporter.tls.enabled |quote }}
+          {{- if eq (include "ckaf-ksql.jmx.tls.enabled" .) "true"}}
+          - name: jmx_alias
+            value: {{ .Values.JmxExporter.tls.certificateAlias |default "certificate" |quote }}
+          {{- end }}
+          {{- if .Values.ksql.headless }}
+          livenessProbe:
+            exec:
+              command:
+                - bash
+                - -c
+                - 2>/dev/null </dev/tcp/altiplano-kafka-headless/9092 && ps aux|grep "[k]sql"
+            initialDelaySeconds: {{ .Values.livenessProbe.initialDelaySeconds }}
+            periodSeconds: {{ .Values.livenessProbe.periodSeconds }}
+          readinessProbe:
+            exec:
+              command:
+                - bash
+                - -c
+                - 2>/dev/null </dev/tcp/altiplano-kafka-headless/9092 && ps aux|grep "[k]sql"
+            initialDelaySeconds: {{ .Values.readinessProbe.initialDelaySeconds }}
+            periodSeconds: {{ .Values.readinessProbe.periodSeconds }}
+          {{- else }}
+          livenessProbe:
+            exec:
+              command:
+                - bash
+                - -c
+                - 2>/dev/null </dev/tcp/altiplano-kafka-headless/9092 && ss -lntu | grep {{ .Values.servicePort }} | grep -q LISTEN
+            initialDelaySeconds: {{ .Values.livenessProbe.initialDelaySeconds }}
+            periodSeconds: {{ .Values.livenessProbe.periodSeconds }}
+          readinessProbe:
+            exec:
+              command:
+                - bash
+                - -c
+                - 2>/dev/null </dev/tcp/altiplano-kafka-headless/9092 && ss -lntu | grep {{ .Values.servicePort }} | grep -q LISTEN
+            initialDelaySeconds: {{ .Values.readinessProbe.initialDelaySeconds }}
+            periodSeconds: {{ .Values.readinessProbe.periodSeconds }}
+          {{- end }} 
+      volumes:
+      - name: ssl-data
+        emptyDir: {}
+      - name: altiplano-kafka-certs
+        secret:
+          secretName: altiplano-kafka-certificate-secrets
+      - name: altiplano-keystore-password
+        secret:
+          secretName: {{ .Values.certificates.secrets.altiplano_keystore_secrets }}
+      {{- if .Values.JmxExporter.enabled }}
+      - name: ksqlserver-jmx-config-volume
+        configMap:
+          name: {{ template "ckaf-ksql.name" . }}-jmx-configmap
+      - name: ksqlserver-jmx-exporter-volume
+        emptyDir: {}
+      {{- end }}
+      {{- if .Values.ksql.headless }}
+      - name: ksql-queries
+        configMap:
+          {{- if .Values.ksql.ksqlQueriesConfigMapName }}
+          name: {{ .Values.ksql.ksqlQueriesConfigMapName }}
+          {{- else }}
+          name: {{ template "ckaf-ksql.name" . }}-ksql-queries-configmap
+          {{- end }}
+      {{- end }}
+      {{- if or (eq (include "ckaf-ksql.tls.enabled" (tuple $kafka_wl)) "true") (and (eq (include "ckaf-ksql.tls.enabled" (tuple $rest_wl)) "true")  (not .Values.ksql.headless)) }}
+      {{ $workload := coalesce $kafkarest_wl1 $kafkarest_wl2 }}
+      - name: kafkarestssl
+        emptyDir: {}
+      {{- end }}
+      {{- if eq (include "ckaf-ksql.tls.enabled" (tuple $schema_wl2)) "true" }}
+      {{ $workload := coalesce $schema_wl1 $schema_wl2 }}
+      - name: sslschema
+        secret:
+          secretName: {{ .Values.KafkaKsql.ssl.schema.sslSecretName }}
+          items:
+          - key: {{ .Values.KafkaKsql.ssl.schema.sslKeyStoreLocationKey }}
+            path: schemaClientKeystore
+          - key: {{ .Values.KafkaKsql.ssl.schema.sslTrustStoreLocationKey }}
+            path: schemaClientTruststore
+          - key: {{ .Values.KafkaKsql.ssl.schema.sslKeyStorePassKey }}
+            path: ".schemaClientKeyStoreCred"
+          - key: {{ .Values.KafkaKsql.ssl.schema.sslTrustStorePassKey }}
+            path: ".schemaClientTrustStoreCred"
+          - key: {{ .Values.KafkaKsql.ssl.schema.sslKeyPassKey }}
+            path: ".schemaClientKeyCred"
+      {{- end }}
+      {{- if (and (eq $kafka_wl.sasl.enabled true)  (eq $kafka_wl.sasl.mechanism "GSSAPI")) }}
+      - name: krb5config
+        configMap:
+          name: {{ .Values.KafkaKsql.sasl.krb.krbConfigmapName }}
+          items:
+          - key: {{ .Values.KafkaKsql.sasl.krb.KrbConfKeyName }}
+            path: krb5.conf
+      - name: kafka-client-keytab
+        secret:
+          secretName: {{ .Values.KafkaKsql.sasl.krb.kafka.krbSecretName }}
+          items:
+          - key: {{ .Values.KafkaKsql.sasl.krb.kafka.krbKeytabKeyName }}
+            path: client.keytab
+      {{- end }}
+      {{- if eq $schema_wl2.basicAuth.saslInheritAuthentication true }}
+      - name: basic
+        secret:
+          secretName: {{ .Values.KafkaKsql.sasl.plain.schemaRegistry.secretName }}
+          items:
+          - key: {{ .Values.KafkaKsql.sasl.plain.schemaRegistry.usernameKey }}
+            path: ".usr"
+          - key: {{ .Values.KafkaKsql.sasl.plain.schemaRegistry.passwordKey }}
+            path: ".key"
+      {{- end }}
+      {{- if and (eq $kafka_wl.sasl.enabled true) (eq $kafka_wl.sasl.mechanism "PLAIN") }}
+      - name: keycloak
+        secret:
+          secretName: {{ .Values.KafkaKsql.sasl.plain.kafka.secretName }}
+          items:
+          - key: {{ .Values.KafkaKsql.sasl.plain.kafka.usernameKey }}
+            path: ".plainUsr"
+          - key: {{ .Values.KafkaKsql.sasl.plain.kafka.passwordKey }}
+            path: ".plainKey"
+      {{- end }}
+      - name: shared
+        emptyDir: {}
+      {{- if eq .Values.loadPluginsFromInitContainer true }}
+      {{- if eq (include "ckaf-ksql.ephemeralVolume" .) "true" }}
+      - name: pluginsmount
+        ephemeral:
+          volumeClaimTemplate:
+            spec:
+              accessModes: [ "ReadWriteOnce" ]
+            {{- if .Values.ephemeralVolume.storageClass }}
+              storageClassName: "{{ .Values.ephemeralVolume.storageClass }}"
+            {{- end }}
+              resources:
+                requests:
+                  storage: {{ .Values.ephemeralVolume.storageSize.pluginsmount }}
+      {{- else }}
+      - name: pluginsmount
+        emptyDir: {}
+      {{- end }}
+      {{- end }}
+      - name: server-config
+        emptyDir: {}        
+      - name: log4j
+        emptyDir: {}
+      - name: tmpdir
+        emptyDir: {}
+      - name: logdir
+        emptyDir: {}
+      - name: scratchspace
+        emptyDir:
+          medium: Memory 
+          sizeLimit: 5Mi
+      {{- if eq (include "ckaf-ksql.jmx.tls.enabled" .) "true"}}
+      - name: jmx-tls
+        projected:
+          sources:
+            - secret:
+                name: {{ template "ckaf-ksql.jmx.storeSecret" . }}
+                items:
+                  - key: {{ template "ckaf-ksql.jmx.keystoreSecretKey" . }}
+                    path: ".keyStore"
+                  - key: {{ template "ckaf-ksql.jmx.truststoreSecretKey" . }}
+                    path: ".trustStore"
+            - secret:
+                name: {{ template "ckaf-ksql.jmx.storePasswordSecret" . }}
+                items:
+                  - key: {{ template "ckaf-ksql.jmx.keystorePasswordSecretKey" . }}
+                    path: ".keyStoreCred"
+                  - key: {{ template "ckaf-ksql.jmx.truststorePasswordSecretKey" . }}
+                    path: ".trustStoreCred"
+      {{end}}
+

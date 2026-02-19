@@ -1,0 +1,17 @@
+{{- if eq (include "bssc-indexsearch.isHpaEnabled" (tuple . .Values.client)) "true" }}
+apiVersion: {{ .Capabilities.APIVersions.Has "autoscaling/v2/HorizontalPodAutoscaler" | ternary "autoscaling/v2" "autoscaling/v2beta2" }}
+kind: HorizontalPodAutoscaler
+metadata:
+  name: {{ template "bssc-indexsearch.client.fullname" . }}
+  labels:
+{{- include "bssc-indexsearch.commonLabels" (tuple . .Values.client.name) | nindent 4 }}
+{{- include "bssc-indexsearch.csf-toolkit-helm.labels" (tuple .) | nindent 4 }}
+  annotations:
+{{- include "bssc-indexsearch.csf-toolkit-helm.annotations" (tuple .) | nindent 4 }}
+spec:
+  scaleTargetRef:
+    apiVersion: {{ .Values.client._apiVersion | default "apps/v1" }}
+    kind: Deployment
+    name: {{ template "bssc-indexsearch.client.fullname" . }}
+{{- include "bssc-indexsearch.client.hpaValues" (tuple . .Values.client) | indent 2 }}
+{{- end }}

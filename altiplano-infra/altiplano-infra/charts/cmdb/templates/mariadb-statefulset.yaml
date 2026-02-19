@@ -1,0 +1,532 @@
+{{- include "cmdb.init" . -}}
+{{- $api := .Capabilities.APIVersions.Has "autoscaling/v2/HorizontalPodAutoscaler" | ternary "autoscaling/v2" "autoscaling/v2beta2" }}
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: {{ template "cmdb.pod-prefix" . }}-mariadb
+  labels:
+    {{- include "cmdb-mariadb.labels" (tuple . "statefulset") | nindent 4 }}
+    {{- include "cmdb.get_mtls_labels" . | nindent 4 }}
+  annotations:
+    {{- include "cmdb-mariadb.annotations" (tuple . "statefulset") | nindent 4 }}
+
+spec:
+  serviceName: {{ template "cmdb.fullname" . }}
+  podManagementPolicy: "Parallel"
+{{- if eq (.Values.cluster_type) "simplex" }}
+  #CSFBP-9061
+  replicas: 1
+{{- else if or (ne (include "cmdb.mariadb_hpa_enabled" .) "true") (and .Release.IsUpgrade (not (lookup $api "HorizontalPodAutoscaler" .Release.Namespace (printf "%s-mariadb" (include "cmdb.pod-prefix" .))))) }}
+  # There are two conditions where we will allow replicas to be set:
+  #   1. MariaDB HPA is not enabled, or
+  #   2. MariaDB HPA is enabled, and we are in upgrade, but the
+  #      HorizontalPodAutoscaler resource is not yet created.
+  # For case #2, we will leave the replica count here to prevent an inadvertent
+  # scale-in to a single pod.  The next update after the HPA is created, the
+  # replica count will be removed.
+  replicas: {{ .Values.mariadb.count }}
+{{- end }}
+  updateStrategy:
+    type: RollingUpdate
+  selector:
+    matchLabels:
+      {{- include "cmdb-mariadb.selector_labels" . | nindent 6 }}
+      {{- include "cmdb.get_custom_selectors" (tuple . "mariadbSts") | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        altiplano-role: {{ .Values.mariadb.accessRoleLabel }}
+        {{- include "cmdb-mariadb.labels" (tuple . "pod") | nindent 8 }}
+        {{- include "cmdb.get_custom_selectors" (tuple . "mariadbSts") | nindent 8 }}
+        {{- include "cmdb.get_mtls_labels" . | nindent 8 }}
+        type: mariadb
+      annotations:
+        {{- include "cmdb-mariadb.annotations" (tuple . "pod") | nindent 8}}
+      {{- if or (.Values.admin.configAnnotation) (eq (.Values.cluster_type) "simplex") }}
+        checksum/config: {{ include (print $.Template.BasePath "/mariadb-config-configmap.yaml") . | sha256sum }}
+      {{- end }}
+      {{- if eq (include "cmdb.has_maxscale" .) "true" }}
+        checksum/datacenter: {{ include (print $.Template.BasePath "/maxscale-datacenter-configmap.yaml") . | sha256sum }}
+        checksum/promotion: {{ .Values.maxscale.sql.promotion | join " " | sha256sum }}
+      {{- end }}
+      {{- if eq (.Values.cluster_type) "galera" }}
+        sidecar.istio.io/inject: "false"
+      {{- else }}
+        {{- include "cmdb.istio-annotation" . | nindent 8 }}
+      {{- end }}
+      {{- if .Values.istio.enabled }}
+        sidecar.istio.io/rewriteAppHTTPProbers: "true"
+      {{- end }}
+    spec:
+      {{- include "cmdb.get_security_context" (tuple . "pod" "mariadb" 1771) | nindent 6 }}
+      {{- include "cmdb.get_image_pull_secrets" (tuple . "mariadb") | nindent 6 }}
+    {{- if .Values.mariadb.priorityClassName }}
+      priorityClassName: {{ .Values.mariadb.priorityClassName | quote }}
+    {{- else if .Values.global.priorityClassName }}
+      priorityClassName: {{ .Values.global.priorityClassName | quote }}
+    {{- end }}
+      {{- include "cmdb.istio-sa" . | nindent 6 }}
+
+      initContainers:
+      - name: {{ template "cmdb.container-prefix" . }}init-config
+        {{- include "cmdb-mariadb.image" . | nindent 8 }}
+        {{- include "cmdb.get_security_context" (tuple . "container" "mariadb" 1771) | nindent 8 }}
+        env:
+        {{- include "cmdb-tz.env" . | nindent 8 }}
+        command:
+          - bash
+          - "-c"
+          - |
+            . /usr/lib/mariadb/docker-functions
+            import_config_common
+            import_config_mariadb
+            {{- include "cmdb-tls.import-certs" . | nindent 12 }}
+            {{- if .Values.mariadb.encryption.enabled }}
+            import_encryption_certificates
+            {{- end }}
+        volumeMounts:
+        {{- include "cmdb-tls.vm-mariadb" . | nindent 8 }}
+        {{- if .Values.mariadb.encryption.enabled }}
+        - name: mdb-encryption
+          readOnly: true
+          mountPath: "/import/encrypt"
+        {{- end }}
+        - name: fs-etcmariadb
+          mountPath: /etc/mariadb
+        - name: fs-etcmycnfd
+          mountPath: /my.cnf.d
+        - name: import-mariadb-cm
+          mountPath: /import/mariadb-cm
+        {{- if eq (include "cmdb.has_maxscale" .) "true" }}
+        - name: import-maxscale-cm
+          mountPath: /import/maxscale-cm
+        - name: import-datacenter-cm
+          mountPath: /import/datacenter-cm
+        {{- end }}
+        - name: import-users
+          mountPath: /import/users
+        - name: import-db
+          mountPath: /import/db.d
+        {{- if ne (.Values.cluster_type) "simplex" }}
+        - name: auth-secrets
+          mountPath: /import/auth
+        {{- end }}
+        resources:
+          {{- include "cmdb.get_resources"  ( tuple . .Values.mariadb.initContainers.resources) | nindent 10 }}
+
+      containers:
+      - name: {{ template "cmdb.container-prefix" . }}mariadb
+        {{- include "cmdb-mariadb.image" . | nindent 8 }}
+        {{- include "cmdb.get_security_context" (tuple . "container" "mariadb" 1771) | nindent 8 }}
+      {{- if eq (include "cmdb.has_maxscale" .) "true" }}
+        {{- $mxssvchost := default (printf "%s-maxscale" (include "cmdb.fullname" .)) .Values.services.maxscale.name }}
+        {{- $timeout := default 30 .Values.maxscale.masterSwitchoverTimeout }}
+        lifecycle:
+          preStop:
+            exec:
+              command:
+              - bash
+              - "-c"
+              - |
+                /usr/lib/mariadb/master_switchover.py --url={{ $mxssvchost }}.{{ .Release.Namespace }}.svc.{{ .Values.clusterDomain }}:{{ .Values.services.maxscale.port }} --timeout={{ $timeout }} ;
+                if [ -f /tmp/graceful-shutdown ]; then
+                  echo "NOTICE: Performing Graceful MariaDB Database Shutdown" ;
+                  /usr/lib/mariadb/mariadb_lib.py --mariadb-service=stop ;
+                  rm -f /tmp/graceful-shutdown ;
+                fi
+      {{- end }}
+        ports:
+        - containerPort: 3306
+          name: tcp-mysql
+        - containerPort: 4444
+          name: tcp-sst
+        {{- if eq .Values.cluster_type "galera" }}
+        - containerPort: 4567
+          name: tcp-gcomm
+        - containerPort: 4568
+          name: tcp-gist
+        {{- end }}
+        env:
+        - name: CLUSTER_TYPE
+          value: "{{ .Values.cluster_type }}"
+        - name: CLUSTER_NAME
+          value: "{{ .Values.cluster_name | default .Release.Name | trunc 32 }}"
+        - name: K8S_NAMESPACE
+          value: "{{ .Release.Namespace }}"
+        {{- if ne .Values.cluster_type "galera" }}
+        - name: SERVICE_NAME
+          value: {{ .Values.services.mariadb.name | default (printf "%s-mariadb" (include "cmdb.fullname" .)) | quote }}
+        {{- end }}
+        - name: REQUIRE_USERS_JSON
+          value: "yes"
+        - name: MYSQLD_OPTS
+          value: {{ default "" .Values.mariadb.mysqldOpts | quote }}
+        {{- include "cmdb-tz.env" . | nindent 8 }}
+        {{- include "cmdb-users.common-env" . | nindent 8 }}
+        {{- include "cmdb-users.mariadb-metrics-env" . | nindent 8 }}
+        {{- include "cmdb-users.maxscale-metrics-env" . | nindent 8 }}
+        {{- include "cmdb-admin.service" . | nindent 8 }}
+        {{- include "cmdb-logging.env" . | nindent 8 }}
+
+        volumeMounts:
+        {{- include "cmdb-fs.vm" (tuple . "mariadb") | nindent 8 }}
+        {{- include "cmdb-tls.vm-mariadb" . | nindent 8 }}
+        {{- include "cmdb-tls.vm-maxscale" . | nindent 8 }}
+        {{- include "cmdb-logging.vm" (tuple . .Values.mariadb) | nindent 8 }}
+        - name: cluster-cm
+          mountPath: /chart
+        {{- if default "" .Values.mariadb.initdbConfigMap }}
+        - name: import-initdb
+          mountPath: /import/initdb.d
+        {{- end }}
+        {{- if and (.Values.mariadb.persistence) (.Values.mariadb.persistence.enabled) }}
+        - name: datadir
+          mountPath: /mariadb
+        {{- end }}
+        {{- if .Values.mariadb.metrics.enabled }}
+        - name: metrics
+          mountPath: /metrics
+        {{- end }}
+        {{- if and .Values.mariadb.persistence.backup.enabled ( eq .Values.cbur.volumeBackupType "volume") }}
+        - name: backupdir
+          mountPath: {{ default "/mariadb/backup" .Values.mariadb.persistence.backup.dir }}
+        {{- end }}
+        {{- if .Values.mariadb.persistence.temp.enabled }}
+        - name: tempdir
+          mountPath: {{ default "/mariadb/tmp" .Values.mariadb.persistence.temp.dir }}
+        {{- end }}
+        {{- if .Values.mariadb.persistence.shared.enabled }}
+        - name: shared-storage
+          mountPath: {{ default "/mariadb/shared" .Values.mariadb.persistence.shared.dir }}
+        {{- end }}
+        {{- if semverCompare ">=1.18" (include "cmdb.k8sver" .) }}
+        startupProbe:
+          httpGet:
+            path: /started
+            port: 33306
+          initialDelaySeconds: {{ .Values.mariadb.startupProbe.initialDelaySeconds | default 1 }}
+          periodSeconds: {{ .Values.mariadb.startupProbe.periodSeconds | default 5 }}
+          timeoutSeconds: {{ .Values.mariadb.startupProbe.timeoutSeconds | default 1 }}
+          failureThreshold: {{ .Values.mariadb.startupProbe.failureThreshold | default 60 }}
+          successThreshold: {{ .Values.mariadb.startupProbe.successThreshold | default 1 }}
+        {{- end }}
+        livenessProbe:
+          httpGet:
+            path: /alive
+            port: 33306
+          initialDelaySeconds: {{ .Values.mariadb.livenessProbe.initialDelaySeconds | default 120 }}
+          periodSeconds: {{ .Values.mariadb.livenessProbe.periodSeconds | default 10 }}
+          timeoutSeconds: {{ .Values.mariadb.livenessProbe.timeoutSeconds | default 5 }}
+          failureThreshold: {{ .Values.mariadb.livenessProbe.failureThreshold | default 6 }}
+          successThreshold: {{ .Values.mariadb.livenessProbe.successThreshold | default 1 }}
+        readinessProbe:
+          httpGet:
+            path: /ready
+            port: 33306
+          initialDelaySeconds: {{ .Values.mariadb.readinessProbe.initialDelaySeconds | default 10 }}
+          periodSeconds: {{ .Values.mariadb.readinessProbe.periodSeconds | default 15 }}
+          timeoutSeconds: {{ .Values.mariadb.readinessProbe.timeoutSeconds | default 2 }}
+          failureThreshold: {{ .Values.mariadb.readinessProbe.failureThreshold | default 3 }}
+          successThreshold: {{ .Values.mariadb.readinessProbe.successThreshold | default 1 }}
+        resources:
+          {{- include "cmdb.get_resources" ( tuple .  .Values.mariadb.resources) | nindent 10 }}
+
+      {{- if .Values.mariadb.metrics.enabled }}
+      {{- $scrape_port := default 9104 .Values.services.mariadb.exporter.port }}
+      {{- $exporter_uri := (eq (include "cmdb.mariadb_use_zt_proxy" .) "true") | ternary "localhost:9090" (list "[::]" $scrape_port | join ":") }}
+      {{- if (eq (include "cmdb.mariadb_use_zt_proxy" .) "true") }}
+      - name: {{ template "cmdb.container-prefix" . }}zt-proxy
+        {{- include "mariadb-auth.image" . | nindent 8 }}
+        {{- include "cmdb.get_security_context" (tuple . "container" "mariadb.auth" 1771) | nindent 8 }}
+        args:
+        - "-port={{ $scrape_port }}"
+        - "-proxy-url=http://localhost:9090"
+        ports:
+        - name: tcp-mdb-auth
+          containerPort: {{ $scrape_port }}
+        env:
+        {{- include "cmdb-tz.env" . | nindent 8 }}
+        {{- include "cmdb-auth.env" (tuple . "mariadb") | nindent 8 }}
+        {{- include "cmdb-tls.env-prom-auth" (tuple . "mariadb") | nindent 8 }}
+        volumeMounts:
+        {{- include "cmdb-fs.vm-auth" (tuple . "mariadb") | nindent 8 }}
+        {{- include "cmdb-tls.vm-prom-auth" (tuple . "mariadb") | nindent 8 }}
+        resources:
+          {{- include "cmdb.get_resources" ( tuple . .Values.mariadb.auth.resources) | nindent 10 }}
+        {{- end }}
+
+      - name: {{ template "cmdb.container-prefix" . }}metrics
+        {{- include "mariadb-metrics.image" . | nindent 8 }}
+        {{- include "cmdb.get_security_context" (tuple . "container" "mariadb.metrics" 1771) | nindent 8 }}
+        lifecycle:
+          preStop:
+            exec:
+              command:
+              - bash
+              - "-c"
+              - touch /metrics/.stop
+        args:
+          - start-dir=/metrics
+          - start-timeout=300
+          - "--web.listen-address={{ $exporter_uri }}"
+        ports:
+        - name: tcp-mdb-metrics
+          containerPort: {{ last (splitList ":" $exporter_uri) }}
+        env:
+        {{- include "cmdb-tz.env" . | nindent 8 }}
+        volumeMounts:
+        - name: metrics
+          mountPath: /metrics
+        resources:
+          {{- include "cmdb.get_resources" ( tuple . .Values.mariadb.metrics.resources) | nindent 10 }}
+      {{- end }}
+
+      {{- if .Values.cbur.enabled }}
+      - name: {{ template "cmdb.container-prefix" . }}cbura-sidecar
+        {{- include "cbur-mariadb.image" . | nindent 8 }}
+        {{- include "cmdb.get_security_context" (tuple . "container" "cbur" 1771) | nindent 8 }}
+        resources:
+          {{- include "cmdb.get_resources" ( tuple . .Values.cbur.resources) | nindent 10 }}
+        env:
+        {{- include "cmdb-tz.env" . | nindent 8 }}
+        volumeMounts:
+        {{- if and .Values.mariadb.persistence.backup.enabled ( eq .Values.cbur.volumeBackupType "volume") }}
+        - mountPath: backupdir
+          name: backupdir
+        {{- else if and ( not .Values.mariadb.persistence.backup.enabled ) ( eq .Values.cbur.volumeBackupType "volume") }}
+        - mountPath: datadir
+          name: datadir
+          subPath: backup
+        {{- end }}
+
+        {{- if eq .Values.cbur.volumeBackupType "volume" }}
+        - name: cburtmp
+          mountPath: {{ ternary (default "/tmp" .Values.cbur.persistence.cburtmp.dir) "/tmp" .Values.cbur.persistence.cburtmp.enabled }}
+        {{- end }}
+      {{- end }}
+      - name: {{ template "cmdb.container-prefix" . }}mariadb-fluentd-sidecar
+        image: "{{ .Values.global.registry }}/{{ .Values.mariadb.fluentd_sidecar.image.name }}:{{ .Values.mariadb.fluentd_sidecar.image.tag }}"
+        imagePullPolicy: {{ .Values.mariadb.fluentd_sidecar.image.pullPolicy }}
+        securityContext:
+          readOnlyRootFilesystem: true
+          runAsUser: {{ .Values.mariadb.fluentd_sidecar.securityContext.runAsUser | default 1000 }}
+          runAsGroup: {{ .Values.mariadb.fluentd_sidecar.securityContext.runAsGroup | default 1771 }}
+        volumeMounts:
+        - name: tmp
+          mountPath: /tmp
+        - name: fluentd-config
+          mountPath: /etc/fluent/
+        - name: certificates
+          mountPath: /etc/.certificates/
+        - name: fs-varlogmariadb
+          mountPath: /logs/mariadb/
+        resources:
+{{ toYaml .Values.mariadb.fluentd_sidecar.resources | indent 12 }}
+        env:
+        {{- if .Values.mariadb.fluentd_sidecar.secrets }}
+        - name: IS_USERNAME
+          valueFrom:
+            secretKeyRef:
+              key: {{ .Values.env.secrets.IS_USERNAME }}
+              name: {{ .Values.mariadb.fluentd_sidecar.secrets.passwordSecret | quote }}
+        - name: IS_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              key: {{ .Values.env.secrets.IS_PASSWORD }}
+              name: {{ .Values.mariadb.fluentd_sidecar.secrets.passwordSecret | quote }}
+        {{- end }}
+        - name: CONTAINER_NAME
+          valueFrom:
+            fieldRef:
+              apiVersion: v1
+              fieldPath: metadata.name  
+        - name: POD_IP
+          valueFrom:
+            fieldRef:
+              fieldPath: status.podIP
+
+      terminationGracePeriodSeconds: {{ default 120 .Values.mariadb.terminationGracePeriodSeconds }}
+
+      volumes:
+      {{- include "cmdb-fs.vol" (tuple . "mariadb") | nindent 6 }}
+      {{- include "cmdb-fs.vol-auth" (tuple . "mariadb") | nindent 6 }}
+      {{- include "cmdb-logging.vol" (tuple . .Values.mariadb "false") | nindent 6 }}
+      {{- include "cmdb-tls.vol" . | nindent 6 }}
+      {{- include "cmdb-tls.vol-prom-auth" (tuple . "mariadb") | nindent 6 }}
+      {{- if or (not .Values.mariadb.persistence) (not .Values.mariadb.persistence.enabled) }}
+      - name: datadir
+        emptyDir: {} 
+      {{- end }}
+      - name: tmp
+        emptyDir: {}
+      - name: cluster-cm
+        configMap:
+          name: {{ template "cmdb.fullname" . }}-mariadb-cluster
+      - name: import
+        emptyDir: {}
+      - name: import-mariadb-cm
+        configMap:
+          name: {{ template "cmdb.fullname" . }}-mariadb-config
+      {{- if eq (include "cmdb.has_maxscale" .) "true" }}
+      - name: import-maxscale-cm
+        configMap:
+          name: {{ template "cmdb.fullname" . }}-maxscale-config
+      - name: import-datacenter-cm
+        configMap:
+          name: {{ template "cmdb.fullname" . }}-datacenter
+      {{- end }}
+      - name: import-users
+        secret:
+          secretName: {{ template "cmdb.fullname" . }}-mariadb-initialusers
+          optional: true
+      - name: import-db
+        configMap:
+          name: {{ template "cmdb.fullname" . }}-mariadb-databases
+      - name: fluentd-config
+        configMap:
+          name: {{ template "cmdb.fullname" . }}-mariadb-fluentd-config
+      {{- if .Values.mariadb.fluentd_sidecar.secrets }}
+      - name: certificates
+        secret:
+          secretName: {{ (tpl .Values.mariadb.fluentd_sidecar.secrets.certSecret .) }}
+      - name: passwords
+        secret:
+          secretName: {{ (tpl .Values.mariadb.fluentd_sidecar.secrets.passwordSecret .) }}
+      {{- end }}
+
+      {{- if default "" .Values.mariadb.initdbConfigMap }}
+      - name: import-initdb
+        configMap:
+          name: {{ .Values.mariadb.initdbConfigMap }}
+      {{- end }}
+      {{- if ne (.Values.cluster_type) "simplex" }}
+      - name: auth-secrets
+        secret:
+          secretName: {{ template "cmdb.fullname" . }}-admin-secrets
+          items:
+          - key: maria
+            path: admin.auth
+      {{- end }}
+      {{- if .Values.mariadb.encryption.secret }}
+      - name: mdb-encryption
+        secret:
+          secretName: {{ .Values.mariadb.encryption.secret }}
+      {{- end }}
+      {{- if .Values.mariadb.metrics.enabled }}
+      - name: metrics
+        emptyDir:
+          medium: Memory
+      {{- end }}
+      {{- if .Values.mariadb.persistence.shared.enabled }}
+      - name: shared-storage
+        persistentVolumeClaim:
+          claimName: {{ .Values.mariadb.persistence.shared.name }}
+      {{- end }}
+      {{- if and (.Values.cbur.enabled) (not .Values.cbur.persistence.cburtmp.enabled) ( eq .Values.cbur.volumeBackupType "volume") }}
+      - name: cburtmp
+        emptyDir:
+          sizeLimit: {{ .Values.cbur.emptyDir.sizeLimit }}
+      {{- end }}
+
+    {{- if .Values.mariadb.tolerations }}
+      tolerations:
+        {{- toYaml .Values.mariadb.tolerations | nindent 8 }}
+    {{- end }}
+    {{- if .Values.mariadb.nodeSelector }}
+      nodeSelector:
+        {{- toYaml .Values.mariadb.nodeSelector | nindent 8 }}
+    {{- end }}
+    {{- if .Values.mariadb.topologySpreadConstraints }}
+      topologySpreadConstraints:
+      {{- include "cmdb.spread-constraints" (tuple . "mariadb") | nindent 8 }}
+    {{- end }}
+      affinity:
+      {{- if .Values.mariadb.nodeAffinity.enabled }}
+        nodeAffinity:
+          requiredDuringSchedulingIgnoredDuringExecution:
+            nodeSelectorTerms:
+            - matchExpressions:
+              - key: {{ .Values.mariadb.nodeAffinity.key }}
+                operator: In
+                values:
+                - {{ quote .Values.mariadb.nodeAffinity.value }}
+      {{- end }}
+        {{- include "csf-common-lib.v3.podAntiAffinity" (tuple . .Values.mariadb) | nindent 8}}
+  volumeClaimTemplates:
+    {{- if and (.Values.mariadb.persistence) (.Values.mariadb.persistence.enabled) }}
+    - metadata:
+        annotations:
+          "helm.sh/resource-policy": {{ default "delete" .Values.mariadb.persistence.resourcePolicy }}
+        name: datadir
+        labels:
+          ## Changes to volumeClaimTemplates not allowed.  If K8s adds support for altering
+          ## during upgrade, this can be changed to the full set of labels.
+          {{- include "cmdb-mariadb.selector_labels" . | nindent 10 }}
+          type: mariadb
+      spec:
+        accessModes:
+          - {{ .Values.mariadb.persistence.accessMode | quote }}
+        resources:
+          requests:
+            storage: {{ .Values.mariadb.persistence.size | quote }}
+      {{- if .Values.compaas }}
+        storageClassName: "{{ .Values.compaas.storageClass }}"
+      {{- else if .Values.mariadb.persistence.storageClass }}
+        storageClassName: {{ .Values.mariadb.persistence.storageClass }}
+      {{- end }}
+    {{- end }}
+    {{- if and .Values.mariadb.persistence.backup.enabled ( eq .Values.cbur.volumeBackupType "volume") }}
+    - metadata:
+        name: backupdir
+        labels:
+          {{- include "cmdb-mariadb.selector_labels" . | nindent 10 }}
+      spec:
+        accessModes:
+          - {{ .Values.mariadb.persistence.backup.accessMode | quote }}
+        resources:
+          requests:
+            storage: {{ .Values.mariadb.persistence.backup.size }}
+      {{- if .Values.compaas }}
+        storageClassName: "{{ .Values.compaas.storageClass }}"
+      {{- else if .Values.mariadb.persistence.backup.storageClass }}
+        storageClassName: {{ .Values.mariadb.persistence.backup.storageClass }}
+      {{- end }}
+    {{- end }}
+
+    {{- if .Values.mariadb.persistence.temp.enabled }}
+    - metadata:
+        name: tempdir
+        labels:
+          {{- include "cmdb-mariadb.selector_labels" . | nindent 10 }}
+      spec:
+        accessModes:
+          - {{ .Values.mariadb.persistence.temp.accessMode | quote }}
+        resources:
+          requests:
+            storage: {{ .Values.mariadb.persistence.temp.size }}
+      {{- if .Values.compaas }}
+        storageClassName: "{{ .Values.compaas.storageClass }}"
+      {{- else if .Values.mariadb.persistence.temp.storageClass }}
+        storageClassName: {{ .Values.mariadb.persistence.temp.storageClass }}
+      {{- end }}
+    {{- end }}
+
+    {{- if and (.Values.cbur.enabled) (.Values.cbur.persistence.cburtmp.enabled) ( eq .Values.cbur.volumeBackupType "volume") }}
+    - metadata:
+        name: cburtmp
+        labels:
+          {{- include "cmdb-mariadb.selector_labels" . | nindent 10 }}
+      spec:
+        accessModes:
+          - {{ .Values.cbur.persistence.cburtmp.accessMode | quote }}
+        resources:
+          requests:
+            storage: {{ .Values.cbur.persistence.cburtmp.size }}
+      {{- if .Values.compaas }}
+        storageClassName: "{{ .Values.compaas.storageClass }}"
+      {{- else if .Values.cbur.persistence.cburtmp.storageClass }}
+        storageClassName: {{ .Values.cbur.persistence.cburtmp.storageClass }}
+      {{- end }}
+    {{- end }}
+

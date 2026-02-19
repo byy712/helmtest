@@ -1,0 +1,139 @@
+# Default values for PV Capacity in dynamic provisioned.
+# This is a YAML-formatted file.
+# Declare variables to be passed into your templates.
+
+# Below are configuration for various subcharts
+#
+
+altiplano-installation-info:
+  installationStatus:
+    valuesDynamicStorage: installed
+
+altiplano-cbur:
+  storageBackup: "2Gi"  # ${release.name}-altiplano-cbur-backup
+  storageRepo: "8Gi"  # ${release.name}-altiplano-cbur-repo
+  storageBackupCluster: "20Gi"  # ${release.name}-altiplano-cbur-backup-cluster
+
+altiplano-grafana:
+  persistence:
+    size: 1Gi  # ${release.name}-altiplano-grafana
+
+altiplano-indexsearch:
+  bssc-fluentd:
+    fluentd:
+      persistence:
+        size: 10Gi  # fluentd-dir-${release.name}-altiplano-fluentd
+  bssc-indexsearch:
+    persistence:
+      size: 80Gi  # datadir-${release.name}-altiplano-indexsearch-data
+      managerStorage: 1Gi  # managerdir-${release.name}-altiplano-indexsearch-manager
+      backup:
+        backupStorage: 25Gi  # ${release.name}-altiplano-indexsearch-backup-pvclaim
+    backup_restore:
+      size: 25Gi  # ${release.name}-altiplano-indexsearch-pvc
+    cbur:
+      cbura:
+        tmp_size: 50Gi  # ${release.name}-altiplano-indexsearch-cbur-tmp-pvc
+
+altiplano-kafka:
+  DataStorage: "80Gi"  # kafka-data-dir-altiplano-kafka
+  LogStorage: "10Gi"  # kafka-log-dir-altiplano-kafka
+  ckaf-zookeeper:
+    dataStorage: "10Gi"  # zookeeper-data-dir-altiplano-zookeeper
+    logStorage: "10Gi"  # zookeeper-log-dir-altiplano-zookeeper
+
+altiplano-mariadb:
+  mariadb:
+    persistence:
+      size: 200Gi  # datadir-${release.name}-altiplano-mariadb-mariadb
+      backup:
+        size: 10Gi  # backupdir-${release.name}-altiplano-mariadb-mariadb
+      temp:
+        size: 5Gi  # tempdir-${release.name}-altiplano-mariadb-mariadb
+  cbur:
+    persistence:
+      cburtmp:
+        size: 20Gi  # cburtmp-${release.name}-altiplano-mariadb-mariadb
+
+altiplano-nspos-rabbitmq:
+  persistence:
+    data:
+      size: 8Gi  # data-altiplano-nspos-rabbitmq
+    log:
+      size: 8Gi  # log-altiplano-nspos-rabbitmq
+
+altiplano-opentsdb-cluster:
+  altiplano-hbase:
+    persistence:
+      size: 1Gi  # backup-${release.name}-altiplano-hbase-master
+    cbur:
+      persistence:
+        cburtmp:
+          size: 3Gi  # cburtmp-${release.name}-altiplano-hbase-master
+  altiplano-hdfs:
+    persistence:
+      journalNode:
+        size: 10Gi  # dfs-${release.name}-altiplano-hdfs-journalnode
+      nameNode:
+        size: 2Gi  # dfs-${release.name}-altiplano-hdfs-namenode
+      dataNode:
+        size: 150Gi  # dfs-${release.name}-altiplano-hdfs-datanode
+  altiplano-opentsdb:
+    persistence:
+      size: 1Gi  # opentsdb-pvclaim
+    cbur:
+      persistence:
+        cburtmp:
+          size: 3Gi  # opentsdb-cburtmp-pvclaim
+
+altiplano-long-retention-opentsdb:
+  persistence:
+    size: 1Gi  # long-retention-opentsdb-pvclaim
+  cbur:
+    persistence:
+      cburtmp:
+        size: 3Gi  # long-retention-opentsdb-cburtmp-pvclaim
+
+altiplano-pts:
+  alertmanager:
+    persistentVolume:
+      size: 2Gi  # ${release.name}-altiplano-pts-alertmanager
+  server:
+    persistentVolume:
+      size: 16Gi  # altiplano-pts-server
+
+altiplano-redis:
+  server:
+    persistence:
+      size: 3Gi  # datadir-${release.name}-altiplano-redis-server
+  admin:
+    persistence:
+      size: 1Gi  # datadir-${release.name}-altiplano-redis-admin
+
+altiplano-sso:
+  cbur:
+    backupStorage:
+      size: 400Mi  # backup-altiplano-sso
+  cmdb:
+    mariadb:
+      persistence:
+        size: 20Gi  # datadir-${release.name}-cmdb-mariadb
+        backup:
+          size: 20Gi  # backupdir-${release.name}-cmdb-mariadb
+        temp:
+          size: 5Gi  # tempdir-${release.name}-cmdb-mariadb
+    admin:
+      persistence:
+        size: 20Gi  # datadir-${release.name}-cmdb-admin
+    cbur:
+      persistence:
+        cburtmp:
+          size: 20Gi  # cburtmp-${release.name}-cmdb-mariadb
+
+altiplano-webdav:
+  persistence:
+    size: 10Gi  # webdav-pvclaim
+  cbur:
+    persistence:
+      cburtmp:
+        size: 20Gi  # webdav-cburtmp-pvclaim

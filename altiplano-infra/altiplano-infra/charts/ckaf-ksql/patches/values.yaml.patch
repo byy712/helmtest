@@ -1,0 +1,140 @@
+--- base_ksql/ckaf-ksql-8.1.0/ckaf-ksql/values.yaml	2024-03-28 23:41:09.000000000 +0530
++++ charts/ckaf-ksql/values.yaml	2024-04-25 13:10:04.518070011 +0530
+@@ -185,6 +185,8 @@
+ timeZone:
+   timeZoneEnv: ""
+ 
++accessRoleLabel: internal-access
++
+ #unifiedLogging.extension has precedence over global.unifiedLogging.extension
+ #extension accepts key: value pair
+ #example:
+@@ -205,7 +207,7 @@
+     facility:
+     protocol: "UDP"
+ # Enable this flag to set default pod CPU resources limit in all containers. Default value is set to false
+-enableDefaultCpuLimits:
++enableDefaultCpuLimits: true
+ #If disablePodNamePrefixRestrictions set to true, it will not limit the length of <podNamePrefix> to 30 characters
+ disablePodNamePrefixRestrictions:
+ # Enable this flag to set resource name with new HBP 3.7 convention. The default values is set to false. If the flag is set to true during upgrade, there can be data loss due to name change.
+@@ -229,7 +231,7 @@
+ name: Analytics
+ 
+ certManager:
+-  enabled:
++  enabled: false
+ 
+ # workload level annotations/labels
+ ksqlDeploymentset:
+@@ -332,11 +334,11 @@
+ 
+ ## Image Info
+ # KSQL server image
+-image: 
+-imageRepo:
++image: ckaf/ckaf-ksql
++imageRepo: ckaf/ckaf-ksql
+ #imageName will be used instead of imageRepo when flatRegistry is set to true.
+-#imageName: ckaf-ksql
+-imageTag:
++imageName: ckaf-ksql
++imageTag: 9.1.0-rocky8-jre17-7.5.3-8675
+ 
+ # Kubectl image
+ kubectlImageRepo:
+@@ -393,6 +395,7 @@
+ security:
+   enabled: true
+   runAsUser: 999
++  runAsGroup: 998
+   fsGroup: 998
+   readOnlyRootFilesystem: true
+   seccompProfile:
+@@ -518,6 +521,19 @@
+   #route.openshift.io/termination: "passthrough"
+   #Use this annotation when the chart install at openshift environment.
+   #When this annotation is used make sure to set path to '' and pathType to ImplementationSpecific
++ingressNbi:
++  enabled: false
++  tls:
++    enabled: true
++    secretName: ""
++  path:
++  pathType: Prefix
++  annotations: {}
++    #If user wants to modify the default path, please add the annotation
++    #"nginx.ingress.kubernetes.io/rewrite-target:" in line with the path.
++    #route.openshift.io/termination: "passthrough"
++    #Use this annotation when the chart install at openshift environment.
++    #When this annotation is used make sure to set path to '' and pathType to ImplementationSpecific
+ 
+ JmxExporter:
+   enabled: true
+@@ -731,10 +747,36 @@
+   tls:
+     enabledProtocols: "TLSv1.2,TLSv1.3"
+     protocol: "TLSv1.2"    
++  ssl:
++    # To connect kafka(TLS enabled) and start ksql with HTTPS protocol, KSQL uses common keystore and truststore mounted using
++    # below secret. Make sure to copy public cert of Kafka in truststore or use common CA.
++    enabledProtocols: "TLSv1.2,TLSv1.3"
++    protocol: "TLSv1.2"    
++    kafkarestssl:
++      sslSecretName: 
++      sslKeyStoreLocationKey: 
++      sslTrustStoreLocationKey: 
++      sslKeyStorePassKey: 
++      sslTrustStorePassKey: 
++      sslKeyPassKey: 
++      sslBasePath: /etc/ksql/ssl/kafka
++      # Configures ksql to request client authentication.
++      # To enable set it to true
++      clientAuth: false         
++    schema:
++      sslEnabledProtocols: "TLSv1.2,TLSv1.3"
++      sslProtocol: "TLSv1.2"
++      sslSecretName: 
++      sslKeyStoreLocationKey: 
++      sslTrustStoreLocationKey: 
++      sslKeyStorePassKey: 
++      sslTrustStorePassKey: 
++      sslKeyPassKey: 
++      sslBasePath: /etc/ksql/ssl/schema
+   
+   #this section is used when certmanager is enabled
+   certificate:
+-    enabled: true
++    enabled: false
+     # If left empty, it will be generated automatically.
+     secretName:
+     duration: 8760h
+@@ -768,3 +810,27 @@
+       name: ncms-ca-issuer
+       kind: ClusterIssuer
+       group: cert-manager.io
++
++#certificate
++initContainer:
++  image:
++    name: fnms-init-container
++    tag: nokia-1.0.9
++    pullPolicy: IfNotPresent
++certificates:
++  secrets:
++    altiplano_keystore_secrets: altiplano-keystore-secrets
++  fileNames:
++    kafka_server_key_pem: kafka-server-key.pem
++    kafka_server_key_pass: kafka-server-key.pass
++    kafka_server_cert_pem: kafka-server-cert.pem
++    altiplano_keystore_password: keystore-password
++    kafka_server_keystore_jks: server.jks
++    kafka_server_trustchain_cert_pem: kafka-server-trustchain-cert.pem
++    kafka_server_truststore_jks: trustchain.jks
++
++defaultSecurity:
++  enabled: true
++  runAsUser: 1000
++  fsGroup: 1000
++  runAsGroup: 1000
+

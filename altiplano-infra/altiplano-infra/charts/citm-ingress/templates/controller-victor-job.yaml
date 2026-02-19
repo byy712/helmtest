@@ -1,0 +1,364 @@
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: {{ include "csf-common-lib.v3.resourceName" (tuple . "Job" "victor-lease") }}
+  labels:
+    app: {{ .Release.Name }}
+    chart: "{{ .Chart.Name }}-{{ .Chart.Version }}"
+    release: "{{ .Release.Name }}"
+    heritage: "{{ .Release.Service }}"
+    {{- include "citm-ingress.commonLabels" . | indent 4 }}
+  annotations:
+    "helm.sh/hook": post-upgrade, pre-rollback, pre-install
+    "helm.sh/hook-delete-policy": before-hook-creation, hook-succeeded
+spec:
+  backoffLimit: 1
+  activeDeadlineSeconds: {{ .Values.controller.activeDeadlineSeconds }}
+  template:
+    metadata:
+      name: "{{ .Release.Name }}"
+      annotations:
+        sidecar.istio.io/inject: "false"
+      labels:
+        altiplano-role: {{ .Values.accessRoleLabel }}
+        app.kubernetes.io/managed-by: {{ .Release.Service | quote }}
+        app.kubernetes.io/instance: {{ .Release.Name | quote }}
+        {{- include "citm-ingress.commonLabels" . | indent 8 }}
+    spec:
+      serviceAccountName: {{ if .Values.rbac.enabled }}"{{ .Release.Name }}-victor"{{ else }}"{{ tpl .Values.rbac.serviceAccountName . }}"{{ end }}
+      securityContext:
+      {{- if not (eq (include "citm-ingress.securityContextfsGroup" . ) "auto") }}
+          fsGroup: {{ include "citm-ingress.securityContextfsGroup" . }}
+      {{- end }}
+      {{- if not (eq (include "citm-ingress.securityContextrunAsUser" . ) "auto") }}
+          runAsUser: {{ include "citm-ingress.securityContextrunAsUser" . }}
+      {{- end }}
+      {{- if not (eq (include "citm-ingress.securityContextrunAsGroup" . ) "auto") }}
+          runAsGroup: {{ include "citm-ingress.securityContextrunAsGroup" . }}
+      {{- end }}
+      restartPolicy: Never
+      {{- include "citm-ingress.imagePullSecrets" . | indent 6 }}
+      containers:
+      - name: {{ include "csf-common-lib.v1.containerName" (tuple . ( include "citm-ingress.containerNameSuffix" (tuple ( include "citm-ingress.name" .) "victor-lease" )))  }}
+        image: "{{ include "citm-ingress.imageMapper" (tuple $ .Values.controller .Values.internalCitmRegistry) }}"
+        terminationMessagePath: {{ .Values.controller.terminationMessagePath }}
+        terminationMessagePolicy: {{ .Values.controller.terminationMessagePolicy }}
+        securityContext:
+          readOnlyRootFilesystem: {{ .Values.controller.hook.containerSecurityContext.readOnlyRootFilesystem }}
+          allowPrivilegeEscalation: {{ .Values.controller.hook.containerSecurityContext.privilegeEscalation }}
+          runAsNonRoot: {{ .Values.controller.hook.containerSecurityContext.runAsNonRoot }}
+         {{- if eq (include "citm-ingress.addSeccompProfile" .) "true" }}
+          seccompProfile:
+            type: {{ .Values.controller.hook.containerSecurityContext.seccompProfile.type }}
+         {{- if eq .Values.controller.hook.containerSecurityContext.seccompProfile.type "Localhost" }}
+            localhostProfile: {{ .Values.controller.hook.containerSecurityContext.seccompProfile.path }}
+         {{- end }}
+         {{- end }}
+          capabilities:
+            drop:
+              - {{ .Values.controller.hook.containerSecurityContext.dropCapabilities }}
+         {{- if eq .Values.controller.hook.containerSecurityContext.seLinuxOptions.enabled true }}
+          seLinuxOptions:
+            level: {{ .Values.controller.hook.containerSecurityContext.seLinuxOptions.level }}
+            role: {{ .Values.controller.hook.containerSecurityContext.seLinuxOptions.role }}
+            type: {{ .Values.controller.hook.containerSecurityContext.seLinuxOptions.type }}
+            user: {{ .Values.controller.hook.containerSecurityContext.seLinuxOptions.user }}
+         {{- end }}
+        resources:
+{{ toYaml .Values.controller.hook.resources | indent 10 }}
+        command:
+        - sh
+        - -c
+        - |
+          /kubectl -n {{ .Release.Namespace }} delete cm {{ tpl .Values.controller.electionID . }}-{{ .Values.controller.ingressClass }}
+          /kubectl -n {{ .Release.Namespace }} delete cm ingress-controller-leader-{{ .Values.controller.ingressClass }}
+          /kubectl -n {{ .Release.Namespace }} delete cm {{ tpl .Values.controller.electionID . }}
+          /kubectl -n {{ .Release.Namespace }} delete lease {{ tpl .Values.controller.electionID . }}
+          exit 0
+      nodeSelector:
+{{- if .Values.controller.runOnEdge }}
+        is_edge: 'true'
+{{- end }}
+{{- if .Values.controller.nodeSelector }}
+{{ toYaml .Values.controller.nodeSelector | indent 8 }}
+{{- end }}
+{{- if .Values.controller.affinity }}
+      affinity:
+{{ toYaml .Values.controller.affinity | indent 8 }}
+{{- end }}
+{{- if .Values.controller.tolerations }}
+      tolerations:
+{{ toYaml .Values.controller.tolerations | indent 8 }}
+{{- end }}
+---
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: {{ include "csf-common-lib.v3.resourceName" (tuple . "Job" "victor-postdel") }}
+  labels:
+    app: {{ .Release.Name }}
+    chart: "{{ .Chart.Name }}-{{ .Chart.Version }}"
+    release: "{{ .Release.Name }}"
+    heritage: "{{ .Release.Service }}"
+    {{- include "citm-ingress.commonLabels" . | indent 4 }}
+  annotations:
+    "helm.sh/hook": post-delete
+    "helm.sh/hook-delete-policy": before-hook-creation, hook-succeeded
+spec:
+  backoffLimit: 1
+  activeDeadlineSeconds: {{ .Values.controller.activeDeadlineSeconds }}
+  template:
+    metadata:
+      name: "{{ .Release.Name }}"
+      annotations:
+        sidecar.istio.io/inject: "false"
+      labels:
+        altiplano-role: {{ .Values.accessRoleLabel }} 
+        app.kubernetes.io/managed-by: {{ .Release.Service | quote }}
+        app.kubernetes.io/instance: {{ .Release.Name | quote }}
+        {{- include "citm-ingress.commonLabels" . | indent 8 }}
+    spec:
+      serviceAccountName: {{ if .Values.rbac.enabled }}"{{ .Release.Name }}-victor"{{ else }}"{{ tpl .Values.rbac.serviceAccountName . }}"{{ end }}
+      securityContext:
+      {{- if not (eq (include "citm-ingress.securityContextfsGroup" . ) "auto") }}
+          fsGroup: {{ include "citm-ingress.securityContextfsGroup" . }}
+      {{- end }}
+      {{- if not (eq (include "citm-ingress.securityContextrunAsUser" . ) "auto") }}
+          runAsUser: {{ include "citm-ingress.securityContextrunAsUser" . }}
+      {{- end }}
+      {{- if not (eq (include "citm-ingress.securityContextrunAsGroup" . ) "auto") }}
+          runAsGroup: {{ include "citm-ingress.securityContextrunAsGroup" . }}
+      {{- end }}
+      restartPolicy: Never
+      {{- include "citm-ingress.imagePullSecrets" . | indent 6 }}
+      containers:
+      - name: {{ include "csf-common-lib.v1.containerName" (tuple . ( include "citm-ingress.containerNameSuffix" (tuple ( include "citm-ingress.name" .) "victor-postdel" )))  }}
+        image: "{{ include "citm-ingress.imageMapper" (tuple $ .Values.controller .Values.internalCitmRegistry) }}"
+        terminationMessagePath: {{ .Values.controller.terminationMessagePath }}
+        terminationMessagePolicy: {{ .Values.controller.terminationMessagePolicy }}
+        securityContext:
+          readOnlyRootFilesystem: {{ .Values.controller.hook.containerSecurityContext.readOnlyRootFilesystem }}
+          allowPrivilegeEscalation: {{ .Values.controller.hook.containerSecurityContext.privilegeEscalation }}
+          runAsNonRoot: {{ .Values.controller.hook.containerSecurityContext.runAsNonRoot }}
+         {{- if eq (include "citm-ingress.addSeccompProfile" .) "true" }}
+          seccompProfile:
+            type: {{ .Values.controller.hook.containerSecurityContext.seccompProfile.type }}
+         {{- if eq .Values.controller.hook.containerSecurityContext.seccompProfile.type "Localhost" }}
+            localhostProfile: {{ .Values.controller.hook.containerSecurityContext.seccompProfile.path }}
+         {{- end }}
+         {{- end }}
+          capabilities:
+            drop:
+              - {{ .Values.controller.hook.containerSecurityContext.dropCapabilities }}
+         {{- if eq .Values.controller.hook.containerSecurityContext.seLinuxOptions.enabled true }}
+          seLinuxOptions:
+            level: {{ .Values.controller.hook.containerSecurityContext.seLinuxOptions.level }}
+            role: {{ .Values.controller.hook.containerSecurityContext.seLinuxOptions.role }}
+            type: {{ .Values.controller.hook.containerSecurityContext.seLinuxOptions.type }}
+            user: {{ .Values.controller.hook.containerSecurityContext.seLinuxOptions.user }}
+         {{- end }}
+        resources:
+{{ toYaml .Values.controller.hook.resources | indent 10 }}
+        command:
+        - sh
+        - -c
+        - |
+          {{- if not .Values.rbac.enabled }}
+          sleep {{ add  .Values.controller.terminationGracePeriodSeconds  .Values.controller.gracefulShutdownSleepSeconds }}
+          {{- end }}
+          /kubectl -n {{ .Release.Namespace }} delete cm {{ tpl .Values.controller.electionID . }}-{{ .Values.controller.ingressClass }}
+          /kubectl -n {{ .Release.Namespace }} delete cm ingress-controller-leader-{{ .Values.controller.ingressClass }}
+          /kubectl -n {{ .Release.Namespace }} delete cm {{ tpl .Values.controller.electionID . }}
+          /kubectl -n {{ .Release.Namespace }} delete lease {{ tpl .Values.controller.electionID . }}
+          exit 0
+      nodeSelector:
+{{- if .Values.controller.runOnEdge }}
+        is_edge: 'true'
+{{- end }}
+{{- if .Values.controller.nodeSelector }}
+{{ toYaml .Values.controller.nodeSelector | indent 8 }}
+{{- end }}
+{{- if .Values.controller.affinity }}
+      affinity:
+{{ toYaml .Values.controller.affinity | indent 8 }}
+{{- end }}
+{{- if .Values.controller.tolerations }}
+      tolerations:
+{{ toYaml .Values.controller.tolerations | indent 8 }}
+{{- end }}
+---
+{{- if and (eq (include "citm-ingress.getCertificate" (tuple  . "streamSSLCertificate" )) "no_certificate")  (eq (include "citm-ingress.getCertificate" (tuple  . "sslCertificate" )) "no_certificate") }}
+{{- if (contains "true" (include "citm-ingress.isCertManagerEnabled" .)) }}
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: {{ include "csf-common-lib.v3.resourceName" (tuple . "Job" "victor-secret") }}
+  labels:
+    app: {{ .Release.Name }}
+    chart: "{{ .Chart.Name }}-{{ .Chart.Version }}"
+    release: "{{ .Release.Name }}"
+    heritage: "{{ .Release.Service }}"
+  annotations:
+    "helm.sh/hook": post-delete
+    "helm.sh/hook-delete-policy": before-hook-creation, hook-succeeded
+spec:
+  backoffLimit: 1
+  activeDeadlineSeconds: {{ .Values.controller.activeDeadlineSeconds }}
+  template:
+    metadata:
+      name: "{{ .Release.Name }}"
+      annotations:
+        sidecar.istio.io/inject: "false"
+      labels:
+        altiplano-role: {{ .Values.accessRoleLabel }}
+        app.kubernetes.io/managed-by: {{ .Release.Service | quote }}
+        app.kubernetes.io/instance: {{ .Release.Name | quote }}
+        helm.sh/chart: "{{ .Chart.Name }}-{{ .Chart.Version }}"
+    spec:
+      serviceAccountName: {{ if .Values.rbac.enabled }}"{{ .Release.Name }}-victor"{{ else }}"{{ .Values.rbac.serviceAccountName }}"{{ end }}
+      securityContext:
+      {{- if not (eq (include "citm-ingress.securityContextfsGroup" . ) "auto") }}
+          fsGroup: {{ include "citm-ingress.securityContextfsGroup" . }}
+      {{- end }}
+      {{- if not (eq (include "citm-ingress.securityContextrunAsUser" . ) "auto") }}
+          runAsUser: {{ include "citm-ingress.securityContextrunAsUser" . }}
+      {{- end }}
+      {{- if not (eq (include "citm-ingress.securityContextrunAsGroup" . ) "auto") }}
+          runAsGroup: {{ include "citm-ingress.securityContextrunAsGroup" . }}
+      {{- end }}
+      restartPolicy: Never
+      {{- include "citm-ingress.imagePullSecrets" . | indent 6 }}
+      containers:
+      - name: {{ include "csf-common-lib.v1.containerName" (tuple . ( include "citm-ingress.containerNameSuffix" (tuple ( include "citm-ingress.name" .) "victor-secret" )))  }}
+        image: "{{ include "citm-ingress.imageMapper" (tuple $ .Values.controller .Values.internalCitmRegistry) }}"
+        terminationMessagePath: {{ .Values.controller.terminationMessagePath }}
+        terminationMessagePolicy: {{ .Values.controller.terminationMessagePolicy }}
+        securityContext:
+          readOnlyRootFilesystem: {{ .Values.controller.hook.containerSecurityContext.readOnlyRootFilesystem }}
+          allowPrivilegeEscalation: {{ .Values.controller.hook.containerSecurityContext.privilegeEscalation }}
+          runAsNonRoot: {{ .Values.controller.hook.containerSecurityContext.runAsNonRoot }}
+         {{- if eq (include "citm-ingress.addSeccompProfile" .) "true" }}
+          seccompProfile:
+            type: {{ .Values.controller.hook.containerSecurityContext.seccompProfile.type }}
+         {{- if eq .Values.controller.hook.containerSecurityContext.seccompProfile.type "Localhost" }}
+            localhostProfile: {{ .Values.controller.hook.containerSecurityContext.seccompProfile.path }}
+         {{- end }}
+         {{- end }}
+          capabilities:
+            drop:
+              - {{ .Values.controller.hook.containerSecurityContext.dropCapabilities }}
+         {{- if eq .Values.controller.hook.containerSecurityContext.seLinuxOptions.enabled true }}
+          seLinuxOptions:
+            level: {{ .Values.controller.hook.containerSecurityContext.seLinuxOptions.level }}
+            role: {{ .Values.controller.hook.containerSecurityContext.seLinuxOptions.role }}
+            type: {{ .Values.controller.hook.containerSecurityContext.seLinuxOptions.type }}
+            user: {{ .Values.controller.hook.containerSecurityContext.seLinuxOptions.user }}
+         {{- end }}
+        resources:
+{{ toYaml .Values.controller.hook.resources | indent 10 }}
+        command:
+        - sh
+        - -c
+        - |
+          /kubectl -n {{ .Release.Namespace }} delete secret tls-{{ template "citm-ingress.fullname" . }}
+          exit 0
+      nodeSelector:
+{{- if .Values.controller.runOnEdge }}
+        is_edge: 'true'
+{{- end }}
+{{- if .Values.controller.nodeSelector }}
+{{ toYaml .Values.controller.nodeSelector | indent 8 }}
+{{- end }}
+{{- if .Values.controller.affinity }}
+      affinity:
+{{ toYaml .Values.controller.affinity | indent 8 }}
+{{- end }}
+{{- if .Values.controller.tolerations }}
+      tolerations:
+{{ toYaml .Values.controller.tolerations | indent 8 }}
+{{- end }}
+{{- end }}
+{{- end }}
+---
+{{- if .Values.rbac.enabled }}
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: {{ .Release.Name }}-victor
+  namespace: "{{ .Release.Namespace }}"
+  labels:
+    heritage: {{ .Release.Service }}
+    release: {{ .Release.Name }}
+  annotations:
+    "helm.sh/hook": post-delete, post-upgrade, pre-rollback, pre-install
+    "helm.sh/hook-delete-policy": before-hook-creation, hook-succeeded
+    "helm.sh/hook-weight": "-43"
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  namespace: "{{ .Release.Namespace }}"
+  name: {{ .Release.Name }}-victor
+  labels:
+    release: {{ .Release.Name }}
+  annotations:
+    "helm.sh/hook": post-delete, post-upgrade, pre-rollback, pre-install
+    "helm.sh/hook-delete-policy": before-hook-creation, hook-succeeded
+    "helm.sh/hook-weight": "-42"
+rules:
+- apiGroups:
+  - ""
+  resources:
+  - configmaps
+  resourceNames:
+  - {{ tpl .Values.controller.electionID . }}-{{ .Values.controller.ingressClass }}
+  - ingress-controller-leader-{{ .Values.controller.ingressClass }}
+  - {{ tpl .Values.controller.electionID . }}
+  verbs:
+  - delete
+- apiGroups:
+  - "coordination.k8s.io"
+  resources:
+  - leases
+  resourceNames:
+  - {{ tpl .Values.controller.electionID . }}
+  verbs:
+  - delete
+{{- if and (eq (include "citm-ingress.getCertificate" (tuple  . "streamSSLCertificate" )) "no_certificate")  (eq (include "citm-ingress.getCertificate" (tuple  . "sslCertificate" )) "no_certificate") }}
+{{- if (contains "true" (include "citm-ingress.isCertManagerEnabled" .)) }}
+- apiGroups:
+  - ""
+  resources:
+  - secrets
+  resourceNames:
+  {{- if ((.Values.controller).certificate).secretName }}
+  - {{ .Values.controller.certificate.secretName }}
+  {{- else }}
+  - tls-{{ template "citm-ingress.fullname" . }}
+  {{- end }}
+  verbs:
+  - delete
+{{- end }}
+{{- end }}
+---
+kind: RoleBinding
+apiVersion: rbac.authorization.k8s.io/v1
+metadata:
+  name: {{ .Release.Name }}-victor
+  namespace: "{{ .Release.Namespace }}"
+  labels:
+    release: {{ .Release.Name }}
+  annotations:
+    "helm.sh/hook": post-delete, post-upgrade, pre-rollback, pre-install
+    "helm.sh/hook-delete-policy": before-hook-creation, hook-succeeded
+    "helm.sh/hook-weight": "-41"
+subjects:
+- kind: ServiceAccount
+  name: {{ .Release.Name }}-victor
+  namespace: "{{ .Release.Namespace }}"
+roleRef:
+  kind: Role
+  name: {{ .Release.Name }}-victor
+  apiGroup: rbac.authorization.k8s.io
+---
+{{- end }}

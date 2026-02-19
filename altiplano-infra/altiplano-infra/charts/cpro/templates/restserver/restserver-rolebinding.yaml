@@ -1,0 +1,21 @@
+{{- if and (.Values.rbac.enabled) (.Values.restrictedToNamespace) (.Values.restserver.enabled) }}
+apiVersion: {{ template "cpro.apiVersion.roleBindingApiversion" . }}
+kind: RoleBinding
+metadata:
+  labels:
+    {{- include "cpro.app.labels.v3" ( dict "root" . "context" .Values.restserver ) | nindent 4 }}
+{{- include "cpro.labelsOrAnnotations" (tuple .Values.global.labels) | indent 4}}
+  name: {{ template "cpro.prometheus.restserver.rolebinding" . }}
+  namespace: {{ .Release.Namespace }}
+  annotations:
+{{- include "cpro.labelsOrAnnotations" (tuple .Values.global.annotations) | indent 4}}
+subjects:
+  - kind: ServiceAccount
+    name: {{ template "cpro.prometheus.serviceAccount.fullname" . }}
+    namespace: {{ .Release.Namespace }}
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: {{ template "cpro.prometheus.restserver.role" . }}
+{{- end }}
+

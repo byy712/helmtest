@@ -1,0 +1,80 @@
+{{- if gt (int .Values.global.postheal) 0 }}
+{{- $job_delay := int (default .Values.hooks.jobDelay .Values.hooks.postHealJob.jobDelay) }}
+
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: {{ printf "%s-%s" (include "cmdb.pod-prefix" .) (.Values.hooks.postHealJob.name | trunc 63) }}
+  labels:
+    {{- include "cmdb-admin.labels" (tuple . "job") | nindent 4 }}
+  annotations:
+    {{- include "cmdb-admin.annotations" (tuple . "job") | nindent 4 }}
+spec:
+  backoffLimit: {{ .Values.hooks.postHealJob.backoffLimit | default 3 }}
+  activeDeadlineSeconds: {{ .Values.hooks.postHealJob.activeDeadlineSeconds | default .Values.admin.activeDeadlineSeconds }}
+  template:
+    metadata:
+      labels:
+        altiplano-role: {{ .Values.accessRoleLabel }}
+        {{- include "cmdb-admin.labels" (tuple . "pod") | nindent 8 }}
+        type: admin
+        ncms-hook: postheal
+      annotations:
+        {{- include "cmdb-admin.annotations" (tuple . "pod") | nindent 8 }}
+        {{- include "cmdb.istio-annotation" . | nindent 8 }}
+    spec:
+      {{- include "cmdb.get_security_context" (tuple . "pod" "admin" 1773) | nindent 6 }}
+      {{- include "cmdb.job-minimal-sa" . | nindent 6 }}
+      {{- include "cmdb.get_image_pull_secrets" (tuple . "admin") | nindent 6 }}
+      restartPolicy: {{ .Values.hooks.postHealJob.restartPolicy | default "Never" }}
+
+      containers:
+      - name: {{ print (include "cmdb.container-prefix" .) .Values.hooks.postHealJob.containerName }}
+        {{- include "cmdb-admin.image" . | nindent 8 }}
+        {{- include "cmdb.get_security_context" (tuple . "container" "admin" 1773) | nindent 8 }}
+        args: [ "heal" ]
+        env:
+        - name: HOOK_TYPE
+          value: "post"
+        {{- if gt (int .Values.hooks.postHealJob.timeout) 0 }}
+        - name: HOOK_TIMEOUT
+          value: "{{ .Values.hooks.postHealJob.timeout }}"
+        {{- end }}
+        {{- if and .Values.admin.debug (gt $job_delay 0) }}
+        - name: HOOK_DELAY
+          value: "{{ $job_delay }}"
+        {{- end }}
+        - name: DEBUG
+          value: {{ .Values.hooks.postHealJob.debug | default .Values.admin.debug | quote }}
+        - name: CLUSTER_TYPE
+          value: "{{ .Values.cluster_type }}"
+        - name: CLUSTER_NAME
+          value: "{{ .Values.cluster_name | default .Release.Name | trunc 32 }}"
+        {{- include "cmdb-k8s.env" . | nindent 8 }}
+        {{- include "cmdb-admin.service" . | nindent 8 }}
+        resources:
+          {{ toYaml .Values.admin.resources | nindent 10 }}
+        volumeMounts:
+        - name: cluster-cm
+          mountPath: /chart
+        - name: event-cm
+          mountPath: /event
+
+      volumes:
+      - name: cluster-cm
+        configMap:
+          name: {{ template "cmdb.fullname" . }}-mariadb-cluster
+      - name: event-cm
+        configMap:
+          name: {{ template "cmdb.fullname" . }}-admin-event
+
+    {{- if .Values.admin.tolerations }}
+      tolerations:
+        {{ toYaml .Values.admin.tolerations | nindent 8 }}
+    {{- end }}
+    {{- if .Values.admin.nodeSelector }}
+      nodeSelector:
+        {{ toYaml .Values.admin.nodeSelector | nindent 8 }}
+    {{- end }}
+
+{{- end }}

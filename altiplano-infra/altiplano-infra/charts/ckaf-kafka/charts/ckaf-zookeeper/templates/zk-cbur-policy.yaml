@@ -1,0 +1,39 @@
+{{- if .Values.cbur.enabled }}
+apiVersion: {{ template "ckaf-zookeeper.cbur.apiVersion" . }}
+kind: BrPolicy
+metadata:
+  name: {{ template "ckaf-zookeeper.name" . }}
+  namespace: {{ template "ckaf-zookeeper.namespace" . }}
+  labels:
+{{ include "ckaf-zookeeper.commonlabels" . | indent 4 }}
+{{- include "csf-common-lib.v1.customLabels" (tuple .Values.global.labels) | indent 4 }}
+  annotations:
+{{- include "csf-common-lib.v1.customAnnotations" (tuple .Values.global.annotations) | indent 4 }}
+spec:
+  weight: 2
+  selector:
+    matchLabels:
+      app: {{ .Chart.Name }}
+      release: {{ .Release.Name | quote }}
+  volumes:
+  - zookeeper-data-dir
+  - zk-transaction-log-backup
+  backend:
+    mode: "{{ .Values.cbur.backendMode }}"
+  cronSpec: "{{ .Values.cbur.cronJob }}"
+  autoEnableCron: {{ .Values.cbur.autoEnableCron }}
+  autoUpdateCron: {{ .Values.cbur.autoUpdateCron }}
+  k8sType: statefulset
+  brOption: 2
+  scheduleEnable: true
+  maxiCopy: {{ .Values.cbur.maxCopy }}
+  ignoreFileChanged: true
+  hooks:
+  - name: ckaf-zookeeper-server
+    commands:
+      preBackupCmd: ["sh", "-c", "cp -rf /var/log/zookeeper/version-2 /zk-transaction-log-backup"]
+      postBackupCmd: ["sh", "-c" , "rm -rf /zk-transaction-log-backup/*"]
+      preRestoreCmd: []
+      postRestoreCmd: ["sh", "-c", "cp -rf /zk-transaction-log-backup/version-2 /var/log/zookeeper/ && rm -rf /zk-transaction-log-backup/*"]
+{{- end }} #cburEnable
+ 

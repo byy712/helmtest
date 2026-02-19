@@ -1,0 +1,19 @@
+{{ if not .Values.unifiedLogging.extensionConfigMap }}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  annotations:
+    "restartOnUpdate": "true"
+    {{- include "ckey.customAnnotations" (tuple .Values.global.annotations) | indent 4 }}
+  name: {{ template "ckey.fullName" . }}-logging-extensions
+  labels:
+    app: {{ template "ckey.fullName" . }}
+    chart: "{{ .Chart.Name }}-{{ .Chart.Version }}"
+    release: "{{ .Release.Name }}"
+    heritage: "{{ .Release.Service }}"
+    {{- include "ckey.customLabels" (tuple .Values.global.labels ) | indent 4 }}
+    {{- include "ckey.commonLabels" . | indent 4 }}
+data:
+  logging-extensions.json: |-
+    {{ merge .Values.unifiedLogging.extension .Values.global.unifiedLogging.extension | toJson }}
+{{ end }}

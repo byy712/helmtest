@@ -1,0 +1,816 @@
+apiVersion: {{ include "ckaf-mirror-maker.deploymentApiVersion" . }}
+kind: Deployment
+metadata:
+  name: {{ include  "ckaf-mirror-maker.resourceName" (tuple . "Deployment" "") }}
+  labels:
+{{ include "ckaf-mirror-maker.commonLabels" . | indent 4 }}
+{{- include "csf-common-lib.v1.customLabels" (tuple .Values.mmDeployment.labels .Values.custom.mmDeployment.labels .Values.global.labels) | indent 4 }}
+    app: {{ .Chart.Name }}
+    release: {{ .Release.Name }}
+    heritage: {{ .Release.Service }}
+  annotations:
+{{- include "csf-common-lib.v1.customAnnotations" (tuple .Values.mmDeployment.annotations .Values.custom.mmDeployment.annotations .Values.global.annotations) | indent 4 }}
+    seccomp.security.alpha.kubernetes.io/allowedProfileNames: {{ .Values.global.seccompAllowedProfileNames }}
+    seccomp.security.alpha.kubernetes.io/defaultProfileName: {{ .Values.global.seccompDefaultProfileName }}
+spec:
+  replicas: {{ .Values.replicaCount }}
+  strategy:
+{{ toYaml .Values.strategy | indent 4 }}
+  selector:
+    matchLabels:
+      release: {{ .Release.Name }}
+      app: {{ .Chart.Name }}
+  template:
+    metadata:
+      labels:
+        altiplano-role: {{ .Values.accessRoleLabel }}
+{{- include "csf-common-lib.v1.customLabels" (tuple .Values.mmPodLevel.labels .Values.custom.mmPodLevel.labels .Values.global.labels) | indent 8 }}
+{{ include "ckaf-mirror-maker.commonLabels" . | indent 8 }}
+        app: {{ .Chart.Name }}
+        release: {{ .Release.Name }}
+      annotations:
+{{- include "csf-common-lib.v1.customAnnotations" (tuple .Values.mmPodLevel.annotations .Values.custom.mmPodLevel.annotations .Values.global.annotations) | indent 8 }}
+        {{- if .Values.global.istio.enabled }}
+        sidecar.istio.io/inject: "true"
+        {{- else }}
+        sidecar.istio.io/inject: "false"
+        {{- end }}
+    spec:
+      affinity: {{- include "csf-common-lib.v3.podAntiAffinity" (tuple . .Values) | indent 8}}
+    {{- with .Values.hostAliases }}
+      hostAliases:
+{{ toYaml . | indent 8 }}
+    {{- end }}
+      {{- if eq .Values.security.enabled true }}
+      securityContext:
+        runAsNonRoot: true
+        {{- if ( ne ( toString (.Values.security.fsGroup)) "auto" ) }}
+        fsGroup: {{ .Values.security.fsGroup }}
+        {{- end }}
+        {{- if eq (include "ckaf-mirror-maker.renderSeccompProfile" .) "true" }}
+        seccompProfile:
+          type: {{ .Values.security.seccompProfile.type }}
+        {{- end }}
+      {{- end }}
+      {{- include "ckaf-mirror-maker.tolerations" . | indent 6 }}
+      {{- if .Values.global.rbac.enabled }}
+      serviceAccountName: {{ template "ckaf-mirror-maker.serviceAccountName" . }}
+      {{- end }}
+      {{- if .Values.mirrorMakerNodeSelector.enable }}
+      nodeSelector:
+      {{ toYaml .Values.mirrorMakerNodeSelector.nodeLabel | indent 8 }}
+      {{- end }}
+      {{- if .Values.priorityClassName }}
+      priorityClassName: {{ .Values.priorityClassName | quote }}
+      {{- else if .Values.global.priorityClassName }}
+      priorityClassName: {{ .Values.global.priorityClassName | quote }}
+      {{- end }}
+      {{- if  coalesce .Values.imagePullSecrets .Values.global.imagePullSecrets }}
+      imagePullSecrets:
+      {{- range coalesce .Values.imagePullSecrets  .Values.global.imagePullSecrets }}
+        - name: {{ . }}
+      {{- end }}
+      {{- end }}
+      automountServiceAccountToken: true
+      {{- if .Values.topologySpreadConstraints }}
+      topologySpreadConstraints: {{- include "csf-common-lib.v2.topologySpreadConstraints" (tuple . .Values ) | nindent 8 }}
+      {{- end }}
+      initContainers:
+      - name: init-swo-container-{{ .Chart.Name }}
+        {{- if eq .Values.global.flatRegistry true }}
+        image: "{{ .Values.global.registry }}/{{ .Values.kubectlImageName }}:{{ .Values.kubectlTag }}"
+        {{- else }}
+        image: "{{ coalesce .Values.global.registry1 .Values.global.registry }}/{{ include "ckaf-mirror-maker.kubectlImageRepo" . }}:{{ .Values.kubectlTag }}"
+        {{- end }}
+        command: [ "/bin/sh", "-c" ]
+        securityContext:
+          runAsNonRoot: {{ .Values.initContainer.securityContext.runAsNonRoot | default true }}
+          runAsUser: {{ .Values.initContainer.securityContext.runAsUser | default 1000 }}
+          runAsGroup: {{ .Values.initContainer.securityContext.runAsGroup | default 1000 }}
+        args:
+          - |
+              beforeGeoSite=$(cat /etc/kafka/geo-site/beforeGeoSite)
+              currentGeoSite=$(cat /etc/kafka/geo-site/currentGeoSite)
+              echo "beforeGeoSite:" $beforeGeoSite
+              echo "currentGeoSite:" $currentGeoSite
+              if [ -n "$beforeGeoSite" ] && [ "$currentGeoSite" != "$beforeGeoSite" ] && [ "$currentGeoSite" == "true" ]
+              then
+                totalPair=$(env | grep MIRROR_MAKER_PAIR | wc -l)
+                for ((i=0; i<$totalPair; i++)); do
+                  purgeKafkaTopic=PURGE_KAFKA_TOPIC_"$i"
+                  if [ ${!purgeKafkaTopic} == "true" ]
+                  then
+                    kafkaTopicPair=MIRROR_MAKER_PAIR_"$i"
+                    siteName=$(echo ${!kafkaTopicPair} | awk -F',' '{print $1}' | tr '[:lower:]' '[:upper:]')
+                    bootstrapServerName=MIRROR_MAKER_"$siteName"_BOOTSTRAP_SERVERS
+                    bootstrapServer=$(echo ${!bootstrapServerName})
+                    /etc/kafka/scripts/purge-kafka-topics.sh {{ .Release.Namespace }} $bootstrapServer
+                  fi
+                done
+              fi
+        env:
+        {{- range $index, $mirror := .Values.mirrorMakerConfig.mirrors }}
+          {{- $srcCluster := .sourceCluster }}
+          {{- $targetCluster := .targetCluster }}
+          {{- if ne $srcCluster "" }}
+        - name: {{ printf "MIRROR_MAKER_PAIR_%d" $index }}
+          value: {{ printf "%s,%s" $srcCluster $targetCluster }}
+          {{- end  }}
+          {{- $purgeKafkaTopic := index $mirror "purgeKafkaTopic" }}
+            {{- if (not $purgeKafkaTopic) }}
+        - name: {{ printf "PURGE_KAFKA_TOPIC_%d" $index }}
+          value: "false"
+            {{- else }}
+              {{- if ne $purgeKafkaTopic "" }}
+        - name: {{ printf "PURGE_KAFKA_TOPIC_%d" $index }}
+          value: {{ $purgeKafkaTopic | quote }}
+              {{- else }}
+        - name: {{ printf "PURGE_KAFKA_TOPIC_%d" $index }}
+          value: "false"
+              {{- end }}
+            {{- end }}
+        {{- end }}
+        {{- range $cluster := .Values.mirrorMakerConfig.clusters }}
+          {{- $alias := .alias }}
+          {{- range $clusterKey, $clusterValue := $cluster }}
+            {{- if eq $clusterKey "bootstrap.servers" }}
+        - name: {{ printf "MIRROR_MAKER_%s_BOOTSTRAP_SERVERS" $alias | upper  }}
+          value: {{ $clusterValue | quote }}
+            {{- end  }}
+          {{- end  }}
+        {{- end  }}
+        volumeMounts:
+        {{- if .Release.IsUpgrade }}
+        - name: scripts
+          mountPath: /etc/kafka/scripts/
+        - name: geo-site
+          mountPath: /etc/kafka/geo-site/
+        {{- end }}
+      - name: fnms-init-container-{{ .Chart.Name }}
+        image: {{ .Values.global.registry }}/{{ .Values.initContainer.image.name }}:{{ .Values.initContainer.image.tag }}
+        env:
+          - name: keystore_jks_pass
+            valueFrom:
+              secretKeyRef:
+                name: {{ .Values.certificates.secrets.altiplano_keystore_secrets }}
+                key: {{ .Values.certificates.fileNames.altiplano_keystore_password }}
+          - name: keyfile
+            value: /etc/altiplano/certificates/secrets/{{ .Values.certificates.fileNames.kafka_server_key_pem }}
+          - name: keyfilepass
+            value: /etc/altiplano/certificates/secrets/{{ .Values.certificates.fileNames.kafka_server_key_pass }}
+          - name: certfile
+            value: /etc/altiplano/certificates/secrets/{{ .Values.certificates.fileNames.kafka_server_cert_pem }}
+          - name: keystore_jks
+            value: /etc/kafka/secrets/ssl/..data/{{ .Values.certificates.fileNames.kafka_server_keystore_jks }}
+          - name: truststore
+            value: /etc/altiplano/certificates/secrets/{{ .Values.certificates.fileNames.kafka_server_trustchain_cert_pem }}
+          - name: truststore_jks
+            value: /etc/kafka/secrets/ssl/..data/{{ .Values.certificates.fileNames.kafka_server_truststore_jks }}
+          - name: keystorepasswordfile
+            value: {{ .Values.certificates.fileNames.altiplano_keystore_password }}
+        command: [ "/bin/sh", "-c" ]
+        securityContext:
+          runAsNonRoot: {{ .Values.initContainer.securityContext.runAsNonRoot | default true }}
+          runAsUser: {{ .Values.initContainer.securityContext.runAsUser | default 1000 }}
+          runAsGroup: {{ .Values.initContainer.securityContext.runAsGroup | default 1000 }}
+        args:
+          - |
+            /opt/init-container/pem-to-keystore.sh $keyfile $keyfilepass $certfile $keystore_jks_pass $keystore_jks $truststore $keystore_jks_pass $truststore_jks
+            cp /etc/altiplano/certificates/storepass/{{ .Values.certificates.fileNames.altiplano_keystore_password }} /etc/kafka/secrets/ssl/..data/
+        {{- range $clusters := .Values.mirrorMakerConfig.clusters }}
+        {{- $alias := .alias }}
+        {{- with .ssl }}
+        {{- if eq .enabled true }}
+            cp /etc/kafka/secrets/ssl/..data/{{ .certificates.fileNames.kafka_server_keystore_jks }} /etc/mirror-maker/secrets/ssl/{{$alias}}/{{$alias}}_keystore
+            cp /etc/kafka/secrets/ssl/..data/{{ .certificates.fileNames.kafka_server_truststore_jks }} /etc/mirror-maker/secrets/ssl/{{$alias}}/{{$alias}}_truststore
+            cp /etc/kafka/secrets/ssl/..data/{{ .certificates.fileNames.altiplano_keystore_password }} /etc/mirror-maker/secrets/ssl/{{$alias}}/.{{$alias}}_keyStoreCred
+            cp /etc/kafka/secrets/ssl/..data/{{ .certificates.fileNames.altiplano_keystore_password }} /etc/mirror-maker/secrets/ssl/{{$alias}}/.{{$alias}}_trustStoreCred
+            cp /etc/kafka/secrets/ssl/..data/{{ .certificates.fileNames.altiplano_keystore_password }} /etc/mirror-maker/secrets/ssl/{{$alias}}/.{{$alias}}_keyCred
+        {{- end }}
+        {{- end }}
+        {{- end }}
+        volumeMounts:
+        {{- range $clusters := .Values.mirrorMakerConfig.clusters }}
+        {{- $alias := .alias }}
+        {{- with .ssl }}
+        {{- if eq .enabled true }}
+        - name: {{ printf "mirror-maker-certs-%s" $alias }}
+          mountPath: {{ printf "/etc/mirror-maker/secrets/ssl/%s" $alias | quote }}
+        {{- end }}
+        {{- end }}
+        {{- end }}
+        - name: ssl
+          mountPath: /etc/kafka/secrets/ssl/
+        - name: ssl-data
+          mountPath: /etc/kafka/secrets/ssl/..data/
+        - name: altiplano-kafka-certs
+          mountPath: /etc/altiplano/certificates/secrets/
+        - name: altiplano-keystore-password
+          mountPath: /etc/altiplano/certificates/storepass/
+      - name: init-{{ .Chart.Name }}
+        image: {{ .Values.global.registry }}/{{ .Values.image.repository }}:{{ .Values.image.tag }}
+        imagePullPolicy: "{{ .Values.init.pullPolicy }}"
+        command: ["sh","-c","until [ $ALTIPLANO_GEO_ACTIVE_SITE == true ]; do echo waiting for ALTIPLANO_GEO_ACTIVE_SITE to be true; sleep 10; done ; ./bin/initMirrorMaker.sh;"]
+        {{- if eq .Values.security.enabled true }}
+        securityContext:
+        {{- if ( ne ( toString ( .Values.security.runAsUser )) "auto" ) }}
+          runAsUser: {{ .Values.security.runAsUser }}
+          {{- if .Values.security.runAsGroup }}
+          runAsGroup: {{ .Values.security.runAsGroup }}
+          {{- end }}
+        {{- end }}
+          allowPrivilegeEscalation: false
+          readOnlyRootFilesystem: {{ .Values.security.readOnlyRootFilesystem | default true }}
+          privileged: false
+          capabilities:
+             drop:
+               - all
+          {{- end }}
+        resources:
+{{ toYaml .Values.initContainerResources | indent 10 }}
+        volumeMounts:
+        - name: init-tmp
+          mountPath: /etc/kafka/sites-config
+        - name: ssl-data
+          mountPath: /etc/kafka/secrets/ssl/..data/
+        {{- range $clusters := .Values.mirrorMakerConfig.clusters }}
+        {{- $alias := .alias }}
+        {{- with .ssl }}
+        {{- if eq .enabled true }}
+        - name: {{ printf "mirror-maker-certs-%s" $alias }}
+          mountPath: {{ printf "/etc/mirror-maker/secrets/ssl/%s" $alias | quote }}
+        {{- end }}
+        {{- end }}
+        {{- end }}
+    {{- range $clusters := .Values.mirrorMakerConfig.clusters }}
+      {{- $alias := .alias }}
+      {{- with .saslKrb }}
+      {{- if eq .enabled true }}
+        - name: {{ printf "mirror-maker-sasl-krb-%s" $alias }}
+          mountPath: {{ printf "/etc/mirror-maker/secrets/sasl/%s" $alias | quote }}
+      {{- end }}
+      {{- end }}
+      {{- end }}
+        {{- if and (.Values.mirrorMakerConfig.krbConfigmapName) (.Values.mirrorMakerConfig.KrbConfKeyName) }}
+        - name: mirror-maker-sasl-krb5-conf
+          mountPath: "/etc/mirror-maker/krbConf"
+        {{- end }}
+        env:
+        {{- range $index,$mirror := .Values.mirrorMakerConfig.mirrors }}
+          {{- $srcCluster := .sourceCluster }}
+          {{- $targetCluster := .targetCluster }}
+          {{- if ne $srcCluster "" }}
+        - name: {{ printf "MIRROR_MAKER_PAIR_%d" $index }}
+          value: {{ printf "%s,%s" $srcCluster $targetCluster }}
+          {{- end  }}
+          {{- range $mirrorKey, $mirrorValue := $mirror }}
+          {{- if or (eq $mirrorKey "sourceConnector") }}
+          {{- range $configKey, $configValue := $mirrorValue.config }}
+            {{- if or (eq $configKey "replication.policy.class") }}
+        - name: {{ printf "MIRROR_MAKER_PAIR_%d_REPLICATION_POLICY" $index  }}
+          value: {{ $configValue | quote }}
+            {{- end  }}
+          {{- end  }}
+          {{- end  }}
+          {{- end  }}
+          {{- end  }}
+        - name: ALTIPLANO_GEO_ACTIVE_SITE
+          value: {{ .Values.global.ALTIPLANO_GEO_ACTIVE_SITE | quote  }}
+        {{- range $cluster := .Values.mirrorMakerConfig.clusters }}
+        {{- $alias := .alias }}
+        {{- range $clusterKey, $clusterValue := $cluster }}
+        {{- if or (eq $clusterKey "bootstrap.servers") (eq $clusterKey "security.protocol") }}
+        - name: {{ printf "MIRROR_MAKER_%s_%s" $alias $clusterKey | replace "." "_" | upper  }}
+          value: {{ $clusterValue | quote }}
+        {{- end  }}
+        {{- end  }}
+        {{- end  }}
+        - name: MIRROR_MAKER_CLUSTERS
+          value: {{ .Values.mirrorMakerConfig.mmClusters }}
+      {{- range $clusters := .Values.mirrorMakerConfig.clusters }}
+      {{- $alias := .alias }}
+      {{- with .ssl }}
+      {{- if eq .enabled true }}
+        - name: {{ printf "KAFKA_SSL_%s_TRUSTSTORE_CREDENTIALS" $alias | upper }}
+          valueFrom:
+            secretKeyRef:
+              name: {{ .certificates.altiplano_keystore_secrets }}
+              key: {{ .certificates.altiplano_keystore_password }}
+        - name: {{ printf "KAFKA_SSL_%s_KEYSTORE_CREDENTIALS" $alias | upper }}
+          valueFrom:
+            secretKeyRef:
+              name: {{ .certificates.altiplano_keystore_secrets }}
+              key: {{ .certificates.altiplano_keystore_password }}
+      {{- end }}
+      {{- end }}
+      {{- end }}
+        {{- range $clusters := .Values.mirrorMakerConfig.clusters }}
+        {{- $alias := .alias }}
+        {{- with .saslKrb }}
+        {{- if eq .enabled true }}
+        - name: {{ printf "MIRROR_MAKER_%s_PRINCIPAL_NAME" $alias | upper }}
+          valueFrom:
+            secretKeyRef:
+              name: {{ .krbSecretName }}
+              key: {{ .krbPrincipalKey }}
+        - name: {{ printf "MIRROR_MAKER_%s_KEYTAB_NAME" $alias | upper }}
+          value: {{ .krbKeytabKey }}
+        - name: {{ printf "MIRROR_MAKER_%s_SASL_JAAS_CONFIG" $alias | upper }}
+          value: {{ printf "com.sun.security.auth.module.Krb5LoginModule required useKeyTab=true storeKey=true serviceName=kafka keyTab=\"/etc/mirror-maker/secrets/sasl/%s/$(%s)\" principal=\"$(%s)\";" $alias (printf "MIRROR_MAKER_%s_KEYTAB_NAME" $alias | upper ) (printf "MIRROR_MAKER_%s_PRINCIPAL_NAME" $alias | upper )  | quote }}
+        {{- end }}
+        {{- end }}
+        {{- end }}
+      - name: init
+        image: {{ include "ckaf-mirror-maker.image" (tuple .Values .Values.global.registry5 .Values.init.imageName .Values.init.imageRepo .Values.init.imageTag .Values.init) }}
+        command: ["sh","-c","/etc/kafka/encrypt.sh"]
+        {{- if eq .Values.security.enabled true }}
+        securityContext:
+          runAsNonRoot: true
+          readOnlyRootFilesystem: {{ .Values.security.readOnlyRootFilesystem }}
+        {{- if ( ne ( toString ( .Values.security.runAsUser )) "auto" ) }}
+          runAsUser: {{ .Values.security.runAsUser }}
+          {{- if .Values.security.runAsGroup }}
+          runAsGroup: {{ .Values.security.runAsGroup }}
+          {{- end }}
+        {{- end }}
+          allowPrivilegeEscalation: false
+          {{- if eq (include "ckaf-mirror-maker.renderSeccompProfile" .) "true" }}
+          seccompProfile:
+            type: {{ .Values.security.seccompProfile.type }}
+          {{- end }}
+          privileged: false
+          capabilities:
+            drop: ["ALL"]
+               
+          {{- end }}
+
+        resources:
+{{- include "ckaf-mirror-maker.getResources" (tuple . .Values.initContainerResources "200m") | indent 10 }}
+        volumeMounts:
+        - name: ssl-data
+          mountPath: /etc/kafka/secrets/ssl/..data/
+        {{- range $clusters := .Values.mirrorMakerConfig.clusters }}
+        {{- $alias := .alias }}
+        {{- if eq (include "ckaf-mirror-maker.cluster.tls.enabled" (tuple $clusters)) "true" }}
+        - name: {{ printf "mirror-maker-certs-%s" $alias }}
+          mountPath: {{ printf "/etc/mirror-maker/secrets/ssl/%s" $alias | quote }}
+        {{- end }}
+        {{- with .saslPlain }}
+        {{- if eq .enabled true }}
+        - name: {{ printf "mirror-maker-sasl-plain-%s" $alias }}
+          mountPath: {{ printf "/etc/mirror-maker/secrets/plain/%s" $alias | quote }}
+        {{- end }}
+        {{- end }}
+        {{- end }}
+        - name: shared
+          mountPath: /etc/kafka/shared
+        env:
+        - name: ENC_PATH
+          value: {{ template "ckaf-mirror-maker.encPaths" . }}
+        - name: TZ
+          value: {{ template "ckaf-mirror-maker.timeZoneEnv" . }}
+          
+      containers:
+        - name: {{ .Chart.Name }}
+          image: {{ include "ckaf-mirror-maker.image" (tuple .Values .Values.global.registry5 .Values.image.name .Values.image.repository .Values.image.tag .Values.image) }}
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          {{- if eq .Values.security.enabled true }}
+          securityContext:
+            runAsNonRoot: true
+            readOnlyRootFilesystem: {{ .Values.security.readOnlyRootFilesystem }}
+          {{- if ( ne ( toString ( .Values.security.runAsUser )) "auto" ) }}
+            runAsUser: {{ .Values.security.runAsUser }}
+            {{- if .Values.security.runAsGroup }}
+            runAsGroup: {{ .Values.security.runAsGroup }}
+            {{- end }}
+          {{- end }}
+            allowPrivilegeEscalation: false
+          {{- if eq (include "ckaf-mirror-maker.renderSeccompProfile" .) "true" }}
+            seccompProfile:
+              type: {{ .Values.security.seccompProfile.type }}
+          {{- end }}
+            privileged: false
+            capabilities:
+              drop: ["ALL"]
+                 
+          {{- end }}
+
+          env:
+          - name: MY_POD_NAMESPACE
+            valueFrom:
+              fieldRef:
+                fieldPath: metadata.namespace
+          - name: CLOG_ENABLE
+            value: "{{ .Values.global.clog.enabled }}"
+          - name: KAFKA_HEAP_OPTS
+            value: "{{ .Values.mirrorMakerConfig.heapOpts }}"
+          {{- if or .Values.global.unifiedLogging.extension .Values.unifiedLogging.extension }}
+          - name: UNIFIED_LOGGING
+            value:  {{ coalesce .Values.unifiedLogging.extension .Values.global.unifiedLogging.extension  | toJson | trimPrefix "}" | trimSuffix "{" | quote  }}
+          {{- end }}
+          - name: MIRROR_MAKER_LOG_LEVEL
+            value: "{{ .Values.LogLevel  }}"
+          - name: MIRROR_MAKER_CLUSTERS
+            value: "{{ .Values.mirrorMakerConfig.mmClusters }}"
+          - name: MIRROR_MAKER_TASKS_MAX
+            value: "{{ .Values.mirrorMakerConfig.maxTasks }}"
+          {{- if eq .Values.global.jmx.enabled true }}
+          - name: KAFKA_OPTS
+            value: "-javaagent:/jmx-exporter/jmx_prometheus_javaagent.jar={{ .Values.JmxExporter.port }}:/etc/mirror-maker/ssl/scratchspace/mirror-maker-jmx.yaml"
+          {{- end }}
+          {{- if and (.Values.mirrorMakerConfig.krbConfigmapName) (.Values.mirrorMakerConfig.KrbConfKeyName) }}
+          - name: EXTRA_ARGS
+            value: "-Djava.security.krb5.conf=/etc/mirror-maker/krbConf/krb5.conf -Dsun.security.krb5.debug=true"
+          {{- end }}             
+          - name: TZ
+            value: {{ template "ckaf-mirror-maker.timeZoneEnv" . }}
+
+          {{- range $cluster := .Values.mirrorMakerConfig.clusters }}
+          {{- $alias := .alias }}
+          {{- range $clusterKey, $clusterValue := $cluster }}
+          {{- if eq $clusterKey "config" }}
+          {{- range $configKey, $configValue := $clusterValue }}
+          - name: {{ printf "MIRROR_MAKER_%s_%s" $alias $configKey | replace "." "_" | upper  }}
+            value: {{ $configValue | quote }}
+          {{- end  }}
+          {{- else if or (eq $clusterKey "ssl") (eq $clusterKey "alias") (eq $clusterKey "saslKrb") (eq $clusterKey "saslPlain") }}
+          {{- else }}
+          - name: {{ printf "MIRROR_MAKER_%s_%s" $alias $clusterKey | replace "." "_" | upper  }}
+            value: {{ $clusterValue | quote }}
+          {{- end  }}
+          {{- end  }}
+          {{- end  }}
+               
+          {{- range $mirror := .Values.mirrorMakerConfig.mirrors }}
+          {{- $srcCluster := .sourceCluster }}
+          {{- $targetCluster := .targetCluster }}
+          - name: {{ printf "MIRROR_MAKER_%s_ARROW_%s_ENABLED" $srcCluster $targetCluster | upper }}
+            value: "true"
+          {{- range $mirrorKey, $mirrorValue := $mirror }}
+          {{- if or (eq $mirrorKey "sourceConnector") (eq $mirrorKey "heartbeatConnector") (eq $mirrorKey "checkpointConnector") }}
+          {{- range $configKey, $configValue := $mirrorValue.config }}
+          - name: {{ printf "MIRROR_MAKER_%s_ARROW_%s_%s" $srcCluster $targetCluster $configKey | replace "." "_" | upper }}
+            value: {{ $configValue | quote }}
+          {{- end  }}
+          {{- else if or (eq $mirrorKey "sourceCluster") (eq $mirrorKey "targetCluster") }}
+          {{- else }}
+          - name: {{ printf "MIRROR_MAKER_%s_ARROW_%s_%s" $srcCluster $targetCluster $mirrorKey | replace "." "_" | upper }}
+            value: {{ $mirrorValue | quote }}
+          {{- end  }}
+          {{- end  }}
+          {{- end  }}          
+
+          {{- range $clusters := .Values.mirrorMakerConfig.clusters }}
+          {{- $alias := .alias }}
+          {{- with (coalesce .ssl .tls) }}
+          {{- if eq (include "ckaf-mirror-maker.cluster.tls.enabled" (tuple $clusters)) "true" }}
+          - name: {{ printf "MIRROR_MAKER_%s_SSL_ENABLED" $alias | upper }}
+            value: "true"
+          - name: {{ printf "MIRROR_MAKER_%s_SSL_ENABLED_PROTOCOLS" $alias | upper }}
+            value: "{{ .enabledProtocols }}"
+          - name: {{ printf "MIRROR_MAKER_%s_SSL_PROTOCOL" $alias | upper }}
+            value: "{{ .protocol }}" 
+          - name: {{ printf "MIRROR_MAKER_%s_SSL_CIPHER_SUITES" $alias | upper }}
+            value: "{{ .cipherSuites }}" 
+          - name: {{ printf "MIRROR_MAKER_%s_PRODUCER_SSL_CIPHER_SUITES" $alias | upper }}
+            value: "{{ .cipherSuites }}"
+          - name: {{ printf "MIRROR_MAKER_%s_CONSUMER_SSL_CIPHER_SUITES" $alias | upper }}
+            value: "{{ .cipherSuites }}"
+          - name: {{ printf "MIRROR_MAKER_%s_ADMIN_SSL_CIPHER_SUITES" $alias | upper }}
+            value: "{{ .cipherSuites }}"
+          - name: {{ printf "MIRROR_MAKER_%s_SSL_KEYSTORE_FILENAME" $alias | upper }}
+            value: {{ printf "/etc/mirror-maker/secrets/ssl/%s/%s" $alias .keystore_key | quote }}
+          - name: {{ printf "MIRROR_MAKER_%s_SSL_TRUSTSTORE_FILENAME" $alias | upper }}
+            value: {{ printf "/etc/mirror-maker/secrets/ssl/%s/%s" $alias .truststore_key | quote  }}
+          {{- end }}
+          {{- end }}
+          {{- end }}
+          {{- if .Values.mirrorMakerConfig.sslCipherSuites }}
+          - name: MIRROR_MAKER_SSL_CIPHER_SUITES
+            value: "{{ .Values.mirrorMakerConfig.sslCipherSuites }}"
+          - name: MIRROR_MAKER_ADMIN_SSL_CIPHER_SUITES
+            value: "{{ .Values.mirrorMakerConfig.sslCipherSuites }}"
+          - name: MIRROR_MAKER_PRODUCER_SSL_CIPHER_SUITES
+            value: "{{ .Values.mirrorMakerConfig.sslCipherSuites }}"
+          - name: MIRROR_MAKER_CONSUMER_SSL_CIPHER_SUITES
+            value: "{{ .Values.mirrorMakerConfig.sslCipherSuites }}"
+          {{- end }} 
+          {{- range $clusters := .Values.mirrorMakerConfig.clusters }}
+          {{- $alias := .alias }}
+          {{- with .saslKrb }}
+          {{- if eq .enabled true }}
+          - name: {{ printf "MIRROR_MAKER_%s_SASL_MECHANISM" $alias | upper }}
+            value: "GSSAPI"
+          - name: {{ printf "MIRROR_MAKER_%s_SASL_KERBEROS_SERVICE_NAME" $alias | upper }}
+            value: "kafka"
+          - name: {{ printf "MIRROR_MAKER_%s_PRINCIPAL_NAME" $alias | upper }}
+            valueFrom:
+              secretKeyRef:
+                name: {{ .krbSecretName }}
+                key: {{ .krbPrincipalKey }}
+          - name: {{ printf "MIRROR_MAKER_%s_KEYTAB_NAME" $alias | upper }}
+            value: {{ .krbKeytabKey }}
+          - name: {{ printf "MIRROR_MAKER_%s_SASL_JAAS_CONFIG" $alias | upper }}
+            value: {{ printf "com.sun.security.auth.module.Krb5LoginModule required useKeyTab=true storeKey=true serviceName=kafka keyTab=\"/etc/mirror-maker/secrets/sasl/%s/$(%s)\" principal=\"$(%s)\";" $alias (printf "MIRROR_MAKER_%s_KEYTAB_NAME" $alias | upper ) (printf "MIRROR_MAKER_%s_PRINCIPAL_NAME" $alias | upper )  | quote }}
+          {{- end }}
+          {{- end }}
+          {{- end }}
+
+          {{- range $clusters := .Values.mirrorMakerConfig.clusters }}
+          {{- $alias := .alias }}
+          {{- with .saslPlain }}
+          {{- if eq .enabled true }}
+          - name: {{ printf "MIRROR_MAKER_%s_SASL_PLAIN_ENABLED" $alias | upper }}
+            value: "true"
+          - name: {{ printf "MIRROR_MAKER_%s_SASL_MECHANISM" $alias | upper }}
+            value: "PLAIN"
+          {{- end }}
+          {{- end }}
+          {{- end }}
+          {{- include "ckaf-mirror-maker.syslogEnabled" . }}
+          {{- if eq $.syslogEnabled "true" }}
+          - name: MIRROR_MAKER_SYSLOG
+            value: {{ $.syslogEnabled | quote }}
+          - name: MIRROR_MAKER_SYSLOG_HOST
+            value: {{ required "provide a valid syslog host" $.syslog.host |quote }}
+          - name: MIRROR_MAKER_SYSLOG_PORT
+            value: {{ required "provide a valid syslog port" $.syslog.port |quote }}
+          - name: MIRROR_MAKER_SYSLOG_URL
+            value: "$(MIRROR_MAKER_SYSLOG_HOST):$(MIRROR_MAKER_SYSLOG_PORT)"
+          - name: MIRROR_MAKER_SYSLOG_FACILITY
+            value: {{ required "provide a valid syslog facility" $.syslog.facility |quote }}
+          - name: MIRROR_MAKER_SYSLOG_PROTOCOL
+            value: {{ required "provide a valid syslog protocol" $.syslog.protocol |quote }}
+          {{- else }}
+          - name: MIRROR_MAKER_SYSLOG
+            value: {{ $.syslogEnabled | quote }}
+          {{- end }}
+          - name: RBAC_ENABLED
+            value: {{ .Values.global.rbac.enabled | quote }}
+          - name: READ_ONLY_ROOTFS
+            value: {{ .Values.security.readOnlyRootFilesystem | quote }}
+          - name: RUN_AS_NON_ROOT
+            value: "true"
+          - name: MIRROR_MAKER_CLUSTERS_TO_VERIFY
+            value: {{ .Values.mirrorMakerConfig.mmClustersVerifySecurity | quote }}
+          - name: POD_HOST_NAME
+            valueFrom:
+              fieldRef:
+                fieldPath: metadata.name
+          - name: JMX_TLS
+            value: {{ .Values.JmxExporter.tls.enabled |quote }}
+          {{- if eq (include "ckaf-mirror-maker.jmx.tls.enabled" .) "true"}}
+          - name: jmx_alias
+            value: {{ .Values.JmxExporter.tls.certificateAlias |default "certificate" |quote }}
+          {{- end }}
+          livenessProbe:
+            exec:
+              command:
+                - bash
+                - -c
+                - ps aux|grep "[M]irrorMaker"
+            initialDelaySeconds: {{ .Values.livenessProbe.initialDelaySeconds }}
+            periodSeconds: {{ .Values.livenessProbe.periodSeconds }}
+            timeoutSeconds: {{ .Values.livenessProbe.timeoutSeconds }}
+            failureThreshold: {{ .Values.livenessProbe.failureThreshold }}
+          readinessProbe:
+            exec:
+              command:
+                - bash
+                - -c
+                - ps aux|grep "[M]irrorMaker"
+            initialDelaySeconds: {{ .Values.readinessProbe.initialDelaySeconds }}
+            periodSeconds: {{ .Values.readinessProbe.periodSeconds }}
+            timeoutSeconds: {{ .Values.readinessProbe.timeoutSeconds }}
+            failureThreshold: {{ .Values.readinessProbe.failureThreshold }}
+
+          volumeMounts:
+          - name: mirrormaker-jmx-config-volume
+            mountPath: "/etc/mirror-maker/jmx_config"
+          - name: mirrormaker-jmx-exporter-volume
+            mountPath: /jmx-exporter
+
+          {{- range $clusters := .Values.mirrorMakerConfig.clusters }}
+          {{- $alias := .alias }}
+          {{- with .saslKrb }}
+          {{- if eq .enabled true }}
+          - name: {{ printf "mirror-maker-sasl-krb-%s" $alias }}
+            mountPath: {{ printf "/etc/mirror-maker/secrets/sasl/%s" $alias | quote }}
+          {{- end }}
+          {{- end }}
+          {{- end }}
+
+          {{- if and (.Values.mirrorMakerConfig.krbConfigmapName) (.Values.mirrorMakerConfig.KrbConfKeyName) }}
+          - name: mirror-maker-sasl-krb5-conf
+            mountPath: "/etc/mirror-maker/krbConf"
+          {{- end }}
+          - name: shared
+            mountPath: /etc/kafka/shared
+          - name: mm-dir
+            mountPath: /etc/mirror-maker
+          - name: log4j-dir
+            mountPath: /var/log/mirror-maker
+          - name: scratchspace
+            mountPath: /etc/mirror-maker/ssl/scratchspace
+          {{- if eq (include "ckaf-mirror-maker.jmx.tls.enabled" .) "true"}}
+          - name: jmx-tls
+            mountPath: /etc/mirror-maker/ssl/jmx-tls
+          {{- end }}
+
+          resources:
+{{- include "ckaf-mirror-maker.getResources" (tuple . .Values.resources "1") | indent 12 }}
+        {{- if eq .Values.global.jmx.enabled true }}
+        - name: {{ .Chart.Name }}-jmx-exporter
+          image: {{ include "ckaf-mirror-maker.image" (tuple .Values .Values.global.registry2 .Values.JmxExporter.imageName .Values.JmxExporter.imageRepo .Values.JmxExporter.imageTag .Values.JmxExporter) }}
+          imagePullPolicy: {{ .Values.JmxExporter.imagePullPolicy }}
+          {{- if eq .Values.security.enabled true }}
+          securityContext:
+            runAsNonRoot: true
+            readOnlyRootFilesystem: {{ .Values.security.readOnlyRootFilesystem }}
+          {{- if ( ne ( toString ( .Values.security.runAsUser )) "auto" ) }}
+            runAsUser: {{ .Values.security.runAsUser }}
+            {{- if .Values.security.runAsGroup }}
+            runAsGroup: {{ .Values.security.runAsGroup }}
+            {{- end }}
+          {{- end }}
+            allowPrivilegeEscalation: false
+          {{- if eq (include "ckaf-mirror-maker.renderSeccompProfile" .) "true" }}
+            seccompProfile:
+              type: {{ .Values.security.seccompProfile.type }}
+          {{- end }}
+            privileged: false
+            capabilities:
+              drop: ["ALL"]
+                 
+          {{- end }}
+          ports:
+            - containerPort: {{ .Values.JmxExporter.port }}
+              name: tcp-metrics
+          env:
+          - name: TZ
+            value: {{ template "ckaf-mirror-maker.timeZoneEnv" . }}
+          resources:
+{{- include "ckaf-mirror-maker.getResources" (tuple . .Values.JmxExporter.jmxResources.resources "1") | indent 12 }}
+          volumeMounts:
+            - name: mirrormaker-jmx-config-volume
+              mountPath: "/etc/mirror-maker/jmx_config"
+            - name: mirrormaker-jmx-exporter-volume
+              mountPath: /jmx-exporter
+        {{- end }}
+        - name: {{ .Chart.Name }}-fluentd-sidecar
+          image: {{ .Values.global.registry }}/{{ .Values.fluentd_sidecar.image.name }}:{{ .Values.fluentd_sidecar.image.tag }}
+          imagePullPolicy: {{ .Values.fluentd_sidecar.image.pullPolicy }}
+          securityContext:
+            readOnlyRootFilesystem: {{ .Values.fluentd_sidecar.securityContext.readOnlyRootFilesystem | default true }}
+            runAsUser: {{ .Values.fluentd_sidecar.securityContext.runAsUser | default 1000 }}
+            runAsGroup: {{ .Values.fluentd_sidecar.securityContext.runAsGroup | default 998 }}
+          volumeMounts:
+          - name: tmp
+            mountPath: /tmp
+          - name: fluentd-config
+            mountPath: /etc/fluent/
+          - name: certificates
+            mountPath: "/etc/.certificates/"
+          - name: log4j-dir
+            mountPath: /logs
+          resources:
+{{ toYaml .Values.fluentd_sidecar.resources | indent 12 }}
+          env:
+          {{- if .Values.fluentd_sidecar.secrets }}
+          - name: IS_USERNAME
+            valueFrom:
+              secretKeyRef:
+                key: {{ .Values.env.secrets.IS_USERNAME }}
+                name: {{ .Values.fluentd_sidecar.secrets.passwordSecret | quote }}
+          - name: IS_PASSWORD
+            valueFrom:
+              secretKeyRef:
+                key: {{ .Values.env.secrets.IS_PASSWORD }}
+                name: {{ .Values.fluentd_sidecar.secrets.passwordSecret | quote }}
+          {{- end }}
+          - name: CONTAINER_NAME
+            valueFrom:
+              fieldRef:
+                apiVersion: v1
+                fieldPath: metadata.name
+          - name: MY_POD_IP
+            valueFrom:
+              fieldRef:
+                fieldPath: status.podIP
+      volumes:
+        - name: init-tmp
+          emptyDir: {}
+        - name: mirrormaker-jmx-config-volume
+          configMap:
+            name: {{ template "ckaf-mirror-maker.name" . }}
+        - name: mirrormaker-jmx-exporter-volume
+          emptyDir: {}
+        - name: tmp
+          emptyDir: {}
+      {{- range $clusters := .Values.mirrorMakerConfig.clusters }}
+      {{- $alias := .alias }}
+      {{- $ssl := .ssl }}
+      {{- $tls := .tls }}
+      {{- if eq (include "ckaf-mirror-maker.cluster.tls.enabled" (tuple $clusters)) "true" }}
+        - name: {{ printf "mirror-maker-certs-%s" $alias }}
+          emptyDir: {}
+        {{- end }}
+        {{- end }}
+        - name: ssl
+          emptyDir: {}
+        - name: ssl-data
+          emptyDir: {}
+        - name: altiplano-kafka-certs
+          secret:
+            secretName: {{ .Values.certificates.secrets.altiplano_kafka_certificate_secrets }}
+        - name: altiplano-keystore-password
+          secret:
+            secretName: {{ .Values.certificates.secrets.altiplano_keystore_secrets }}
+      {{- range $clusters := .Values.mirrorMakerConfig.clusters }}
+      {{- $alias := .alias }}
+      {{- with .saslKrb }}
+      {{- if eq .enabled true }}
+        - name: {{ printf "mirror-maker-sasl-krb-%s" $alias }}
+          secret:
+            secretName: {{ .krbSecretName }}
+            items:
+            - key: {{ .krbKeytabKey }}
+              path: {{ .krbKeytabKey }}
+      {{- end }}
+      {{- end }}
+      {{- end }}
+
+      {{- range $clusters := .Values.mirrorMakerConfig.clusters }}
+      {{- $alias := .alias }}
+      {{- with .saslPlain }}
+      {{- if eq .enabled true }}
+        - name: {{ printf "mirror-maker-sasl-plain-%s" $alias }}
+          secret:
+            secretName: {{ .secretName }}
+            items:
+            - key: {{ .usernameKey }}
+              path: {{ printf ".%s_usr" $alias }}
+            - key: {{ .passwordKey }}
+              path: {{ printf ".%s_key" $alias }}
+      {{- end }}
+      {{- end }}
+      {{- end }}
+        - name: logs
+          emptyDir: {}
+        - name: fluentd-config
+          configMap:
+            name: {{ template "ckaf-mirror-maker.name" . }}-fluentd-config
+        {{- if .Values.fluentd_sidecar.secrets }}
+        - name: certificates
+          secret:
+            secretName: {{ (tpl .Values.fluentd_sidecar.secrets.certSecret .) }}
+        - name: passwords
+          secret:
+            secretName: {{ (tpl .Values.fluentd_sidecar.secrets.passwordSecret .) }}
+        {{- end }}
+      {{- if and (.Values.mirrorMakerConfig.krbConfigmapName) (.Values.mirrorMakerConfig.KrbConfKeyName) }}
+        - name: mirror-maker-sasl-krb5-conf      
+          configMap:
+            name: {{ .Values.mirrorMakerConfig.krbConfigmapName }}
+            items:
+            - key: {{ .Values.mirrorMakerConfig.KrbConfKeyName }}
+              path: krb5.conf
+      {{- end }}
+      {{- if .Release.IsUpgrade }}
+        - name: geo-site
+          configMap:
+            name: {{ .Release.Name }}-altiplano-geo-site
+        - name: scripts
+          configMap: 
+            name: mirror-maker-scripts
+            defaultMode: 0755
+      {{- end }}
+        - name: shared
+          emptyDir: {} 
+        - name: mm-dir
+          emptyDir: {}
+        - name: log4j-dir
+          emptyDir: {} 
+        - name: scratchspace
+          emptyDir:
+            medium: Memory 
+            sizeLimit: 5Mi
+        {{- if eq (include "ckaf-mirror-maker.jmx.tls.enabled" .) "true"}}
+        - name: jmx-tls
+          projected:
+            sources:
+              - secret:
+                  name: {{ template "ckaf-mirror-maker.jmx.storeSecret" . }}
+                  items:
+                    - key: {{ template "ckaf-mirror-maker.jmx.keystoreSecretKey" . }}
+                      path: ".keyStore"
+                    - key: {{ template "ckaf-mirror-maker.jmx.truststoreSecretKey" . }}
+                      path: ".trustStore"
+              - secret:
+                  name: {{ template "ckaf-mirror-maker.jmx.storePasswordSecret" . }}
+                  items:
+                    - key: {{ template "ckaf-mirror-maker.jmx.keystorePasswordSecretKey" . }}
+                      path: ".keyStoreCred"
+                    - key: {{ template "ckaf-mirror-maker.jmx.truststorePasswordSecretKey" . }}
+                      path: ".trustStoreCred"
+        {{end}}

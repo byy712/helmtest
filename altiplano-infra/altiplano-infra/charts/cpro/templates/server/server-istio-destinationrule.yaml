@@ -1,0 +1,60 @@
+{{- if .Values.server.enabled }}
+{{- include "cpro.istio.cproInitIstio" . }}
+{{- if or ($.istio.enabled) ($.istio.createDrForClient) }}
+apiVersion: {{ template "cpro.apiVersion.destinationRule" . }}
+kind: DestinationRule
+metadata:
+  name: {{ template "cpro.prometheus.server.fullname" . }}
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "cpro.app.labels.v3" ( dict "root" . "context" .Values.server ) | nindent 4 }}
+{{- include "cpro.labelsOrAnnotations" (tuple .Values.global.labels) | indent 4}}
+  annotations:
+{{- include "cpro.labelsOrAnnotations" (tuple .Values.global.annotations) | indent 4}}
+spec:
+  {{- if .Values.ha.enabled }}
+  host: "{{ template "cpro.prometheus.server.fullname" . }}-ext.{{ .Release.Namespace }}.svc.{{ .Values.clusterDomain }}"
+  {{- else }}
+  host: "{{ template "cpro.prometheus.server.fullname" . }}.{{ .Release.Namespace }}.svc.{{ .Values.clusterDomain }}"
+  {{- end }}
+  trafficPolicy:
+    tls:
+{{- if and ($.istio.mtls.enabled) (not $.istio.createDrForClient) (not $.istio.permissive) }}
+      mode: ISTIO_MUTUAL
+{{- else }}
+      mode: DISABLE
+{{- end }}
+{{- if .Values.ha.enabled }}
+    loadBalancer:
+      consistentHash:
+        useSourceIp: true
+{{- end }}
+{{- end }}
+---
+{{- if or ($.istio.enabled) ($.istio.createDrForClient) }}
+apiVersion: {{ template "cpro.apiVersion.destinationRule" . }}
+kind: DestinationRule
+metadata:
+  name: {{ template "cpro.prometheus.server.fullname" . }}-int
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "cpro.app.labels.v3" ( dict "root" . "context" .Values.server ) | nindent 4 }}
+{{- include "cpro.labelsOrAnnotations" (tuple .Values.global.labels) | indent 4}}
+  annotations:
+{{- include "cpro.labelsOrAnnotations" (tuple .Values.global.annotations) | indent 4}}
+spec:
+  host: "{{ template "cpro.prometheus.server.fullname" . }}-int.{{ .Release.Namespace }}.svc.{{ .Values.clusterDomain }}"
+  trafficPolicy:
+    tls:
+{{- if and ($.istio.mtls.enabled) (not $.istio.createDrForClient) (not $.istio.permissive) }}
+      mode: ISTIO_MUTUAL
+{{- else }}
+      mode: DISABLE
+{{- end }}
+{{- if .Values.ha.enabled }}
+    loadBalancer:
+      consistentHash:
+        useSourceIp: true
+{{- end }}
+{{- end }}
+{{- end }}

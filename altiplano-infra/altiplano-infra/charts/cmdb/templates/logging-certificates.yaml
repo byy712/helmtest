@@ -1,0 +1,16 @@
+{{- include "cmdb.init" . -}}
+{{- $root := . -}}
+{{- $cmgr_enabled := (eq (include "csf-common-lib.v1.coalesceBoolean" (tuple .Values.certManager.enabled .Values.global.certManager.enabled true)) "true") -}}
+
+{{/* create the workload syslog certificate requests */}}
+{{- range (list .Values.mariadb ((eq (include "cmdb.has_maxscale" .) "true") | ternary .Values.maxscale nil ) (( ne (.Values.cluster_type) "simplex") | ternary .Values.admin nil )) -}}
+  {{- $workload := . -}}
+  {{- $w_syslog := $workload.unifiedLogging.syslog -}}
+  {{- $w_tks_empty := (eq (include "cmdb-logging.tks_empty" (tuple $root $workload)) "true") -}}
+  {{- $tls_sec_name := $workload.unifiedLogging.syslog.tls.secretRef.name -}}
+
+  {{- if and $w_tks_empty $cmgr_enabled $w_syslog.certificate.enabled ( not $tls_sec_name ) -}}
+    {{- $_ := merge $w_syslog.certificate (dict "usages" (list "client auth")) -}}
+    {{- include "csf-common-lib.v6.certificate" (tuple $root $w_syslog $workload.unifiedLogging.syslog.certificate  (ternary "commonDefaultIssuer" "nop" $root.syslogCommonIssuer)) -}}
+  {{- end -}}
+{{- end -}}

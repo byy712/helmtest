@@ -1,0 +1,21 @@
+{{- $useV1alpha3 := and (.Capabilities.APIVersions.Has "cert-manager.io/v1alpha3/Certificate") (not (.Capabilities.APIVersions.Has "cert-manager.io/v1/Certificate")) }}
+{{- if (eq (include "csf-common-lib.v1.coalesceBoolean" (tuple .Values.grafana.tls.enabled .Values.tls.enabled .Values.global.tls.enabled false)) "true") }}
+{{- if (eq (include "csf-common-lib.v1.coalesceBoolean" (tuple .Values.certManager.enabled .Values.global.certManager.enabled false)) "true") }}
+{{- if (eq (include "csf-common-lib.v1.isEmptyValue" .Values.grafana.tls.secretRef.name) "true") }}
+{{- if (.Values.grafana.certificate.enabled) }}
+{{- if and (eq (include "csf-common-lib.v1.isEmptyValue" .Values.grafana.certificate.issuerRef.name) "true") (eq (include "csf-common-lib.v1.isEmptyValue" .Values.certManager.issuerRef.name) "true")  (eq (include "csf-common-lib.v1.isEmptyValue" .Values.global.certManager.issuerRef.name) "true") }}
+{{- if $useV1alpha3 }}
+apiVersion: cert-manager.io/v1alpha3
+{{- else }}
+apiVersion: cert-manager.io/v1
+{{- end }}
+kind: Issuer
+metadata:
+  name: {{ include "csf-common-lib.v2.resourceName" (tuple . "Issuer" "visual-issuer") }}
+spec:
+  selfSigned: {}
+{{- end -}}
+{{- end -}}
+{{- end -}}
+{{- end -}}
+{{- end -}}

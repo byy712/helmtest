@@ -1,0 +1,223 @@
+{{- include "cbur.tls" . }}
+{{- if .Values.rbac.enabled -}}
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: {{ template "cbur.fullname" . }}
+  labels:
+    {{- include "cbur.proxy.commonLabels" (tuple . ) | indent 4 }}
+    {{- include "cbur.customLabels" (tuple .Values.global.labels) | indent 4 }}
+  annotations:
+    {{- include "cbur.customAnnotations" (tuple .Values.global.annotations) | indent 4 }}
+automountServiceAccountToken: false
+
+{{- if semverCompare "< 1.25.0-0" .Capabilities.KubeVersion.GitVersion }}
+{{- if eq (include "cbur.PSP" .) "true"  }}
+---
+apiVersion: policy/v1beta1
+kind: PodSecurityPolicy
+metadata:
+  labels:
+    app: {{ template "cbur.fullname" . }}
+    chart: {{ .Chart.Name }}-{{ .Chart.Version }}
+    heritage: {{ .Release.Service }}
+    release: {{ .Release.Name }}
+    {{- include "cbur.proxy.commonLabels" (tuple . ) | indent 4 }}
+    {{- include "cbur.customLabels" (tuple .Values.global.labels) | indent 4 }}
+  annotations:
+    {{- include "cbur.customAnnotations" (tuple .Values.global.annotations .Values.rbac.psp.annotations) | indent 4 }}
+  name: {{ template "cbur.fullname" . }}-psp
+spec:
+  privileged: false
+{{ include "cbur.readOnlyRootFilesystem" . | indent 2 }}
+  {{- if and .Values.istio.enabled (not .Values.istio.cni.enabled) }}
+  allowPrivilegeEscalation: true
+  {{- else }}
+  allowPrivilegeEscalation: false
+  {{- end }}
+  hostPID: false
+  hostIPC: false
+  {{- if and .Values.avamar.enabled .Values.hostNetwork.avamar }}
+  hostNetwork: true
+  {{- else }}
+  hostNetwork: false
+  {{- end }}
+  allowedHostPaths:
+  {{- if and .Values.k8swatcher.enabled .Values.k8swatcher.clusterBrEnabled }}
+  - pathPrefix: /opt/bcmt/storage
+    readOnly: false
+  - pathPrefix: /usr/local/bin/ncm
+    readOnly: true
+  {{- end }}
+  {{- if and (eq (include "cbur.proxy.coalesceBoolean" (tuple .Values.tls.enabled .Values.global.tls.enabled false)) "true") .Values.tls.certsPath }}
+  - pathPrefix: {{ .Values.tls.certsPath }}
+    readOnly: true
+  {{- end }}
+  - pathPrefix: /etc/localtime
+    readOnly: true
+  {{- if or .Values.volumeType.glusterfs (eq ( toString ( .Values.securityContext.runAsUser )) "auto") (eq ( toString ( .Values.securityContext.runAsUser )) "0") }}
+  runAsUser:
+    rule: RunAsAny
+  {{- else }}
+  runAsUser:
+    rule:
+    ranges:
+    - max: 65535
+      min: 1
+    rule: MustRunAs
+  {{- end }}
+  {{- if or .Values.volumeType.glusterfs (eq (toString ( .Values.securityContext.runAsGroup )) "auto") (eq (toString ( .Values.securityContext.runAsGroup )) "0")}}
+  runAsGroup:
+    rule: RunAsAny
+  {{- else }}
+  runAsGroup:
+    rule:
+    ranges:
+    - max: 65535
+      min: 1
+    rule: MustRunAs
+  {{- end }}
+  {{- if eq ( toString ( .Values.securityContext.fsGroup )) "auto" }}
+  fsGroup:
+    rule: RunAsAny
+  {{- else }}
+  fsGroup:
+    ranges:
+    - max: 65535
+      min: 1
+    rule: MustRunAs
+  {{- end }}
+  supplementalGroups:
+    rule: 'MustRunAs'
+    ranges:
+      - min: 1
+        max: 65535
+  seLinux:
+    rule: RunAsAny
+{{- if and .Values.avamar.enabled .Values.hostNetwork.avamar }}
+  hostPorts:
+  - min: 28002
+    max: 28002
+  - min: 30001
+    max: 30002
+{{- end }}
+  volumes:
+  - configMap
+  - emptyDir
+  - projected
+  - secret
+  - downwardAPI
+  - persistentVolumeClaim
+  - hostPath
+{{- if .Values.volumeType.glusterfs }}
+  - glusterfs
+{{- end }}
+  requiredDropCapabilities:
+  # CHOWN,SETUID,SETGID CAP need to be kept when run as root so that nginx can start
+{{- if not .Values.k8swatcher.clusterBrEnabled }}
+  - "DAC_OVERRIDE"
+{{- end }}
+  - "FSETID"
+  - "MKNOD"
+  {{- if and .Values.istio.enabled .Values.istio.cni.enabled }}
+  - "NET_RAW"
+  {{- end }}
+  - "SETFCAP"
+  - "SETPCAP"
+{{- if and (ne ( toString ( .Values.securityContext.runAsUser )) "auto") (ne ( toString ( .Values.securityContext.runAsUser )) "0") }}
+  - "SETUID"
+{{- end }}
+{{- if and (ne ( toString ( .Values.securityContext.runAsGroup )) "auto") (ne ( toString ( .Values.securityContext.runAsGroup)) "0") }}
+  - "SETGID"
+{{- end }}
+  # workaround for issue: "plugins/2to3-0.8.2" have permission "rw------. 1 3434 3434"
+{{- if not .Values.k8swatcher.clusterBrEnabled }}
+  - "FOWNER"
+{{- end }}
+  - "NET_BIND_SERVICE"
+  - "SYS_CHROOT"
+  - "KILL"
+  - "AUDIT_WRITE"
+  {{- if and .Values.istio.enabled (not .Values.istio.cni.enabled) }}
+  allowedCapabilities:
+  - "NET_ADMIN"
+  - "NET_RAW"
+  {{- end }}
+{{- end }}
+{{- end }}
+
+{{- if .Values.postDeleteJob.enabled }}
+---
+# --------------------------------------------------
+#  Post-Delete RBAC
+#
+#  Permissions:
+#    - delete secret
+# --------------------------------------------------
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: {{ template "cbur.fullname" . }}-delete
+  namespace: "{{.Release.Namespace}}"
+  labels:
+    app: {{ template "cbur.fullname" . }}
+    chart: "{{ .Chart.Name }}-{{ .Chart.Version }}"
+    heritage: {{ .Release.Service }}
+    release: {{ .Release.Name }}
+    {{- include "cbur.proxy.commonLabels" (tuple . ) | indent 4 }}
+    {{- include "cbur.customLabels" (tuple .Values.global.labels) | indent 4 }}
+  annotations:
+    # This is what defines this resource as a hook. Without this line, the
+    # job is considered part of the release.
+    # If there're multiple hooks, may define differnent hook-weight value.
+    "helm.sh/hook": post-delete
+    "helm.sh/hook-weight": "-8"
+    "helm.sh/hook-delete-policy": before-hook-creation, hook-succeeded, hook-failed
+{{- include "cbur.customAnnotations" (tuple .Values.global.annotations) | indent 4 }}
+---
+kind: RoleBinding
+apiVersion: rbac.authorization.k8s.io/v1
+metadata:
+  name: {{ template "cbur.fullname" . }}-delete
+  namespace: "{{.Release.Namespace}}"
+  labels:
+    app: {{ template "cbur.fullname" . }}
+    chart: "{{ .Chart.Name }}-{{ .Chart.Version }}"
+    {{- include "cbur.proxy.commonLabels" (tuple . ) | indent 4 }}
+    {{- include "cbur.customLabels" (tuple .Values.global.labels) | indent 4 }}
+  annotations:
+    "helm.sh/hook": post-delete
+    "helm.sh/hook-weight": "-6"
+    "helm.sh/hook-delete-policy": before-hook-creation, hook-succeeded, hook-failed
+    {{- include "cbur.customAnnotations" (tuple .Values.global.annotations) | indent 4 }}
+subjects:
+- kind: ServiceAccount
+  name: {{ template "cbur.fullname" . }}-delete
+  namespace: "{{.Release.Namespace}}"
+roleRef:
+  kind: Role
+  name: {{ template "cbur.fullname" . }}-delete
+  apiGroup: rbac.authorization.k8s.io
+---
+kind: Role
+apiVersion: rbac.authorization.k8s.io/v1
+metadata:
+  namespace: "{{.Release.Namespace}}"
+  name: {{ template "cbur.fullname" . }}-delete
+  labels:
+    app: {{ template "cbur.fullname" . }}
+    release: {{ .Release.Name }}
+    {{- include "cbur.proxy.commonLabels" (tuple . ) | indent 4 }}
+    {{- include "cbur.customLabels" (tuple .Values.global.labels) | indent 4 }}
+  annotations:
+    "helm.sh/hook": post-delete
+    "helm.sh/hook-weight": "-7"
+    "helm.sh/hook-delete-policy": before-hook-creation, hook-succeeded, hook-failed
+    {{- include "cbur.customAnnotations" (tuple .Values.global.annotations) | indent 4 }}
+rules:
+- apiGroups: [""]
+  resources: ["secrets"]
+  verbs: ["get", "list", "delete"]
+{{- end }}
+
+{{- end -}}

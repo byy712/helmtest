@@ -1,0 +1,15 @@
+{{- include "cmdb.init" . -}}
+{{- if and (eq (.Values.cluster_type) "master-slave") .Values.admin.restoreServer.enabled }}
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ template "cmdb.fullname" . }}-mariadb-rs
+  labels:
+    {{- include "cmdb-mariadb.labels" (tuple . "configmap")  | nindent 4 }}
+  annotations:
+    {{- include "cmdb-mariadb.annotations" (tuple . "configmap")  | nindent 4 }}
+data:
+  rs_config.json: |-
+    {{ .Values.admin.restoreServer | toJson }}
+{{- end }}

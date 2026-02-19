@@ -1,0 +1,55 @@
+{{- include "cpro.istio.cproInitIstio" . }}
+{{- if and ($.istio.enabled) (.Values.alertmanager.enabled) (eq $.istio.version "1.4") }}
+apiVersion: "authentication.istio.io/v1alpha1"
+kind: "Policy"
+metadata:
+  labels:
+    {{- include "cpro.app.labels.v3" ( dict "root" . "context" .Values.alertmanager ) | nindent 4 }}
+{{- include "cpro.labelsOrAnnotations" (tuple .Values.global.labels) | indent 4}}
+  name: {{ template "cpro.prometheus.alertmanager.fullname" . }}
+  namespace: "{{.Release.Namespace}}"
+  annotations:
+{{- include "cpro.labelsOrAnnotations" (tuple .Values.global.annotations) | indent 4}}
+spec:
+  targets:
+  {{- if .Values.ha.enabled }}
+  - name: {{ template "cpro.prometheus.alertmanager.fullname" . }}-ext
+  {{- else }}
+  - name: {{ template "cpro.prometheus.alertmanager.fullname" . }}
+  {{- end }}
+  - name: {{ template "cpro.prometheus.alertmanager.fullname" . }}-scr
+  peers:
+  - mtls:
+{{- if and ($.istio.mtls.enabled) (not $.istio.permissive) }}
+      mode: STRICT
+{{- else }}
+      mode: PERMISSIVE
+{{- end }}
+{{- end }}
+
+---
+
+{{- if and ($.istio.enabled) (.Values.alertmanager.enabled) (eq $.istio.version "1.4") }}
+{{- if .Values.ha.enabled }}
+apiVersion: "authentication.istio.io/v1alpha1"
+kind: "Policy"
+metadata:
+  labels:
+    {{- include "cpro.app.labels.v3" ( dict "root" . "context" .Values.alertmanager ) | nindent 4 }}
+{{- include "cpro.labelsOrAnnotations" (tuple .Values.global.labels) | indent 4}}
+  name: {{ template "cpro.prometheus.alertmanager.fullname" . }}-int
+  namespace: "{{.Release.Namespace}}"
+  annotations:
+{{- include "cpro.labelsOrAnnotations" (tuple .Values.global.annotations) | indent 4}}
+spec:
+  targets:
+  - name: {{ template "cpro.prometheus.alertmanager.fullname" . }}
+  peers:
+  - mtls:
+{{- if and ($.istio.mtls.enabled) (not $.istio.permissive) }}
+      mode: STRICT
+{{- else }}
+      mode: PERMISSIVE
+{{- end }}
+{{- end }}
+{{- end }}

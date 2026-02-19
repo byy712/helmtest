@@ -1,0 +1,10 @@
+--- ckey-12.2.0/templates/ncms/heal/preheal.yaml	2024-03-16 01:47:07.000000000 +0530
++++ ckey-12.2.0-nokia-patch-1/ckey/templates/ncms/heal/preheal.yaml	2024-03-27 18:41:34.791363593 +0530
+@@ -15,6 +15,7 @@
+   template:
+     metadata:
+       labels:
++        altiplano-role: {{ .Values.accessRoleLabel }}
+         app: {{ template "ckey.fullName" . }}
+         release: {{ .Release.Name }}
+         {{- include "ckey.customLabels" (tuple .Values.custom.job.labels .Values.global.labels ) | indent 8 }}

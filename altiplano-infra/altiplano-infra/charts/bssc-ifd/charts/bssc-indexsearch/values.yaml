@@ -1,0 +1,1460 @@
+### global registry
+global:
+  # This registry is used for all container images
+  registry: csf-docker-delivered.repo.cci.nokia.net
+
+  # Set flatRegistry to true to use images from registries with a flat structure.
+  # If enabled, any subpaths in the image repository name (separated by /) would be skipped and only its last part would be used. Please ensure that all the images are available in the docker registry in the expected flat structure.
+  flatRegistry: false
+
+  # Set enableDefaultCpuLimits to true to enable pod CPU resources limit for all containers. Default is 'false'.
+  # If set to true, the cpuLimits ([*].resources.limit.cpu) must be defined for all containers.
+  # Value set here can be overriden at the workload level by setting enableDefaultCpuLimits value.
+  enableDefaultCpuLimits: false
+
+  preheal: 0
+  postheal: 0
+  seccompAllowedProfileNames: docker/default
+  seccompDefaultProfileName: docker/default
+
+  # This value has lower precendence over "timeZone.timeZoneEnv".
+  # Example: To test IST(India Standard Time) which is UTC +5:30, you need to use "Asia/Calcutta".
+  # Timezone full names can be found here: https://en.wikipedia.org/wiki/List_of_tz_database_time_zones
+  timeZoneEnv:
+
+  #you can add prefixes to pod and container names by providing values for below parameters
+  ##Provide lowercase alphanumeric characters, '-' or '.'
+  #Consider suffixing the podNamePrefix and containerNamePrefix with either - for convenience
+  podNamePrefix:
+  containerNamePrefix:
+
+  #If enabled, then `podNamePrefix` would be added to the pod name without any restrictions. Default value is false.
+  disablePodNamePrefixRestrictions: 
+
+  #Sets priorityClass for indexsearch pods at global level
+  priorityClassName: ""
+
+  #Sets imagePullSecrets at global level for all indexsearch pods. 
+  imagePullSecrets: []
+  #- name: regcred 
+
+  #Configure annotations and labels at global level respectively.These will be added at both pod level and the workload(statefulset/deployment) level for indexsearch.
+  annotations: {}
+  labels: {}
+
+  # Istio-related parameters
+  istio:
+    # version of istio available in the environment, defined at global level.
+    # quote is important, otherwise value is treated as a float value.
+    version: "1.7"
+    # Whether istio cni is enabled in the environment.
+    cni:
+     enabled: true
+
+  # For IPv4 and IPv6 dual stack support at global scope.
+  # ipFamilyPolicy:  SingleStack | PreferDualStack | RequireDualStack
+  ipFamilyPolicy:
+  # ipFamilies: ["IPv4"] | ["IPv6"] | ["IPv4","IPv6"] | ["IPv6","IPv4"]
+  ipFamilies: []
+  # - IPv4
+  # - IPv6
+
+  certManager:
+    #global.certManager is set to true by default.
+    enabled: true
+
+  hpa:
+   #enabled value left empty intentionally, default value is False
+   enabled:
+
+  #Provide list of extended fields that component can use to enrich the log event by removing {} and configure like below example.
+  unifiedLogging:
+    extension: {}
+    #extension:
+       #VM_Name: abc
+       #VM_UUID: 123
+    syslog:
+      # Enable sending logs to syslog. Enabled value left empty intentionally, default value is False.
+      enabled:
+      facility:
+      host:
+      port:
+      protocol:
+      #Note - If SSL is enabled for syslog server, configure its root CA certificate in a precreated secret and configure the secret name and key containing the ca certificate under caCrt/tls section
+      ## syslog.caCrt section will be deprecated in future. It is still supported currently, however the new parameter syslog.tls.secretRef takes higher precedence over syslog.caCrt if both are configured.
+      caCrt:
+        secretName:
+        key:
+      ## Recommended to use below section to configure the secret name and key containing the ca certificate.
+      tls:
+        secretRef:
+          # Secret name, pointing to a Secret object.
+          name:
+          # Secret key names mapping.
+          # If the provided Secret is of type `kubernetes.io/tls', then key names do not need to be changed.
+          keyNames:
+            # Name of Secret key, which contains CA certificate.
+            caCrt: "ca.crt"
+            # Name of Secret key, which contains TLS certificate
+            tlsCrt: ""
+            # Name of Secret key, which contains TLS key
+            tlsKey: ""
+  # Set requested imageFlavor at global-level.
+  imageFlavor:
+  # Set requested image Flavor Policy at global level .Supports Strict or BestMatch. It is BestMatch by default.
+  imageFlavorPolicy:
+
+init:
+  image:
+    name: fnms-init-container
+    tag: nokia-1.0.2
+    pullPolicy: IfNotPresent
+certificates:
+  secrets:
+    altiplano_keystore_secrets: altiplano-keystore-secrets
+    altiplano_indexsearch_certificate_secrets: altiplano-indexsearch-certificate-secrets
+#Creating internal*Registry parameters for each image. These will be removed at the time of release in favour of global.registry
+#Internal registry used for indexsearch image
+internalAppRegistry:
+#Internal registry used for fluentd sidecar image
+internalFluentdSidecarRegistry:
+#Internal registry used for init image
+internalInitRegistry:
+#Internal registry used for kubectl image
+internalToolsRegistry:
+
+# If enabled, then `podNamePrefix` would be added to the pod name without any restrictions. This has higher precedence than "global.disablePodNamePrefixRestrictions".
+# To avoid helm failures and/or data loss (of manager and data PVCs) on upgrades from older releases, the default value is set to true for indexsearch. 
+# If you wish to apply restrictions to all pods except manager and data pods, set the flag to false at root level and true at workload i.e. <manager/data>.disablePodNamePrefixRestrictions.
+disablePodNamePrefixRestrictions: true
+
+#When rbac.enabled is set to true, chart would create its own rbac related resources; If false, an external/pre-created service account as configured at serviceAccountName will be used.
+rbac:
+  enabled: true
+  #PSP/SCC is required only if istio cni is disabled. In other cases, they are not created as the 'restricted' PSP/SCC is sufficient to run this chart.
+  psp:
+    create: false
+    #Below annotation must be set, when 'containerSecurityContext.seccompProfile.type' is configured.
+    annotations:
+      seccomp.security.alpha.kubernetes.io/allowedProfileNames: '*'
+  scc:
+    create: false
+    #Set annotations for SCCs only if required
+    annotations: {}
+
+#User can specify the precreated SA here.
+serviceAccountName: ""
+
+#Common lables for k8s objects. Set below to configure label app.kubernetes.io/part-of:
+partOf: ""
+#Common lables for k8s objects. Set below to configure label app.kubernetes.io/managed-by:
+managedBy: ""
+
+customResourceNames:
+  #Provide lowercase alphanumeric characters, '-' or '.'
+  resourceNameLimit: 63
+  managerPod:
+    #when managerContainerName is not provided,<containerprefix>is-manager would be used.
+    managerContainerName: ""
+  dataPod:
+    #when dataContainerName is not provided,<containerprefix>-is-data would be used.
+    dataContainerName: ""
+  clientPod:
+    #when clientContainerName is not provided,<containerprefix>-is-client would be used.
+    clientContainerName: ""
+  #when initContainerName is not provided,<containerprefix>is-init would be used.
+  initContainerName: ""
+  #when unifiedLoggingContainerName is not provided,<containerprefix>unifiedlogging-sidecar would be used.
+  unifiedLoggingContainerName: ""
+  #If job/container names are not provided, then default names would be generated by the chart in following format:
+  #For job name: <podprefix>-<ReleaseName>-<string related to job>
+  #For job containernames: <containerprefix>-<string related to job>
+  postScaleInJob:
+    name: ""
+    postScaleInContainerName: ""
+  preUpgradeSecJob:
+    name: ""
+    preUpgradeSecContainerName: ""
+  preHealJob:
+    name: ""
+    preHealContainerName: ""
+  preUpgradePvMigrateJob:
+    name: ""
+    preUpgradePvMigrateContainerName: ""
+  postDeleteCleanupJob:
+    name: ""
+    postDeleteCleanupContainerName: ""
+  postDeletePvcJob:
+    name: ""
+    postDeletePvcContainerName: ""
+  helmTestPod:
+    name: ""
+    helmTestContainerName: ""
+  helmTestPostApiPod:
+    name: ""
+    helmTestPostApiContainerName: ""
+  secAdminJob:
+    name: ""
+    secAdminContainerName: ""
+  upgradeJob:
+    name: ""
+    upgradeContainerName: ""
+  preRollbackJob:
+    name: ""
+    preRollbackContainerName: ""
+  postSetupApiJob:
+    name: ""
+    postSetupApiJobContainerName: ""
+
+#This section allows to configure user defined name for pods and containers(For container this will take effect only when customResourceName is not provided for container)
+# Options include:
+# nameOverride: fullname would become ReleaseName + nameOverride
+# fullnameOverride: fullname would become fullnameOverride
+# If specified both, fullnameOverride would take the precedence.
+nameOverride:
+fullnameOverride:
+
+# Set enableDefaultCpuLimits to true to enable pod CPU resources limit for all containers. Default is empty value.
+# Values set here will take precedence over the value set at global.enableDefaultCpuLimits.
+enableDefaultCpuLimits:
+
+timezone:
+
+# This value has precendence over "global.timeZoneEnv".
+# Example: To test IST(India Standard Time) which is UTC +5:30, you need to use "Asia/Calcutta".
+# Timezone full names can be found here: https://en.wikipedia.org/wiki/List_of_tz_database_time_zones
+  timeZoneEnv:
+
+#Pods' SecurityContext can be defined below
+securityContext:
+  enabled: true
+  # runAsUser is the uid with which the containers are run. If using random userids in openshift environment, set value as "auto".
+  runAsUser: 1000
+  # fsGroup is the gid that is assigned for the volumemounts mounted to the pod(fsGroup ID is used for block storage). If deploying in openshift environment, the value can be set as "auto".
+  fsGroup: 1000
+  # The supplementalGroups ID applies to shared storage volumes. Uncomment below line to set supplemetary group.
+  #supplementalGroups: [1000]
+  # Uncomment below lines to configure SELinux label to a container.
+  # For more details refer to https://kubernetes.io/docs/tasks/configure-pod-container/security-context/
+  #seLinuxOptions:
+  #  level: "s0:c223,c111"
+
+#Containers' SecurityContext can be defined below
+containerSecurityContext:
+  seccompProfile:
+    type: RuntimeDefault
+
+# set requested image flavor at root level. It has higher precedence than global.imageFlavor.
+imageFlavor:
+# set imageFlavorPolicy at root level. It supports Strict or BestMatch. Default value is BestMatch. It has higher precedence than global.imageFlavorPolicy.
+imageFlavorPolicy:
+
+#To configure custom annotations for indexsearch, remove {} and configure desired annotations and labels respectively using 8 space indentation under respective section.
+custom:
+  ## Annotations and labels specific to indexsearch manager respectively
+  manager:
+    statefulSet:
+      # These will be added at statefulset level (i.e. metadata.annotations)
+      annotations: {}
+      # These will be added at statefulset level (i.e. metadata.labels)
+      labels: {}
+    pod:
+      # These will be added at pod spec level (i.e. spec.template.metadata.annotations)
+      annotations: {}
+      # These will be added at pod spec level (i.e. spec.template.metadata.labels)
+      labels: {}
+      #For ex:
+      #annotations:
+      #  sidecar.istio.io/proxyCPU: 10m
+
+  ## Annotations and labels specific to indexsearch data respectively
+  data:
+    statefulSet:
+      # These will be added at statefulset level (i.e. metadata.annotations) 
+      annotations: {}
+      # These will be added at statefulset level (i.e. metadata.labels)
+      labels: {}
+    pod:
+      # These will be added at pod spec level (i.e. spec.template.metadata.annotations)
+      annotations: {}
+      # These will be added at pod spec level (i.e. spec.template.metadata.labels)
+      labels: {}
+
+  ## Annotations specific to indexsearch client
+  client:
+    deployment:
+      # These will be added at deployment level (i.e. metadata.annotations)
+      annotations: {}
+      # These will be added at deployment level (i.e. metadata.labels)
+      labels: {}
+    pod:
+      # These will be added at pod spec level (i.e. spec.template.metadata.annotations)
+      annotations: {}
+      # These will be added at pod spec level (i.e. spec.template.metadata.labels)
+      labels: {}
+  ## Configure annotations and labels pecific to helm hook jobs & test pods using 8 space indentation respectively
+  hookJobs:
+    job:
+      # These will be added at job level (i.e. metadata.annotations)
+      annotations: {}
+      # These will be added at job level (i.e. metadata.labels)
+      labels: {}
+    pod:
+      # These will be added at pod spec level (i.e. spec.template.metadata.annotations)
+      annotations: {}
+      # These will be added at pod spec level (i.e. spec.template.metadata.labels)
+      labels: {}
+
+# Set to true when running in istio enabled namespace
+istio:
+  enabled: false
+  envoy:
+   # Health check port of istio envoy proxy. For istio versions less than 1.6, set the value to 15020.
+   healthCheckPort: 15021
+   # Port used to terminate istio envoy sidecar using /quitquitquit endpoint
+   stopPort: 15000
+  #Istio version specified at chart level takes precedence over global level.
+  # quote is important, otherwise value is treated as a float value. Ex. "1.7"
+  version:
+  # Whether istio cni is enabled in the environment.
+  cni:
+   enabled:
+  # This optional flag should only be used when application was installed in istio-injection=enabled namespace, but was configured with istio.enabled=false, thus istio sidecar could not be injected into this application. Client then would need destinationRule for accessing this application
+  createDrForClient: false
+  # Below configurations will be used for configuring spec of DestinationRule  when createDrForClient flag is enabled
+  customDrSpecForClient:
+    trafficPolicy:
+      tls:
+        mode: "DISABLE"
+
+service:
+  type: "ClusterIP"
+  client_port: 9200
+  client_nodeport: 30932
+  manager_nodeport: 30933
+  manager_port: 9300
+  name: "indexsearch"
+
+  prometheus_metrics:
+    enabled: false
+    #If security is enabled, you will have to create a custom scrape job in cpro chart. Refer user-guide for the same.
+    #Prometheus annotation for scraping metrics from indexsearch https endpoints. If this annotation is modified, make sure to add the same name in custom scrape job created in cpro chart.
+    pro_annotation_https_scrape: "prometheus.io/scrape_is"
+
+# Dual-stack config for services in indexsearch chart. Chart level scope takes precedence over global level scope.
+#ipFamilyPolicy:  SingleStack | PreferDualStack | RequireDualStack
+ipFamilyPolicy:
+#ipFamilies: ["IPv4"] | ["IPv6"] | ["IPv4","IPv6"] | ["IPv6","IPv4"]
+ipFamilies: []
+# If dual-stack is configured for indexsearch, network_host must be configured as mentioned in next section.
+
+#network_host is set to _site_ by default for IPv4 env. To know more about network_host and configure this parameter, please refer:
+#1. https://www.elastic.co/guide/en/elasticsearch/reference/7.0/modules-network.html#network-interface-values
+#2. https://opensearch.org/docs/latest/opensearch/cluster/#step-3-bind-a-cluster-to-specific-ip-addresses
+## For pure IPv6 environment, this can be set to "_global:ipv6_". If the network interface is known, you can set it to "_[networkInterface]:ipv6_". For ex: "_eth0:ipv6_"
+## For dual stack environment, this can be set to "0.0.0.0".
+## When istio.enabled is true, network_host is fixed to "0.0.0.0"
+network_host: "_site_"
+
+#postscalein should be 0 to run postscalein job for cleaning up unused PVCs
+postscalein: 0
+
+#Delete policy of pre/post-upgrade jobs can be configured to modify the job retention
+# For ex. if the jobs are to be retained even on success, remove hook-succeeded.
+upgrade:
+  hookDelPolicy: before-hook-creation, hook-succeeded
+  #Note: Migrating PVs needs cluster-level permission and creates clusterrole during pre-upgrade.
+  # Due to asset name changes, both manager and data PV has to be migrated to retain old data. Use this flag if upgrading from BELK 22.06. For subsequent upgrades(like update configuration) the value can be false
+  autoMigratePV: false
+  preUpgradePVMigrationSAName: ""
+
+#If 'autoRollback' is set to true, then the chart itself will handle all the necessary pre/post rollback steps for version downgrade to lower opensearch versions.
+#Note: 
+##1. The prerollback job requires to have higher rbac permissions to delete PVCs. 
+##2. The ReclaimPolicy of the storageclass must be 'Delete' for automatic rollback to work.
+#If below flag is set to false, while downgrading to lower opensearch versions, user must manually scale down all the Indexsearch Manager and Data pods to zero and delete PVCs before helm rollback and execute rollback script file after rollback.
+# Warning - If this flag is false in the helm revision rollback is targeted to, then automatic rollback would not work. Please be cautious if turning this off.
+autoRollback: true
+
+#Sets imagePullSecrets at root level for all indexsearch pods . This has higher precendece over imagePullsecrets configured at global level.
+imagePullSecrets:
+# - name: regcred
+
+#To add additional environment variables to all indexsearch pods, uncomment below lines and add the required ENVs.
+#env:
+  #- name: "PATH_LOGS"
+  #  value: "/var/log/opensearch"
+
+unifiedLogging:
+  #Provide list of extended fields that component can use to enrich the log event by removing {} and configure like below example.
+  #This has precedence over global.unifiedLogging.extension
+  extension: {}
+  #extension:
+     #VM_Name: abc
+     #VM_UUID: 123
+  syslog:
+    # Enable sending logs to syslog. Takes precedence over global.unifiedLogging.syslog.enabled. Enabled value left empty intentionally, default value is False.
+    enabled:
+    # Set sendLogsViaLog4j to true if sending logs to syslog using log4j. If this flag is enabled, additional fluentd sidecar for unified logging will not be injected.
+    sendLogsViaLog4j: true
+    facility:
+    host:
+    port:
+    protocol:
+    #Note - If SSL is enabled for syslog server, configure its root CA certificate in a precreated secret and configure the secret name and key containing the ca certificate under caCrt/tls section
+    ## syslog.caCrt section will be deprecated in future. It is still supported currently, however the new parameter syslog.tls.secretRef takes higher precedence over syslog.caCrt if both are configured.
+    caCrt:
+      secretName:
+      key:
+    ## Recommended to use below section to configure the secret name and key containing the ca certificate.
+    tls:
+      secretRef:
+        # Secret name, pointing to a Secret object.
+        name:
+        # Secret key names mapping.
+        # If the provided Secret is of type `kubernetes.io/tls', then key names do not need to be changed.
+        keyNames:
+          # Name of Secret key, which contains CA certificate.
+          caCrt: "ca.crt"
+          # Name of Secret key, which contains TLS certificate
+          tlsCrt: ""
+          # Name of Secret key, which contains TLS key
+          tlsKey: ""
+     
+    #set buffer size for application and sidecar logs.
+    appLogBufferSize: 50MB
+    sidecarLogBufferSize: 20MB
+  # Following are the image and resource details for the fluentd sidecar used to send logs to syslog if enabled.
+  imageRepo: bssc-fluentd
+  # Desired image flavor must be configured at imageFlavor. If the flavor is included in unifiedLogging.imageTag (for ex. 1.16.2-rocky8-jre17-2311.0.1), the complete tag would be read as-is, irrespective of configuration at unifiedLogging.imageFlavor.
+  imageTag: 1.16.2-2311.0.1
+  # set image Flavor at container level for fluentd-sidecar container. It has higher precedence than global.imageFlavor, .imageFlavor and manager.imageFlavor. It supports rocky8-jre11 or rocky8-jre17 Default value is rocky8-jre11. 
+  imageFlavor:
+  # set image Flavor Policy at container level for fluentd-sidecar container. It has higher precedence than global.imageFlavorPolicy, .imageFlavorPolicy and manager.imageFlavorPolicy. It supports Strict or BestMatch. Default value is BestMatch.
+  imageFlavorPolicy:
+  imagePullPolicy: IfNotPresent
+  resources:
+    limits:
+      #cpu: "50m"
+      memory: "100Mi"
+      ephemeral-storage: "200Mi"
+    requests:
+      cpu: "20m"
+      memory: "80Mi"
+      ephemeral-storage: "200Mi"
+
+  #Provide list of env parameters to be added in fluentd sidecar in below section after removing {}.
+  env: {}
+
+  unifiedLoggingConfig: |
+    #system directive is added here to format fluentd sidecar logs into json.
+    <system>
+      <log>
+        format json
+        time_format %Y-%m-%dT%H:%M:%S%z
+      </log>
+    </system>
+    <source>
+      @type tail
+      path /tmp/mainContainerLogs/*.log
+      pos_file /tmp/fluentd.pos
+      read_from_head true
+      tag indexsearch-main-container-logs
+      <parse>
+        @type json
+        time_key time
+        time_format %iso8601
+        keep_time_key true
+      </parse>
+    </source>
+    <source>
+      @type tail
+      path /tmp/sidecarContainerLogs/*.log
+      pos_file /tmp/sidecar.pos
+      read_from_head true
+      tag indexsearch-sidecar-alert-logs
+      <parse>
+        @type json
+        time_key time
+        time_format %iso8601
+        keep_time_key true
+      </parse>
+    </source>
+    <match indexsearch-main-container-logs indexsearch-sidecar-alert-logs>
+      @type rewrite_tag_filter
+      <rule>
+        key level
+        pattern (?i)alert
+        tag ${tag}.alert
+      </rule>
+      <rule>
+        key level
+        pattern .+
+        tag ${tag}.{{ tpl (default "notice" $.syslog.severity) . }}
+      </rule>
+    </match>
+    @include sidecar.conf
+    <match **>
+      @include dest.conf
+    </match>
+
+
+manager:
+  name: manager
+  replicas: 3
+  image: 
+    repo: bssc-indexsearch
+    # Desired image flavor must be configured at image.flavor. If the flavor is included in image.tag (for ex. 2.11.0-rocky8-jre17-2311.0.1), the complete tag would be read as-is, irrespective of configuration at image.flavor.
+    tag: 2.11.0-2311.0.1
+    # set image Flavor at container level for main container. It has higher precedence than global.imageFlavor, .imageFlavor and manager.imageFlavor. It supports rocky8-jre11 or rocky8-jre17 Default value is rocky8-jre11.
+    flavor:
+    # set image Flavor policy at container level for main container. It has higher precedence than global.imageFlavorPolicy, .imageFlavorPolicy and manager.imageFlavorPolicy. It supports Strict or BestMatch. Default value is BestMatch.
+    flavorPolicy:
+  ImagePullPolicy: "IfNotPresent"
+  # set image Flavor at workload. It has higher precedence than global.imageFlavor and .imageFlavor.
+  imageFlavor:
+  # set image Flavor Policy at workload. It has higher precedence than global.imageFlavorPolicy and .imageFlavorPolicy. It supports Strict or BestMatch. Default value is BestMatch.
+  imageFlavorPolicy:
+  resources:
+    limits:
+      #cpu: "1"
+      memory: "2Gi"
+      ephemeral-storage: "500Mi"
+    requests:
+      cpu: "500m"
+      memory: "1.5Gi"
+      ephemeral-storage: "200Mi"
+  java_opts: "-Xms1g -Xmx1g"
+  #By default, podAntiAffinity is set as soft(preference rule) which can be modified to hard(required rule). If not, user can provide customDefinition to set pod anti affinity.
+  podAntiAffinity:
+    customDefinition: {}
+    ruleDefinition: "soft" 
+  podAffinity: {}
+  nodeAffinity: {}
+  nodeSelector: {}
+  tolerations: []
+
+  #If labelSelector key is omitted and autoGenerateLabelSelector is set to true, then labelSelector is automatically generated otherwise labelSelector are taken from labelSelector key
+  topologySpreadConstraints:
+  #- maxSkew: 1
+  #  topologyKey: kubernetes.io/hostname
+  #  whenUnsatisfiable: DoNotSchedule/ScheduleAnyway
+  #  labelSelector:
+  #    matchLabels:
+  #      app: manager
+  #  autoGenerateLabelSelector: False
+  podManagementPolicy: Parallel
+  updateStrategy:
+    type: RollingUpdate
+  livenessProbe:
+    initialDelaySeconds: 30
+    periodSeconds: 10
+    timeoutSeconds: 1
+    successThreshold: 1
+    failureThreshold: 3
+  readinessProbe:
+    initialDelaySeconds: 30
+    periodSeconds: 10
+    timeoutSeconds: 1
+    successThreshold: 1
+    failureThreshold: 3
+  #PodDisruptionBudgets for manager
+  #This will ensure that configured number of pods are always up and try to prevent the evictions
+  #Note: Either minAvailable or maxUnavailable should be used. Both cannot be configured at the same time.
+  #If num of replicas of manager pods is n, there should be minumum (n/2 +1) manager pods always up in the cluster for indexsearch to work properly so, set the maxUnavailable value accordingly. As the default num of replica for manager pods is 3, maxUnavailable is set to 1 by default which ensures n/2+1 condition is met.
+  pdb:
+    enabled: true
+    minAvailable: 
+    maxUnavailable: 1
+
+  #Additional dns entries can be added to pod's /etc/hosts for dns resolution by configuring hostaliases
+  # For configuring hostAliases remove [], uncomment and configure like below example.
+  hostAliases: []
+  #hostAliases:
+  #- hostnames:
+  #  - example.com
+  #  ip: 10.67.67.67
+
+  #Sets PriorityClass for manager pods. If left blank or empty quotes, pods will be configured to cluster default PriorityClass.
+  #manager.priorityClassName has higher precedence than priorityClassName in global scope
+  priorityClassName: ""
+
+  syslogSidecar:
+    #Enable sending logs of manager pod to syslog (via fluentd sidecar) when sendLogsViaLog4j is disabled and *.unifiedLogging.syslog.enabled is true. Takes precedence over global.unifiedLogging.syslog.enabled and unifiedLogging.syslog.enabled.
+    #Note - Set sendLogsViaLog4j: false to send logs via fluentd sidecar to syslog.
+    enabled: true
+
+data:
+  name: data
+  replicas: 2
+  resources:
+    limits:
+      #cpu: "1"
+      memory: "4Gi"
+      ephemeral-storage: "500Mi"
+    requests:
+      cpu: "500m"
+      memory: "3Gi"
+      ephemeral-storage: "200Mi"
+  java_opts: "-Xms2g -Xmx2g"
+  podManagementPolicy: Parallel
+  updateStrategy:
+    type: RollingUpdate
+  #By default, podAntiAffinity is set as soft(preference rule) which can be modified to hard(required rule). If not, user can provide customDefinition to set pod anti affinity.
+  podAntiAffinity:
+    customDefinition: {}
+    ruleDefinition: "soft"  
+  podAffinity: {}
+  nodeAffinity: {}
+  nodeSelector: {}
+  tolerations: []
+  
+  #If labelSelector key is omitted and autoGenerateLabelSelector is set to true, then labelSelector is automatically generated otherwise labelSelector are taken from labelSelector key
+  topologySpreadConstraints:
+  #- maxSkew: 1
+  #  topologyKey: kubernetes.io/hostname
+  #  whenUnsatisfiable: DoNotSchedule/ScheduleAnyway
+  #  labelSelector:
+  #    matchLabels:
+  #      app: data
+  #  autoGenerateLabelSelector: False
+  livenessProbe:
+    initialDelaySeconds: 30
+    periodSeconds: 10
+    timeoutSeconds: 1
+    successThreshold: 1
+    failureThreshold: 3
+  readinessProbe:
+    initialDelaySeconds: 30
+    periodSeconds: 10
+    timeoutSeconds: 1
+    successThreshold: 1
+    failureThreshold: 3
+  #PodDisruptionBudgets for data
+  #This will ensure that configured number of pods are always up and try to prevent the evictions
+  #Note: Either minAvailable or maxUnavailable should be used. Both cannot be configured at the same time
+  #Default indexsearch shard replication is 1, so primary and replica shards will be distributed across any two data pods. If more than 1 data pod goes down, it can lead to data loss. So maxUnavailable value should be 1 unless the indexsearch shard replication has been increased. Its recommended to atleast have two data pods (to ensure green cluster health) up and running, but if the num of replica for data pods has been reduced to 1, the value of maxUnavailable should be empty and value of minAvailable needs to be set to 1 because the default value of maxUnavailable i.e. 1 will drain the node and this would lead to data loss.
+  pdb:
+    enabled: true
+    minAvailable: 
+    maxUnavailable: 1
+
+  #Sets PriorityClass for data pods. If left blank or empty quotes, pods will be configured to cluster default PriorityClass.
+  #data.priorityClassName has higher precedence than priorityClassName in global scope
+  priorityClassName: ""
+
+  #Additional dns entries can be added to pod's /etc/hosts for dns resolution by configuring hostaliases
+  # For configuring hostAliases remove [], uncomment and configure like below example.
+  hostAliases: []
+  #hostAliases:
+  #- hostnames:
+  #  - example.com
+  #  ip: 10.67.67.67
+
+  syslogSidecar:
+    #Enable sending logs of data pod to syslog (via fluentd sidecar) when sendLogsViaLog4j is disabled and *.unifiedLogging.syslog.enabled is true. Takes precedence over global.unifiedLogging.syslog.enabled and unifiedLogging.syslog.enabled.
+    #Note - Set sendLogsViaLog4j: false to send logs via fluentd sidecar to syslog.
+    enabled: true
+
+client:
+  name: client
+  replicas: 3
+  resources:
+    limits:
+      #cpu: "1"
+      memory: "4Gi"
+      ephemeral-storage: "500Mi"
+    requests:
+      cpu: "500m"
+      #When HPA is enabled it is recommended to set request same as limit because HPA considers requests for its calculation. If it is set to different value, HPA might unnecessariliy scale up pods without using complete resources configured in requests. 
+      memory: "3Gi"
+      ephemeral-storage: "200Mi"
+  updateStrategy:
+    type: RollingUpdate
+  java_opts: "-Xms2g -Xmx2g"
+  #By default, podAntiAffinity is set as soft(preference rule) which can be modified to hard(required rule). If not, user can provide customDefinition to set pod anti affinity.
+  podAntiAffinity:
+    customDefinition: {}
+    ruleDefinition: "soft"
+  podAffinity: {}
+  nodeAffinity: {}
+  nodeSelector: {}
+  tolerations: []
+  #If labelSelector key is omitted and autoGenerateLabelSelector is set to true, then labelSelector is automatically generated otherwise labelSelector are taken from labelSelector key
+  topologySpreadConstraints:
+  #- maxSkew: 1
+  #  topologyKey: kubernetes.io/hostname
+  #  whenUnsatisfiable: DoNotSchedule/ScheduleAnyway
+  #  labelSelector:
+  #    matchLabels:
+  #      app: client
+  #  autoGenerateLabelSelector: False
+
+  replicasManagedByHpa: False
+  hpa:
+    #enabled value left empty intentionally, default value is False
+    enabled:
+    minReplicas: 3
+    maxReplicas: 5
+    predefinedMetrics:
+      enabled: True
+      averageCPUThreshold: 85
+      averageMemoryThreshold: 85
+    behavior:
+    metrics:
+
+  #If security is enabled you may have to increase the initialDelaySeconds depending on your cluster
+  livenessProbe:
+    initialDelaySeconds: 90
+    periodSeconds: 20
+    timeoutSeconds: 1
+    successThreshold: 1
+    failureThreshold: 3
+  readinessProbe:
+    initialDelaySeconds: 90
+    periodSeconds: 20
+    timeoutSeconds: 1
+    successThreshold: 1
+    failureThreshold: 3  
+  #PodDisruptionBudgets for client
+  #This will ensure that configured number of pods are always up and try to prevent the evictions
+  #Note: Either minAvailable or maxUnavailable should be used. Both cannot be configured at the same time
+  #Atleast 50% of the client pods are recommended to be up to handle the incoming traffic towards indexsearch. The minAvailable value can be changed based on need and incoming load. As the default num of client pods is 3, having minAvailable as 50% will ensure atleast 2 pods are always running for the incoming load.
+  pdb:
+    enabled: true
+    minAvailable: 50% 
+    maxUnavailable:
+
+  #Sets PriorityClass for client pods. If left blank or empty quotes, pods will be configured to cluster default PriorityClass.
+  #client.priorityClassName has higher precedence than priorityClassName in global scope
+  priorityClassName: ""
+       
+  syslogSidecar:
+    #Enable sending logs of client pod to syslog (via fluentd sidecar) when sendLogsViaLog4j is disabled and *.unifiedLogging.syslog.enabled is true. Takes precedence over global.unifiedLogging.syslog.enabled and unifiedLogging.syslog.enabled.
+    #Note - Set sendLogsViaLog4j: false to send logs via fluentd sidecar to syslog.
+    enabled: true
+
+  #Additional dns entries can be added to pod's /etc/hosts for dns resolution by configuring hostaliases 
+  #Ex- In case of keycloak with istio, when ckey is mesh_external, if the ckey hostname is not resolvable, host aliases need to be added 
+  # For configuring hostAliases remove [], uncomment and configure like below example.
+  hostAliases: []
+  #hostAliases:
+  #- hostnames:
+  #  - keycloak.com
+  #  ip: 10.67.67.67
+
+jvm_options: |-
+  ## JVM configuration
+  ################################################################
+  ## Expert settings
+  ################################################################
+  ##
+  ## All settings below this section are considered
+  ## expert settings. Don't tamper with them unless
+  ## you understand what you are doing
+  ##
+  ################################################################
+  ## G1GC Configuration
+  # NOTE: G1 GC is only supported on JDK version 10 or later
+  # to use G1GC, uncomment the next two lines and update the version on the
+  # following three lines to your version of the JDK
+  # 10-13:-XX:-UseConcMarkSweepGC
+  # 10-13:-XX:-UseCMSInitiatingOccupancyOnly
+  11-:-XX:+UseG1GC
+  11-:-XX:G1ReservePercent=25
+  11-:-XX:InitiatingHeapOccupancyPercent=30
+
+  ## JVM temporary directory
+  -Djava.io.tmpdir=${OPENSEARCH_TMPDIR}
+
+  ## heap dumps
+  # generate a heap dump when an allocation from the Java heap fails
+  # heap dumps are created in the working directory of the JVM
+  -XX:+HeapDumpOnOutOfMemoryError
+  # specify an alternative path for heap dumps; ensure the directory exists and
+  # has sufficient space
+  -XX:HeapDumpPath=/tmp/opensearch/heapdump.hprof
+  # specify an alternative path for JVM fatal error logs
+  -XX:ErrorFile=/tmp/opensearch/hs_err.log
+  # JDK 9+ GC logging
+  11-:-Xlog:gc*=warning:file=/tmp/opensearch/gc.log:utctime,pid,tags,level:filecount=2,filesize=2m
+
+#If you want to provide own log4j2 properties then uncomment below section and add the properties with indent 2. Whatever is configured here will be read as-is. If nothing is provided here then chart templated log4j2 properties will be used. 
+#It is recommended to add "customLevel.ALERT = 100" to the provided log4j2 properties file to avoid warnings related to custom ALERT level.
+#log4j2_properties: |-
+
+initContainer:
+  repo: bssc-init
+  # Desired image flavor must be configured at initContainer.imageFlavor. If the flavor is included in initContainer.tag (for ex. 1.0.0-rocky8-jre17-2311.0.1), the complete tag would be read as-is, irrespective of configuration at initContainer.flavor.
+  tag: 1.0.0-2311.0.1
+  # set image Flavor at container level for init container. It has higher precedence than global.imageFlavor, .imageFlavor and manager.imageFlavor. It supports rocky8-jre11 or rocky8-jre17 Default value is rocky8-jre11.
+  imageFlavor:
+  # set image Flavor Policy at container level for init container. It has higher precedence than global.imageFlavorPolicy, .imageFlavorPolicy and manager.imageFlavorPolicy. It supports Strict or BestMatch. Default value is BestMatch.
+  imageFlavorPolicy:
+  resources:
+    limits:
+      #cpu: "100m"
+      memory: "100Mi"
+      ephemeral-storage: "30Mi"
+    requests:
+      cpu: "50m"
+      memory: "50Mi"
+      ephemeral-storage: "30Mi"
+
+persistence:
+  #Supported storageClasses for indexsearch data are cinder, local-storage, hostpath.
+  #If defined, storageClassName: <storageClass> , specified storage class is taken up.
+  #If undefined or set as "", the storage class annotated as default will be used for dynamic PVC provisioning.
+  #If set as "-", no storage class will be used i.e. dynamic provisioning is disabled (Existing available PVs that do not have a specified storageClassName will be considered for binding to the PVC)
+  #If you want to use local storage as volume give "local-storage" in storageClassName.
+  storageClassName: ""
+  accessMode: ReadWriteOnce
+  size: 25Gi
+  # Size of persistent storage for cluster manager pod to persist cluster state
+  managerStorage: 1Gi
+  # set auto_delete to true if you want the persistent volume to also get deleted on deletion of the release.
+  # This will delete all the previsous data stored in the persistent volume.
+  # When local storage is used it will deleted only PVC not PV.
+  auto_delete: false
+  # set enable to false if you want the backup-pvclaim PVC not create
+  # the backup-pvclaim PVC was define in shared-pvc.yaml file
+  backup:
+    enable: true
+
+backup_restore:
+  ## The name of the storage class which the cluster should use for backup and restore. The storage class used for backup/restore should be shared with ReadWriteMany option.
+  #If defined, storageClassName: <storageClass> , specified storage class is taken up.
+  #If undefined or set as "", the storage class annotated as default will be used for dynamic PVC provisioning.
+  #If set as "-", no storage class will be used i.e. dynamic provisioning is disabled (Existing available PVs that do not have a specified storageClassName will be considered for binding to the PVC)
+  storageClassName: glusterfs-storageclass
+  ## The size of the PersistentVolume to allocate to each indexsearch data Pod in the StatefulSet
+  ## For production servers this number should likely be much larger.
+  #It should be more than 1.5times primary store size of Indexsearch(Ex- 25*1.5=37.5)
+  size: 40Gi
+  #All indices backup is taken by default. While restore, user has an option to choose whether system indices (.opendistro_security, kibana index, multitenancy indices) has to be restored or not. Set the flag to true if system indices has to be restored from the snapshot. 
+  #System indices - .opendistro_security index contains the configurations for interalusers, roles, rolesmapping, tenants, config, actiongroups. kibana index contains saved index patterns/dashboard/visualizations created in Kibana. If dashboards multitenancy is enabled, there will be additional .kibana indices created for each tenant containing the saved index patterns/dashboard/visualizations of the respective tenant.
+  #When the flag is set to true, system indices content present at the time of backup will be restored. Configuration changes made after backup will be overwritten. 
+  restoreSystemIndices: false
+  # When backupGlobalState flag is set to true, existing cluster settings, templates etc will be backed up.
+  backupGlobalState: true
+  # When restoreGlobalState flag is set to true, existing cluster settings, templates etc whose names match those in the snapshot could be ovewritten.
+  restoreGlobalState: true
+  # Below path is mount path of B/R PV inside data pods. 
+  path: "indexsearch-backup"
+  
+accessRoleLabel: internal-access
+cbur:
+  enabled: false
+  #an integer. This value only applies to statefulset. The value can be 0,1 or 2.
+  #Recommended value of brOption is 0.
+  brOption: 0
+  #the maximum copy you want to saved.
+  maxCopy: 5
+  #Modes supported now: "local","NETBKUP","AVAMAR","CEPHS3","AWSS3", case insensitive
+  backendMode: "local"
+  #It is used for scheduled backup task
+  cronJob: "0 23 * * *"
+  #Set below parameters to true for auto enabling cron job
+  autoEnableCron: false
+  #Set below parameter to true in case you want cronjob to be automatically deleted/updated based on autoEnableCron or cronJob parameters
+  autoUpdateCron: false
+
+  cbura:
+    imageRepo: cbur/cbur-agent
+    imageTag: 1.1.0-6419
+    # set image Flavor at container level for cbura container. It has higher precedence than global.imageFlavor, .imageFlavor and manager.imageFlavor.
+    # If the flavor is configured at higher levels (workload, root or global) with a flavor not supported by cbur-agent img, set this imageFlavor explicitly to alpine.
+    imageFlavor:
+    # set image Flavor Policy at container level for cbura container. It has higher precedence than global.imageFlavorPolicy, .imageFlavorPolicy and manager.imageFlavorPolicy. It supports Strict or bestMatch. Default value is BestMatch.
+    imageFlavorPolicy:
+    # set the useImageTagAsIs to true if you want to use imageTag for cbura as it is. If the useImageTagAsIs is set to false, we must specify the cbura supported image flavor in supportedImageFlavor list.
+    useImageTagAsIs: false
+    supportedImageFlavor: ["alpine"]
+    imagePullPolicy: IfNotPresent
+    resources:
+      limits:
+        #cpu: "1"
+        memory: "2Gi"
+        ephemeral-storage: "50Mi"
+      requests:
+        cpu: "500m"
+        memory: "1Gi"
+        ephemeral-storage: "50Mi"
+    #tmp_size is the mounted volume size of /tmp directory for cbur-sidecar.
+    #The value should be around double the size of backup_restore.size
+    tmp_size: 80Gi
+  # Set below parameter to retore the indices with desired suffix. 
+  # CBUR restore parameters:
+  # 1. CBUR_RESTORE_SUFFIX --> Suffix to be added to the indices that are restored.
+  # 2. CBUR_RESTORE_SUFFIX_WITHTIME --> If flag is true, time(epoch format) will be added to the suffix of the restored indices. This is applicable only if CBUR_RESTORE_SUFFIX is present.
+  # 3. CBUR_RESTORE_INDICES_OVERWRITE --> If this flag is true, the indices which are common in snapshot and the system will be overwritten . This is applicable only if CBUR_RESTORE_SUFFIX is empty. If flag is set to false and there are common indices in snapshot and system , the restore operation will not be performed and the script will exit. 
+  # 4. CBUR_RESTORE_DELETE_INDICES_NOTPARTOF_RESTORE_SNAPSHOT --> If this flag is true, the indices which are in the system and not part of snapshot will be deleted .
+  # 5. RESTORE_SYSTEM_INDICES --> If this parameter is configured in configmap, it will take precedence to the value set to restoreSystemIndices in value.yaml and all system indices will be restored if value is set to true.
+  cbur_restore_parameters: |-
+    ---
+    CBUR_RESTORE_SUFFIX: "-restored"
+    CBUR_RESTORE_SUFFIX_WITHTIME: true
+    CBUR_RESTORE_INDICES_OVERWRITE: false
+    CBUR_RESTORE_DELETE_INDICES_NOTPARTOF_RESTORE_SNAPSHOT: false
+  # Set this flag to 'true' if you want CBUR to backup indexsearch configmaps
+  backup_configmap: false
+
+kubectl:
+  image:
+    repo: tools/kubectl
+    # Desired image flavor must be configured at image.flavour. If the flavor is included in image.tag (for ex. 1.26.11-rocky8-nano-20231124), the complete tag would be read as-is, irrespective of configuration at image.flavor.
+    tag: 1.26.11-20231124
+    # set image Flavor for kubectl. It has higher precedence than global.imageFlavor and .imageFlavor. Default value is rocky8-nano.
+    # If the flavor is configured at higher levels (workload, root or global) with a flavor not supported by kubectl img, set this imageFlavor explicitly to rocky8-nano.
+    flavor:
+    # set image Flavor Policy for kubectl. It has higher precedence than global.imageFlavorPolicy and .imageFlavorPolicy. It supports Strict or BestMatch. Default value is BestMatch.
+    flavorPolicy:
+    supportedImageFlavor: ["rocky8-nano"]
+
+#Set affinity, nodeSelector, tolerations and modify resources to apply to jobs and helm test pods
+jobs:
+  affinity: {}
+  nodeSelector: {}
+  tolerations: []
+  hookJobs:
+    resources:
+      requests:
+        cpu: 100m
+        memory: 100Mi
+        ephemeral-storage: "50Mi"
+      limits:
+        #cpu: 120m
+        memory: 120Mi
+        ephemeral-storage: "50Mi"
+  secAdminUpgradeJob:
+    resources:
+      requests:
+        cpu: 200m
+        memory: 200Mi
+        ephemeral-storage: "150Mi"
+      limits:
+        #cpu: 500m
+        memory: 500Mi
+        ephemeral-storage: "150Mi"
+
+# certManager configuration at root level.
+#Set certManager.enabled as true to create certifcates using certmanager feature.
+#If certManager is enabled, security must be enabled too
+certManager:
+#enabled value left empty intentionally, default value is False
+#This value has higher precedence over global.certManager.enabled
+  enabled:
+
+security:
+  #Enable security for authentication/authorization and ssl.
+  enable: false
+
+  # if security is set to true then, User has to provide the pre-created secretName and secret keys under sensitiveInfoInSecret section.
+  sensitiveInfoInSecret:
+    #Enabled flag is retained for backward compatibility only. It will/must be set to true when security is enabled.
+    enabled: "{{ .Values.security.enable }}"
+    credentialName: #pre-created secretName
+    # Indexsearch chart requires 2 users mandatorily:
+    #  1. kibanaserver (the username is fixed): This is used by dashboards backend server to contact indexsearch - this user is mapped to kibanaserver role. 
+    #  2. admin: used by curator, fluentd and for performing B/R operations - this user is mapped to all_access role.    
+    # The content of internalusers can be provided in the secret in 2 ways: - 1. Use complete internal_users.yml( atleast with admin user(having all_access role), hash password and kibanaserver user, hash password) file to generate the secret along with other required files. Or 2. Provide adminUserName, adminPassword, kibanaServerUserPwd instead of full internalusers.yml file while generating secret along with other required files. Additional users can be created by setting the additionalInternalUsers section, with the secret-names and secret-keys containing the username, password.
+    # Secret creation command example 1 when internalusers.yml full file is used - kubectl create secret generic my-secret --from-file=keystore.jks=</path/to/keystore-jks> --from-file=truststore.jks=</path/to/truststore-jks> --from-file=client-keystore.jks=</path/to/client-keystore-jks> --from-file=admin.crt.pem=</path/to/client-cert-pem> --from-file=admin.key.pem=</path/to/client-key-pem> --from-file=internal_users=</path/to/internal_users.yml> --from-literal=keypass=<keystore-password> --from-literal=trustpass=<truststore-password> --from-literal=auth_identity=CN=<CN of admin cert>,C=ELK  --namespace logging
+    # From the above example, secretName: my-secret, secInternalUserYml: internal_users, keystoreJks: keystore.jks, truststoreJks: truststore.jks, keyPass: keypass, trustPass: trustpass, clientKeystoreJks: client-keystore.jks, clientCrtPem: admin.crt.pem, clientKeyPem: admin.key.pem,  authAdminIdentity: auth_identity
+    # Secret creation command example 2 when adminUsername, adminPassword, kibanaServerUserPwd is used -  kubectl create secret generic my-secret --from-file=keystore.jks=</path/to/keystore-jks> --from-file=truststore.jks=</path/to/truststore-jks> --from-file=client-keystore.jks=</path/to/client-keystore-jks> --from-file=admin.crt.pem=</path/to/client-cert-pem> --from-file=admin.key.pem=</path/to/client-key-pem>  --from-literal=keypass=<keystore-password> --from-literal=trustpass=<truststore-password> --from-literal=auth_identity=CN=<CN of admin cert>,C=ELK --from-literal=username=<admin-user> --from-literal=password=<admin-user-password> --from-literal=kibanaserverpwd=<kibanaserver-user-password> --namespace logging
+    # Provide secret key for internal users yml file for secInternalUserYml if adminUserName and adminPassword are not configured.
+    # It is mandatory to provide either secInternalUserYml(atleast with admin(user having all_access role), kibanaserver user) or adminUserName, adminPassword,kibanaServerUserPwd.
+    # Refer Below format to configure internal_users for secInternalUserYml:-
+    ##   Refer https://opensearch.org/docs/latest/security-plugin/access-control/api/#users
+    ##   Replace "<admin-user>" with adminuser's name, "<hash-value-of-admin-user-password>" and "<hash-value-of-kibanaserver-user-password>" with hash password for admin(user with all_access role) and kibanaserver user. Refer https://opensearch.org/docs/latest/security-plugin/configuration/yaml#internal_usersyml for updating hash password.
+    ##  internal_users_yml: |-
+    ##    ---
+    ##    _meta:
+    ##      type: "internalusers"
+    ##      config_version: 2
+    ##    <admin-user>:
+    ##      reserved: false
+    ##      hidden: false
+    ##      hash: "<hash-value-of-admin-user-password>"
+    ##      backend_roles:
+    ##      - "admin"
+    ##    kibanaserver:
+    ##      reserved: false
+    ##      hash: "<hash-value-of-kibanaserver-user-password>"
+    secInternalUserYml: 
+    keystoreJks:  #secret key for keystore-jks
+    truststoreJks: #secret key for trustore-jks
+    clientKeystoreJks: #secret key for client keystore-jks
+    keyPass: #secret key for keystore password
+    trustPass: #secret key for trustore password
+    clientCrtPem: #secret key for client cert pem
+    clientKeyPem: #secret key for client key pem
+    authAdminIdentity: #secret key for auth identity
+    # nodesDn - Key name in precreated secret that stores the DN of the node(indexsearch) certificate (required if the certificate does not contain an OID in its SAN)
+    nodesDn:
+    # Password of kibanaserver user (required when not using secInternalUserYml). This user is used by dashboards in backend interactions with indexsearch.
+    # Ensure the same password is configured at bssc-dashboards.security.sensitiveInfoInSecret.dboIsPassword. 
+    kibanaServerUserPwd:
+    # When security is enabled, if secInternalUserYml is not configured then, below 2 keys has to be filled from pre-creted secret which contains <admin-user>(having all_access role) credentials
+    # adminUserName and adminPassword reads credentials of <admin-user> (havind all_access role) configured via pre-created secret key. If further user has to be created apart from <admin-user>, then after the indexsearch cluster is initialized other users can be created via REST API or from dashboards UI.
+    # secret key for admin username
+    adminUserName:
+    #secret key for admin password
+    adminPassword:
+
+    #Multiple additional users can be created (on install) by giving the credential name (name of precreated secret), username and password for each user. Configure the credential name and the names of the secret-keys containing username and password of the user respectively. There could be a single secret for all users or single secrets created per user.
+    # Secret creation command example for additionalUsers: kubectl create secret generic additionalSecret --from-literal=user1=<username-of-user1> --from-literal=pass1=<password-of-user1> --namespace logging
+    # From the above example: credentialName: additionalSecret, username: user1, password: pass1.
+    additionalInternalUsers:
+    #- credentialName:
+    #  username:
+    #  password:
+
+    # If Security is true, keycloak_auth is true and istio is not enabled then secret key has to be provided for keycloakRootCaPem from the pre-created secret.
+    keycloakRootCaPem:
+  
+  #Certmanager configuration.
+  certManager:
+    #This has higher precedence over certManager.enabled (root level) and global.certManager.enabled. Its default value is set to read the same value configured at .Values.certManager.enabled
+    enabled: "{{ .Values.certManager.enabled }}"
+    duration: "8760h" # 365d
+    renewBefore: "360h" # 15d
+    apiVersion: "cert-manager.io/v1alpha3"
+    # secret name which contains the key which would be used to encrypt the keystore/truststore created by cert-manager
+    storePasswordCredentialName:   # secret name containing the key
+    storePasswordKey:   # key in the secret that contains password used to encrypt keystore/truststore
+    #By default <indexsearch-svc-name>.<nampespace>.svc.cluster.local is added as DN in node certificate. If you wish to add other DN's uncomment below section
+    #dnsNames:
+    #- example.com
+    issuerRef:
+      # We can refer different Issuers by changing the kind and group here.
+      # The default value is ncms-ca-issuer(i.e is a cluster issuer)
+      name: ncms-ca-issuer
+      kind: ClusterIssuer
+      group: cert-manager.io
+ 
+  #For user supplied certificates via Kubernetes Secret for indexsearch node certificates, set nodeCrt.tls.secretRef.name with the secret name.
+  #Certificates from <workload name>.tls.secretRef.name secret takes precedence over certificates from the other parameters i.e. If secret name is specified here, the certificates from configured secret will be used, even if the cert-manager is enabled or certificates are provided in sensitiveInfo section.
+  nodeCrt:
+    tls:
+      secretRef:
+        # Secret name, pointing to a Secret object.
+        name: ""
+        # Secret key names mapping.
+        keyNames:
+          # Name of Secret key, which contains CA certificate
+          caCrt:
+          # Name of Secret key, which contains TLS key
+          tlsKey:
+          # Name of Secret key, which contains TLS certificate
+          tlsCrt:
+
+  #For user supplied certificates via Kubernetes Secret for admin certificates, set adminCrt.tls.secretRef.name with the secret name.
+  #Certificates from <workload name>.tls.secretRef.name secret takes precedence over certificates from the other parameters i.e. If secret name is specified here, the certificates from configured secret will be used, even if the cert-manager is enabled or certificates are provided in sensitiveInfo section.
+  adminCrt:
+    tls:
+      secretRef:
+        # Secret name, pointing to a Secret object.
+        name: ""
+        # Secret key names mapping.
+        keyNames:
+          # Name of Secret key, which contains CA certificate
+          caCrt: 
+          # Name of Secret key, which contains TLS key
+          tlsKey: 
+          # Name of Secret key, which contains TLS certificate
+          tlsCrt:
+
+  # if authentication is required via keycloak, then set keycloak_auth to true
+  keycloak_auth: false
+
+  istio:
+    # FQDN of ckey hostname that is externally accessible from browser
+    extCkeyHostname: "ckey.io"    # Ex. extCkeyHostname: "ckey.io"
+    # Location of ckey internal/external to the istio mesh. Default value is MESH_INTERNAL.
+    extCkeyLocation: "MESH_INTERNAL"  # Accepted values: MESH_INTERNAL, MESH_EXTERNAL
+    extCkeyIP: ""   # IP to be used for DNS resolution of ckey hostname from the cluster (required only when ckey is external to the mesh and ckey hostname is not resolvable from the cluster)
+
+
+  ## When security is enabled, you can set the ciphers in the whitelist below. The ciphers provided in the list should be common in both JVM ciphers and kubelet ciphers.
+  ## The details about JVM supported ciphers and kubelet ciphers are mentioned in userguide. Please refer that before configuring the cipher list.
+  ## Uncomment below line for setting cipher.
+  #ciphers:
+  #  - "TLS_ECDHE_RSA_WITH_AES_128_GCM_SHA256"
+  #  - "TLS_ECDHE_RSA_WITH_AES_256_GCM_SHA384"
+
+
+  # The below security configuration are required only during first time installation of indexsearch. Once indexsearch cluster is running, for future upgrades these configuration becomes obsolete EXCEPT config.yml. config.yml content can be updated here and the chart can be upgraded. Users, roles, rolesmapping etc can be created via REST API or Dashboards UI.
+  sec_configmap:
+    # Refer https://opensearch.org/docs/latest/security-plugin/access-control/api/#action-groups
+    action_groups_yml: |-
+      ---
+      _meta:
+        type: "actiongroups"
+        config_version: 2
+
+    # Refer https://opensearch.org/docs/latest/security-plugin/access-control/api/#configuration
+    config_yml: |-
+      ---
+      _meta:
+        type: "config"
+        config_version: 2
+      config:
+        dynamic:
+          kibana:
+             #To enable multitenancy set "multitenancy_enabled" to true. The value of server_username is fixed to kibanaserver.
+             multitenancy_enabled: false
+             server_username: kibanaserver
+          http:
+            anonymous_auth_enabled: false
+            xff:
+              enabled: false
+              internalProxies: ".+"
+          authc:
+            basic_internal_auth_domain:
+              http_enabled: true
+              transport_enabled: true
+              order: 0
+              http_authenticator:
+                type: "basic"
+                challenge: true   # Set this to false when keycloak authentication or clientcert_auth_domain is enabled
+                config: {}
+              authentication_backend:
+                type: "intern"
+                config: {}
+            openid_auth_domain:
+              http_enabled: false              # Set to true to enable keycloak authentication
+              transport_enabled: false
+              order: 1
+              http_authenticator:
+                type: openid
+                challenge: false
+                config:
+                  subject_key: preferred_username
+                  #Set the same name as configured as Token Claim Name in the client's role-mapper in keycloak
+                  roles_key: <roles>
+                  openid_connect_url: https://<keycloak_ip>:<port>/auth/realms/<realm_name>/.well-known/openid-configuration
+                  openid_connect_idp:
+                    enable_ssl: true
+                    verify_hostnames: false
+                    trust_all: false      ## Set to true when istio is enabled
+                    #The value of pemtrustedcas_filepath is set internally. Do not change the value or remove the key.
+                    pemtrustedcas_filepath: ""
+              authentication_backend:
+                  type: noop
+            proxy_auth_domain:
+              http_enabled: false
+              transport_enabled: false
+              order: 3
+              http_authenticator:
+                type: "proxy"
+                challenge: false
+                config:
+                  user_header: "x-proxy-user"
+                  #roles_header: "x-proxy-roles"
+              authentication_backend:
+                type: "noop"
+                config: {}
+            clientcert_auth_domain:
+              http_enabled: false
+              transport_enabled: false
+              order: 2
+              http_authenticator:
+                type: "clientcert"
+                config:
+                  username_attribute: "cn"
+                challenge: false
+              authentication_backend:
+                type: "noop"
+
+    # Refer https://opensearch.org/docs/latest/security-plugin/access-control/api/#roles
+    roles_yml: |-
+      ---
+      _meta:
+        type: "roles"
+        config_version: 2
+
+      # Restrict users so they can only view visualization and dashboard on kibana
+      kibana_read_only:
+        reserved: false
+
+      # The security REST API access role is used to assign specific users access to change the security settings through the REST API.
+      security_rest_api_access:
+        reserved: false
+
+      # This role gives access to global tenant and .kibana indices. This is required when using opensearch dashboards multitenancy.
+      kibana_multitenancy_user:
+        reserved: false
+        hidden: false
+        index_permissions:
+        - index_patterns:
+          - ".kibana_*"
+          allowed_actions:
+          - manage
+          - read
+          - delete
+          - index
+        tenant_permissions:
+        - tenant_patterns:
+          - global_tenant
+          allowed_actions:
+          - kibana_all_write
+
+    # Refer https://opensearch.org/docs/latest/security-plugin/access-control/api/#role-mappings
+    roles_mapping_yml: |-
+      ---
+      _meta:
+        type: "rolesmapping"
+        config_version: 2
+      all_access:
+        reserved: false
+        hidden: false
+        backend_roles:
+        - "admin"
+        description: "Migrated from v6"
+
+      own_index:
+        reserved: false
+        hidden: false
+        users:
+        - "*"
+      kibana_user:
+        reserved: false
+        backend_roles:
+        - "kibanauser"
+        description: "Maps kibanauser to kibana_user role"
+      readall:
+        reserved: false
+        backend_roles:
+        - "readall"
+      # When clientcert_auth_domain is enabled and cert-based auth is enabled for dashboards for backend interactions with opensearch, CN of the certificate has to be added like below.
+      #kibana_server:
+      #  reserved: false
+      #  users:
+      #  - "dashboards" ## CN of client certificate
+      kibana_server:
+        reserved: false
+        users:
+        - "kibanaserver"
+       
+      # kibana_multitenancy_user is mapped to all users by default so that when multitenancy is enabled, all users get access to global tenant. If this is not desired, use the REST API/dashboards UI to update the mapped users list.
+      kibana_multitenancy_user:
+        reserved: "false"
+        hidden: "false"
+        users:
+        - "*"
+
+    # Refer https://opensearch.org/docs/latest/security-plugin/access-control/api/#tenants
+    tenants_yml: |-
+      ---
+      _meta:
+        type: "tenants"
+        config_version: 2
+
+    nodesdn_yml: |-
+      ---
+      _meta:
+        type: "nodesdn"
+        config_version: 2
+
+    allowlist_yml: |-
+      ---
+      _meta:
+        type: "allowlist"
+        config_version: 2
+
+    whitelist_yml: |-
+      ---
+      _meta:
+        type: "whitelist"
+        config_version: 2
+
+    audit_yml: |-
+      ---
+      _meta:
+        type: "audit"
+        config_version: 2
+      config:
+        # enable/disable audit logging. Audit logging is enabled by default during install. For Upgrade from older releases , use REST API to enable audit logging.
+        enabled: true
+
+# If clientcert_auth_domain is enabled and cert manager is enabled, certificate will be created as per below configurations.
+indexsearch:
+  externalClientCertificates:
+    dashboards:
+      certificate:
+        enabled: false
+        #Dashboards client certificate will be generated with secretName as "{{ .Release.Name }}-bssc-ifd-cert-for-dashboards"
+        secretName: "{{ .Release.Name }}-bssc-ifd-cert-for-dashboards"
+        issuerRef:
+          name: ncms-ca-issuer
+          kind: ClusterIssuer
+          group: cert-manager.io
+        duration: 8760h # 1 year
+        renewBefore: 360h # 15 days
+        subject:
+        commonName: "dashboards"
+        usages: [ "client auth" ]
+        # DNSNames is a list of DNS subjectAltNames to be set on the Certificate.
+        # If ssl passthrough is used on the Ingress object,
+        # then dnsNames should be set to external DNS names.
+        dnsNames:
+        # URIs is a list of URI subjectAltNames to be set on the Certificate.
+        uris:
+        # IPAddresses is a list of IP address subjectAltNames to be set on the Certificate.
+        ipAddresses:
+        privateKey:
+          algorithm:
+          encoding:
+          size:
+          # Rotation of a key pair, when certificate is refreshed is recommended from a security point of view
+          rotationPolicy: Always
+
+  # certManager.enabled and adminCrt.certificate.enabled must be true for using this certificate.
+  # The following certificate configurations  like duration etc would be given precedence over the configurations in security.certManager section.
+  adminCrt:
+    certificate:
+      enabled: true
+      # If `issuerRef.name` or `issuerRef.kind` is not specified value from certManager section is taken
+      issuerRef:
+        name:
+        kind:
+        group: # set to "cert-manager.io" by default
+      duration:  # set to 8760h by default
+      renewBefore:  # set to 360h by default
+      secretName:
+      # Not needed in internall communication
+      subject:
+      # It has been deprecated since 2000 and is discouraged from being used. `dnsNames` are used instead.
+      commonName:
+      # If `usages` is not specified, the following will be used:
+      # - client auth
+      usages:
+      # If ssl passthrough is used on the Ingress object,
+      # then dnsNames should be set to external DNS names.
+      dnsNames:
+      uris:
+      ipAddresses:
+      privateKey:
+        algorithm:
+        encoding:
+        size:
+        # Rotation of a key pair, when certificate is refreshed is recommended from a security point of view
+        rotationPolicy: Always
+
+  # certManager.enabled and nodeCrt.certificate.enabled must be true for using this certificate.
+  # The following certificate configurations like duration etc would be given precedence over the configurations in security.certManager section.
+  nodeCrt:
+    certificate:
+      enabled: true
+      # If `issuerRef.name` or `issuerRef.kind` is not specified value from certManager section is taken
+      issuerRef:
+        name:
+        kind:
+        group: # set to "cert-manager.io" by default
+      duration:  # set to 8760h by default
+      renewBefore:  # set to 360h by default
+      secretName:
+      # Not needed in internall communication
+      subject:
+      # It has been deprecated since 2000 and is discouraged from being used. `dnsNames` are used instead.
+      commonName:
+      # If `usages` is not specified, the following will be used:
+      # - server auth
+      # - client auth
+      usages:
+      # If `dnsNames` is not specified then the following internal names will be used:
+      # - localhost
+      # - <service name>.<namespace>
+      # - <service name>.<namespace>.svc
+      # - <service name>.<namespace>.svc.<cluster domain>
+      # If ssl passthrough is used on the Ingress object,
+      # then dnsNames should be set to external DNS names.
+      dnsNames:
+      uris:
+      ipAddresses:
+      privateKey:
+        algorithm:
+        encoding:
+        size:
+        # Rotation of a key pair, when certificate is refreshed is recommended from a security point of view
+        rotationPolicy: Always
+
+#Configuration for Cross-Cluster Replication
+crossClusterReplication:
+  leader:
+    #If you want the indexsearch cluster to act as a leader cluster then set crossClusterReplication.leader.enabled to true
+    enabled: false
+    #Configure the followerDNs, with the Nodes DN of the follower clusters for the leader cluster to trust the follower opensearch clusters. Mandatory field to be configured when security is enabled.
+    followerDNs:
+      #- "CN=example.com,C=IN"
+      #- "CN=example,C=IN"
+    ingressTcpConfigmap:
+      enabled: false
+      # This name has to be configured with the tcp-services-configmap prefix used by the CITM ingress Chart.
+      # Sample command to fetch the tcp-services-configmap prefix value from the ingress pod: kubectl get pod ing-citm-ingress-s4cjx -o json --namespace default | jq .spec.containers[].args | grep "tcp-services-configmap"
+      tcpServicesConfigmapName:
+      ingressTcpPort: 9300
+
+  follower:
+    #If you want the indexsearch cluster to act as a follower cluster then set crossClusterReplication.follower.enabled to true
+    enabled: false
+    #Configure the leaderURL to set the proxy address for the follower to pull the indices from the leader. Mandatory field to be configured.
+    # ex: leaderURL: 100.70.69.68:9300 or leaderURL: leaderdns:9300
+    leaderURL:
+    #This name will be configured cross-cluster connection name if set. Default value - <releaseName>-<namespace>-<leaderURL>
+    connectionName:
+    #The replicateIndices contains the replication rule name and the pattern of the indices to be replicated from the leader cluster. For each key value pair, an 'autofollow' replication rule will be created. Should follow the below format:-
+    #<rule>: <pattern>      Ex: logrule: log-*
+    replicateIndices:
+      #logrule: log-*
+      #journalrule: journal-*
+
+#Set restApi.enabled to true, to run the below REST APIs configured under restApi.restApiArguments.
+restApi:
+  enabled: false
+  ## The restAPI scipt will run the below configured APIs for every helm event(install/rollback/upgrade) when it is enabled.
+  ## A restAPI should follow the below format:
+  #<<HTTP_METHOD>> <<API_ENDPOINT>>
+  #{ FOLLOWED
+  #  BY
+  #  REQUEST BODY }
+  ## ex:
+  ##PUT sample-index1
+  ##{
+  ##  "settings": {
+  ##    "index": {
+  ##      "number_of_shards": 2,
+  ##      "number_of_replicas": 1
+  ##    }
+  ##  }
+  ##}
+  restApiArguments: |-
+    #PUT sample-index
+    #{
+    #  "settings": {
+    #    "index": {
+    #      "number_of_shards": 2,
+    #      "number_of_replicas": 1
+    #    }
+    #  }
+    #}
+    
+    #GET _cluster/health?pretty
+    
+    #DELETE sample-index
+
+##add any additional indexsearch configuration below which you want to add/override in opensearch.yml.
+##Please refer "Extra Indexsearch Configurations" section on configuration page of user-guide for the list of parameters that should not be modified/overridden in opensearch.yml.
+extraConfig: {}
+  #config_yml: |-
+
+#This section is used for configuring sizeLimit for emptyDir volumes. When emptyDirSizeLimit is not configured, default values will be used.
+emptyDirSizeLimit:
+  extensionsTmp: #default value is 100Mi
+  tmp: #default value is 200Mi
+  isConfig: #default value is 10Mi
+  sharedVolume: #default value is 10Mi
+  datadir: #default value is 10Mi
+  securityconfWithSensitiveinfo: #default value is 10Mi
+  secAdminJobTmp:  #default value is 150Mi
+  postSetupApiJobTmp: #default value is 5Mi

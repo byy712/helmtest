@@ -1,0 +1,88 @@
+{{- include "cmdb.init" . -}}
+
+{{/*
+*
+* A non-manifest helper to check that the values for syslog ssl/tls are valid.
+* This prevents performing an install/upgrade of a chart to an invalid
+* tls configuration
+*
+*/}}
+
+{{- $_api := "cert-manager.io/v1" -}}
+{{- $_api_alpha := "cert-manager.io/v1alpha3" -}}
+{{- $cmIssuer := dict -}}
+{{- $_ := merge $cmIssuer .Values.certManager.issuerRef .Values.global.certManager.issuerRef -}}
+
+
+{{- $root := . }}
+{{- $disableCheck := false }}
+{{- $cmgr_enabled := (eq (include "csf-common-lib.v1.coalesceBoolean" (tuple $root.Values.certManager.enabled $root.Values.global.certManager.enabled true)) "true") -}}
+{{- $testRelease := .is_test_release -}}
+
+{{- if not ( .Values._skipSyslogTlsCheck | default false ) -}}
+
+{{- range (list .Values.admin .Values.mariadb .Values.maxscale) -}}
+  {{- $workload := . -}}
+  {{- if and (eq (include "cmdb-logging.syslog_enabled" (tuple $root $workload)) "true") (eq (include "cmdb-logging.syslog_protocol" (tuple $root $workload)) "SSL") }}
+    {{/* syslog is enabled on the workload and the protocol is SSL */}}
+
+    {{- if (eq (include "cmdb-logging.tks_empty" (tuple $root $workload)) "true") -}}
+      {{/* certmanager or tls.secretRef expected */}}
+
+      {{- $secretRefName := coalesce $workload.unifiedLogging.syslog.tls.secretRef.name $root.Values.global.unifiedLogging.syslog.tls.secretRef.name -}}
+      {{- if not $secretRefName }}
+        {{/* secretRef not specified, cert-manager should be configured */}}
+
+        {{- /* CMGR Checks */ -}}
+        {{- if and $cmgr_enabled $workload.unifiedLogging.syslog.certificate.enabled -}}
+          {{/* cert-manager enabled and the certificate is enabled for workload */}}
+
+          {{- /* Check apiVersion exists (may require --validate on helm template, depending on release name) */ -}}
+          {{- if not $testRelease -}}
+            {{- if and (not ($.Capabilities.APIVersions.Has $_api)) (not ($.Capabilities.APIVersions.Has $_api_alpha)) }}
+              {{- fail (printf "certManager apiVersion [%s] or [%s] - not found" $_api $_api_alpha) }}
+            {{- end }}
+          {{- end }}
+
+          {{- /* Check addl required items */ -}}
+          {{ $_errstr := printf "%s.unifiedLogging.syslog.certificate.%%s required when cert-manager used" $workload.name }}
+          {{- $_ := required (printf $_errstr "duration") $workload.unifiedLogging.syslog.certificate.duration }}
+          {{- $_ := required (printf $_errstr "renewBefore") $workload.unifiedLogging.syslog.certificate.renewBefore }}
+
+          {{- /* Check that issuerRef is defined */ -}}
+          {{- if not $root.syslogCommonIssuer }}
+            {{- $mergedIssuer := dict -}}
+            {{- $_ := merge $mergedIssuer $workload.unifiedLogging.syslog.certificate.issuerRef $cmIssuer }}
+            {{ $_errstr := printf "%s.unifiedLogging.syslog.certificate.%%s is required when cert-manager used and %%s not defined at certManager global or root levels" $workload.name }}
+            {{/* $_ := required (printf $_errstr "issuerRef.name" "issuerRef.name") $mergedIssuer.name */}}
+            {{/* - $_ := required (printf $_errstr "issuerRef.kind" "issuerRef.kind") $mergedIssuer.kind */}}
+          {{- end }}
+        {{- else }}
+          {{ $_errstr := printf "%s.unifiedLogging.syslog has SSL enabled, but keyStore, trustStore and tls secretRef are empty and cert-manager or certificate are disabled" $workload.name }}
+          {{- $_ := fail (printf $_errstr) }}
+        {{- end }}
+      {{- end }}
+    {{- else -}}
+      {{/* expect all the trustStore and keyStore values to be populated */}}
+      {{ $_errstr := printf "%s.unifiedLogging.syslog.%%s must be defined when unifiedLogging.syslog.%%s not defined at global or root levels" $workload.name }}
+      {{- $keystoreSecName := coalesce $workload.unifiedLogging.syslog.keyStore.secretName $root.Values.global.unifiedLogging.syslog.keyStore.secretName -}}
+      {{- $keystorePasswordSecName := coalesce $workload.unifiedLogging.syslog.keyStorePassword.secretName $root.Values.global.unifiedLogging.syslog.keyStorePassword.secretName -}}
+      {{- $truststoreSecName := coalesce $workload.unifiedLogging.syslog.trustStore.secretName $root.Values.global.unifiedLogging.syslog.trustStore.secretName -}}
+      {{- $truststorePasswordSecName := coalesce $workload.unifiedLogging.syslog.trustStorePassword.secretName $root.Values.global.unifiedLogging.syslog.trustStorePassword.secretName -}}
+      {{- $keystoreSecNameKey := coalesce $workload.unifiedLogging.syslog.keyStore.secretName $root.Values.global.unifiedLogging.syslog.keyStore.key -}}
+      {{- $keystorePasswordSecNameKey := coalesce $workload.unifiedLogging.syslog.keyStorePassword.secretName $root.Values.global.unifiedLogging.syslog.keyStorePassword.key -}}
+      {{- $truststoreSecNameKey := coalesce $workload.unifiedLogging.syslog.trustStore.secretName $root.Values.global.unifiedLogging.syslog.trustStore.key -}}
+      {{- $truststorePasswordSecNameKey := coalesce $workload.unifiedLogging.syslog.trustStorePassword.secretName $root.Values.global.unifiedLogging.syslog.trustStorePassword.key -}}
+      {{- $_ := required (printf $_errstr "keyStore.secretName" "keyStore.secretName") $keystoreSecName }}
+      {{- $_ := required (printf $_errstr "keyStore.key" "keyStore.key") $keystoreSecNameKey }}
+      {{- $_ := required (printf $_errstr "keyStorePassword.secretName" "keyStorePassword.secretName") $keystorePasswordSecName }}
+      {{- $_ := required (printf $_errstr "keyStorePassword.key" "keyStorePassword.key") $keystorePasswordSecNameKey }}
+      {{- $_ := required (printf $_errstr "trustStore.secretName" "trustStore.secretName") $truststoreSecName }}
+      {{- $_ := required (printf $_errstr "trustStore.key" "trustStore.key") $truststoreSecNameKey }}
+      {{- $_ := required (printf $_errstr "trustStorePassword.secretName" "trustStorePassword.secretName") $truststorePasswordSecName  }}
+      {{- $_ := required (printf $_errstr "trustStorePassword.key" "trustStorePassword.key") $truststorePasswordSecNameKey }}
+    {{- end -}}
+
+  {{- end -}}
+{{- end -}}
+{{- end -}}

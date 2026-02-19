@@ -1,0 +1,1 @@
+{{ include "cbur.istio.checkAndGenerateHttpGateway" . }}

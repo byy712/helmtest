@@ -1,0 +1,126 @@
+{{- if or .Values.server.enabled .Values.alertmanager.enabled .Values.nodeExporter.enabled .Values.kubeStateMetrics.enabled .Values.pushgateway.enabled }}
+{{- include "cpro.istio.cproInitIstio" . }}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: "{{ .Release.Name }}-{{ .Chart.Name }}-status-test-configmap"
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "cpro.app.labels.v3" ( dict "root" . "context" .Values.server ) | nindent 4 }}
+    {{- include "cpro.labelsOrAnnotations" (tuple .Values.global.labels) | indent 4}}
+  annotations:
+    {{- include "cpro.labelsOrAnnotations" (tuple .Values.global.annotations) | indent 4}}
+data:
+  run.sh: |
+    #!/bin/bash
+    let retry=10
+    let i=1
+    while [ $i -lt $retry ]
+    do
+        unset RC1 RC2 RC3 RC4 RC5
+        curl_opts_p=( );
+        protocol=http;
+
+        {{- if .Values.server.enabled -}}
+        {{- if or .Values.server.tls_auth_config.tls.enabled .Values.server.tls.enabled -}}
+        curl_opts_p=(--cacert /etc/server/ca.crt --key /etc/server/tls.key --cert /etc/server/tls.crt "${curl_opts_p[@]}");
+        protocol=https;
+        {{- end }}
+
+        curl "${curl_opts_p[@]}" --connect-timeout 5 -m 10 --retry 3 --retry-delay 5 ${protocol}://{{ template "cpro.prometheus.server.fullname.helmtest" . }}.{{ .Release.Namespace }}.svc.{{ .Values.clusterDomain }}:{{ .Values.server.service.servicePort }}{{ template "cpro.server.routePrefixURL" . }}/metrics; RC1=$?;
+        {{- end }}
+
+        {{- if .Values.alertmanager.enabled -}}
+        curl_opts_am=( );
+        protocol=http;
+
+        {{- if and .Values.alertmanager.enabled (or .Values.alertmanager.tls_auth_config.tls.enabled .Values.alertmanager.tls.enabled ) }}
+        curl_opts_am=(--cacert /etc/am/ca.crt --key /etc/am/tls.key --cert /etc/am/tls.crt "${curl_opts_am[@]}");
+        protocol=https;
+        {{- end }}
+          curl "${curl_opts_am[@]}" --connect-timeout 5 -m 10 --retry 3 --retry-delay 5 ${protocol}://{{ template "cpro.prometheus.alertmanager.fullname.helmtest" . }}.{{ .Release.Namespace }}.svc.{{ .Values.clusterDomain }}:{{ .Values.alertmanager.service.servicePort }}{{ template "cpro.alertmanager.routePrefixURL" . }}/metrics; RC2=$?;
+        {{- else -}}
+          RC2=0;
+        {{- end -}}
+
+
+        {{- if .Values.pushgateway.enabled -}}
+        curl_opts_pgw=( );
+        protocol=http;
+
+        {{- if and .Values.pushgateway.enabled (or .Values.pushgateway.tls_auth_config.tls.enabled .Values.pushgateway.tls.enabled ) -}}
+        curl_opts_pgw=(--cacert /etc/pgw/ca.crt --key /etc/pgw/tls.key --cert /etc/pgw/tls.crt "${curl_opts_pgw[@]}");
+        protocol=https;
+        {{- end }}
+
+        curl "${curl_opts_pgw[@]}" --connect-timeout 5 -m 10 --retry 3 --retry-delay 5 ${protocol}://{{ template "cpro.prometheus.pushgateway.fullname" . }}.{{ .Release.Namespace }}.svc.{{ .Values.clusterDomain }}:{{ .Values.pushgateway.service.servicePort }}{{ template "cpro.pushgateway.routePrefixURL" . }}/metrics; RC3=$?;
+        {{- else -}}
+          RC3=0;
+        {{- end -}}
+
+        {{- if .Values.nodeExporter.enabled -}}
+        protocol=http
+        curl_opts=""
+
+        {{- if .Values.nodeExporter.tls_auth_config.basic_auth.enabled }}
+        key1={{ .Values.helmtest.nodeExporter_prometheus_basic_auth.username }}
+        key2={{ .Values.helmtest.nodeExporter_prometheus_basic_auth.password }}
+        
+        {{- if ne .Values.nodeExporter.auth.credentialName "" }}
+        prefix={{ .Values.secretPathPrefix }}
+        usernamekey={{ .Values.nodeExporter.auth.keyNames.username }}
+        passwordkey={{ .Values.nodeExporter.auth.keyNames.password }}
+          {{- if eq .Values.nodeExporter.auth.keyNames.username "" }}
+             usernamekey=username
+          {{ end }}
+          {{- if eq .Values.nodeExporter.auth.keyNames.password "" }}
+             passwordkey=password
+          {{ end }}
+        name1=$(cat $prefix/nxp-auth/$usernamekey)
+        name2=$(cat $prefix/nxp-auth/$passwordkey)
+        curl_opts=( --user $name1:$name2 )
+        {{- else if ne .Values.sensitiveDataSecretName "" }}
+        name1=$(cat /etc/.nodeexporterconf/cpro_secret.yaml | grep -i "$key1=" | cut -d'=' -f2)
+        name2=$(cat /etc/.nodeexporterconf/cpro_secret.yaml | grep -i "$key2=" | cut -d'=' -f2)
+        curl_opts=( --user $name1:$name2 )
+        {{- end -}}
+        {{- end -}}
+
+        {{- if and .Values.nodeExporter.enabled ( or .Values.nodeExporter.tls_auth_config.tls.enabled .Values.nodeExporter.tls.enabled) }}
+
+        curl_opts=( --cacert /etc/nodeexporter/ca.crt --key /etc/nodeexporter/tls.key --cert /etc/nodeexporter/tls.crt "${curl_opts[@]}" )
+        protocol=https
+        {{- end }}
+
+        curl --insecure "${curl_opts[@]}" --connect-timeout 5 -m 10 --retry 3 --retry-delay 5 ${protocol}://{{ template "cpro.prometheus.nodeExporter.fullname" . }}.{{ .Release.Namespace }}.svc.{{ .Values.clusterDomain }}:{{ .Values.nodeExporter.service.podHostPort }}/metrics; RC4=$?;
+        {{- else -}}
+          RC4=0;
+        {{- end -}}
+
+        {{- if and (not $.istio.enabled) (.Values.kubeStateMetrics.enabled) -}}
+        curl_opts1=( );
+        protocol=http;
+
+        {{- if  and .Values.kubeStateMetrics.enabled (or .Values.kubeStateMetrics.tls_auth_config.tls.enabled .Values.kubeStateMetrics.tls.enabled) -}}
+        curl_opts1=(--cacert /etc/ksm/ca.crt --key /etc/ksm/tls.key --cert /etc/ksm/tls.crt "${curl_opts1[@]}");
+        protocol=https;
+        {{- end }}
+        curl "${curl_opts1[@]}" --connect-timeout 5 -m 10 --retry 3 --retry-delay 5 ${protocol}://{{ template "cpro.prometheus.kubeStateMetrics.fullname" . }}.{{ .Release.Namespace }}.svc.{{ .Values.clusterDomain }}:{{ .Values.kubeStateMetrics.service.metricsPort }}/metrics; RC5=$?;
+
+        {{- else -}}
+          RC5=0;
+        {{- end -}}
+
+        if [[ $RC1 == 0 ]] && [[ $RC2 == 0 ]] && [[ $RC3 == 0 ]] && [[ $RC4 == 0 ]] && [[ $RC5 == 0 ]]; then
+            exit 0
+        else
+            let "i+=1"
+            sleep 10
+            if [ $i == $retry ]; then
+              exit 1
+            else
+              continue
+            fi
+        fi
+    done
+{{- end }}

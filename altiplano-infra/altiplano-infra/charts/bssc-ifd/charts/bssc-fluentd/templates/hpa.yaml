@@ -1,0 +1,18 @@
+{{- if and (eq (lower .Values.fluentd.kind) "deployment") (eq (include "bssc-fluentd.isHpaEnabled" (tuple . .Values.fluentd)) "true") }}
+apiVersion: {{ .Capabilities.APIVersions.Has "autoscaling/v2/HorizontalPodAutoscaler" | ternary "autoscaling/v2" "autoscaling/v2beta2" }}
+kind: HorizontalPodAutoscaler
+metadata:
+  name: {{ template "bssc-fluentd.deployment.name" . }}
+  labels:
+{{- include "bssc-fluentd.commonLabels" (tuple . "fluentd") | nindent 4 }}
+{{- include "bssc-fluentd.csf-toolkit-helm.labels" (tuple .) | nindent 4 }}
+  annotations:
+{{- include "bssc-fluentd.csf-toolkit-helm.annotations" (tuple .) | nindent 4 }}
+spec:
+  scaleTargetRef:
+    apiVersion: {{ .Values.fluentd._apiVersion | default "apps/v1" }}
+    kind: Deployment
+    name: {{ template "bssc-fluentd.deployment.name" . }}
+{{- include "bssc-fluentd.hpaValues" (tuple . .Values.fluentd) | indent 2 }}
+{{- end }}
+

@@ -1,0 +1,45 @@
+--- bssc-ifd-13.0.1/bssc-ifd/charts/bssc-indexsearch/templates/_helpers.tpl	2023-12-06 18:41:43.000000000 +0530
++++ bssc-ifd-patch/bssc-ifd/charts/bssc-indexsearch/templates/_helpers.tpl	2024-01-10 14:17:18.927216000 +0530
+@@ -373,6 +373,7 @@
+ 
+ {{- define "bssc-indexsearch.selectorLabels" -}}
+ {{- $root := index . 0 }}
++release: {{ $root.Release.Name }}
+ {{- $workloadName := index . 1 }}
+ app.kubernetes.io/name: {{ default $root.Chart.Name $root.Values.nameOverride }}
+ app.kubernetes.io/instance: {{ $root.Release.Name }}
+@@ -606,7 +607,11 @@
+ 
+ {{- define "bssc-indexsearch.container.securityContext" -}}
+ {{- if .Values.securityContext.enabled }}
++{{- if and (.Values.persistence) (.Values.persistence.enabled) }}
+ readOnlyRootFilesystem: true
++{{- else }}
++readOnlyRootFilesystem: false
++{{- end }}
+ allowPrivilegeEscalation: false
+ capabilities:
+   drop:
+@@ -751,12 +756,14 @@
+ {{- include "bssc-indexsearch.isCertManagerEnable" . }}
+ {{- $secretList := list }}
+ {{- if and (.Values.security.enable) (eq (tpl (.Values.security.sensitiveInfoInSecret.enabled | toString ) .) "true") }}
+-  {{- $secretList = append $secretList (.Values.security.sensitiveInfoInSecret.credentialName) }}
++  {{- $secretList = append $secretList (.Values.security.sensitiveInfoInSecret.credentialNamePassword) }}
+   {{- if eq $.isCertManagerEnabled "true" }}
+     {{- $nodeSecretName := printf "%s-%s" (include "bssc-indexsearch.fullname" .) "nodecert" }}
+     {{- $clientSecretName := printf "%s-%s" (include "bssc-indexsearch.fullname" .) "clientcert" }}
+     {{- $secretList = append $secretList $nodeSecretName -}}
+     {{- $secretList = append $secretList $clientSecretName -}}
++  {{- else -}}
++    {{- $secretList = append $secretList (.Values.security.sensitiveInfoInSecret.credentialNameCert) }}
+   {{- end }}
+ {{- end }}
+ {{- if $.syslogEnabled }}
+@@ -1144,4 +1151,4 @@
+     passwordSecretRef:
+         name: {{ $root.Values.security.certManager.storePasswordCredentialName }}
+         key: {{ $root.Values.security.certManager.storePasswordKey }}
+-{{- end }}
+\ No newline at end of file
++{{- end }}

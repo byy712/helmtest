@@ -1,0 +1,122 @@
+--- ckey-12.2.0/values.yaml	2024-03-16 01:47:07.000000000 +0530
++++ ckey-12.2.0-nokia-patch-1/ckey/values.yaml	2024-04-05 19:37:41.104554646 +0530
+@@ -5,7 +5,7 @@
+ global:
+   registry:
+   # If flatRegistry is set to true, 'imageRepo' parameter in all container will be ignored
+-  flatRegistry: false
++  flatRegistry: true
+ 
+   # Default Option : If rbac.enabled is true and no serviceAccountName is specified then internally 10 service accounts (with corresponding roles having minimum required privilege) and role binding are created by this chart.
+   # Option 1 (1 external service account) : If rbac.enabled is false and an external serviceAccount is specified in serviceAccountName then this external serviceAccount is used during deployment.
+@@ -162,31 +162,31 @@
+   pullPolicy: IfNotPresent
+   # Keycloak pod image
+   keycloak:
+-    imageRepo: keycloak
+-    imageName: ckey-quarkus
++    imageRepo:
++    imageName: keycloak/ckey-quarkus
+     imageTag: 23.0.7-1-3073
+     imagePullSecrets: []
+   cbur:
+-    imageRepo: cbur
+-    imageName: cbur-agent
++    imageRepo:
++    imageName: cbur/cbur-agent
+     imageTag: 1.1.1-alpine-6578
+     imagePullSecrets: []
+   # Kubectl pod image (used in jobs)
+   kubectl:
+-    imageRepo: tools
+-    imageName: kubectl
++    imageRepo:
++    imageName: tools/kubectl
+     imageTag: 1.28.7-rocky8-nano-20240301
+     imagePullSecrets: []
+   # Resource Watcher Job image
+   resourceWatcherJob:
+-    imageRepo: keycloak
+-    imageName: keycloak-py
++    imageRepo:
++    imageName: keycloak/keycloak-py
+     imageTag: 1.1.1-78
+     imagePullSecrets: []
+   # MasterRealmConfig Job image
+   masterRealmConfigJob:
+-    imageRepo: keycloak
+-    imageName: keycloak-py
++    imageRepo:
++    imageName: keycloak/keycloak-py
+     imageTag: 1.1.1-78
+     imagePullSecrets: []
+ 
+@@ -268,6 +268,7 @@
+ ## Cluster domain (tail end of the hostname, e.g. ...namespace.svc.cluster.local)
+ clusterDomain: "cluster.local"
+ 
++accessRoleLabel: internal-access
+ ## Common k8s label settings https://kubernetes.io/docs/concepts/overview/working-with-objects/common-labels/
+ # Set to false to exclude common labels
+ commonLabels: true
+@@ -400,6 +401,7 @@
+ 
+ ## Database information (all items below are mandatory)
+ # dbVendor maps to Keycloak parameter KC_DB. See keycloak documentation for other values (e.g. mysql, oracle).
++base64DBPassword: keycloak
+ dbVendor: mariadb
+ dbName: db4keycloak
+ dbUser: keycloak
+@@ -407,7 +409,7 @@
+ dbAddress:
+ dbPort: 3306
+ jdbcParams: ?autoReconnect=true
+-
++jksPassword: keycloak
+ ## Keycloak Port Information
+ httpsPort: 8443
+ httpPort:
+@@ -471,6 +473,7 @@
+ # E.g. {mylabel1: 'true', mylabel2: 'true'}
+ # If you are installing cmdb as subchart add labels to nodeSelector parameter in cmdb.mariadb section
+ nodeSelector: {}
++hostAliases: []
+ 
+ # Node Affinity rules
+ # If enabled set required affinity for specified key / value
+@@ -925,6 +928,8 @@
+ #------------------------------------------------------------------------------
+ # ISTIO values (only used if enabled: true)
+ #------------------------------------------------------------------------------
++rollme:
++  enabled: false
+ istio:
+   # Preferred way of setting Istio version is by using "global.istioVersion". If that is not possible, using "istio.version" is an acceptable alternative
+   # For example:
+@@ -1175,3 +1180,26 @@
+     jgroupsTCPPort: 7900
+     # External infinispan-Relay TCP port for infinispan service to connect with cross dc
+     jgroupsExternalTCPPort: 30556
++
++    
++radiusImage:
++  repository: fnms-keycloak-radius-plugin
++  tag: nokia-5.0.12
++  providerVersion:
++  pullPolicy: IfNotPresent
++env:
++  secrets:
++certificates:
++  secrets:
++    altiplano_keystore_secrets: altiplano-keystore-secrets
++  
++fluentd_sidecar:
++  image:
++    name: "fnms-fluent"
++    tag: "nokia-3.1.6"
++    pullPolicy: IfNotPresent
++init:
++  image:
++    name: "fnms-init-container"
++    tag: "nokia-1.0.7"
++    pullPolicy: IfNotPresent

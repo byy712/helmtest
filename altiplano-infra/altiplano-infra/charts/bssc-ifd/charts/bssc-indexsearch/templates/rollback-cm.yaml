@@ -1,0 +1,90 @@
+#This configmap is created to handle the pre-requisite steps for a successful automated Helm Rollback. 
+#It performs the below steps only when 'autoRollback' flag is set to true.
+#1. Scale of Data,Manager and Client pods to zero
+#2. Deletion of PVCs
+#3. Deletion of osinstalled configmap because when security is enabled, securityAdmin must run with -cd on Rollback.
+
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ template "bssc-indexsearch.fullname" . }}-rollback-script-cm
+  labels:
+{{- include "bssc-indexsearch.commonLabels" (tuple .) | nindent 4 }}
+{{- include "bssc-indexsearch.csf-toolkit-helm.labels" (tuple .) | nindent 4 }}
+  annotations:
+{{- include "bssc-indexsearch.csf-toolkit-helm.annotations" (tuple .) | nindent 4 }}  
+data:
+    runRollbackSteps.sh: |
+      #!/bin/bash
+
+      echo "Rollback From version: "{{ .Chart.AppVersion }}
+      echo "Rollback To version: $TARGET_VERSION"
+
+      if [ $TARGET_VERSION != {{ .Chart.AppVersion }} ]; then
+        echo -e "Executing pre-rollback steps at `date +'%Y.%m.%d-%H:%M:%S'` due to the difference in OpenSearch version..... \n"
+
+        echo "Step1=> Performing Scale Operation on Indexsearch MANAGER and DATA Pods with --replicas=0"
+        data_sts_name=$(kubectl get statefulset --namespace {{ .Release.Namespace }} -l app.kubernetes.io/instance={{ .Release.Name }},app.kubernetes.io/name={{ default .Chart.Name .Values.nameOverride }},role=is-data,app.kubernetes.io/component={{ .Values.data.name }} -o jsonpath='{range .items[*]}{.kind}/{.metadata.name}{"\n"}{end}')
+        manager_sts_name=$(kubectl get statefulset --namespace {{ .Release.Namespace }} -l app.kubernetes.io/instance={{ .Release.Name }},app.kubernetes.io/name={{ default .Chart.Name .Values.nameOverride }},role=is-manager,app.kubernetes.io/component={{ .Values.manager.name }} -o jsonpath='{range .items[*]}{.kind}/{.metadata.name}{"\n"}{end}')
+        client_deploy_name=$(kubectl get deployment --namespace {{ .Release.Namespace }} -l app.kubernetes.io/instance={{ .Release.Name }},app.kubernetes.io/name={{ default .Chart.Name .Values.nameOverride }},role=is-client,app.kubernetes.io/component={{ .Values.client.name }} -o jsonpath='{range .items[*]}{.kind}/{.metadata.name}{"\n"}{end}')
+
+        indexsearch_workload="$data_sts_name $manager_sts_name $client_deploy_name"
+        for workload in $indexsearch_workload
+        do
+          echo -e "\n Scaling $workload to zero replicas in namespace "{{ .Release.Namespace }}
+          kubectl scale $workload --namespace {{ .Release.Namespace }} --replicas=0
+          if [ $? -ne 0 ]; then
+            echo -e "Error: Scale of $workload to zero FAILED !!! \n \n Hence, Exiting pre-rollback script at `date +'%Y.%m.%d-%H:%M:%S'` "
+            exit 1
+          fi
+        done
+
+        indexsearch_sts="$data_sts_name $manager_sts_name"
+        for sts in $indexsearch_sts
+        do
+          echo -e "\n Verifying if Scale of $sts to zero replicas in namespace "{{ .Release.Namespace }}" is finished or not:"
+          kubectl wait --for=jsonpath='.status.replicas'=0 --timeout={{ default "300s" .Values.jobs.prerollbackTimeout }} $sts --namespace {{ .Release.Namespace }}
+          if [ $? -ne 0 ]; then
+            echo -e "Error: Scale of $sts to zero is NOT FINISHED !!! Hence, Exiting pre-rollback script at `date +'%Y.%m.%d-%H:%M:%S'` "
+            exit 1
+          fi
+        done
+        echo -e "\n All Indexsearch MANAGER, DATA and CLIENT pods are successfully scaled to zero at `date +'%Y.%m.%d-%H:%M:%S'` ! \n"
+
+        echo "Step2=> Performing Delete Operation on Indexsearch MANAGER and DATA PVCs"
+        data_pvc_name=$(kubectl get pvc --namespace {{ .Release.Namespace }} -l app.kubernetes.io/instance={{ .Release.Name }},app.kubernetes.io/name={{ default .Chart.Name .Values.nameOverride }},app.kubernetes.io/component={{ .Values.data.name }} -o jsonpath='{range .items[*]}{.kind}/{.metadata.name}{"\n"}{end}')
+        manager_pvc_name=$(kubectl get pvc --namespace {{ .Release.Namespace }} -l app.kubernetes.io/instance={{ .Release.Name }},app.kubernetes.io/name={{ default .Chart.Name .Values.nameOverride }},app.kubernetes.io/component={{ .Values.manager.name }} -o jsonpath='{range .items[*]}{.kind}/{.metadata.name}{"\n"}{end}')
+
+        indexsearch_pvc="$data_pvc_name $manager_pvc_name"
+        for pvc in $indexsearch_pvc
+        do
+          echo -e "\n Deleting $pvc from namespace "{{ .Release.Namespace }}
+          kubectl delete $pvc --namespace {{ .Release.Namespace }}
+          if [ $? -ne 0 ]; then
+            echo -e "Error: Deletion of $pvc FAILED !!! \n \n Hence, Exiting pre-rollback script at `date +'%Y.%m.%d-%H:%M:%S'` "
+            exit 1
+          fi
+        done
+
+        echo -e "\n Verifying if [$indexsearch_pvc] PVCs are successfully terminated"
+        kubectl wait --for=delete --timeout={{ default "600s" .Values.jobs.prerollbackTimeout }} PersistentVolumeClaim --namespace {{ .Release.Namespace }} -l 'app.kubernetes.io/instance={{ .Release.Name }},app.kubernetes.io/name={{ default .Chart.Name .Values.nameOverride }},app.kubernetes.io/component in ({{ .Values.manager.name}},{{ .Values.data.name}})'
+        if [ $? -ne 0 ]; then
+          echo "Error: Indexsearch DATA/MANAGER PVCs are not terminated... \n\n Hence, Exiting pre-rollback script at `date +'%Y.%m.%d-%H:%M:%S'`"
+          exit 1
+        fi
+        echo -e "\n All Indexsearch MANAGER and DATA PVCs are successfully terminated at `date +'%Y.%m.%d-%H:%M:%S'` !\n"
+
+        echo -e "Step3=> Checking if osinstalled configmap Exists \n"
+        kubectl get configmap {{ template "bssc-indexsearch.fullname" . }}-osinstalled --namespace {{ .Release.Namespace }}
+        if [ $? -eq 0 ]; then
+          echo "osinstalled cm exists, hence deleting it !"
+          kubectl delete cm {{ template "bssc-indexsearch.fullname" . }}-osinstalled --namespace {{ .Release.Namespace }}
+        else
+          echo "osinstalled cm does not exist !"
+        fi
+
+        echo -e "\n PRE-ROLLBACK steps have been SUCCESSFULLY completed at `date +'%Y.%m.%d-%H:%M:%S'` !! \n"
+        exit 0
+      else
+        echo -e "Skip executing pre-rollback steps as OpenSearch version is same....."
+      fi

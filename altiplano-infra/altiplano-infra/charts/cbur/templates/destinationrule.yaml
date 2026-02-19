@@ -1,0 +1,41 @@
+{{- if .Values.istio.enabled }}
+apiVersion: networking.istio.io/v1alpha3
+kind: DestinationRule
+metadata:
+  name: {{ template "cbur.fullname" . }}-dr
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "cbur.proxy.commonLabels" (tuple .) | indent 4 }}
+    {{- include "cbur.customLabels" (tuple .Values.global.labels) | indent 4 }}
+  annotations:
+    {{- include "cbur.customAnnotations" (tuple .Values.global.annotations) | indent 4 }}
+spec:
+  host: "{{ template "cbur.host" . }}"
+{{- if .Values.istio.mtls.enabled }}
+  trafficPolicy:
+    tls:
+      mode: ISTIO_MUTUAL
+{{- else }}
+  trafficPolicy:
+    tls:
+      mode: DISABLE
+{{- end }}
+{{- else }}
+{{- if .Values.istio.createDrForClient }}
+apiVersion: networking.istio.io/v1alpha3
+kind: DestinationRule
+metadata:
+  name: {{ template "cbur.fullname" . }}-dr
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "cbur.proxy.commonLabels" (tuple .) | indent 4 }}
+    {{- include "cbur.customLabels" (tuple .Values.global.labels) | indent 4 }}
+  annotations:
+    {{- include "cbur.customAnnotations" (tuple .Values.global.annotations) | indent 4 }}
+spec:
+  host: "{{ template "cbur.host" . }}"
+  trafficPolicy:
+    tls:
+      mode: DISABLE
+{{- end }}
+{{- end }}

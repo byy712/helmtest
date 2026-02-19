@@ -1,0 +1,88 @@
+apiVersion: v1
+kind: Pod
+metadata:
+  name: {{ include "ckaf-ksql.resourceName" (tuple . "Pod" "ksql-testpod-status" ) }}
+  labels:
+{{ include "ckaf-ksql.commonlabels" . | indent 4 }}
+{{- include "csf-common-lib.v1.customLabels" (tuple .Values.ksqlPodLevel.labels .Values.global.labels) | indent 4 }}
+  annotations:
+    {{- if .Values.global.istio.enabled }}
+    sidecar.istio.io/inject: "true"
+    {{- end }}
+    "helm.sh/hook": test
+    "helm.sh/hook-delete-policy": before-hook-creation,hook-succeeded
+    "helm.sh/hook-weight": "3"
+{{- include "csf-common-lib.v1.customAnnotations" (tuple .Values.ksqlPodLevel.annotations .Values.podAnnotations .Values.global.annotations) | indent 4 }}
+spec:
+  {{- include "ckaf-ksql.tolerations" . | indent 2 }}
+  {{- if .Values.ksqlNodeSelector.enable }}
+  nodeSelector:
+{{ toYaml .Values.ksqlNodeSelector.nodeLabel | indent 4 }}
+  {{- end }}
+  {{- if  coalesce .Values.imagePullSecrets .Values.global.imagePullSecrets }}
+  imagePullSecrets:
+  {{- range coalesce .Values.imagePullSecrets  .Values.global.imagePullSecrets }}
+    - name: {{ . }}
+  {{- end }}
+  {{- end }}
+  volumes:
+    - name: ksqltestconfigmap
+      configMap:
+        name: {{ template "ckaf-ksql.name" .}}-ksql-test-configmap
+  containers:
+    - name: {{ .Release.Name }}-ksql-status-test
+      image: {{ include "ckaf-ksql.image" (tuple .Values .Values.global.registry3 .Values.kubectlImageName (include "ckaf-ksql.kubectlImageRepo" .) .Values.kubectlTag .Values.kubectl) }}
+      imagePullPolicy: {{ .Values.kubectl.imagePullPolicy }}
+      {{- if eq .Values.security.enabled true }}
+      securityContext:
+        runAsNonRoot: true 
+        readOnlyRootFilesystem: {{ .Values.security.readOnlyRootFilesystem }}
+        {{- if ( ne ( toString ( .Values.security.runAsUser )) "auto" ) }}
+        runAsUser: {{ .Values.security.runAsUser }}
+        {{- end }}
+        allowPrivilegeEscalation: false
+        {{- if eq (include "ckaf-ksql.renderSeccompProfile" .) "true" }}
+        seccompProfile:
+          type: {{ .Values.security.seccompProfile.type }}
+        {{- end }}
+        privileged: false
+        capabilities:
+          drop: ["ALL"]
+      {{- end }}
+      env:
+      - name: TZ
+        value: {{ template "ckaf-ksql.timeZoneEnv" . }}      
+      resources:
+{{- include "ckaf-ksql.getResources" (tuple . .Values.helmTestResources "0.5" ) | indent 8 }}
+      volumeMounts:
+        - name: ksqltestconfigmap
+          mountPath: /ksqltest/
+      command:
+        - bash
+        - -ec
+        - |
+          {{- if .Values.global.istio.enabled }}
+          until curl --fail -s --head localhost:{{ .Values.global.istio.envoy.healthCheckPort }}/healthz/ready
+          do
+            echo "Waiting for istio-proxy ..."
+            sleep 1
+          done
+          echo "istio-proxy available"
+          {{- end }}
+          source /ksqltest/status_log_check.sh
+          if ! check_pod_status; then
+            {{- if .Values.global.istio.enabled }}
+            echo "Killing istio-proxy ..."
+            curl --fail -X POST http://localhost:{{ .Values.global.istio.envoy.stopPort }}/quitquitquit
+            {{- end }}
+            exit 1
+          fi
+          {{- if .Values.global.istio.enabled }}
+          echo "Killing istio-proxy ..."
+          curl --fail -X POST http://localhost:{{ .Values.global.istio.envoy.stopPort }}/quitquitquit
+          {{- end }}
+
+  restartPolicy: Never
+  serviceAccountName: {{ template "ckaf-ksql.name" . }}-ksql-test-sa
+  automountServiceAccountToken: true
+

@@ -1,0 +1,398 @@
+{{- include "cmdb.init" . -}}
+{{- if .Values.rbac.enabled }}
+{{- $usePspForIstio := and .Values.istio.enabled (not .Values.istio.cni.enabled) .Values.rbac.psp.create (.Capabilities.APIVersions.Has "policy/v1beta1/PodSecurityPolicy") }}
+{{- $useSccForIstio := and .Values.istio.enabled (not .Values.istio.cni.enabled) .Values.rbac.scc.create (.Capabilities.APIVersions.Has "security.openshift.io/v1") }}
+# ----------------------------------------------------------------------------
+# automountServiceAccountToken for ServiceAccount used in Mariadb when istio is disabled or both istio and cni is enabled.
+# automountServiceAccountToken: true when istio is enabled and cni is enabled
+# automountServiceAccountToken: false when istio is disabled
+# ----------------------------------------------------------------------------
+{{- $automountServiceAccountToken := ternary true false (and (.Values.istio.enabled) (.Values.istio.cni.enabled)) }}
+# --------------------------------------------------
+#  Pre-Install LCM RBAC
+#
+#  Permissions:
+#    - check if PVCs exist (preserved)
+#    - create deploy configmaps
+# --------------------------------------------------
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: {{ template "cmdb.fullname" . }}-install
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "cmdb-admin.labels" (tuple . "serviceaccount") | nindent 4 }}
+  annotations:
+    {{- include "cmdb-admin.annotations" (tuple . "serviceaccount") | nindent 4 }}
+    "helm.sh/hook": pre-install
+    "helm.sh/hook-weight": "-10"
+    "helm.sh/hook-delete-policy": "hook-succeeded,hook-failed,before-hook-creation"
+automountServiceAccountToken: false
+---
+kind: Role
+apiVersion: rbac.authorization.k8s.io/v1
+metadata:
+  namespace: {{ .Release.Namespace }}
+  name: {{ template "cmdb.fullname" . }}-install
+  labels:
+    {{- include "cmdb-admin.labels" (tuple . "role") | nindent 4 }}
+  annotations:
+    {{- include "cmdb-admin.annotations" (tuple . "role") | nindent 4 }}
+    "helm.sh/hook": pre-install
+    "helm.sh/hook-weight": "-9"
+    "helm.sh/hook-delete-policy": "hook-succeeded,hook-failed,before-hook-creation"
+rules:
+- apiGroups: [""]
+  resources: ["persistentvolumeclaims"]
+  verbs: ["get", "list"]
+- apiGroups: [""]
+  resources: ["configmaps", "secrets"]
+  verbs: ["create", "get", "list", "patch", "update", "delete"]
+---
+kind: RoleBinding
+apiVersion: rbac.authorization.k8s.io/v1
+metadata:
+  name: {{ template "cmdb.fullname" . }}-install
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "cmdb-admin.labels" (tuple . "rolebinding") | nindent 4 }}
+  annotations:
+    {{- include "cmdb-admin.annotations" (tuple . "rolebinding") | nindent 4 }}
+    "helm.sh/hook": pre-install
+    "helm.sh/hook-weight": "-8"
+    "helm.sh/hook-delete-policy": "hook-succeeded,hook-failed,before-hook-creation"
+subjects:
+- kind: ServiceAccount
+  name: {{ template "cmdb.fullname" . }}-install
+  namespace: {{ .Release.Namespace }}
+  apiGroup: ""
+roleRef:
+  kind: Role
+  name: {{ template "cmdb.fullname" . }}-install
+  apiGroup: rbac.authorization.k8s.io
+
+# --------------------------------------------------
+#  Minimal LCM Job RBAC
+#
+#  Permissions:
+#    - read and patch secrets
+#    - get and list pods
+#    - use PSP/SCC if istio
+#  Turn on automountServiceAccountToken (CSFS-47269)
+# --------------------------------------------------
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: {{ template "cmdb.fullname" . }}-minlcm
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "cmdb-admin.labels" (tuple . "serviceaccount") | nindent 4 }}
+  annotations:
+    {{- include "cmdb-admin.annotations" (tuple . "serviceaccount") | nindent 4 }}
+automountServiceAccountToken: true
+---
+kind: Role
+apiVersion: rbac.authorization.k8s.io/v1
+metadata:
+  name: {{ template "cmdb.fullname" . }}-minlcm
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "cmdb-admin.labels" (tuple . "role") | nindent 4 }}
+  annotations:
+    {{- include "cmdb-admin.annotations" (tuple . "role") | nindent 4 }}
+rules:
+- apiGroups: [""]
+  resources: ["secrets"]
+  verbs: ["get", "list", "patch"]
+- apiGroups: [""]
+  resources: ["pods"]
+  verbs: ["get", "list"]
+{{- if $usePspForIstio }}
+- apiGroups: ["extensions"]
+  resourceNames: ["{{ template "cmdb.fullname" . }}-istio"]
+  resources: ["podsecuritypolicies"]
+  verbs: ["use"]
+{{- end }}
+{{- if $useSccForIstio }}
+- apiGroups: ["security.openshift.io"]
+  resourceNames: ["{{ template "cmdb.fullname" . }}-istio"]
+  resources: ["securitycontextconstraints"]
+  verbs: ["use"]
+{{- end }}
+---
+kind: RoleBinding
+apiVersion: rbac.authorization.k8s.io/v1
+metadata:
+  name: {{ template "cmdb.fullname" . }}-minlcm
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "cmdb-admin.labels" (tuple . "rolebinding") | nindent 4 }}
+  annotations:
+    {{- include "cmdb-admin.annotations" (tuple . "rolebinding") | nindent 4 }}
+subjects:
+- kind: ServiceAccount
+  name: {{ template "cmdb.fullname" . }}-minlcm
+  namespace: {{ .Release.Namespace }}
+  apiGroup: ""
+roleRef:
+  kind: Role
+  name: {{ template "cmdb.fullname" . }}-minlcm
+  apiGroup: rbac.authorization.k8s.io
+
+# --------------------------------------------------
+#  Post-Delete LCM RBAC
+#
+#  Permissions:
+#    - delete all resources
+# --------------------------------------------------
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: {{ template "cmdb.fullname" . }}-delete
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "cmdb-admin.labels" (tuple . "serviceaccount") | nindent 4 }}
+  annotations:
+    {{- include "cmdb-admin.annotations" (tuple . "serviceaccount") | nindent 4 }}
+    "helm.sh/hook": post-delete
+    "helm.sh/hook-weight": "-10"
+    "helm.sh/hook-delete-policy": "hook-succeeded,hook-failed,before-hook-creation"
+automountServiceAccountToken: false
+---
+kind: Role
+apiVersion: rbac.authorization.k8s.io/v1
+metadata:
+  namespace: {{ .Release.Namespace }}
+  name: {{ template "cmdb.fullname" . }}-delete
+  labels:
+    {{- include "cmdb-admin.labels" (tuple . "role") | nindent 4 }}
+  annotations:
+    {{- include "cmdb-admin.annotations" (tuple . "role") | nindent 4 }}
+    "helm.sh/hook": post-delete
+    "helm.sh/hook-weight": "-9"
+    "helm.sh/hook-delete-policy": "hook-succeeded,hook-failed,before-hook-creation"
+rules:
+- apiGroups: [""]
+  resources: ["persistentvolumeclaims", "secrets", "configmaps"]
+  verbs: ["create", "get", "list", "patch", "update", "delete"]
+- apiGroups: [""]
+  resources: ["services"]
+  verbs: ["get", "list", "patch", "update", "delete"]
+- apiGroups: ["batch"]
+  resources: ["jobs"]
+  verbs: ["get", "list", "patch", "update", "delete"]
+{{- if .Values.istio.enabled }}
+- apiGroups: ["authentication.istio.io"]
+  resources: ["policies"]
+  verbs: ["get", "list", "patch", "update", "delete"]
+- apiGroups: ["security.istio.io"]
+  resources: ["peerauthentications"]
+  verbs: ["get", "list", "patch", "update", "delete"]
+- apiGroups: ["networking.istio.io"]
+  resources: ["destinationrules"]
+  verbs: ["get", "list", "patch", "update", "delete"]
+{{- end }}
+---
+kind: RoleBinding
+apiVersion: rbac.authorization.k8s.io/v1
+metadata:
+  name: {{ template "cmdb.fullname" . }}-delete
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "cmdb-admin.labels" (tuple . "rolebinding") | nindent 4 }}
+  annotations:
+    {{- include "cmdb-admin.annotations" (tuple . "rolebinding") | nindent 4 }}
+    "helm.sh/hook": post-delete
+    "helm.sh/hook-weight": "-8"
+    "helm.sh/hook-delete-policy": "hook-succeeded,hook-failed,before-hook-creation"
+subjects:
+- kind: ServiceAccount
+  name: {{ template "cmdb.fullname" . }}-delete
+  namespace: {{ .Release.Namespace }}
+  apiGroup: ""
+roleRef:
+  kind: Role
+  name: {{ template "cmdb.fullname" . }}-delete
+  apiGroup: rbac.authorization.k8s.io
+
+# --------------------------------------------------
+#  Admin RBAC
+#
+#  Permissions:
+#    - create and manage all resources
+#    - use PSP/SCC if istio
+# --------------------------------------------------
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: {{ template "cmdb.fullname" . }}
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "cmdb-admin.labels" (tuple . "serviceaccount") | nindent 4 }}
+  annotations:
+    {{- include "cmdb-admin.annotations" (tuple . "serviceaccount") | nindent 4 }}
+automountServiceAccountToken: true
+---
+kind: Role
+apiVersion: rbac.authorization.k8s.io/v1
+metadata:
+  name: {{ template "cmdb.fullname" . }}
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "cmdb-admin.labels" (tuple . "role") | nindent 4 }}
+  annotations:
+    {{- include "cmdb-admin.annotations" (tuple . "role") | nindent 4 }}
+rules:
+- apiGroups: [""]
+  resources: ["configmaps", "pods", "persistentvolumeclaims", "secrets", "services"]
+  verbs: ["create", "get", "list", "patch", "update", "delete"]
+{{- if and (eq (include "cmdb.has_maxscale" .) "true") .Values.geo_redundancy.enabled (not (.Values.geo_redundancy.directConnect)) }}
+- apiGroups: [""]
+  resources: ["endpoints"]
+  verbs: ["create", "get", "list", "patch", "update", "delete"]
+{{- end }}
+- apiGroups: ["apps"]
+  resources: ["statefulsets", "deployments"]
+  verbs: ["create", "get", "list", "patch", "update", "watch", "delete"]
+- apiGroups: ["apps"]
+  resources: ["statefulsets/status", "deployments/status"]
+  verbs: ["get"]
+- apiGroups: [""]
+  resources: ["pods/exec"]
+  verbs: ["create", "get"]
+- apiGroups: [""]
+  resources: ["pods/status"]
+  verbs: ["get"]
+{{- if $usePspForIstio }}
+- apiGroups: ["extensions"]
+  resourceNames: ["{{ template "cmdb.fullname" . }}-istio"]
+  resources: ["podsecuritypolicies"]
+  verbs: ["use"]
+{{- end }}
+{{- if $useSccForIstio }}
+- apiGroups: ["security.openshift.io"]
+  resourceNames: ["{{ template "cmdb.fullname" . }}-istio"]
+  resources: ["securitycontextconstraints"]
+  verbs: ["use"]
+{{- end }}
+{{- if .Values.istio.enabled }}
+- apiGroups: ["authentication.istio.io"]
+  resources: ["policies"]
+  verbs: ["create", "get", "list", "patch", "update", "watch", "delete"]
+- apiGroups: ["security.istio.io"]
+  resources: ["peerauthentications"]
+  verbs: ["create", "get", "list", "patch", "update", "watch", "delete"]
+- apiGroups: ["networking.istio.io"]
+  resources: ["destinationrules"]
+  verbs: ["create", "get", "list", "patch", "update", "watch", "delete"]
+{{- end }}
+---
+kind: RoleBinding
+apiVersion: rbac.authorization.k8s.io/v1
+metadata:
+  name: {{ template "cmdb.fullname" . }}
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "cmdb-admin.labels" (tuple . "rolebinding") | nindent 4 }}
+  annotations:
+    {{- include "cmdb-admin.annotations" (tuple . "rolebinding") | nindent 4 }}
+subjects:
+- kind: ServiceAccount
+  name: {{ template "cmdb.fullname" . }}
+  namespace: {{ .Release.Namespace }}
+  apiGroup: ""
+roleRef:
+  kind: Role
+  name: {{ template "cmdb.fullname" . }}
+  apiGroup: rbac.authorization.k8s.io
+
+# --------------------------------------------------
+#  MaxScale RBAC
+#
+#  Permissions:
+#    - label pods
+#    - use PSP/SCC if istio
+# --------------------------------------------------
+{{- if eq (include "cmdb.has_maxscale" .) "true" }}
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: {{ template "cmdb.fullname" . }}-maxscale
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "cmdb-maxscale.labels" (tuple . "serviceaccount") | nindent 4 }}
+  annotations:
+    {{- include "cmdb-maxscale.annotations" (tuple . "serviceaccount") | nindent 4 }}
+automountServiceAccountToken: false
+---
+kind: Role
+apiVersion: rbac.authorization.k8s.io/v1
+metadata:
+  name: {{ template "cmdb.fullname" . }}-maxscale
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "cmdb-maxscale.labels" (tuple . "role") | nindent 4 }}
+  annotations:
+    {{- include "cmdb-maxscale.annotations" (tuple . "role") | nindent 4 }}
+rules:
+- apiGroups: [""]
+  resources: ["pods"]
+  verbs: ["get", "list", "patch", "update"]
+{{- if $usePspForIstio }}
+- apiGroups: ["extensions"]
+  resourceNames: ["{{ template "cmdb.fullname" . }}-istio"]
+  resources: ["podsecuritypolicies"]
+  verbs: ["use"]
+{{- end }}
+{{- if $useSccForIstio }}
+- apiGroups: ["security.openshift.io"]
+  resourceNames: ["{{ template "cmdb.fullname" . }}-istio"]
+  resources: ["securitycontextconstraints"]
+  verbs: ["use"]
+{{- end }}
+---
+kind: RoleBinding
+apiVersion: rbac.authorization.k8s.io/v1
+metadata:
+  name: {{ template "cmdb.fullname" . }}-maxscale
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "cmdb-maxscale.labels" (tuple . "rolebinding") | nindent 4 }}
+  annotations:
+    {{- include "cmdb-maxscale.annotations" (tuple . "rolebinding") | nindent 4 }}
+subjects:
+- kind: ServiceAccount
+  name: {{ template "cmdb.fullname" . }}-maxscale
+  namespace: {{ .Release.Namespace }}
+  apiGroup: ""
+roleRef:
+  kind: Role
+  name: {{ template "cmdb.fullname" . }}-maxscale
+  apiGroup: rbac.authorization.k8s.io
+{{- end }}
+
+# --------------------------------------------------
+#  Mariadb statefulset RBAC without istio or istio and cni enabled
+# -istio SA is used when istio is enabled and cni is disabled.
+#
+#  Permissions:
+#    - No permissions (No Role and RoleBinding)
+# --------------------------------------------------
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: {{ template "cmdb.fullname" . }}-mariadb
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "cmdb-mariadb.labels" (tuple . "serviceaccount") | nindent 4 }}
+  annotations:
+    {{- include "cmdb-mariadb.annotations" (tuple . "serviceaccount") | nindent 4 }}
+automountServiceAccountToken: {{ $automountServiceAccountToken }}
+
+{{- end }}

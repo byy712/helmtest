@@ -1,0 +1,8 @@
+--- /home/zafeiri/cbur-charts/cbur-1.17.0/cbur/Chart.yaml	2024-03-28 20:26:14.000000000 +0530
++++ /home/zafeiri/cbur-charts/cbur-1.17.0-nokia-patch-5/cbur/Chart.yaml	2024-05-30 14:37:23.982271333 +0530
+@@ -9,4 +9,4 @@
+ - email: jaroslaw.gorski@nokia.com
+   name: CSF CBUR Team
+ name: cbur
+-version: 1.17.0
++version: 1.17.0-nokia-patch-5

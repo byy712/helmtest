@@ -1,0 +1,68 @@
+{{- if .Values.restserver.enabled -}}
+{{if not .Values.helmtest.CPROconfigmapname }}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: "{{ .Release.Name }}-helmtestdata-restapi-configmap"
+  labels:
+    {{- include "cpro.app.labels.v3" ( dict "root" . "context" .Values.restserver ) | nindent 4 }}
+    {{- include "cpro.labelsOrAnnotations" (tuple .Values.global.labels) | indent 4}}
+  annotations:
+    {{- include "cpro.labelsOrAnnotations" (tuple .Values.global.annotations) | indent 4}}
+  namespace: {{ .Release.Namespace }}
+data:
+  alerts: |
+    groups:
+    - name: "pre-defined-alert-rules"
+      rules:
+      - alert: NodeFilesystemUsageMinor
+        expr: ((node_filesystem_size_bytes{mountpoint="/",device!="rootfs"} - node_filesystem_avail_bytes{mountpoint="/",device!="rootfs"}) / node_filesystem_size_bytes{mountpoint="/",device!="rootfs"} * 100 > 70) and ((node_filesystem_size_bytes{mountpoint="/",device!="rootfs"} - node_filesystem_avail_bytes{mountpoint="/",device!="rootfs"}) / node_filesystem_size_bytes{mountpoint="/",device!="rootfs"} * 100 <= 80)
+        for: 1m
+        labels:
+          severity: MINOR
+          name: FileSystemExceedThreshold
+          text: Usage of file system is greater than the threshold value
+          id: 3001200
+          source: CPRO
+          host: "hostname"
+          eventType: 11
+          probableCause: 351
+          key: MOC001
+        annotations:
+          summary: "High Filesystem usage detected"
+          description: "Filesystem usage is above 70%"
+  prometheus.yml: |
+    global:
+      ## How frequently to scrape targets by default
+      ##
+      scrape_interval: 1m
+      ## How long until a scrape request times out
+      ##
+      scrape_timeout: 10s
+      ## How frequently to evaluate rules
+      ##
+      evaluation_interval: 1m
+
+    rule_files:
+      - /etc/config/rules
+      - /etc/config/alerts
+
+    scrape_configs:
+      - job_name: prometheus
+        static_configs:
+          - targets:
+            - localhost:9090
+        honor_labels: true
+
+        kubernetes_sd_configs:
+          - role: endpoints
+
+        relabel_configs:
+          - source_labels: [__meta_kubernetes_service_annotation_prometheus_io_probe]
+            action: keep
+            regex: prometheus
+          - source_labels: [__meta_kubernetes_namespace]
+            action: replace
+            target_label: namespace
+{{end}}
+{{- end -}}

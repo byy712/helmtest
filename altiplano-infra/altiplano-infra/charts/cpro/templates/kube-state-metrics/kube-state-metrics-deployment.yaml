@@ -1,0 +1,227 @@
+{{- include "cpro.istio.cproInitIstio" . }}
+{{- if .Values.kubeStateMetrics.enabled -}}
+{{- $syslogEnabled := eq (include "csf-common-lib.v1.coalesceBoolean" (tuple .Values.kubeStateMetrics.unifiedLogging.syslog.enabled .Values.global.unifiedLogging.syslog.enabled false )) "true"  }}
+{{- $tlsEnabled := eq (include "csf-common-lib.v1.coalesceBoolean" (tuple .Values.kubeStateMetrics.tls.enabled .Values.tls.enabled .Values.global.tls.enabled .Values.kubeStateMetrics.tls_auth_config.tls.enabled false)) "true" }}
+apiVersion: {{ template "cpro.apiVersion.DeploymentAPI" . }}
+kind: Deployment
+metadata:
+  labels:
+    {{- include "cpro.app.labels.v3" ( dict "root" . "context" .Values.kubeStateMetrics ) | nindent 4 }}
+{{- include "cpro.labelsOrAnnotations" (tuple .Values.kubeStateMetrics.labels .Values.custom.kubeStateMetricsDeployment.labels .Values.global.labels) | indent 4}}
+  name: {{ template "cpro.prometheus.kubeStateMetrics.deploymentName" . }}
+  annotations:
+{{- include "cpro.labelsOrAnnotations" (tuple .Values.kubeStateMetrics.annotations .Values.custom.kubeStateMetricsDeployment.annotations .Values.global.annotations) | indent 4}}
+{{- if or $syslogEnabled .Values.kubeStateMetrics.unifiedLogging.extension .Values.global.unifiedLogging.extension }}
+    configmap.reloader.stakater.com/reload: "{{ template "cpro-common-lib-v1.ConfigmapName" (dict "name" "kubestatefluentdcm" "root" .) }}"
+{{- if and $syslogEnabled (tpl (default "" $.syslog.tls.secretRef.name) .) (tpl (default "" $.syslog.tls.secretRef.keyNames.caCrt) .) }}
+    secret.reloader.stakater.com/reload: "{{ tpl $.syslog.tls.secretRef.name . }}" 
+{{- end }}
+{{- end }}
+spec:
+{{$data_csc := dict "cSecCtx" .Values.kubeStateMetrics.containerSecurityContext "ctx" . }}
+{{ include "cpro.configure.progressDeadlineSeconds" ( dict "compPDSValue" .Values.kubeStateMetrics.progressDeadlineSeconds "context" . ) | indent 2}}
+  replicas: {{ .Values.kubeStateMetrics.replicaCount }}
+  {{- if semverCompare ">=1.16.0-0" .Capabilities.KubeVersion.GitVersion }}
+  selector:
+   matchLabels:
+    app: {{ template "cpro.prometheus.name" . }}
+    component: "{{ .Values.kubeStateMetrics.name }}"
+    release: {{ .Release.Name }}
+  {{- end }}
+  template:
+    metadata:
+      annotations:
+        sidecar.istio.io/inject: "{{ $.istio.enabled }}"
+{{- if and ($.istio.enabled) ($.istio.mtls.enabled) }}
+        sidecar.istio.io/rewriteAppHTTPProbers: "true"
+{{- end }}
+{{- include "cpro.labelsOrAnnotations" (tuple .Values.kubeStateMetrics.annotations .Values.kubeStateMetrics.podAnnotations .Values.custom.pod.annotations .Values.global.annotations) | indent 8}}
+{{- if .Values.rbac.pspUseAppArmor }}
+{{- include "cpro.labelsOrAnnotations" (tuple .Values.custom.pod.apparmorAnnotations) | indent 8}}
+{{- end }}
+      labels:
+        {{- include "cpro.app.labels.v3" ( dict "root" . "context" .Values.kubeStateMetrics ) | nindent 8 }}
+        app: {{ template "cpro.prometheus.name" . }}
+        component: "{{ .Values.kubeStateMetrics.name }}"
+        release: {{ .Release.Name }}
+        {{- include "cpro.labelsOrAnnotations" (tuple .Values.kubeStateMetrics.labels .Values.kubeStateMetrics.pod.labels .Values.custom.pod.labels .Values.global.labels) | indent 8}}
+    spec:
+      automountServiceAccountToken: true
+      serviceAccountName: {{ template "cpro.prometheus.serviceAccountName" . }}
+      securityContext:
+      {{$data := dict "securitycontext" .Values.kubeStateMetrics.securityContext "ctx" . }}
+      {{- include "cpro.securitycontext" $data | nindent 8 }}
+{{- if .Values.seLinuxOptions.enabled }}
+        seLinuxOptions:
+          level: {{ .Values.seLinuxOptions.level }}
+          role: {{ .Values.seLinuxOptions.role }}
+          type: {{ .Values.seLinuxOptions.type }}
+          user: {{ .Values.seLinuxOptions.user }}
+{{- end }}
+{{ include "cpro-common-lib.imagePullSecrets" (dict "workloadName" .Values.kubeStateMetrics "root" .) | indent 6 }}
+{{- if and $tlsEnabled (eq (include "csf-common-lib.v1.isEmptyValue" .Values.kubeStateMetrics.tls.secretRef.name) "true")  (.Values.certManagerConfig.wait4Certs2BeConsumed.enabled) (eq .Values.kubeStateMetrics.tls_auth_config.tls.externalSecret "")  }}
+{{ $certs := dict "kubestatemetrics-tls" "/var/lib/certs" }}
+{{ $_ := set . "certMountPaths" $certs }}
+      initContainers:
+{{ include "cpro.wait4Certs2BeConsumed.template" (dict "root" . "workload" .Values.kubeStateMetrics ) | indent 6 }}
+{{- end }}
+      containers:
+            {{- if or $syslogEnabled .Values.kubeStateMetrics.unifiedLogging.extension .Values.global.unifiedLogging.extension }}
+        {{- include "cpro-common-lib.fluentd-v2" ( dict "root" . "context" .Values.fluentd "workload" .Values.kubeStateMetrics "registry" .Values.intFluentdReg ) | nindent 8 }}
+          volumeMounts:
+            - name: logs
+              mountPath: /var/log/kubestatemetrics
+            - name: harmonized-logging-conf
+              mountPath: /etc/fluent/
+            - mountPath: /tmp
+              name: tempfolder
+             {{- if and $syslogEnabled (tpl (default "" $.syslog.tls.secretRef.name) .) (tpl (default "" $.syslog.tls.secretRef.keyNames.caCrt) .) }}
+            - mountPath: /etc/fluent/certs/
+              name: fluentd-tls
+             {{- end}}
+       {{- end }}
+        - name: {{ template "cpro.prometheus.kubeStateMetrics.ContainerName" . }}
+{{- include "cpro.prometheus.distro.image" (dict "root" . "workload" .Values.kubeStateMetrics ) | nindent 10}}        
+          {{- if and ($.istio.enabled) ($.istio.mtls.enabled) }}
+          command: [ "/bin/klogrun", "--also-stdout=true","--endpoint-url=http://localhost:{{- template "cpro-common-lib.istioHealthCheckPort" . -}}/healthz/ready" , "--endpoint.request-type=GET","/kube-state-metrics","--telemetry-port=8081" ]
+          {{- else }}
+          command: [ "/kube-state-metrics", "--telemetry-port=8081" ]
+          {{- end }}
+{{- include "cpro.terminationMessage" . | nindent 10 }}
+          env:
+            {{- include "cpro.timeZoneEnvName" . | nindent 12 }}
+{{- if $.istio.enabled }}
+            - name: "ISTIO_ENABLED"
+              value: "true"
+{{- end }}
+{{- if  and (not $.istio.enabled) ($syslogEnabled) (eq (tpl (default "" $.syslog.tls.secretRef.name) .) "") }}
+            - name: "RSYSLOG_SERVER_ALERT"
+              value: "true"
+{{- end }}
+{{- if or $syslogEnabled .Values.kubeStateMetrics.unifiedLogging.extension .Values.global.unifiedLogging.extension }}
+            - name: "UKTSR_LOG_PATH"
+              value: "/var/log/kubestatemetrics/"
+{{- end  }}
+        {{- if or (.Values.kubeStateMetrics.args) (.Values.kubeStateMetrics.extraArgs) $tlsEnabled }}
+          args:
+       {{- if or $syslogEnabled .Values.kubeStateMetrics.unifiedLogging.extension .Values.global.unifiedLogging.extension }}
+            - --logtostderr=false
+            - --alsologtostderr=true
+            - --log_file=/var/log/kubestatemetrics/kubestatemetrics.log
+            - --skip_log_headers=true
+            - --stderrthreshold=5
+    # kubestatmetrics will have single file with 50MB size
+            - --log_file_max_size=50
+        {{- end  }}
+        {{-  if .Values.kubeStateMetrics.extraArgs  }}
+        {{- range .Values.kubeStateMetrics.extraArgs  }}
+        - {{ . }}
+        {{- end  }}
+        {{-  end  }}
+        {{- if .Values.kubeStateMetrics.args.metricLabelsAllowlist }}
+            - --metric-labels-allowlist={{ .Values.kubeStateMetrics.args.metricLabelsAllowlist | join "," }}
+        {{- end }}
+        {{- if .Values.kubeStateMetrics.args.metricAnnotationsAllowList }}
+            - --metric-annotations-allowlist={{ .Values.kubeStateMetrics.args.metricAnnotationsAllowList | join "," }}
+        {{- end }}
+        {{- if .Values.kubeStateMetrics.args.metricAllowlist }}
+            - --metric-allowlist={{ .Values.kubeStateMetrics.args.metricAllowlist | join "," }}
+        {{- end }}
+        {{- if .Values.kubeStateMetrics.args.metricDenylist }}
+            - --metric-denylist={{ .Values.kubeStateMetrics.args.metricDenylist | join "," }}
+        {{- end }}
+            - --port={{ .Values.kubeStateMetrics.service.metricsPort }}
+        {{- if .Values.kubeStateMetrics.args.collectors }}
+        {{ range $key, $value := .Values.kubeStateMetrics.args.collectors }}
+        {{ if $value }}
+            - --resources={{ $key }}
+        {{ end }}
+        {{- end }}
+        {{- end }}
+        {{ if .Values.kubeStateMetrics.args.namespace }}
+            - --namespaces={{ .Values.kubeStateMetrics.args.namespace }}
+        {{- else if and .Values.restrictedToNamespace ( empty .Values.serviceAccountName ) ( empty .Values.global.serviceAccountName ) }}
+            - --namespaces={{ .Release.Namespace }}
+        {{- end }}
+        {{- end }}
+        {{ if $tlsEnabled }}
+            - --tls-config=/etc/config/web.yml
+        {{ end }}
+          ports:
+            - name: tcp-metrics
+              containerPort: {{ .Values.kubeStateMetrics.service.metricsPort }}
+{{- include "cpro.prometheus.kubeStateMetrics.probe" . | indent 10 }}
+          resources:
+{{- include "cpro-common-lib.v1.resources" ( dict "root" . "workloadresources" .Values.kubeStateMetrics.resources "defaultcpulimit" "100m") | nindent 12 }}
+          securityContext:
+            {{- include "cpro.containerSecurityContext" $data_csc | nindent 12 }}
+          volumeMounts:
+          {{- if .Values.externalCredentials }}
+          {{- include "cpro-common-lib.v1-includeExternalCredentialMounts" (dict "creds" .Values.externalCredentials "root" . ) | indent 12 }}
+          {{- end }}
+       {{- if or $syslogEnabled .Values.kubeStateMetrics.unifiedLogging.extension .Values.global.unifiedLogging.extension }}
+            - name: logs
+              mountPath: /var/log/kubestatemetrics
+       {{- end }}
+{{- if $tlsEnabled }}
+            - name: kubestatemetrics-tls
+              mountPath: /var/lib/certs
+            - name: config-volume
+              mountPath: /etc/config
+{{- end }}
+{{$data := dict "component_pc" .Values.kubeStateMetrics  "ctx" . }}
+{{- include "cpro.pod.priority.classname" $data | nindent 6 }}
+    {{- if .Values.kubeStateMetrics.nodeSelector }}
+      nodeSelector:
+{{ toYaml .Values.kubeStateMetrics.nodeSelector | indent 8 }}
+    {{- end }}
+    {{- if .Values.kubeStateMetrics.tolerations }}
+      tolerations:
+{{ toYaml .Values.kubeStateMetrics.tolerations | indent 8 }}
+    {{- end }}
+      affinity:
+      {{- include "cpro.kubeStateMetrics.podAntiAffinity" . | indent 8 }}
+      {{- if .Values.kubeStateMetrics.affinity }}
+      {{- if .Values.kubeStateMetrics.affinity.podAntiAffinity }}
+{{ toYaml .Values.kubeStateMetrics.affinity.podAntiAffinity | indent 10 }}
+      {{- end }}
+      {{- if .Values.kubeStateMetrics.affinity.podAffinity }}
+        podAffinity:
+{{ toYaml .Values.kubeStateMetrics.affinity.podAffinity | indent 10 }}
+      {{- end }}
+      {{- end }}
+      {{- if .Values.kubeStateMetrics.topologySpreadConstraints }}
+      topologySpreadConstraints: {{- include "cpro.topologySpreadConstraints" (tuple . .Values.kubeStateMetrics) | nindent 8 }}
+      {{- end }}
+      volumes:
+      {{- if .Values.externalCredentials  }}
+      {{- include "cpro-common-lib.v1-includeExternalCredentials" (dict "creds" .Values.externalCredentials ) | indent 8 }}
+      {{- end }}
+       {{- if or $syslogEnabled .Values.kubeStateMetrics.unifiedLogging.extension .Values.global.unifiedLogging.extension }}
+        - name: logs
+          emptyDir: {}
+        - name: tempfolder
+          emptyDir: {}
+        - name: harmonized-logging-conf
+          configMap:
+            name: {{ template "cpro-common-lib-v1.ConfigmapName" (dict "name" "kubestatefluentdcm" "root" .) }} 
+              {{- if and $syslogEnabled (tpl (default "" $.syslog.tls.secretRef.name) .) (tpl (default "" $.syslog.tls.secretRef.keyNames.caCrt) .) }}
+        - name: fluentd-tls
+          secret:
+            secretName: {{ tpl $.syslog.tls.secretRef.name . }}
+            items:
+              - key: {{ tpl $.syslog.tls.secretRef.keyNames.caCrt . }}
+                path: syslogRootCaPem
+        {{- end }}
+       {{- end }}
+{{- if $tlsEnabled }}
+        - name: kubestatemetrics-tls
+          secret:
+            secretName: {{ template "cpro.kubeStateMetrics.server.secret" . }}
+            defaultMode: 0440
+        - name: config-volume
+          secret:
+            secretName: {{ .Values.kubeStateMetrics.tls_auth_config.secretForWebConfig }}
+            defaultMode: 0440
+{{- end }}
+{{- end }}

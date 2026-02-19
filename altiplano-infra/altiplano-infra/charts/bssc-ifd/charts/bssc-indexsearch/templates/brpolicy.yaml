@@ -1,0 +1,61 @@
+{{- if .Values.cbur.enabled }}
+{{- include "bssc-indexsearch.syslogSendLogsViaLog4j" . }}
+apiVersion: {{ .Values.cbur.apiVersion }}
+kind: BrPolicy
+metadata:
+  name: {{ template "bssc-indexsearch.data.fullname" . }}
+  labels:
+{{- include "bssc-indexsearch.csf-toolkit-helm.labels" (tuple .) | nindent 4 }}
+{{- include "bssc-indexsearch.commonLabels" (tuple .) | indent 4 }}
+  annotations:
+{{- include "bssc-indexsearch.csf-toolkit-helm.annotations" (tuple .) | nindent 4 }}
+spec:
+  brOption: {{ .Values.cbur.brOption }}
+  selector:
+    matchLabels:
+{{- include "bssc-indexsearch.selectorLabels" (tuple . .Values.data.name ) | indent 6 }}
+  volumes:
+  - {{ .Values.backup_restore.path }}
+  {{- if .Values.cbur.backup_configmap }}
+  k8sobjects:
+  {{- if not (empty .Values.extraConfig) }}
+  - object-type: configmaps
+    match-criteria: name
+    match-string: {{ template "bssc-indexsearch.fullname" . }}-extra
+  {{- end }}
+  {{- if .Values.security.enable }}
+  - object-type: configmaps
+    match-criteria: name
+    match-string: {{ template "bssc-indexsearch.fullname" . }}-security-config
+  {{- end }}
+  - object-type: configmaps
+    match-criteria: name
+    match-string: {{ template "bssc-indexsearch.fullname" . }}-jvmopt
+  {{- include "bssc-indexsearch.syslogValues" . }}
+  {{- if and ($.syslogEnabled) (not ($.sendLogsViaLog4j)) }}
+  - object-type: configmaps
+    match-criteria: name
+    match-string: {{ template "bssc-indexsearch.fullname" . }}-logging-conf
+  {{- end }}
+  - object-type: configmaps
+    match-criteria: name
+    match-string: {{ template "bssc-indexsearch.fullname" . }}-log4j2
+  - object-type: configmaps
+    match-criteria: name
+    match-string: {{ template "bssc-indexsearch.fullname" . }}-rollback-script-cm
+  {{- end }}
+  backend:
+    mode: "{{ .Values.cbur.backendMode }}"
+  cronSpec: "{{ .Values.cbur.cronJob }}"
+  autoEnableCron: {{ .Values.cbur.autoEnableCron }}
+  autoUpdateCron: {{ .Values.cbur.autoUpdateCron }}
+  maxiCopy: {{ .Values.cbur.maxCopy }}
+  k8sType: statefulset
+  ignoreFileChanged: true
+  hooks:
+  - name: {{ template "bssc-indexsearch.data.container" . }}
+    commands:
+      preBackupCmd: ["sh", "-c","/opt/opensearch/scripts/preBackupCommandAltiplano.sh"]
+      preRestoreCmd: ["sh", "-c","/opt/opensearch/scripts/preRestoreCleanup.sh"]
+      postRestoreCmd: ["sh", "-c","/opt/opensearch/scripts/postRestoreCommandAltiplano.sh"]
+{{- end}}

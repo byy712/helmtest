@@ -1,0 +1,24 @@
+{{- if .Values.alertmanager.enabled -}}
+{{- if .Values.rbac.enabled }}
+apiVersion: {{ template "cpro.apiVersion.roleBindingApiversion" . }}
+kind: RoleBinding
+metadata:
+  labels:
+    {{- include "cpro.app.labels.v3" ( dict "root" . "context" .Values.alertmanager ) | nindent 4 }}
+{{- include "cpro.labelsOrAnnotations" (tuple .Values.global.labels) | indent 4}}
+  name: {{ template "cpro.prometheus.alertmanager.preUpgrade.roleBinding" . }}
+  annotations:
+{{- include "cpro.labelsOrAnnotations" (tuple .Values.global.annotations) | indent 4}}
+    "helm.sh/hook": pre-upgrade,pre-rollback
+    "helm.sh/hook-weight": "-8"
+    "helm.sh/hook-delete-policy": before-hook-creation, hook-succeeded
+subjects:
+  - kind: ServiceAccount
+    name: {{ template "cpro.prometheus.alertmanager.preUpgrade.serviceAccount" . }}
+    namespace: {{ .Release.Namespace }}
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: {{ template "cpro.prometheus.alertmanager.preUpgrade.role" . }}
+{{- end }}
+{{- end }}

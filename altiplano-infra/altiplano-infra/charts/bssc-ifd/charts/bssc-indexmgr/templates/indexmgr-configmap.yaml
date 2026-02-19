@@ -1,0 +1,15 @@
+{{- if and (.Values.indexmgr.enabled) ( empty .Values.indexmgr.configMaps.preCreatedConfigmap) }}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ template "bssc-indexmgr.fullname" . }}
+  labels:
+{{- include "bssc-indexmgr.commonLabels" (tuple .  "indexmgr" ) | indent 4 }}
+    role: indexmanager
+{{- include "bssc-indexmgr.csf-toolkit-helm.labels" (tuple .) | nindent 4 }}
+  annotations:
+{{- include "bssc-indexmgr.csf-toolkit-helm.annotations" (tuple .) | nindent 4 }}
+data:
+  actions.yml: {{ toYaml .Values.indexmgr.configMaps.action_file_yml | indent 2 }}
+  curator.yml: {{ toYaml .Values.indexmgr.configMaps.config_yml | indent 2 }}
+{{- end }}

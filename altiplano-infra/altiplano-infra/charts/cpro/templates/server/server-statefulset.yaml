@@ -1,0 +1,744 @@
+{{- if and .Values.server.enabled .Values.ha.enabled -}}
+{{- include "cpro.istio.cproInitIstio" . }}
+{{- $syslogEnabled := eq (include "csf-common-lib.v1.coalesceBoolean" (tuple .Values.server.unifiedLogging.syslog.enabled .Values.global.unifiedLogging.syslog.enabled false )) "true"  }}
+{{- $tlsEnabled := eq (include "csf-common-lib.v1.coalesceBoolean" (tuple .Values.server.tls.enabled .Values.tls.enabled .Values.global.tls.enabled .Values.server.tls_auth_config.tls.enabled false)) "true" }}
+{{- $nodeExporterTlsEnabled := eq (include "csf-common-lib.v1.coalesceBoolean" (tuple .Values.nodeExporter.tls.enabled .Values.tls.enabled .Values.global.tls.enabled .Values.nodeExporter.tls_auth_config.tls.enabled false)) "true" }}
+{{- $alertmanagerTlsEnabled := eq (include "csf-common-lib.v1.coalesceBoolean" (tuple .Values.alertmanager.tls.enabled .Values.tls.enabled .Values.global.tls.enabled .Values.alertmanager.tls_auth_config.tls.enabled false)) "true" }}
+{{- $kubeStateMetricsTlsEnabled := eq (include "csf-common-lib.v1.coalesceBoolean" (tuple .Values.kubeStateMetrics.tls.enabled .Values.tls.enabled .Values.global.tls.enabled .Values.kubeStateMetrics.tls_auth_config.tls.enabled false)) "true" }}
+{{- $pushgatewayTlsEnabled := eq (include "csf-common-lib.v1.coalesceBoolean" (tuple .Values.pushgateway.tls.enabled .Values.tls.enabled .Values.global.tls.enabled .Values.pushgateway.tls_auth_config.tls.enabled false)) "true" }}
+{{- include "cpro-common-lib.v1.syslog" ( dict "root" . "context" .Values.server) }}
+apiVersion: {{ template "cpro.apiVersion.sts" . }}
+kind: StatefulSet
+metadata:
+  labels:
+    {{- include "cpro.labelsOrAnnotations" (tuple .Values.server.labels .Values.custom.cproSts.labels .Values.global.labels) | indent 4}}
+    {{- include "cpro.app.labels.v3" ( dict "root" . "context" .Values.server ) | nindent 4 }}
+  name: {{ template "cpro.prometheus.server.StsName" . }}
+  annotations:
+{{- include "cpro.labelsOrAnnotations" (tuple .Values.server.annotations .Values.custom.cproSts.annotations .Values.global.annotations) | indent 4}}
+{{- if or $syslogEnabled .Values.server.unifiedLogging.extension .Values.global.unifiedLogging.extension }}
+    configmap.reloader.stakater.com/reload: "{{ template "cpro-common-lib-v1.ConfigmapName" (dict "name" "serverfluentdcm" "root" .) }},{{ template "cpro-common-lib-v1.ConfigmapName" (dict "name" "logrotatecm" "root" .) }}"
+{{- if and $syslogEnabled (tpl (default "" $.syslog.tls.secretRef.name) .) (tpl (default "" $.syslog.tls.secretRef.keyNames.caCrt) .) }}
+    secret.reloader.stakater.com/reload: "{{ tpl $.syslog.tls.secretRef.name . }}" 
+{{- end }}
+{{- end }}
+spec:
+  #TODO CHECK serviceName: {{ template "cpro.prometheus.server.fullname" . }}
+{{$data_csc := dict "cSecCtx" .Values.server.containerSecurityContext "ctx" . }}
+  serviceName: "server-headless"
+  replicas: {{ template "cpro.server.replicas" . }}
+  podManagementPolicy: {{ .Values.server.podManagementPolicy }}
+  {{- if .Values.server.strategy }}
+  updateStrategy:
+{{ toYaml .Values.server.strategy | indent 4 }}
+  {{- end }}
+  volumeClaimTemplates:
+  - metadata:
+      name: "storage-volume"
+      labels:
+    {{- if .Values.common_labels }}
+        {{- include "cpro.common.labels.withOutChartVersion" . | nindent 8 }}
+    {{- end }}
+        app: {{ template "cpro.prometheus.name" . }}
+        component: "{{ .Values.server.name }}"
+        release: {{ .Release.Name }}
+    spec:
+      accessModes:
+      {{ toYaml .Values.server.persistentVolume.accessModes | indent 8 }}
+      {{- if .Values.server.persistentVolume.storageClass }}
+      {{- if (eq "-" .Values.server.persistentVolume.storageClass) }}
+      storageClassName: ""
+      {{- else }}
+      storageClassName: "{{ .Values.server.persistentVolume.storageClass }}"
+      {{- end }}
+      {{- end }}
+      resources:
+        requests:
+          storage: "{{ .Values.server.persistentVolume.size }}"
+  {{- if .Values.server.cbur.enabled }}
+  - metadata:
+      name: "cbur-storage-volume"
+      labels:
+        app: {{ template "cpro.prometheus.name" . }}
+        component: "{{ .Values.server.name }}"
+        release: {{ .Release.Name }}
+    spec:
+      accessModes:
+      {{ toYaml .Values.server.persistentVolume.accessModes | indent 8 }}
+      {{- if .Values.server.persistentVolume.storageClass }}
+      {{- if (eq "-" .Values.server.persistentVolume.storageClass) }}
+      storageClassName: ""
+      {{- else }}
+      storageClassName: "{{ .Values.server.persistentVolume.storageClass }}"
+      {{- end }}
+      {{- end }}
+      resources:
+        requests:
+          storage: "{{ .Values.server.persistentVolume.size }}"
+  {{- end }}
+  selector:
+    matchLabels:
+      app: {{ template "cpro.prometheus.name" . }}
+      release: "{{ .Release.Name }}"
+      component: "{{ .Values.server.name }}"
+  template:
+    metadata:
+      annotations:
+        sidecar.istio.io/inject: "{{ $.istio.enabled }}"
+{{- if and ($.istio.enabled) ($.istio.mtls.enabled) }}
+        sidecar.istio.io/rewriteAppHTTPProbers: "true"
+{{- end }}
+        prometheus.io/metrics_path: {{ template "cpro.server.routePrefixURL" . }}/metrics
+{{- include "cpro.labelsOrAnnotations" (tuple .Values.server.annotations .Values.server.podAnnotations .Values.custom.pod.annotations .Values.global.annotations) | indent 8}}
+{{- if .Values.rbac.pspUseAppArmor }}
+{{- include "cpro.labelsOrAnnotations" (tuple .Values.custom.pod.apparmorAnnotations) | indent 8}}
+{{- end }}
+      labels:
+        {{- include "cpro.app.labels.v3" ( dict "root" . "context" .Values.server ) | nindent 8 }}
+        app: {{ template "cpro.prometheus.name" . }}
+        component: "{{ .Values.server.name }}"
+        release: {{ .Release.Name }}
+{{- include "cpro.labelsOrAnnotations" (tuple .Values.server.labels .Values.custom.pod.labels .Values.global.labels) | indent 8}}
+    spec:
+{{- if .Values.server.schedulerName }}
+      schedulerName: "{{ .Values.server.schedulerName }}"
+{{- end }}
+      automountServiceAccountToken: true
+      serviceAccountName: {{ template "cpro.prometheus.serviceAccountName" . }}
+      securityContext:
+      {{$data := dict "securitycontext" .Values.server.securityContext  "ctx" . }}
+      {{- include "cpro.securitycontext" $data |  nindent 8 }}
+{{- if .Values.seLinuxOptions.enabled }}
+        seLinuxOptions:
+          level: {{ .Values.seLinuxOptions.level }}
+          role: {{ .Values.seLinuxOptions.role }}
+          type: {{ .Values.seLinuxOptions.type }}
+          user: {{ .Values.seLinuxOptions.user }}
+{{- end }}
+      initContainers:
+      - name: {{ template "cpro.prometheus.server.initConfigFileContainerName" . }}
+{{- include "cpro.prometheus.python.image" (dict "root" . "workload" .Values.server "container" .Values.initConfigFile  ) | nindent 8}}
+{{- include "cpro.terminationMessage" . | nindent 8 }}
+        env:
+          {{- include "cpro.timeZoneEnvName" . | nindent 10 }}
+        resources:
+{{- include "cpro-common-lib.v1.resources" ( dict "root" . "workloadresources" .Values.initConfigFile.resources "defaultcpulimit" "10m") | nindent 12 }}
+        # 65534 is the nobody user that prometheus uses.
+        command:
+        - bash
+        - -ec
+        - |
+          touch /.secrets/prometheus.yml
+          if [[ -f /prometheus-backup/is_restore ]]
+          then
+          echo "backup files found"
+          ls -ltr /prometheus-backup/*
+          rm -rf {{ .Values.server.persistentVolume.mountPath }}/*
+          cp -r /prometheus-backup/* {{ .Values.server.persistentVolume.mountPath }}/
+          rm /prometheus-backup/is_restore
+          rm {{ .Values.server.persistentVolume.mountPath }}/is_restore
+          rm -rf /prometheus-backup/*
+          fi
+        volumeMounts:
+        - name: secure-data
+          mountPath: /.secrets/   #tmpfs
+      {{- if .Values.server.cbur.enabled }}
+        - name: cbur-storage-volume
+          mountPath: /prometheus-backup
+      {{- end }}
+        - name: storage-volume
+          mountPath: {{ .Values.server.persistentVolume.mountPath }}
+          subPath: "{{ .Values.server.persistentVolume.subPath }}"
+
+        securityContext:
+         {{- include "cpro.containerSecurityContext" $data_csc | nindent 10 }}
+{{ include "cpro.server.waitForCerts" . | indent 6 }}
+{{ include "cpro-common-lib.imagePullSecrets" (dict "workloadName" .Values.server "root" .) | indent 6 }}
+      containers:
+            {{- if or $syslogEnabled .Values.server.unifiedLogging.extension .Values.global.unifiedLogging.extension }}
+        {{- include "cpro-common-lib.fluentd-v2" ( dict "root" . "context" .Values.fluentd "workload" .Values.server "registry" .Values.intFluentdReg ) | nindent 8 }}
+          volumeMounts:
+            - name: logs
+              mountPath: /var/log/cpro
+            - name: harmonized-logging-conf
+              mountPath: /etc/fluent/
+            - mountPath: /tmp
+              name: tempfolder
+             {{- if and $syslogEnabled (tpl (default "" $.syslog.tls.secretRef.name) .) (tpl (default "" $.syslog.tls.secretRef.keyNames.caCrt) .) }}
+            - mountPath: /etc/fluent/certs/
+              name: fluentd-tls
+             {{- end}}
+      {{- include "cpro-common-lib.logrotate" ( dict "root" . "context" .Values.logrotate "registry" .Values.intLogrotateReg ) | nindent 8 }}
+          volumeMounts:
+            - name: logs
+              mountPath: /var/log/cpro
+            - name: logrotate-cronie-file
+              mountPath: /logRotate
+       {{- end }}
+        - name: {{ template "cpro.prometheus.server.configmapReloadContainerName" . }}
+{{- include "cpro.prometheus.distro.image" (dict "root" . "workload" .Values.server "container" .Values.configmapReload ) | nindent 10}}      
+       {{- if or $syslogEnabled .Values.server.unifiedLogging.extension .Values.global.unifiedLogging.extension }}
+          command: [ "/bin/klogrun" ]
+       {{- else }}
+          command: [ "/cproConfigReloader" ]
+       {{- end }}
+{{- include "cpro.terminationMessage" . | nindent 10 }}
+          env:
+            {{- include "cpro.timeZoneEnvName" . | nindent 12 }}
+          args:
+            {{- if or $syslogEnabled .Values.server.unifiedLogging.extension .Values.global.unifiedLogging.extension }}
+            - -log-file=/var/log/cpro/server_configreload.log
+            - -also-stdout=true
+            - /cproConfigReloader
+            - --log-format=json
+            {{- else }}
+            - --log-format=logfmt
+            {{- end }}
+            - --volume-dir=/etc/config
+            {{- if and $tlsEnabled (eq (include "csf-common-lib.v1.isEmptyValue" .Values.server.tls.secretRef.name) "true") ( eq (include "csf-common-lib.v1.coalesceBoolean" (tuple .Values.certManager.enabled .Values.global.certManager.enabled false)) "true" ) .Values.server.enabled }}  
+            - --volume-dir={{ .Values.server.etcdCertMountPath }}
+            {{- end }}
+            {{- if or (ne .Values.nodeExporter.auth.credentialName "" ) (or .Values.server.externalCredentials .Values.externalCredentials) }}
+            - --volume-dir={{ .Values.secretPathPrefix }}
+            - --secretPathPrefix={{ .Values.secretPathPrefix }}
+            {{- end }}
+            {{- if and .Values.nodeExporter.enabled $nodeExporterTlsEnabled }}
+            - --volume-dir={{ .Values.server.nodeexporterCertMountPath }}
+            {{- end }}
+            {{- if and .Values.kubeStateMetrics.enabled $kubeStateMetricsTlsEnabled }}
+            - --volume-dir={{ .Values.server.kubeStateMetricsCertMountPath }}
+            {{- end }}
+            {{- if and .Values.alertmanager.enabled $alertmanagerTlsEnabled  }}
+            - --volume-dir={{ .Values.server.alertmanagerCertMountPath }}
+            {{- end }}
+            {{- if $tlsEnabled  }}
+            - --volume-dir={{ .Values.server.serverCertMountPath }}
+            - --webhook-url=https://localhost:{{ .Values.server.service.webPort }}{{ template "cpro.server.routePrefixURL" . }}/-/reload
+            {{- if and $tlsEnabled  (eq (include "csf-common-lib.v1.isEmptyValue" .Values.server.tls.secretRef.name) "true") }}
+            - --ca-cert={{ .Values.server.serverCertMountPath }}/ca.crt
+            - --client-cert={{ .Values.server.serverCertMountPath }}/tls.crt
+            - --client-key={{ .Values.server.serverCertMountPath }}/tls.key
+            {{- else if and ($tlsEnabled  (ne (include "csf-common-lib.v1.isEmptyValue" .Values.server.tls.secretRef.name) "true") ) }}
+            - --ca-cert={{ .Values.server.serverCertMountPath }}/{{ .Values.server.tls.secretRef.keyNames.caCrt }}
+            - --client-cert={{ .Values.server.serverCertMountPath }}/{{ .Values.server.tls.secretRef.keyNames.tlsCrt }}
+            - --client-key={{ .Values.server.serverCertMountPath }}/{{ .Values.server.tls.secretRef.keyNames.tlsKey }}
+            {{- end }}
+            {{- if .Values.server.tls_auth_config.insecureReload }}
+            - --insecure-skip-verify=true
+            {{- end }}
+            {{- else }}
+            - --webhook-url=http://localhost:{{ .Values.server.service.webPort }}{{ template "cpro.server.routePrefixURL" . }}/-/reload
+            {{- end }}
+            {{- if and .Values.pushgateway.enabled $pushgatewayTlsEnabled }}
+            - --volume-dir={{ .Values.server.pushgatewayCertMountPath }}
+            {{- end }}
+            - --config-file=/etc/config/prometheus.yml
+            - --output-file=/.secrets/prometheus.yml
+            - --watch-interval=30
+            - --retry-interval=1
+            - --delay-interval=1
+            - --log-level=info
+          {{- range $key, $value := .Values.configmapReload.extraArgs }}
+          {{- if eq $key "volume-dir" }}
+           {{- range $value}}
+            - --{{ $key }}={{ . }}
+           {{- end }}
+          {{- else }}
+            - --{{ $key }}={{ $value }}
+          {{- end }}
+          {{- end }}
+       {{- if ne .Values.sensitiveDataSecretName "" }}
+            - --volume-dir=/etc/config/secrets
+            - --secret-file=/etc/config/secrets/cpro_secret.yaml
+        {{- end }}
+          resources:
+{{- include "cpro-common-lib.v1.resources" ( dict "root" . "workloadresources" .Values.server.configmapReload.resources "defaultcpulimit" "10m") | nindent 12 }}
+
+          volumeMounts:
+          {{- if .Values.externalCredentials }}
+          {{- include "cpro-common-lib.v1-includeExternalCredentialMounts" (dict "creds" .Values.externalCredentials "root" . ) | indent 12 }}
+          {{- end }}
+          {{- if .Values.server.externalCredentials }}
+          {{- include "cpro-common-lib.v1-includeExternalCredentialMounts" (dict "creds" .Values.server.externalCredentials "root" . ) | indent 12 }}
+          {{- end }}
+          {{- if ne .Values.nodeExporter.auth.credentialName "" }}
+          {{- include "cpro-common-lib.v1-includeCredentialMount" (dict "cred" .Values.nodeExporter.auth "root" . "volumeName" "nxp-auth") | indent 12 }}
+          {{- end }}
+       {{- if or $syslogEnabled .Values.server.unifiedLogging.extension .Values.global.unifiedLogging.extension }}
+            - name: logs
+              mountPath: /var/log/cpro
+       {{- end }}
+           {{- if and .Values.nodeExporter.enabled $nodeExporterTlsEnabled }}
+            - mountPath: {{ .Values.server.nodeexporterCertMountPath }}
+              name: nodeexporter-tls
+              readOnly: true
+            {{- end }}
+           {{- if  and .Values.kubeStateMetrics.enabled $kubeStateMetricsTlsEnabled }}
+            - mountPath: {{ .Values.server.kubeStateMetricsCertMountPath }}
+              name: kubestatemetrics-tls
+              readOnly: true
+            {{- end }}
+            {{- if and $tlsEnabled (eq (include "csf-common-lib.v1.isEmptyValue" .Values.server.tls.secretRef.name) "true") ( eq (include "csf-common-lib.v1.coalesceBoolean" (tuple .Values.certManager.enabled .Values.global.certManager.enabled false)) "true" ) .Values.server.enabled }}
+            - mountPath: {{ .Values.server.etcdCertMountPath }}
+              name: etcd-certs
+              readOnly: true
+            {{- end }}
+            - name: config-volume
+              mountPath: /etc/config
+              readOnly: true
+          {{- range .Values.configmapReload.extraConfigmapMounts }}
+            - name: {{ $.Values.configmapReload.name }}-{{ .name }}
+              mountPath: {{ .mountPath }}
+              readOnly: {{ .readOnly }}
+          {{- end }}
+            - name: secure-data
+              mountPath: /.secrets/
+          {{- if ne .Values.sensitiveDataSecretName "" }}
+            - name: sensitivedata
+              mountPath: /etc/config/secrets
+              readOnly: true
+          {{- end }}
+{{- if $tlsEnabled }}
+            - name: client-tls
+              mountPath: {{ .Values.server.serverCertMountPath }}
+              readOnly: true
+{{- end }}
+           {{- if and .Values.alertmanager.enabled $alertmanagerTlsEnabled }}
+            - mountPath: {{ .Values.server.alertmanagerCertMountPath }}
+              name: alertmanager-tls
+              readOnly: true
+            {{- end }}
+           {{- if and .Values.pushgateway.enabled $pushgatewayTlsEnabled }}
+            - mountPath: {{ .Values.server.pushgatewayCertMountPath }}
+              name: pushgateway-tls
+              readOnly: true
+            {{- end }}
+          securityContext:
+         {{- include "cpro.containerSecurityContext" $data_csc | nindent 12 }}
+        {{- if .Values.server.cbur.enabled }}
+        - name: {{ template "cpro.prometheus.server.cburaSidecarContainerName" . }}
+{{- include "cpro.helm.cbur.image" . | nindent 10 }}
+{{- include "cpro.terminationMessage" . | nindent 10 }}
+          env:
+            {{- include "cpro.timeZoneEnvName" . | nindent 12 }}
+          resources:
+{{- include "cpro-common-lib.v1.resources" ( dict "root" . "workloadresources" .Values.server.cbur.resources "defaultcpulimit" "500m") | nindent 12 }}
+          volumeMounts:
+            - mountPath: /tmp
+              name: cbur-br-data
+            - mountPath: /storage-volume
+              name: cbur-storage-volume
+          securityContext:
+            {{- include "cpro.containerSecurityContext" (dict "cSecCtx" .Values.server.cbur.containerSecurityContext "ctx" .) | nindent 12 }}
+        {{- end }}
+        {{- if .Values.server.monitoringContainer.enabled }}
+        - name: {{ template "cpro.prometheus.server.monitoringContainerName" . }}
+{{- include "cpro.prometheus.python.image" (dict "root" . "workload" .Values.server "container" .Values.server.monitoringContainer ) | nindent 10}}
+{{- include "cpro.terminationMessage" . | nindent 10 }}
+          env:
+        {{- if .Values.server.useReadyInStartupProbe }}
+            - name: HOST_NAME
+              value: "localhost"
+        # Duration when monitoring container will collect Debug information ( .Values.server.startupprobe.failureThreshold - 3 ) 
+            - name: LOG_DURATION
+              value: "3"
+        {{- end }}
+            {{- include "cpro.timeZoneEnvName" . | nindent 12 }}
+        {{- if or $syslogEnabled .Values.server.unifiedLogging.extension .Values.global.unifiedLogging.extension }} 
+          command: [ "/bin/klogrun"]
+        {{- else }}
+          command: ["python3" , "/usr/local/bin/prometheus-monitoring/prometheus-monitoring.py"]
+        {{- end }}
+          args:
+        {{- if or $syslogEnabled .Values.server.unifiedLogging.extension .Values.global.unifiedLogging.extension }} 
+            - -log-file=/var/log/cpro/server_monitoring.log
+            - -also-stdout=true
+            - python3
+            - /usr/local/bin/prometheus-monitoring/prometheus-monitoring.py
+        {{- end }}
+            - -a storage.tsdb.path={{ .Values.server.persistentVolume.mountPath2 }}
+            - -a loglevel={{ .Values.server.monitoringContainer.loglevel }}
+            - -a rmvtmpFlag={{ .Values.server.monitoringContainer.removetmp.enable }}
+            - -a delta={{ .Values.server.monitoringContainer.deltatime }}
+            - -a checkWalFilesFlag={{ .Values.server.monitoringContainer.checkwalfiles.enable }}
+            - -a compareInterval={{ .Values.server.monitoringContainer.checkwalfiles.compareInterval }}
+            - -a checkpointFlag={{ .Values.server.monitoringContainer.checkpoint.enable }}
+            - -a compactionInterval={{ .Values.server.monitoringContainer.deltatime }}
+          {{- range $key, $value := .Values.server.extraArgs }}
+            - -a {{ $key }}={{ $value }}
+          {{- end }}
+        {{- if .Values.server.useReadyInStartupProbe }}
+            - -a serverMonitorDebug=true
+            - -a failureThreshold={{ .Values.server.startupProbe.failureThreshold }}
+            - -a periodSeconds={{ .Values.server.startupProbe.periodSeconds }}
+            - -a startupTimeoutSeconds=5
+            {{- if $tlsEnabled }}
+            - -a tlsFlag=True
+            {{- if (eq (include "csf-common-lib.v1.isEmptyValue" .Values.server.tls.secretRef.name) "true") }}
+            - -a ca_crt={{ .Values.server.serverCertMountPath }}/ca.crt
+            - -a client_cert={{ .Values.server.serverCertMountPath }}/tls.crt
+            - -a client_key={{ .Values.server.serverCertMountPath }}/tls.key
+            {{- else }}
+            - -a ca_crt={{ .Values.server.serverCertMountPath }}/{{ .Values.server.tls.secretRef.keyNames.caCrt }}
+            - -a client_cert={{ .Values.server.serverCertMountPath }}/{{ .Values.server.tls.secretRef.keyNames.tlsCrt }}
+            - -a client_key={{ .Values.server.serverCertMountPath }}/{{ .Values.server.tls.secretRef.keyNames.tlsKey }}
+            {{- end }}            
+            {{- else }}
+            - -a tlsFlag=False
+            {{- end }}
+            - -a readyProbeApi={{ template "cpro.server.routePrefixURL" . }}/-/ready
+            - -a livenessProbeApi={{ template "cpro.server.routePrefixURL" . }}/-/healthy
+            - -a livenessTimeoutSeconds=5
+            - -a configMapPath=/opt/monitoring-debug/debugcommand
+            - -a port={{ .Values.server.service.webPort }}
+        {{- end }}
+          resources:
+{{- include "cpro-common-lib.v1.resources" ( dict "root" . "workloadresources" .Values.server.monitoringContainer.resources "defaultcpulimit" "500m") | nindent 12 }}
+          volumeMounts:
+       {{- if or $syslogEnabled .Values.server.unifiedLogging.extension .Values.global.unifiedLogging.extension }}
+            - name: logs
+              mountPath: /var/log/cpro
+       {{- end }}
+            - name: storage-volume
+              mountPath: {{ .Values.server.persistentVolume.mountPath2 }}
+              subPath: "{{ .Values.server.persistentVolume.subPath }}"
+            - name: monitoring-files
+              mountPath: /opt/monitoring-container
+        {{- if .Values.server.useReadyInStartupProbe }}
+            - name: configmappath
+              mountPath: /opt/monitoring-debug
+        {{- if $tlsEnabled }}
+            - name: monclient-tls
+              mountPath: {{ .Values.server.serverCertMountPath }} 
+       {{- end }}
+       {{- end }}
+          securityContext:
+         {{- include "cpro.containerSecurityContext" $data_csc | nindent 12 }}
+          workingDir: /opt/monitoring-container
+        {{- end }}
+        - name: {{ template "cpro.prometheus.server.prometheusContainerName" . }}
+{{- include "cpro.prometheus.distro.image" (dict "root" . "workload" .Values.server) | nindent 10}}
+{{- include "cpro.terminationMessage" . | nindent 10 }}
+          env:
+            {{- include "cpro.timeZoneEnvName" . | nindent 12 }}
+{{- if $.istio.enabled }}
+            - name: "ISTIO_ENABLED"
+              value: "true"
+{{- end }}
+{{- if and ($.istio.enabled) ($.istio.gateways.cproServer.enabled) (ne ($.istio.gateways.cproServer.protocol | upper) "HTTPS") }}
+            - name: "ISTIO_GATEWAY_ALERT"
+              value: "true"
+{{- end }}
+{{- if  and (not $.istio.enabled) ($syslogEnabled) (eq (tpl (default "" $.syslog.tls.secretRef.name) .) "") }}
+            - name: "RSYSLOG_SERVER_ALERT"
+              value: "true"
+{{- end }}
+            - name: K8S
+              value: "true"
+       {{- if or $syslogEnabled .Values.server.unifiedLogging.extension .Values.global.unifiedLogging.extension }}
+          command: [ "/bin/klogrun" ]
+       {{- end }}
+          args:
+            {{- if or $syslogEnabled .Values.server.unifiedLogging.extension .Values.global.unifiedLogging.extension }}
+            - -log-file=/var/log/cpro/server.log
+            - -also-stdout=true
+            - /bin/prometheus
+            - --log.format=json
+            {{- end }}
+          {{- if .Values.server.retention.time }}
+            - --storage.tsdb.retention.time={{ .Values.server.retention.time }}
+          {{- end }}
+          {{- if .Values.server.retention.size }}
+            - --storage.tsdb.retention.size={{ .Values.server.retention.size }}
+          {{- end }}
+            - --config.file=/.secrets/prometheus.yml
+            - --storage.tsdb.path={{ .Values.server.persistentVolume.mountPath2 }}
+            - --web.console.libraries=/etc/prometheus/console_libraries
+            - --web.console.templates=/etc/prometheus/consoles
+            - --web.enable-lifecycle
+            - --web.listen-address=:{{ .Values.server.service.webPort }}
+          {{- range $key, $value := .Values.server.extraArgs }}
+            - --{{ $key }}={{ $value }}
+          {{- end }}
+          {{- range $key := .Values.server.extraKeys }}
+            - --{{ $key }}
+          {{- end }}
+          {{- if .Values.server.baseURL }}
+            - --web.external-url={{ .Values.server.baseURL }}
+          {{- end }}
+          {{- if ne .Values.server.prefixURL "" }}
+            - --web.route-prefix=/{{ .Values.server.prefixURL }}
+          {{- end }}
+          {{- if .Values.server.enableAdminApi }}
+            - --web.enable-admin-api
+          {{- end }}
+        {{ if $tlsEnabled }}
+            - --web.config.file=/etc/webconfig/web.yml
+        {{ end }}
+          ports:
+            - name: tcp-metrics
+              containerPort: {{ .Values.server.service.webPort }}
+          {{- include "cpro.prometheus.server.probe" . | indent 10 }}
+          resources:
+{{- include "cpro-common-lib.v1.resources" ( dict "root" . "workloadresources" .Values.server.resources "defaultcpulimit" "2") | nindent 12 }}
+          volumeMounts:
+          {{- if .Values.externalCredentials }}
+          {{- include "cpro-common-lib.v1-includeExternalCredentialMounts" (dict "creds" .Values.externalCredentials "root" . ) | indent 12 }}
+          {{- end }}
+          {{- if .Values.server.externalCredentials }}
+          {{- include "cpro-common-lib.v1-includeExternalCredentialMounts" (dict "creds" .Values.server.externalCredentials "root" . ) | indent 12 }}
+          {{- end }}
+          {{- if ne .Values.nodeExporter.auth.credentialName "" }}
+          {{- include "cpro-common-lib.v1-includeCredentialMount" (dict "cred" .Values.nodeExporter.auth "root" . "volumeName" "nxp-auth") | indent 12 }}
+          {{- end }}
+       {{- if or $syslogEnabled .Values.server.unifiedLogging.extension .Values.global.unifiedLogging.extension }}
+            - name: logs
+              mountPath: /var/log/cpro
+       {{- end }}
+           {{- if and .Values.nodeExporter.enabled $nodeExporterTlsEnabled }}
+            - mountPath: {{ .Values.server.nodeexporterCertMountPath }}
+              name: nodeexporter-tls
+              readOnly: true
+            {{- end }}
+           {{- if  and .Values.kubeStateMetrics.enabled $kubeStateMetricsTlsEnabled }}
+            - mountPath: {{ .Values.server.kubeStateMetricsCertMountPath }}
+              name: kubestatemetrics-tls
+              readOnly: true
+            {{- end }}
+            {{- if and $tlsEnabled (eq (include "csf-common-lib.v1.isEmptyValue" .Values.server.tls.secretRef.name) "true") ( eq (include "csf-common-lib.v1.coalesceBoolean" (tuple .Values.certManager.enabled .Values.global.certManager.enabled false)) "true" ) .Values.server.enabled }}
+            - mountPath: {{ .Values.server.etcdCertMountPath }}
+              name: etcd-certs
+              readOnly: true
+            {{- end }}
+            - name: config-volume
+              mountPath: /etc/config
+            - name: secure-data
+              mountPath: /.secrets/
+            {{- if .Values.server.cbur.enabled }}
+            - name: cbur-storage-volume
+              mountPath: /prometheus-backup
+            {{- end }}
+            - name: storage-volume
+              mountPath: {{ .Values.server.persistentVolume.mountPath }}
+              subPath: "{{ .Values.server.persistentVolume.subPath }}"
+          {{- range .Values.server.extraHostPathMounts }}
+            - name: {{ .name }}
+              mountPath: {{ .mountPath }}
+              readOnly: {{ .readOnly }}
+          {{- end }}
+          {{- range .Values.server.extraConfigmapMounts }}
+            - name: {{ $.Values.server.name }}-{{ .name }}
+              mountPath: {{ .mountPath }}
+              readOnly: {{ .readOnly }}
+          {{- end }}
+          {{- range .Values.server.extraSecretMounts }}
+            - name: {{ .name }}
+              mountPath: {{ .mountPath }}
+              readOnly: {{ .readOnly }}
+          {{- end }}
+{{- if $tlsEnabled}}
+            - name: server-tls
+              mountPath: /var/lib/certs
+              readOnly: true
+            - name: webconfig-volume
+              mountPath: /etc/webconfig
+              readOnly: true
+            - name: client-tls
+              mountPath: {{ .Values.server.serverCertMountPath }}
+              readOnly: true
+{{- end }}
+           {{- if and .Values.alertmanager.enabled $alertmanagerTlsEnabled }}
+            - mountPath: {{ .Values.server.alertmanagerCertMountPath }}
+              name: alertmanager-tls
+              readOnly: true
+            {{- end }}
+           {{- if and .Values.pushgateway.enabled $pushgatewayTlsEnabled }}
+            - mountPath: {{ .Values.server.pushgatewayCertMountPath }}
+              name: pushgateway-tls
+              readOnly: true
+            {{- end }}
+          securityContext:
+         {{- include "cpro.containerSecurityContext" $data_csc | nindent 12 }}
+        - name: {{ template "cpro.prometheus.server.cproUtilContainerName" . }}
+{{- include "cpro.prometheus.python.image" (dict "root" . "workload" .Values.server  "container" .Values.cproUtil  ) | nindent 10}}
+{{- include "cpro.terminationMessage" . | nindent 10 }}
+          env:
+            {{- include "cpro.timeZoneEnvName" . | nindent 12 }}
+          command: ["sleep","infinity"]
+          resources:
+{{- include "cpro-common-lib.v1.resources" ( dict "root" . "workloadresources" .Values.server.cproUtil.resources "defaultcpulimit" "100m") | nindent 12 }}
+          volumeMounts:
+            {{- if .Values.server.cbur.enabled }}
+            - name: cbur-storage-volume
+              mountPath: /prometheus-backup
+            - name: cbur-scripts
+              mountPath: /prometheus-cbur-scripts
+            {{- end }}
+            - name: storage-volume
+              mountPath: {{ .Values.server.persistentVolume.mountPath }}
+              subPath: "{{ .Values.server.persistentVolume.subPath }}"
+          {{- range .Values.server.extraHostPathMounts }}
+            - name: {{ .name }}
+              mountPath: {{ .mountPath }}
+              readOnly: {{ .readOnly }}
+          {{- end }}
+          {{- range .Values.server.extraConfigmapMounts }}
+            - name: {{ $.Values.server.name }}-{{ .name }}
+              mountPath: {{ .mountPath }}
+              readOnly: {{ .readOnly }}
+          {{- end }}
+          securityContext:
+         {{- include "cpro.containerSecurityContext" $data_csc | nindent 12 }}
+{{$data := dict "component_pc" .Values.server  "ctx" . }}
+{{- include "cpro.pod.priority.classname" $data | nindent 6 }}
+    {{- if .Values.server.nodeSelector }}
+      nodeSelector:
+{{ toYaml .Values.server.nodeSelector | indent 8 }}
+    {{- end }}
+    {{- if .Values.server.tolerations }}
+      tolerations:
+{{ toYaml .Values.server.tolerations | indent 8 }}
+    {{- end }}
+      affinity:
+      {{- include "cpro.server.podAntiAffinity" . | indent 8 }}
+      {{- if .Values.server.affinity }}
+      {{- if .Values.server.affinity.podAntiAffinity }}
+{{ toYaml .Values.server.affinity.podAntiAffinity | indent 10 }}
+      {{- end }}
+      {{- if .Values.server.affinity.podAffinity }}
+        podAffinity:
+{{ toYaml .Values.server.affinity.podAffinity | indent 10 }}
+      {{- end }}
+      {{- end }}
+      terminationGracePeriodSeconds: {{ .Values.server.terminationGracePeriodSeconds }}
+      {{- if .Values.server.topologySpreadConstraints }}
+      topologySpreadConstraints: {{- include "cpro.topologySpreadConstraints" (tuple . .Values.server) | nindent 8 }}
+      {{- end }}
+      volumes:
+      {{- if .Values.externalCredentials  }}
+      {{- include "cpro-common-lib.v1-includeExternalCredentials" (dict "creds" .Values.externalCredentials ) | indent 8 }}
+      {{- end }}
+      {{- if .Values.server.externalCredentials  }}
+      {{- include "cpro-common-lib.v1-includeExternalCredentials" (dict "creds" .Values.server.externalCredentials ) | indent 8 }}
+      {{- end }}
+      {{- if ne .Values.nodeExporter.auth.credentialName "" }}
+      {{- include "cpro-common-lib.v1-includeCredential" (dict "creds" .Values.nodeExporter.auth "volumeName" "nxp-auth") | indent 8 -}} 
+      {{- end }}
+        {{- if or $syslogEnabled .Values.server.unifiedLogging.extension .Values.global.unifiedLogging.extension }}
+        - name: logs
+          emptyDir: {}
+        - name: tempfolder
+          emptyDir: {}
+        - name: harmonized-logging-conf
+          configMap:
+            name: {{ template "cpro-common-lib-v1.ConfigmapName" (dict "name" "serverfluentdcm" "root" .) }} 
+        - name: logrotate-cronie-file
+          configMap:
+            defaultMode: 0640
+            items:
+              - key: logrotate.conf
+                path: logrotate.conf
+              - key: rotate.sh
+                path: rotate.sh
+            name: {{ template "cpro-common-lib-v1.ConfigmapName" (dict "name" "logrotatecm" "root" .) }} 
+              {{- if and $syslogEnabled (tpl (default "" $.syslog.tls.secretRef.name) .) (tpl (default "" $.syslog.tls.secretRef.keyNames.caCrt) .) }}
+        - name: fluentd-tls
+          secret:
+            secretName: {{ tpl $.syslog.tls.secretRef.name . }}
+            items:
+              - key: {{ tpl $.syslog.tls.secretRef.keyNames.caCrt . }}
+                path: syslogRootCaPem
+        {{- end }}
+        {{- end }}
+        - name: cbur-br-data
+          {{$ephemeralstoragevalue := dict "ephvol" .Values.server.cbur "eph" . }}   
+          {{- include "cpro.ephemeral.storage" $ephemeralstoragevalue | nindent 10 }}
+    {{- if and .Values.nodeExporter.enabled $nodeExporterTlsEnabled }}
+        - name: nodeexporter-tls
+          secret:
+            secretName: {{ template "cpro.nodeexporter.client.secret" . }}
+    {{- end }}
+    {{- if  and .Values.kubeStateMetrics.enabled $kubeStateMetricsTlsEnabled }}
+        - name: kubestatemetrics-tls
+          secret:
+            secretName: {{ template "cpro.kubeStateMetrics.client.secret" . }}
+    {{- end }}
+        {{- if and $tlsEnabled (eq (include "csf-common-lib.v1.isEmptyValue" .Values.server.tls.secretRef.name) "true") ( eq (include "csf-common-lib.v1.coalesceBoolean" (tuple .Values.certManager.enabled .Values.global.certManager.enabled false)) "true" ) .Values.server.enabled }}
+        - name: etcd-certs
+          secret:
+            secretName: {{ template "cpro.certManagerConfig.secretName" . }}
+            defaultMode: 0440
+        {{- end }}
+        {{- if ne .Values.sensitiveDataSecretName "" }}
+        - name: sensitivedata
+          secret:
+            secretName: {{ .Values.sensitiveDataSecretName }}
+        {{- end }}
+        - name: config-volume
+          configMap:
+            name: {{ if .Values.server.configMapOverrideName }}{{ .Release.Name }}-{{ .Values.server.configMapOverrideName }}{{- else }}{{ template "cpro.prometheus.server.fullname" . }}{{- end }}
+      {{- range .Values.server.extraHostPathMounts }}
+        - name: {{ .name }}
+          hostPath:
+            path: {{ .hostPath }}
+      {{- end }}
+      {{- range .Values.configmapReload.extraConfigmapMounts }}
+        - name: {{ $.Values.configmapReload.name }}-{{ .name }}
+          configMap:
+            name: {{ tpl (.configMap) $ }}
+      {{- end }}
+      {{- range .Values.server.extraConfigmapMounts }}
+        - name: {{ $.Values.server.name }}-{{ .name }}
+          configMap:
+            name: {{ tpl (.configMap) $ }}
+      {{- end }}
+      {{- range .Values.server.extraSecretMounts }}
+        - name: {{ .name }}
+          secret:
+            secretName: {{ tpl (.secretName) $ }}
+      {{- end }}
+        - name: secure-data
+          emptyDir: {}
+        - name: monitoring-files
+          emptyDir: {}
+{{- if $tlsEnabled }}
+        - name: server-tls
+          secret:
+            secretName: {{ template "cpro.server.server.secret" . }}
+            defaultMode: 0440
+        - name: webconfig-volume
+          secret:
+            secretName: {{ .Values.server.tls_auth_config.secretForWebConfig }}
+            defaultMode: 0440
+        - name: client-tls
+          secret:
+            secretName: {{ template "cpro.server.server.secret" . }}
+            defaultMode: 0440
+{{- end }}
+    {{- if and .Values.alertmanager.enabled $alertmanagerTlsEnabled }}
+        - name: alertmanager-tls
+          secret:
+            secretName: {{ template "cpro.alertmanager.client.secret" . }}
+    {{- end }}
+    {{- if and .Values.pushgateway.enabled $pushgatewayTlsEnabled }}
+        - name: pushgateway-tls
+          secret:
+            secretName: {{ template "cpro.pushgateway.client.secret" . }}
+    {{- end }}
+    {{- if .Values.server.cbur.enabled }}
+        - name: cbur-scripts
+          configMap:
+            name: {{ template "cpro.prometheus.server.cbur.configmapName" . }}
+    {{- end }}
+    {{- if  and .Values.server.useReadyInStartupProbe .Values.server.monitoringContainer.enabled   }}
+        - name: configmappath
+          secret:
+            secretName: {{ template "cpro.prometheus.server.fullname" . }}
+    {{- if $tlsEnabled }}
+        - name: monclient-tls
+          secret:
+            secretName: {{ template "cpro.server.client.secret" . }}
+            defaultMode: 0440
+    {{- end }}
+    {{- end }}
+{{- end }}

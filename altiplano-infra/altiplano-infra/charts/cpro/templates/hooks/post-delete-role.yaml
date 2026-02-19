@@ -1,0 +1,40 @@
+{{- if or .Values.server.enabled .Values.alertmanager.enabled .Values.nodeExporter.enabled .Values.kubeStateMetrics.enabled .Values.restserver.enabled .Values.pushgateway.enabled }}
+{{- if .Values.rbac.enabled }}
+apiVersion: {{ template "cpro.apiVersion.roleApiversion" . }}
+kind: Role
+metadata:
+  labels:
+    {{- include "cpro.app.labels.v3" ( dict "root" . "context" .Values.server ) | nindent 4 }}
+{{- include "cpro.labelsOrAnnotations" (tuple .Values.global.labels) | indent 4}}
+  name: {{ template "cpro.prometheus.server.postDelete.role" . }}
+  annotations:
+{{- include "cpro.labelsOrAnnotations" (tuple .Values.global.annotations) | indent 4}}
+    "helm.sh/hook": post-delete
+    "helm.sh/hook-weight": "-8"
+    "helm.sh/hook-delete-policy": before-hook-creation, hook-succeeded
+rules:
+{{- if .Values.ha.enabled }}
+  - apiGroups:
+      - ""
+    resources:
+      - persistentvolumeclaims
+    verbs:
+      - get
+      - list
+      - watch
+      - delete
+{{- end }}
+  - apiGroups:
+      - ""
+    resources:
+      - pods
+    verbs:
+      - get
+      - list
+      - watch
+      - delete
+    resourceNames:
+      - {{ template "cpro.prometheus.server.serverHelmTestPod" . }}
+      - {{ template "cpro.prometheus.restserver.helmTestDeploymentName" . }}
+{{- end }}
+{{- end }}

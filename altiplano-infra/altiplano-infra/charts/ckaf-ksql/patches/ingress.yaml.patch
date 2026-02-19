@@ -1,0 +1,101 @@
+--- base_ksql/ckaf-ksql-8.1.0/ckaf-ksql/templates/ingress.yaml	2024-03-28 23:41:09.000000000 +0530
++++ charts/ckaf-ksql/templates/ingress.yaml	2024-04-16 12:42:32.536552996 +0530
+@@ -7,6 +7,16 @@
+   annotations:
+     kubernetes.io/ingress.class: "nginx"
+     nginx.ingress.kubernetes.io/rewrite-target: /$2
++    {{- if .Values.global.K8S_IPV6_HOSTNAME }}
++    nginx.ingress.kubernetes.io/auth-signin: https://{{ .Values.global.K8S_IPV6_HOSTNAME }}/oauth2/start?rd=$escaped_request_uri
++    {{- else }}
++    nginx.ingress.kubernetes.io/auth-signin: https://{{ .Values.global.K8S_PUBLIC_IP }}/oauth2/start?rd=$escaped_request_uri
++    {{- end }}
++    {{- if .Values.ingress.authUrl }}
++    nginx.ingress.kubernetes.io/auth-url: {{ tpl .Values.ingress.authUrl . }}
++    {{- else }}
++    nginx.ingress.kubernetes.io/auth-url: http://altiplano-oauth2-proxy.{{ .Release.Namespace }}.svc.{{ .Values.clusterDomain }}:4180/oauth2/auth?allowed_groups=%2Fksqldbadmin
++    {{- end }}
+     {{- if eq (include "ckaf-ksql.tls.enabled" (tuple .Values.KafkaKsql.security.rest)) "true" }}
+     nginx.ingress.kubernetes.io/secure-backends: "true"
+     {{- end }}
+@@ -31,8 +41,7 @@
+       secretName: {{ coalesce  .Values.ingress.tls.secretName (include "csf-common-lib.v3.certificateSecretName" (tuple . .Values.KafkaKsql )) }}
+   {{- end }}
+   rules:
+-  - host: {{ $fullName }}.{{ $releaseNamespace }}.svc.{{ .Values.clusterDomain }}
+-    http:
++  -  http:
+   {{- if eq ( include "ckaf-ksql.ingress.apiVersion" . ) "networking.k8s.io/v1" }}
+       paths:
+       - pathType: {{ .Values.ingress.pathType }}
+@@ -52,5 +61,71 @@
+         backend:
+           serviceName: {{ $fullName }}
+           servicePort: {{ .Values.servicePort }}
++  {{- end }}
++{{- end }} 
++---
++{{- if eq .Values.ingressNbi.enabled true }}
++{{- $fullName := include "ckaf-ksql.name" . }}
++{{- $releaseNamespace := .Release.Namespace }}
++apiVersion: {{ template "ckaf-ksql.ingress.apiVersion" . }}
++kind: Ingress
++metadata:
++  annotations:
++    kubernetes.io/ingress.class: "nginx"
++    nginx.ingress.kubernetes.io/rewrite-target: /$2
++    {{- if .Values.global.K8S_IPV6_HOSTNAME }}
++    nginx.ingress.kubernetes.io/auth-signin: https://{{ .Values.global.K8S_IPV6_HOSTNAME }}/oauth2-nbi/start?rd=$escaped_request_uri
++    {{- else }}
++    nginx.ingress.kubernetes.io/auth-signin: https://{{ .Values.global.K8S_PUBLIC_IP }}/oauth2-nbi/start?rd=$escaped_request_uri
++    {{- end }}
++    {{- if .Values.ingressNbi.authUrl }}
++    nginx.ingress.kubernetes.io/auth-url: {{ tpl .Values.ingressNbi.authUrl . }}
++    {{- else }}
++    nginx.ingress.kubernetes.io/auth-url: http://altiplano-oauth2-proxy-nbi.{{ .Release.Namespace }}.svc.{{ .Values.clusterDomain }}:4180/oauth2/auth?allowed_groups=%2Fksqldbadmin
++    {{- end }}
++    {{- if eq .Values.KafkaKsql.security.rest.ssl.enabled true }}
++    nginx.ingress.kubernetes.io/secure-backends: "true"
++    {{- end }}
++    {{- if eq .Values.global.istio.enabled true }}
++    nginx.ingress.kubernetes.io/service-upstream: "true"
++    nginx.ingress.kubernetes.io/upstream-vhost: {{ $fullName }}.{{ .Release.Namespace }}.svc.{{ .Values.clusterDomain }}
++    {{- end }}
++{{- include "csf-common-lib.v1.customAnnotations" (tuple .Values.ingressNbi.annotations .Values.global.annotations) | indent 4 }}
++  name: {{ $fullName }}-nbi
++  namespace: {{ .Release.Namespace }}
++  labels:
++{{ include "ckaf-ksql.commonlabels" . | indent 4 }}
++{{- include "csf-common-lib.v1.customLabels" (tuple .Values.global.labels) | indent 4 }}
++    app: {{ .Chart.Name }}
++    chart: {{ .Chart.Name }}
++    release: {{ .Release.Name }}
++spec:
++  {{- if eq .Values.ingressNbi.tls.enabled true }}
++  tls:
++    - hosts:
++      - {{ $fullName }}.{{ $releaseNamespace }}.svc.{{ .Values.clusterDomain }}
++      secretName: {{ .Values.ingressNbi.tls.secretName }}
++  {{- end }}
++  rules:
++  -  http:
++  {{- if eq ( include "ckaf-ksql.ingress.apiVersion" . ) "networking.k8s.io/v1" }}
++      paths:
++      - pathType: {{ .Values.ingressNbi.pathType }}
++        {{- if .Values.ingressNbi.path }}
++        path: {{ .Values.ingressNbi.path }}
++        {{- else }}
++        path: /{{ .Chart.Name }}-nbi/{{ .Release.Name }}(/|$)(.*)
++        {{- end }}
++        backend:
++          service:
++            name: {{ $fullName }}
++            port:
++              number: {{ .Values.servicePort }}
++  {{- else }}
++      paths:
++      - path: /{{ .Chart.Name }}-nbi/{{ .Release.Name }}(/|$)(.*)
++        backend:
++          serviceName: {{ $fullName }}
++          servicePort: {{ .Values.servicePort }}
+   {{- end }}
+ {{- end }} 

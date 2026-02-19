@@ -1,0 +1,29 @@
+--- orig/cpro/values.yaml	2023-12-13 16:53:25.000000000 +0530
++++ new/cpro/values.yaml	2024-01-04 14:32:26.017498807 +0530
+@@ -1,6 +1,12 @@
+ global:
+ # registry repo is used to pull all the container images. global.registry will also support <registry>/<repository path>
+-  registry: 
++  registry:
++  vault:
++    enabled: false
++    config:
++      url: ""
++      token: ""
++      kvPath: "" 
+ # If global.flatRegistry is set to true, then <repository path> in all container images will be skipped
+   flatRegistry: false
+ 
+@@ -111,6 +117,12 @@
+   tls:
+     enabled: true
+ 
++init:
++  image:
++    name: fnms-init-container
++    tag: nokia-1.0.7
++    pullPolicy: IfNotPresent
++    
+ # intPromMetricsReg repo is used to pull cpro-prometheus-metrics image  
+ intPromMetricsReg: "csf-docker-delivered.repo.cci.nokia.net"
+ # intPromUtilReg repo is used to pull prometheus-util image  

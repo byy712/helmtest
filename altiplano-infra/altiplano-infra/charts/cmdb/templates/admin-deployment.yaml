@@ -1,0 +1,211 @@
+{{- include "cmdb.init" . -}}
+{{- if ne (.Values.cluster_type) "simplex" }}
+{{- $pre_stop_timeout := default 0 .Values.admin.terminationGracePeriodSeconds }}
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ template "cmdb.pod-prefix" . }}-admin
+  labels:
+    {{- include "cmdb-admin.labels" (tuple . "deployment") | nindent 4 }}
+  annotations:
+    {{- include "cmdb-admin.annotations" (tuple . "deployment") | nindent 4 }}
+
+spec:
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      {{- include "cmdb-admin.selector_labels" . | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        altiplano-role: {{ .Values.admin.accessRoleLabel }}
+        {{- include "cmdb-admin.labels" (tuple . "pod") | nindent 8 }}
+        type: admin
+        admin-daemon: "yes"
+      annotations:
+        {{- include "cmdb-admin.annotations" (tuple . "pod") | nindent 8 }}
+        {{- include "cmdb.istio-annotation" . | nindent 8 }}
+      {{- if .Values.istio.enabled }}
+        sidecar.istio.io/rewriteAppHTTPProbers: "true"
+      {{- end }}
+    spec:
+    {{- if .Values.admin.priorityClassName }}
+      priorityClassName: {{ .Values.admin.priorityClassName | quote }}
+    {{- else if .Values.global.priorityClassName }}
+      priorityClassName: {{ .Values.global.priorityClassName | quote }}
+    {{- end }}
+      {{- include "cmdb.get_security_context" (tuple . "pod" "admin" 1773) | nindent 6 }}
+      {{- include "cmdb.sa" . | nindent 6 }}
+      {{- include "cmdb.get_image_pull_secrets" (tuple . "admin") | nindent 6 }}
+      terminationGracePeriodSeconds: {{ $pre_stop_timeout }}
+
+      containers:
+      - name: {{ template "cmdb.container-prefix" . }}admin
+        {{- include "cmdb-admin.image" . | nindent 8 }}
+        {{- include "cmdb.get_security_context" (tuple . "container" "admin" 1773) | nindent 8 }}
+        args: [ "daemon" ]
+        ports:
+        - containerPort: 6379
+          name: tcp-redisio
+        env:
+        - name: CLUSTER_TYPE
+          value: "{{ .Values.cluster_type }}"
+        - name: CLUSTER_NAME
+          value: "{{ .Values.cluster_name | default .Release.Name | trunc 32 }}"
+        {{- if .Values.admin.configAnnotation }}
+        - name: RUN_UPDATECFG
+          value: "no"
+        {{- end }}
+        {{- if .Values.admin.autoHeal.enabled }}
+        - name: AUTO_HEAL_PAUSE
+          value: {{ .Values.admin.autoHeal.pauseDelay | quote }}
+        {{- end }}
+        - name: PWCHANGE_TIMEOUT
+          value: {{ .Values.admin.pwchangeTimeout | quote }}
+        {{- if eq (include "cmdb.has_maxscale" .) "true" }}
+        - name: MAXSCALE_SERVICE_NAME
+          value: {{ default (printf "%s-maxscale" (include "cmdb.fullname" .)) .Values.services.maxscale.name | quote }}
+        {{- end }}
+        - name: TERM_GRACE_PERIOD
+          value: "{{ $pre_stop_timeout }}"
+        {{- include "cmdb-tz.env" . | nindent 8 }}
+        {{- include "cmdb-k8s.env" . | nindent 8 }}
+        {{- include "cmdb-logging.env" . | nindent 8 }}
+        volumeMounts:
+        {{- include "cmdb-fs.vm" (tuple . "admin") | nindent 8 }}
+        {{- include "cmdb-logging.vm" (tuple . .Values.admin) | nindent 8 }}
+        - name: cluster-cm
+          mountPath: /chart
+        - name: event-cm
+          mountPath: /event
+        - name: user-creds
+          mountPath: /.creds
+        - name: datadir
+          mountPath: /admin
+        {{- if semverCompare ">=1.18" (include "cmdb.k8sver" .) }}
+        startupProbe:
+          httpGet:
+            path: /started
+            port: 36379
+          initialDelaySeconds: {{ .Values.admin.startupProbe.initialDelaySeconds | default 1 }}
+          periodSeconds: {{ .Values.admin.startupProbe.periodSeconds | default 5 }}
+          timeoutSeconds: {{ .Values.admin.startupProbe.timeoutSeconds | default 1 }}
+          failureThreshold: {{ .Values.admin.startupProbe.failureThreshold | default 60 }}
+          successThreshold: {{ .Values.admin.startupProbe.successThreshold | default 1 }}
+        {{- end }}
+        livenessProbe:
+          httpGet:
+            path: /alive
+            port: 36379
+          initialDelaySeconds: {{ .Values.admin.livenessProbe.initialDelaySeconds | default 180 }}
+          periodSeconds: {{ .Values.admin.livenessProbe.periodSeconds | default 10 }}
+          timeoutSeconds: {{ .Values.admin.livenessProbe.timeoutSeconds | default 1 }}
+          failureThreshold: {{ .Values.admin.livenessProbe.failureThreshold | default 6 }}
+          successThreshold: {{ .Values.admin.livenessProbe.successThreshold | default 1 }}
+        readinessProbe:
+          httpGet:
+            path: /ready
+            port: 36379
+          initialDelaySeconds: {{ .Values.admin.readinessProbe.initialDelaySeconds | default 10 }}
+          periodSeconds: {{ .Values.admin.readinessProbe.periodSeconds | default 10 }}
+          timeoutSeconds: {{ .Values.admin.readinessProbe.timeoutSeconds | default 1 }}
+          failureThreshold: {{ .Values.admin.readinessProbe.failureThreshold | default 3 }}
+          successThreshold: {{ .Values.admin.readinessProbe.successThreshold | default 1 }}
+        resources:
+          {{- include "cmdb.get_resources" ( tuple .  .Values.admin.resources ) | nindent 10 }}
+      - name: {{ template "cmdb.container-prefix" . }}mariadb-admin-fluentd-sidecar
+        image: "{{ .Values.global.registry }}/{{ .Values.admin.fluentd_sidecar.image.name }}:{{ .Values.admin.fluentd_sidecar.image.tag }}"
+        imagePullPolicy: {{ .Values.admin.fluentd_sidecar.image.pullPolicy }}
+        securityContext:
+          readOnlyRootFilesystem: true
+          runAsUser: {{ .Values.admin.fluentd_sidecar.securityContext.runAsUser | default 1000 }}
+          runAsGroup: {{ .Values.admin.fluentd_sidecar.securityContext.runAsGroup | default 1773 }}
+        volumeMounts:
+        - name: tmp
+          mountPath: /tmp
+        - name: fluentd-config
+          mountPath: /etc/fluent/
+        - name: certificates
+          mountPath: /etc/.certificates/
+        - name: fs-varlogadmin
+          mountPath: /logs/admin/
+        resources:
+{{ toYaml .Values.admin.fluentd_sidecar.resources | indent 12 }}
+        env:
+        {{- if .Values.admin.fluentd_sidecar.secrets }}
+        - name: IS_USERNAME
+          valueFrom:
+            secretKeyRef:
+              key: {{ .Values.env.secrets.IS_USERNAME }}
+              name: {{ .Values.admin.fluentd_sidecar.secrets.passwordSecret | quote }}
+        - name: IS_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              key: {{ .Values.env.secrets.IS_PASSWORD }}
+              name: {{ .Values.admin.fluentd_sidecar.secrets.passwordSecret | quote }}
+        {{- end }}
+        - name: CONTAINER_NAME
+          valueFrom:
+            fieldRef:
+              apiVersion: v1
+              fieldPath: metadata.name
+        - name: POD_IP
+          valueFrom:
+            fieldRef:
+              fieldPath: status.podIP          
+
+      volumes:
+      {{- include "cmdb-fs.vol" (tuple . "admin") | nindent 6 }}
+      {{- include "cmdb-logging.vol" (tuple . .Values.admin "false") | nindent 6 }}
+      - name: tmp
+        emptyDir: {}
+      - name: cluster-cm
+        configMap:
+          name: {{ template "cmdb.fullname" . }}-mariadb-cluster
+      - name: event-cm
+        configMap:
+          name: {{ template "cmdb.fullname" . }}-admin-event
+      - name: user-creds
+        secret:
+          secretName: {{ template "cmdb.fullname" . }}-admin-user-creds
+          optional: true
+      - name: datadir
+        emptyDir: {}
+      - name: fluentd-config
+        configMap:
+          name: {{ template "cmdb.fullname" . }}-mariadb-admin-fluentd-config
+      {{- if .Values.admin.fluentd_sidecar.secrets }}
+      - name: certificates
+        secret:
+          secretName: {{ (tpl .Values.admin.fluentd_sidecar.secrets.certSecret .) }}
+      - name: passwords
+        secret:
+          secretName: {{ (tpl .Values.admin.fluentd_sidecar.secrets.passwordSecret .) }}
+      {{- end }}
+
+    {{- if .Values.admin.tolerations }}
+      tolerations:
+        {{- toYaml .Values.admin.tolerations | nindent 8 }}
+    {{- end }}
+    {{- if .Values.admin.nodeSelector }}
+      nodeSelector:
+      {{- toYaml .Values.admin.nodeSelector | nindent 8 }}
+    {{- end }}
+    {{- if .Values.admin.topologySpreadConstraints }}
+      topologySpreadConstraints:
+      {{- include "cmdb.spread-constraints" (tuple . "admin") | nindent 8 }}
+    {{- end }}
+      affinity:
+      {{- if .Values.admin.nodeAffinity.enabled }}
+        nodeAffinity:
+          requiredDuringSchedulingIgnoredDuringExecution:
+            nodeSelectorTerms:
+            - matchExpressions:
+              - key: {{ .Values.admin.nodeAffinity.key }}
+                operator: In
+                values:
+                - {{ quote .Values.admin.nodeAffinity.value }}
+      {{- end }}
+{{- end }}

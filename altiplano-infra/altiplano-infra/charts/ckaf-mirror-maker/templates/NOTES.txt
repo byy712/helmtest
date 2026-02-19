@@ -1,0 +1,31 @@
+
+# MirrorMaker 2.0
+
+MM2 leverages the Connect framework to replicate topics between Kafka clusters. MM2 includes several new features, including:
+
+ - both topics and consumer groups are replicated
+ - topic configuration and ACLs are replicated
+ - cross-cluster offsets are synchronized
+ - partitioning is preserved
+
+## Replication flows 
+
+MM2 replicates topics and consumer groups from upstream source clusters to downstream target clusters. These directional flows are notated
+`A->B`.
+
+It's possible to create complex replication topologies based on these `source->target` flows, including:
+
+ - *fan-out*, e.g. `K->A, K->B, K->C`
+ - *aggregation*, e.g. `A->K, B->K, C->K`
+ - *active/active*, e.g. `A->B, B->A`
+
+Each replication flow can be configured independently, e.g. to replicate specific topics or groups:
+
+    A->B.topics = topic-1, topic-2
+    A->B.groups = group-1, group-2
+
+By default, all topics and consumer groups are replicated (except excluded ones), across all enabled replication flows. Each
+replication flow must be explicitly enabled to begin replication:
+
+    A->B.enabled = true
+    B->A.enabled = true

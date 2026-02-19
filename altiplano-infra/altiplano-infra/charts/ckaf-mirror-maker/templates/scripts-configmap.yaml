@@ -1,0 +1,9 @@
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: mirror-maker-scripts
+  labels:
+    release: {{ .Release.Name }}
+data:
+  {{- (.Files.Glob "scripts/*").AsConfig | nindent 2 }}

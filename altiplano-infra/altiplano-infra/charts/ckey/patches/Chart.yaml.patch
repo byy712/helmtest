@@ -1,0 +1,8 @@
+--- ckey-12.2.0/Chart.yaml	2024-03-16 01:47:07.000000000 +0530
++++ ckey-12.2.0-nokia-patch-3/Chart.yaml	2024-04-23 18:42:45.154208031 +0530
+@@ -17,4 +17,4 @@
+ name: ckey
+ sources:
+ - https://repo.cci.nokia.net/webapp/#/artifacts/browse/tree/General/csf-docker-delivered/keycloak
+-version: 12.2.0
++version: 12.2.0-nokia-patch-3

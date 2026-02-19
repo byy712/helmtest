@@ -1,0 +1,267 @@
+--- bssc-ifd-o/charts/bssc-dashboards/templates/dashboards.yaml	2023-12-06 18:41:43.000000000 +0530
++++ bssc-ifd/charts/bssc-dashboards/templates/dashboards.yaml	2024-06-20 14:18:25.752739000 +0530
+@@ -71,6 +71,8 @@
+ spec:
+   {{- if not .Values.dashboards.replicasManagedByHpa }}
+   replicas: {{.Values.dashboards.replicas}}
++  strategy:
++{{ toYaml .Values.dashboards.updateStrategy | indent 4 }}
+   {{- end }}
+   selector:
+     matchLabels:
+@@ -81,9 +83,13 @@
+       labels:
+ {{- include "bssc-dashboards.commonLabels" (tuple .  "dashboards" ) | nindent 8 }}
+         role: dashboards-gui
++        altiplano-role: {{ .Values.accessRoleLabel }}
+         source: opensearch
+ {{- include "bssc-dashboards.csf-toolkit-helm.labels" (tuple . .Values.dashboards.custom.pod.labels) | indent 8}}
+       annotations:
++        {{- if not .Values.security.sensitiveInfoInSecret.enabled }}
++        checksum/secret: {{ include (print $.Template.BasePath "/dashboards-secret.yaml") . | sha256sum }}
++        {{- end }}
+         checksum/config: {{ include (print $.Template.BasePath "/dashboards-configmap.yaml") . | sha256sum }}
+         {{- if eq $.loggingEnabled "true" }}
+         checksum/loggingconfig: {{ include (print $.Template.BasePath "/unifiedlogging_cm.yaml") . | sha256sum }}
+@@ -138,10 +144,32 @@
+       {{- end }}
+       initContainers:
+       {{- if eq (tpl (.Values.security.sensitiveInfoInSecret.enabled | toString ) .) "true" }}
++      - name: init-{{ .Chart.Name }}
++        image: {{ .Values.global.registry }}/{{ .Values.init.image.name }}:{{ .Values.init.image.tag }}
++        imagePullPolicy: "{{ .Values.init.image.imagePullPolicy }}"
++        command: ["sh", "-c", "until [ $ALTIPLANO_GEO_ACTIVE_SITE == true ]; do echo waiting for ALTIPLANO_GEO_ACTIVE_SITE to be true; sleep 10; done; if [ $SECURITY_ENABLE == true ];
++            then until [[ `curl -s -k --connect-timeout {{.Values.dashboards.connectTimeout}} {{ tpl (toYaml .Values.dashboards.keycloakCheck) . | default "" | indent 2 }}`  &&  `curl -s -k --connect-timeout {{.Values.dashboards.connectTimeout}} {{ tpl (toYaml .Values.dashboards.indexSearchCheck) . | default "" | indent 2 }}` ]]; do echo waiting for keycloak service and indexsearch; sleep 10; done;
++          fi;"]
++        env:
++        - name: ALTIPLANO_GEO_ACTIVE_SITE
++          value: {{ .Values.global.ALTIPLANO_GEO_ACTIVE_SITE | quote }}
++        - name: SECURITY_ENABLE
++          value: {{ .Values.security.enable | quote }}
+       - name : {{ template "bssc-dashboards.initContainer.name" . }}
+-        image: {{ include "bssc-dashboards.registry" (tuple .Values .Values.internalInitRegistry) }}/{{ .Values.initContainer.repo }}:{{ include "bssc-dashboards.imageTag" (tuple .Values.initContainer.tag $.commonSupportedImageFlavor .Values .Values.dashboards .Values.initContainer) }}
++        image: {{ include "bssc-dashboards.registry" (tuple .Values .Values.internalInitRegistry) }}/{{ .Values.initContainer.repo }}:{{ .Values.initContainer.tag }}
+         imagePullPolicy: {{.Values.dashboards.ImagePullPolicy}}
+-        command: ['sh', '-c', "/etc/initContainerMount/encrypt.sh"]
++        command: [ "/bin/sh", "-c" ]
++        args:
++          - |
++            cp /etc/initContainerMount/certificates/dboServerCrt /etc/initContainerMount/secrets/dboServerCrt
++            cp /etc/initContainerMount/certificates/dboServerKey /etc/initContainerMount/secrets/dboServerKey
++            cp /etc/initContainerMount/certificates/IsRootCaPem /etc/initContainerMount/secrets/IsRootCaPem && [ -s /etc/initContainerMount/secrets/IsRootCaPem ] && [ "$(tail -c 1 /etc/initContainerMount/secrets/IsRootCaPem)" != "" ] && echo "" >> /etc/initContainerMount/secrets/IsRootCaPem
++            cp /etc/initContainerMount/certificates/keycloakRootCaPem /etc/initContainerMount/secrets/keycloakRootCaPem && [ -s /etc/initContainerMount/secrets/keycloakRootCaPem ] && [ "$(tail -c 1 /etc/initContainerMount/secrets/keycloakRootCaPem)" != "" ] && echo "" >> /etc/initContainerMount/secrets/keycloakRootCaPem
++            cp /etc/initContainerMount/certificates/IngressRootCaPem /etc/initContainerMount/secrets/IngressRootCaPem && [ -s /etc/initContainerMount/secrets/IngressRootCaPem ] && [ "$(tail -c 1 /etc/initContainerMount/secrets/IngressRootCaPem)" != "" ] && echo "" >> /etc/initContainerMount/secrets/IngressRootCaPem
++            cat /etc/initContainerMount/secrets/IngressRootCaPem >> /etc/initContainerMount/secrets/keycloakRootCaPem
++            cat /etc/initContainerMount/secrets/IsRootCaPem >> /etc/initContainerMount/secrets/keycloakRootCaPem
++            cat /etc/initContainerMount/secrets/keycloakRootCaPem >> /etc/initContainerMount/secrets/IsRootCaPem
++            /etc/initContainerMount/encrypt.sh
+         securityContext:
+ {{ include "bssc-dashboards.container.securityContext" . | indent 10 }}
+         resources:
+@@ -149,7 +177,11 @@
+         volumeMounts:
+         - name: shared-volume
+           mountPath: "/etc/sharedMount/"
+-        - name: dashboards-secret
++        - name: dashboards-passwordsecret
++          mountPath: "/etc/initContainerMount/passwords"
++        - name: dashboards-certsecret
++          mountPath: "/etc/initContainerMount/certificates"
++        - name: certificates-secrets
+           mountPath: "/etc/initContainerMount/secrets"
+         {{- if and (eq $.isCertManagerEnabled "true") ( not $.istio.enabled) (or (and (eq .Values.security.tls.secretRef.name "") (not .Values.security.sensitiveInfoInSecret.dboServerCrt)) (eq $.clientCertAuth "true"))  }}
+         - name: cert-manager-secret
+@@ -158,7 +190,6 @@
+         - name: dashboards-config
+           mountPath: "/etc/initContainerMount/config"
+       {{- end }}
+-
+       - name : {{ template "bssc-dashboards.dbo-plugins-init-container.name" . }}
+         image: {{ include "bssc-dashboards.registry" (tuple .Values .Values.internalAppRegistry) }}/{{ .Values.dboPluginsInit.repo }}:{{ include "bssc-dashboards.imageTag" (tuple .Values.dboPluginsInit.tag $.dboPluginsSupportedImageFlavor .Values .Values.dashboards .Values.dboPluginsInit) }}
+         imagePullPolicy: {{.Values.dashboards.ImagePullPolicy}}
+@@ -169,85 +200,9 @@
+         volumeMounts:
+         - name: dbo-plugins-volume
+           mountPath: "/opt/opensearch-dashboards/plugins"
+-
+-      {{- if .Release.IsUpgrade }}
+-      - name : {{ template "bssc-dashboards.upgradeInitContainer.name" . }}
+-        image: {{ include "bssc-dashboards.registry" (tuple .Values .Values.internalToolsRegistry) }}/{{ include "bssc-dashboards.imageRepositoryPath" (tuple .Values.global.flatRegistry .Values.kubectl.image.repo) }}:{{ include "bssc-dashboards.imageTag" (tuple .Values.kubectl.image.tag .Values.kubectl.image.supportedImageFlavor .Values .Values.dashboards .Values.kubectl.image) }}
+-        imagePullPolicy: {{.Values.dashboards.ImagePullPolicy}}
+-        env:
+-        - name: TZ
+-          value: {{ or .Values.timezone.timeZoneEnv .Values.global.timeZoneEnv "UTC" | quote }}
+-        {{ $root := . }}
+-        {{- range .Values.dashboards.env }}
+-          {{- if eq .name ( "OPENSEARCH_HOSTS" ) }}
+-        - name: "OPENSEARCH_HOSTS"
+-          value: {{ tpl (.value) $root }}
+-          {{- end }}
+-        {{- end }}
+-        command:
+-        - bash
+-        - "-c"
+-        - |
+-          sleep 20
+-          #Fetching the indexsearch service name & namespace
+-          #First awk is to fetch the Indexsearch service name, second awk is to remove the port number and the last awk is used to split Indexsearch service name from namespace if present in indexsearch service name.
+-          is_svc_name=$(echo $OPENSEARCH_HOSTS | awk -F'://' '{print $2}' | awk -F':' 'sub(FS $NF,x)'|awk -F'.' '{print $1}')
+-          is_svc_ns=$(echo $OPENSEARCH_HOSTS | awk -F'://' '{print $2}' |awk -F':' 'sub(FS $NF,x)'| awk -F'.' '{print $2}')
+-          if [ ! -z $is_svc_ns ]; then
+-            namespace=$is_svc_ns
+-          else
+-            namespace={{ .Release.Namespace }}
+-          fi
+-          releaseName=$(kubectl get svc $is_svc_name --namespace $namespace -ojsonpath='{.metadata.labels.app\.kubernetes\.io/instance}')
+-          client_deployment_name=$(kubectl get deployment --namespace $namespace -l app.kubernetes.io/instance=$releaseName,source=opensearch,role=is-client --no-headers | awk '{ print $1 }')
+-          desired_client_replica=$(kubectl get deployment --namespace $namespace $client_deployment_name -ojsonpath='{.spec.replicas}')
+-          data_sts_name=$(kubectl get sts --namespace $namespace -l app.kubernetes.io/instance=$releaseName,source=opensearch,role=is-data --no-headers | awk '{ print $1 }')
+-          desired_data_replica=$(kubectl get sts --namespace $namespace $data_sts_name -ojsonpath='{.spec.replicas}')
+-          echo "Namespace is $namespace , Release name is $releaseName , IS-client replica is $desired_client_replica , IS-data replica is $desired_data_replica"
+-          # loop for all indexsearch-client pods to get upgraded
+-          # continuosly check for available client replicas. {.status.replicas} would give total client pods available at that time when upgrade process is running. Hence this value would be always greater than {spec.replicas}
+-          # Check for 3 times for available and desired client replicas to be equal. Once the condition is met break the loop
+-          client_counter=0
+-          while true; do
+-            sleep 3
+-            available_client_replica=$(kubectl get deployment --namespace $namespace $client_deployment_name -ojsonpath='{.status.replicas}')
+-            if [ "$desired_client_replica" -eq "$available_client_replica" ]; then
+-              client_counter=$(($client_counter+1))
+-            else
+-              client_counter=0
+-              echo "Waiting for all indexsearch-client pods to get upgraded"
+-            fi
+-            if [ "$client_counter" -eq 3 ]; then
+-              break
+-            fi
+-          done
+-
+-          data_counter=0
+-          # loop for all indexsearch-data pods to get upgraded
+-          # continuosly check for available data replicas.
+-          # Check for 3 times for available and desired data replicas to be equal. Once the condition is met break the loop
+-          while true; do
+-            sleep 3
+-            ready_data_replica=$(kubectl get sts --namespace $namespace -l  app.kubernetes.io/instance=$releaseName,source=opensearch,role=is-data --no-headers | awk '{print $2}' | cut -d '/' -f 1)
+-            if [ "$ready_data_replica" -eq "$desired_data_replica" ]; then
+-              data_counter=$(($data_counter+1))
+-            else
+-              data_counter=0
+-              echo "Waiting for all indexsearch-data pods to get upgraded"
+-            fi
+-            if [ "$data_counter" -eq 3 ]; then
+-              break
+-            fi
+-          done
+-        securityContext:
+-{{ include "bssc-dashboards.container.securityContext" . | indent 10 }}
+-        resources:
+-{{ include "bssc-dashboards.resources" (tuple . .Values.initContainer.resources "100m") | indent 10 }}
+-      {{- end }}
+-
+       containers:
+       - name: {{ template "bssc-dashboards.container.name" . }}
+-        image: {{ include "bssc-dashboards.registry" (tuple .Values .Values.internalAppRegistry) }}/{{.Values.dashboards.image.repo}}:{{ include "bssc-dashboards.imageTag" (tuple .Values.dashboards.image.tag $.commonSupportedImageFlavor .Values .Values.dashboards .Values.dashboards.image) }}
++        image: {{ include "bssc-dashboards.registry" (tuple .Values .Values.internalAppRegistry) }}/{{.Values.dashboards.image.repo}}:{{.Values.dashboards.image.tag}}
+         imagePullPolicy: {{.Values.dashboards.ImagePullPolicy}}
+         securityContext:
+ {{ include "bssc-dashboards.container.securityContext" . | indent 10 }}
+@@ -422,6 +377,9 @@
+       - name: dbo-plugins-volume
+         emptyDir:
+           sizeLimit: {{ default "1Gi"  .Values.emptyDirSizeLimit.dboPluginsVolume }}
++      - name: certificates-secrets
++        emptyDir:
++          sizeLimit: {{ default "1Gi"  .Values.emptyDirSizeLimit.dboPluginsVolume }}
+       # Dashboards-data is mounted as a emptyDir where dashboards tries to writes its UUID
+       - name: dashboards-data
+         emptyDir:
+@@ -460,31 +418,23 @@
+       - name: shared-volume
+         emptyDir:
+           sizeLimit: {{ default "10Mi"  .Values.emptyDirSizeLimit.sharedVolume }}
+-      - name: dashboards-secret
++      - name: dashboards-passwordsecret
+         projected:
+           sources:
+           - secret:
+-              name: {{ .Values.security.sensitiveInfoInSecret.credentialName }}
++              name: {{ .Values.security.sensitiveInfoInSecret.credentialNamePassword }}
+               items:
+-                {{- if eq $.clientCertAuth "false" }}
+                 - key: {{ .Values.security.sensitiveInfoInSecret.dboIsPassword }}
+                   path: .dboIsPassword
+-                {{- end }}
++                {{- if not $.istio.enabled }}
+                 {{- if (.Values.dashboards.sslsecretvolume) }}
+                   {{- range $key, $val := .Values.dashboards.sslsecretvolume }}
+-                      {{- if $val }}
+-                - key: {{  $val }}
+-                  path: {{ $key }}
++              - key: {{  $val }}
++                path: {{ $val }}
+                       {{- end }}
+                   {{- end }}
+                 {{- end }}
+                 {{- if .Values.security.keycloak_auth }}
+-                  {{- if not $.istio.enabled }}
+-                    {{- if .Values.security.sensitiveInfoInSecret.keycloakRootCaPem }}
+-                - key: {{ .Values.security.sensitiveInfoInSecret.keycloakRootCaPem }}
+-                  path: keycloakRootCaPem
+-                    {{- end }}
+-                  {{- end }}
+                 - key: {{ .Values.security.sensitiveInfoInSecret.keycloakClientId }}
+                   path: .keycloakClientId
+                 - key: {{ .Values.security.sensitiveInfoInSecret.keycloakClientSecret }}
+@@ -498,32 +448,28 @@
+                 - key: {{ .Values.security.sensitiveInfoInSecret.sane.keycloak_sane_user_password }}
+                   path: .sane_user_password
+                 {{- end }}
+-                {{- if .Values.security.sensitiveInfoInSecret.IsRootCaPem }}
+-                - key: {{ .Values.security.sensitiveInfoInSecret.IsRootCaPem }}
+-                  path: IsRootCaPem
+-                {{- end }}
++      - name: dashboards-certsecret
++        secret:
++          secretName: {{ .Values.security.sensitiveInfoInSecret.credentialNameCert }}
++          items:
++          {{- if .Values.security.keycloak_auth }}
+               {{- if not $.istio.enabled }}
+-                {{- if ne .Values.security.tls.secretRef.name "" }}
+-          - secret:
+-              name: {{ .Values.security.tls.secretRef.name }}
+-              items:
+-                - key: {{ .Values.security.tls.secretRef.keyNames.tlsKey }}
+-                  path: dboServerKey
+-                - key: {{ .Values.security.tls.secretRef.keyNames.tlsCrt }}
+-                  path: dboServerCrt
+-                  {{- if ne .Values.security.tls.secretRef.keyNames.caCrt "" }}
+-                - key: {{ .Values.security.tls.secretRef.keyNames.caCrt }}
+-                  path: dboServerCaCrt
++                  {{- if .Values.security.sensitiveInfoInSecret.keycloakRootCaPem }}
++          - key: {{ .Values.security.sensitiveInfoInSecret.keycloakRootCaPem }}
++            path: keycloakRootCaPem
+                   {{- end }}
+-                {{- else }}
+-                  {{- if .Values.security.sensitiveInfoInSecret.dboServerCrt }}
+-                - key: {{ .Values.security.sensitiveInfoInSecret.dboServerCrt }}
+-                  path: dboServerCrt
+-                - key: {{ .Values.security.sensitiveInfoInSecret.dboServerKey }}
+-                  path: dboServerKey
+-                  {{- end }}
+-                {{- end }}
+               {{- end }}
++          {{- end }}
++          {{- if not $.istio.enabled }}
++          - key: {{ .Values.security.sensitiveInfoInSecret.dboServerCrt }}
++            path: dboServerCrt
++          - key: {{ .Values.security.sensitiveInfoInSecret.dboServerKey }}
++            path: dboServerKey
++          - key: {{ .Values.security.sensitiveInfoInSecret.IsRootCaPem }}
++            path: IsRootCaPem
++          - key: {{ .Values.security.sensitiveInfoInSecret.IngressRootCaPem }}
++            path: IngressRootCaPem
++          {{- end }}
+               {{- if and (eq $.isCertManagerEnabled "true") ( not $.istio.enabled) (or (and (eq .Values.security.tls.secretRef.name "") (not .Values.security.sensitiveInfoInSecret.dboServerCrt)) (eq $.clientCertAuth "true"))  }}
+       - name: cert-manager-secret
+         projected:

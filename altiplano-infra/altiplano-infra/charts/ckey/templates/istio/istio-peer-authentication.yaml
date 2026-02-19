@@ -1,0 +1,36 @@
+{{ if and (.Values.istio.enabled) (.Values.istio.mtls.enabled) }}
+{{ $firstGateway := (first .Values.istio.gateways) }}
+{{ $isDedicatedGwInSimple:= and ($firstGateway.enabled) (ne $firstGateway.tls.mode "PASSTHROUGH") }}
+{{ $isSharedGwInSimple := ( .Values.istio.sharedHttpGateway.name ) }}
+apiVersion: security.istio.io/v1beta1
+kind: PeerAuthentication
+metadata:
+  name: {{ template "ckey.fullName" . }}-mlts-pa-ckey
+  namespace: "{{ .Release.Namespace }}"
+  annotations:
+    {{- include "ckey.customAnnotations" (tuple .Values.global.annotations) | indent 4 }}
+  labels:
+    app: {{ template "ckey.chartName" . }}
+    release: "{{ .Release.Name }}"
+    heritage: "{{ .Release.Service }}"
+    {{- include "ckey.customLabels" (tuple .Values.global.labels ) | indent 4 }}
+    {{- include "ckey.commonLabels" . | indent 4 }}
+spec:
+  selector:
+    matchLabels:
+      app: {{ template "ckey.chartName" . }}
+      release: "{{ .Release.Name }}"
+  mtls:
+    {{ if .Values.istio.permissive }}
+    mode: "PERMISSIVE"
+    {{ else }}
+    mode: "STRICT"
+    {{ end }}
+  {{ if or $isDedicatedGwInSimple $isSharedGwInSimple }}
+  # Below configuration we are adding as Destination rule will initiate a TLS connection so it will be already encrypted. 
+  # So we do not want Double encryption to happen for the traffic flowing on HTTPS port of CKEY
+  portLevelMtls:
+    {{ .Values.httpsPort }}:
+       mode: DISABLE
+  {{ end }}
+{{ end }}

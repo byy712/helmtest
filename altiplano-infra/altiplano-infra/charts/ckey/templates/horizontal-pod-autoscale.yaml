@@ -1,0 +1,21 @@
+# keycloak hpa
+{{- if eq (include "ckey.isHpaEnabled" (tuple . .Values)) "true" }}
+apiVersion: {{ .Capabilities.APIVersions.Has "autoscaling/v2/HorizontalPodAutoscaler" | ternary "autoscaling/v2" "autoscaling/v2beta2" }}
+kind: HorizontalPodAutoscaler
+metadata:
+  name: {{ template "ckey.fullName" . }}-hpa
+  namespace: {{ .Release.Namespace }}
+  annotations:
+    {{- include "ckey.customAnnotations" (tuple .Values.global.annotations) | indent 4 }}
+  labels:
+  {{- include "ckey.customLabels" (tuple .Values.global.labels ) | indent 4 }}
+  {{- include "ckey.commonLabels" . | indent 4 }}
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: StatefulSet
+    name: {{ template "ckey.keycloak.statefulsetName" . }}
+{{ include "ckey.hpaValues" .Values.hpa | indent 2 }}
+{{- end }}
+# End of keycloak hpa
+

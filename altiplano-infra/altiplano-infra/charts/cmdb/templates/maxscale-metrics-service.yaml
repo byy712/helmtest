@@ -1,0 +1,64 @@
+{{- include "cmdb.init" . -}}
+{{- if and (eq (include "cmdb.has_maxscale" .) "true") .Values.maxscale.metrics.enabled }}
+{{ $service_name := .Values.services.maxscale.exporter.name | default (printf "%s-maxscale-metrics" (include "cmdb.fullname" .)) }}
+{{ $targetPort := eq (include "cmdb.maxscale_use_zt_proxy" .) "true" | ternary "tcp-mxs-auth" "tcp-mxs-metrics" }}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ $service_name }}
+  labels:
+    {{- include "cmdb-maxscale.labels" (tuple . "metrics" "service") | nindent 4 }}
+  annotations:
+    {{- include "cmdb-maxscale.annotations" (tuple . "metrics" "service") | nindent 4 }}
+    {{- toYaml .Values.maxscale.metrics.annotations | nindent 4 }}
+    "prometheus.io/port": {{ .Values.services.maxscale.exporter.port | quote }}
+spec:
+  type: ClusterIP
+  {{- include "cmdb.dual-stack" (tuple . .Values.services.maxscale.exporter) | nindent 2 }}
+  ports:
+  - name: tcp-mxs-metrics
+    port: {{ .Values.services.maxscale.exporter.port }}
+    targetPort: {{ $targetPort }}
+  selector:
+    {{- include "cmdb-maxscale.selector_labels" . | nindent 4 }}
+    type: maxscale
+
+{{- if .Values.istio.enabled }}
+{{ $headless_name := .Values.services.maxscale.exporter.headless.name | default (printf "%s-headless" $service_name ) }}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ $headless_name }}
+  labels:
+    {{- include "cmdb-maxscale.labels" (tuple . "metrics" "service") | nindent 4 }}
+  annotations:
+    {{- include "cmdb-maxscale.annotations" (tuple . "metrics" "service") | nindent 4 }}
+spec:
+  type: ClusterIP
+  clusterIP: None
+  sessionAffinity: None
+  ports:
+  - name: tcp-mxs-metrics
+    port: {{ .Values.services.maxscale.exporter.port }}
+    targetPort: {{ $targetPort }}
+  selector:
+    {{- include "cmdb-maxscale.selector_labels" . | nindent 4 }}
+    type: maxscale
+---
+apiVersion: networking.istio.io/v1beta1
+kind: DestinationRule
+metadata:
+  name: {{ $headless_name }}-mlts-dr
+  labels:
+    {{- include "cmdb-maxscale.labels" (tuple . "destinationrule") | nindent 4 }}
+  annotations:
+    {{- include "cmdb-maxscale.annotations" (tuple . "destinationrule") | nindent 4 }}
+spec:
+  host: {{ $headless_name }}
+  trafficPolicy:
+    tls:
+      mode: ISTIO_MUTUAL
+{{- end }}
+{{- end }}

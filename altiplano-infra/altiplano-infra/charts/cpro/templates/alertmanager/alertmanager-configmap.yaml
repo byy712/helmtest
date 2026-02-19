@@ -1,0 +1,18 @@
+{{- if and .Values.alertmanager.enabled (empty .Values.alertmanager.configMapOverrideName) -}}
+{{- include "cpro-common-lib.v1.tlsValues" ( dict "root" . "context" .Values.webhook4fluentd) }}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  labels:
+    {{- include "cpro.app.labels.v3" ( dict "root" . "context" .Values.alertmanager ) | nindent 4 }}
+{{- include "cpro.labelsOrAnnotations" (tuple .Values.global.labels) | indent 4}}
+  name: {{ template "cpro.prometheus.alertmanager.fullname" . }}
+  annotations:
+{{- include "cpro.labelsOrAnnotations" (tuple .Values.global.annotations) | indent 4}}
+data:
+{{- $root := . -}}
+{{- range $key, $value := .Values.alertmanagerWebhookFiles }}
+  {{ $key }}: |
+{{ toYaml $value | default "{}" | indent 4 | replace "- name: cpro_webhook" (include "cpro.prometheus.alertmanager.receiverconfig" (dict "context" $root)) }}
+{{- end -}}
+{{- end -}}

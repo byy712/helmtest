@@ -1,0 +1,119 @@
+{{- if .Values.ingress.enabled }}
+{{- include "cbur.tls" . }}
+{{- include "cbur.gkeingress" . }}
+{{- $hasRouteV1 := .Capabilities.APIVersions.Has "route.openshift.io/v1/Route" }}
+{{- $ingressType := .Values.ingress.ingressType | default "nginx" }}
+{{- $ingressPath := .Values.ingress.path | default "cbur" }}
+{{- if or $hasRouteV1 (ne $ingressType "nginx")}}
+{{- $ingressPath = .Values.ingress.path | default "" -}}
+{{- end }}
+{{- $ingressPathType := .Values.ingress.pathType | default "Prefix" -}}
+{{- $hasIngressV1 := .Capabilities.APIVersions.Has "networking.k8s.io/v1/Ingress" }}
+{{- if $hasIngressV1 }}
+apiVersion: networking.k8s.io/v1
+{{- else }}
+apiVersion: networking.k8s.io/v1beta1
+{{- end }}
+kind: Ingress
+metadata:
+  name: {{ template "cbur.fullname" . }}-ingress
+  labels:
+    {{- include "cbur.proxy.commonLabels" (tuple .) | indent 4 }}
+    {{- include "cbur.customLabels" (tuple .Values.cburm.labels .Values.global.labels) | indent 4 }}
+    {{- if and (ne $ingressPath "" ) (not (contains "*" $ingressPath)) }}
+    ingress-path: {{ printf "%s" (trimAll "/" $ingressPath) }}
+    {{- end }}
+  annotations:
+    {{- include "cbur.customAnnotations" (tuple .Values.cburm.annotations .Values.global.annotations) | indent 4 }}
+    {{- if .Values.ingress.annotations }}
+{{ toYaml .Values.ingress.annotations | indent 4 }}
+    {{- end }}
+    {{- if eq $ingressType "nginx" }}
+    {{- if eq (include "cbur.proxy.coalesceBoolean" (tuple .Values.tls.enabled .Values.global.tls.enabled false)) "true" }}
+    nginx.ingress.kubernetes.io/backend-protocol: HTTPS
+    {{- end }}
+    {{- if and (eq (include "cbur.proxy.coalesceBoolean" (tuple .Values.tls.enabled .Values.global.tls.enabled false)) "true") (and (not .Values.tls.certsPath) (not .Values.tls.clientSecretRef.credentialName)) (eq (include "cbur.proxy.coalesceBoolean" (tuple .Values.certManager.enabled .Values.global.certManager.enabled false)) "true") }}
+    nginx.ingress.kubernetes.io/proxy-ssl-secret: {{ .Release.Namespace }}/{{ template "cbur.fullname" . }}-client-srt
+    nginx.ingress.kubernetes.io/proxy-ssl-verify: "on"
+    {{- end }}
+    nginx.ingress.kubernetes.io/proxy-ssl-name: {{ template "cbur.fullname" . }}.{{ .Release.Namespace }}.svc
+    {{- if .Values.istio.enabled }}
+    nginx.ingress.kubernetes.io/service-upstream: "true"
+    {{- if .Values.istio.virtualservice.hosts }}
+    nginx.ingress.kubernetes.io/upstream-vhost: "{{ index .Values.istio.virtualservice.hosts 0 }}"
+    {{- else }}
+    nginx.ingress.kubernetes.io/upstream-vhost: "{{ template "cbur.host" . }}"
+    {{- end }}
+    {{- end }}
+    {{- else if eq $ingressType "agic" }}
+    kubernetes.io/ingress.class: azure/application-gateway
+    {{- end }}
+spec:
+{{- if eq $ingressType "alb" }}
+  ingressClassName: alb
+{{- end }}
+  rules:
+  {{- if .Values.ingress.hosts -}}
+  {{- range .Values.ingress.hosts }}
+  - host: {{ . }}
+    http:
+      paths:
+      - pathType: {{ printf "%s" $ingressPathType }}
+{{ include "cbur.ingresspath" (list $ingressPath $hasRouteV1 $ingressType) | indent 8  }}
+        backend:
+      {{- if $hasIngressV1 }}
+          service:
+              name: {{ template "cbur.fullname" $ }}
+              port:
+              {{- if eq (include "cbur.proxy.coalesceBoolean" (tuple $.Values.tls.enabled $.Values.global.tls.enabled false)) "true" }}
+                number: {{ $.Values.tls.port }}
+              {{- else }}
+                number: {{ $.Values.serverPort }}
+              {{- end }}
+        pathType: {{ printf "%s" $ingressPathType }}
+      {{ else }}
+          serviceName: {{ template "cbur.fullname" $ }}
+          {{- if eq (include "cbur.proxy.coalesceBoolean" (tuple .Values.tls.enabled .Values.global.tls.enabled false)) "true" }}
+          servicePort: {{ .Values.tls.port }}
+          {{- else }}
+          servicePort: {{ .Values.serverPort }}
+          {{- end }}
+      {{- end }}
+        {{- if ne $ingressPath "" }}
+{{ include "cbur.ingresspath" (list $ingressPath $hasRouteV1 $ingressType) | indent 8  }}
+        {{- end }}
+  {{- end }}
+  {{- else }}
+  - http:
+      paths:
+      - backend:
+      {{- if $hasIngressV1 }}
+          service:
+            name: {{ template "cbur.fullname" $ }}
+            port:
+            {{- if eq (include "cbur.proxy.coalesceBoolean" (tuple $.Values.tls.enabled $.Values.global.tls.enabled false)) "true" }}
+              number: {{ $.Values.tls.port }}
+            {{- else }}
+              number: {{ $.Values.serverPort }}
+            {{- end }}
+        pathType: {{ printf "%s" $ingressPathType }}
+      {{- else }}
+          serviceName: {{ template "cbur.fullname" $ }}
+          {{- if eq (include "cbur.proxy.coalesceBoolean" (tuple .Values.tls.enabled .Values.global.tls.enabled false)) "true" }}
+          servicePort: {{ .Values.tls.port }}
+          {{- else }}
+          servicePort: {{ .Values.serverPort }}
+          {{- end }}
+      {{- end }}
+        {{- if ne $ingressPath "" }}
+{{ include "cbur.ingresspath" (list $ingressPath $hasRouteV1 $ingressType) | indent 8  }}
+        {{- end }}
+  {{- end }}
+  {{- if and $hasIngressV1 .Values.ingress.className }}
+  ingressClassName: {{ .Values.ingress.className }}
+  {{- end }}
+  {{- if and (eq (include "cbur.proxy.coalesceBoolean" (tuple .Values.tls.enabled .Values.global.tls.enabled false)) "true") .Values.ingress.tls }}
+  tls:
+{{ toYaml .Values.ingress.tls | indent 4 }}
+  {{- end -}}
+{{- end }}

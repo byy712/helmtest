@@ -1,0 +1,155 @@
+{{- include "cpro-grafana.istio.grafanaInitIstio" . }}
+{{- if .Values.SetDashboard.enabled -}}
+apiVersion: {{ template "cpro-grafana.grafanaApiVersion.job" . }}
+kind: Job
+metadata:
+  labels:
+    {{- include "cpro-grafana.app.labels-v3" . | nindent 4 }}
+    {{- include "cpro-grafana.labelsOrAnnotations" (tuple .Values.grafana.labels .Values.global.labels) | indent 4}}
+  name: {{ template "cpro-grafana.importDashboardjobPod" . }}
+  annotations:
+    {{- include "cpro-grafana.labelsOrAnnotations" (tuple .Values.grafana.annotations .Values.global.annotations) | indent 4}}
+    "helm.sh/hook": post-install,post-upgrade
+    "helm.sh/hook-weight": "{{ add .Values.helmDeleteImage.hookWeight 9 }}"
+    "helm.sh/hook-delete-policy": hook-succeeded,before-hook-creation
+spec:
+  backoffLimit: {{ .Values.SetDashboard.backoffLimit }}
+  activeDeadlineSeconds: {{ default 900 .Values.SetDashboard.activeDeadlineSeconds }}
+  template:
+    metadata:
+      labels:
+        {{- include "cpro-grafana.app.labels-v3" . | nindent 8 }}
+        altiplano-role: {{ .Values.accessRoleLabel }}
+        component: "{{ .Values.name }}"
+        {{- include "cpro-grafana.labelsOrAnnotations" (tuple .Values.grafana.labels .Values.custom.pod.labels .Values.global.labels) | indent 8}}
+      annotations:
+        sidecar.istio.io/inject: "{{ $.istio.enabled }}"
+        {{- include "cpro-grafana.labelsOrAnnotations" (tuple .Values.grafana.annotations .Values.custom.pod.annotations .Values.global.annotations) | indent 8}}
+{{- if .Values.rbac.pspUseAppArmor }}
+{{- include "cpro-grafana.labelsOrAnnotations" (tuple .Values.custom.pod.apparmorAnnotations) | indent 8}}
+{{- end }}
+    spec:
+      automountServiceAccountToken: true
+      serviceAccountName: {{ template "cpro-grafana.serviceAccountName" . }}
+      securityContext:
+      {{$securityContextvalue := dict "cSecCtx" .Values.securityContext "ctx" . }}
+      {{- include "cpro-grafana.securitycontext" $securityContextvalue | nindent 8 }}
+      {{- if .Values.seLinuxOptions.enabled }}
+        seLinuxOptions:
+          level: {{ .Values.seLinuxOptions.level }}
+          role: {{ .Values.seLinuxOptions.role }}
+          type: {{ .Values.seLinuxOptions.type }}
+          user: {{ .Values.seLinuxOptions.user }}
+      {{- end }}
+{{ include "cpro-common-lib.imagePullSecrets" (dict "workloadName" .Values.grafana "root" .) | indent 6 }}     
+      containers:
+      - name: {{ template "cpro-grafana.importDashboardjobContainer" . }}
+{{- include "cpro-grafana.utility.image" (dict "root" . "workload" .Values.grafana "container" .Values.hookImage "imageName" .Values.image.utility ) | nindent 8}}
+{{- include "cpro-grafana.terminationMessage" . | nindent 8 }}
+        env:
+          {{- include "cpro-grafana.timeZoneName" . | nindent 10 }}
+        resources:
+{{- include "cpro-common-lib.v1.resources" ( dict "root" . "workloadresources" .Values.SetDashboard.resourcesTinytools "defaultcpulimit" "200m") | nindent 10 }}
+        securityContext:
+        {{$securityContextvalue := dict "cSecCtx" .Values.SetDashboard.containerSecurityContext "ctx" . }}
+        {{- include "cpro-grafana.containerSecurityContext" $securityContextvalue | nindent 10 }}
+        command: ["/bin/sh", "-c"] 
+        workingDir: /opt/grafana-import-dashboards
+        args:
+          - -c
+          - |
+            /scripts/curl_entrypoint.sh
+            {{- if eq .Values.scheme "https" }}
+            until $(curl --output /dev/null --silent --head --fail --insecure https://{{ template "cpro-grafana.service.name" . }}:{{ .Values.service.port }}/api/health); do
+                printf '.'
+                sleep 1
+            done
+            {{ else if eq .Values.scheme "http" }}
+            until $(curl --output /dev/null --silent --head --fail http://{{ template "cpro-grafana.service.name" . }}:{{ .Values.service.port }}/api/health); do
+                printf '.'
+                sleep 1
+            done
+            {{- end }}
+
+            {{- if $.istio.enabled }}
+            until [ $(curl --fail --silent --output /dev/stderr --write-out "%{http_code}" localhost:{{- template "cpro-common-lib.istioHealthCheckPort" . -}}/healthz/ready) -eq 200 ]; do
+              echo "Waiting for proxy..."
+              sleep 1
+            done
+
+            echo "istio-proxy available"
+            {{- end }}
+            /usr/bin/secretdata --admin --secretname={{ template "cpro-grafana.fullname" . }} --sensitivedata={{ .Values.sensitiveDataSecretName }} --secretPathPrefix={{ .Values.secretPathPrefix }} --namespace={{ .Release.Namespace }} --scriptname=/opt/grafana-secrets-import/import-configmap.sh ; goretval=$? 
+            if [ $goretval != 0 ]; then
+              echo "Failed to copy grafana sensitive data to key!"
+              exit 1
+            fi
+           
+            {{- if $.istio.enabled }}
+            curl -X POST http://localhost:{{- template "cpro-common-lib.istioStopPort" . -}}/quitquitquit
+            {{- end }}
+            exit $rc
+        volumeMounts:
+        {{- if ne .Values.sensitiveDataSecretName "" }}
+        - name: sensitivedata
+          mountPath: /etc/config/secrets
+          readOnly: true
+        {{- end }}
+        {{- if .Values.grafana.externalCredentials }}
+        {{- include "cpro-common-lib.v1-includeExternalCredentialMounts" (dict "creds" .Values.grafana.externalCredentials "root" . ) | indent 8 }}
+        {{- end }}
+        {{- if ne .Values.grafana.security.credentialName "" }}
+        {{- include "cpro-common-lib.v1-includeCredentialMount" (dict "cred" .Values.grafana.security "root" . "volumeName" "graf-security") | indent 8 }}
+        {{- end }}
+        {{- if ne .Values.cmdb.auth.credentialName "" }}
+        {{- include "cpro-common-lib.v1-includeCredentialMount" (dict "cred" .Values.cmdb.auth "root" . "volumeName" "cmdb-auth") | indent 8 }}
+        {{- end }}
+        {{- if ne .Values.keycloak.auth.credentialName "" }}
+        {{- include "cpro-common-lib.v1-includeCredentialMount" (dict "cred" .Values.keycloak.auth "root" . "volumeName" "keycloak-auth") | indent 8 }}
+        {{- end }}
+        - name: dashboard-volume
+          mountPath: /opt/grafana-import-dashboards
+        - name: dashboard-volume-tmp
+          mountPath: /opt/grafana-import-dashboards/tmp
+        - name: secret-import-configmap
+          mountPath: /opt/grafana-secrets-import
+      restartPolicy: "OnFailure"
+      volumes:
+      {{- if ne .Values.sensitiveDataSecretName "" }}
+      - name: sensitivedata
+        secret:
+          secretName: {{ .Values.sensitiveDataSecretName }}
+      {{- end }}
+      {{- if .Values.grafana.externalCredentials  }}
+      {{- include "cpro-common-lib.v1-includeExternalCredentials" (dict "creds" .Values.grafana.externalCredentials ) | indent 6 }}
+      {{- end }}
+      {{- if ne .Values.grafana.security.credentialName "" }}
+      {{- include "cpro-common-lib.v1-includeCredential" (dict "creds" .Values.grafana.security "volumeName" "graf-security") | indent 6 -}} 
+      {{- end }}
+      {{- if ne .Values.cmdb.auth.credentialName "" }}
+      {{- include "cpro-common-lib.v1-includeCredential" (dict "creds" .Values.cmdb.auth "volumeName" "cmdb-auth") | indent 6 -}} 
+      {{- end }}
+      {{- if ne .Values.keycloak.auth.credentialName "" }}
+      {{- include "cpro-common-lib.v1-includeCredential" (dict "creds" .Values.keycloak.auth "volumeName" "keycloak-auth") | indent 6 -}} 
+      {{- end }}
+      - name: dashboard-volume
+        configMap:
+          name: {{ template "cpro-grafana.dashboardsConfigmapName" . }}
+      - name: secret-import-configmap
+        configMap:
+          name: {{ template "cpro-grafana.secretConfigmap" . }}
+      - name: dashboard-volume-tmp
+        emptyDir: {}
+{{- with .Values.nodeSelector }}
+      nodeSelector:
+{{ toYaml . | indent 8 }}
+{{- end }}
+{{- with .Values.affinity }}
+      affinity:
+{{ toYaml . | indent 8 }}
+    {{- end }}
+{{- with .Values.tolerations }}
+      tolerations:
+{{ toYaml . | indent 8 }}
+    {{- end }}
+{{- end -}}

@@ -1,0 +1,41 @@
+# create transport-ingress cr and connect to per broker external svc.
+# Render transport-ingress only in case of non-istio enabled env, till the support of istio is provided for TransportIngress CRD.
+{{- if and (eq .Values.ingress.enableExternalAccess true) (eq .Values.global.istio.enabled false) (eq .Values.global.istio.createDrForClient false) (eq .Values.ingress.type "TransportIngress") }}
+{{- $replicas := .Values.Replicas | int }}
+{{- $name := include "ckaf-kafka.statefulset" . }}
+{{- $root := . }}
+{{- $releaseNamespace :=  .Release.Namespace }}
+{{- $chartName :=  .Chart.Name }}
+{{- $releaseName := .Release.Name }}
+{{- $chartVersion := .Chart.Version }}
+{{- $partOf := .Values.partOf }}
+{{- $managedBy := .Values.managedBy }}
+{{- $externalListeners := .Values.ingress.externalListeners }}
+{{- range $replica := until $replicas }}
+{{- range $extlistener := $externalListeners }}
+{{- $externalListenerPort := add .startPortRangeOnEdgeNode $replica }}
+{{- $externalListenername := (.name | lower) }}
+---
+apiVersion: csf.nokia.com/v1
+kind: TransportIngress
+metadata:
+  # For data continuity during upgrade the listener name external is preserved.
+  {{- if eq $externalListenername "external" }}
+  name: {{ $name }}-{{ $replica }}
+  {{- else }}
+  name: {{ $name }}-{{ $externalListenername }}-{{ $replica }}
+  {{- end}}
+  namespace: {{ $releaseNamespace }}
+  labels:
+{{ include "ckaf-kafka.commonLabels" $root | indent 4 }}
+{{- include "csf-common-lib.v1.customLabels" (tuple $root.Values.global.labels) | indent 4 }}
+  annotations:
+{{- include "csf-common-lib.v1.customAnnotations" (tuple $root.Values.global.annotations) | indent 4 }}
+spec:
+  port: {{ $externalListenerPort }}
+  protocol: TCP
+  targetPort: {{ $externalListenerPort }}
+  targetService: {{ $name }}-{{ $replica }}-broker-external
+{{- end }}
+{{- end }}
+{{- end }}

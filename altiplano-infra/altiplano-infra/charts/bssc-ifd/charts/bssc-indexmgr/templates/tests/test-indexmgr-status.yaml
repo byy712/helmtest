@@ -1,0 +1,158 @@
+{{- include "bssc-indexmgr.istio.initIstio" . }}
+{{- include "bssc-indexmgr.isCertManagerEnable" . }}
+{{- include "bssc-indexmgr.supportedImageFlavor" . }}
+apiVersion: v1
+kind: Pod
+metadata:
+  name: "{{ template "bssc-indexmgr.helmTestPod.name" . }}"
+  namespace: {{ .Release.Namespace }}
+  labels:
+{{- include "bssc-indexmgr.commonLabels" (tuple .  "indexmgr" ) | indent 4 }}
+{{- include "bssc-indexmgr.csf-toolkit-helm.labels" (tuple . .Values.indexmgr.custom.hookJobs.pod.labels) | indent 4}}
+  annotations:
+    "helm.sh/hook": test-success
+    "helm.sh/hook-delete-policy": before-hook-creation, hook-succeeded
+    sidecar.istio.io/inject: "{{ $.istio.enabled }}"
+    seccomp.security.alpha.kubernetes.io/allowedProfileNames: {{ .Values.global.seccompAllowedProfileNames }}
+    seccomp.security.alpha.kubernetes.io/defaultProfileName: {{ .Values.global.seccompDefaultProfileName }}
+{{- include "bssc-indexmgr.csf-toolkit-helm.annotations" (tuple . .Values.indexmgr.custom.hookJobs.pod.annotations) | indent 4}}
+spec:
+  securityContext:
+  {{- include "bssc-indexmgr.pod.securityContext" . | indent 4 }}
+  {{- if .Values.jobs.affinity }}
+  affinity:
+{{ toYaml .Values.jobs.affinity | indent 4 }}
+  {{- end }}
+  {{- if .Values.jobs.nodeSelector }}
+  nodeSelector:
+{{ toYaml .Values.jobs.nodeSelector | indent 4 }}
+  {{- end }}
+  {{- if .Values.jobs.tolerations }}
+  tolerations:
+{{ toYaml .Values.jobs.tolerations | indent 4 }}
+  {{- end }}
+  serviceAccountName: {{ template "bssc-indexmgr.serviceAccount.name" . }}
+  {{- if ($.istio.enabled) }}
+  automountServiceAccountToken: true
+  {{- else }}
+  automountServiceAccountToken: false
+  {{- end }}
+  {{- with or .Values.indexmgr.imagePullSecrets .Values.imagePullSecrets .Values.global.imagePullSecrets }}
+  imagePullSecrets:
+{{- toYaml . | nindent 4 }}
+  {{- end }}
+  {{- if (.Values.security.enable) }}
+  {{- if eq (tpl (.Values.security.sensitiveInfoInSecret.enabled | toString ) .) "true" }}
+  initContainers:
+  - name : {{ template "bssc-indexmgr.initContainer.name" . }}
+    image: {{ include "bssc-indexmgr.registry" (tuple .Values .Values.internalInitRegistry) }}/{{ .Values.indexmgr.image.initRepo }}:{{ .Values.indexmgr.image.initTag }}
+    command: ['sh', '-c', "/etc/initContainerMount/encrypt.sh"]
+    securityContext:
+      {{- include "bssc-indexmgr.container.securityContext" . | indent 6 }}
+    resources:
+{{ include "bssc-indexmgr.resources" (tuple . .Values.indexmgr.init_resources "100m") | indent 6 }}
+    env:
+    - name: TZ
+      value: {{ or .Values.timezone.timeZoneEnv .Values.global.timeZoneEnv "UTC" | quote }}
+    volumeMounts:
+    - name: shared-volume
+      mountPath: "/etc/sharedMount/"
+    - name: indexmgr-passwordsecret
+      mountPath: "/etc/initContainerMount/passwords"
+    - name: indexmgr-certsecrets
+      mountPath: "/etc/initContainerMount/secrets"
+    {{- if and (eq $.isCertManagerEnabled "true") (.Values.indexmgr.certificate.enabled) (not $.istio.enabled) ( not .Values.security.sensitiveInfoInSecret.ca_certificate) }}
+    - name: cert-manager-secret
+      mountPath: "/etc/initContainerMount/certManagerSecret"
+    {{- end }}
+    - name: indexmgr-configs
+      mountPath: "/etc/initContainerMount/config"
+  {{- end }}
+  {{- end }}
+  containers:
+  - name: "{{ template "bssc-indexmgr.helmTestContainer.name" . }}"
+    image: {{ include "bssc-indexmgr.registry" (tuple .Values .Values.internalAppRegistry) }}/{{.Values.indexmgr.image.repo}}:{{ include "bssc-indexmgr.imageTag" (tuple .Values.indexmgr.image.tag $.commonSupportedImageFlavor .Values .Values.indexmgr .Values.indexmgr.image) }}
+    imagePullPolicy: {{ .Values.indexmgr.ImagePullPolicy }}
+    env:
+    {{- if $.istio.enabled }}
+    - name: "ISTIO_ENABLED"
+      value: "true"
+    - name: "ISTIO_HEALTHCHK_PORT"
+      value: {{ $.istio.envoy.healthCheckPort | quote }}
+    - name: "ISTIO_ENVOY_PROXY_WAIT_TIMEOUT"
+      value: {{ $.istio.envoy.waitTimeout | quote }}
+    - name: "ISTIO_STOP_PORT"
+      value: {{ $.istio.envoy.stopPort | quote }}
+    {{- end }}
+    - name: "SENSITIVE_INFO_IN_SECRETS"
+      value: {{ (tpl (.Values.security.sensitiveInfoInSecret.enabled | toString ) .) | quote }}
+    - name: TZ
+      value: {{ or .Values.timezone.timeZoneEnv .Values.global.timeZoneEnv "UTC" | quote }}
+    securityContext:
+      {{- include "bssc-indexmgr.container.securityContext" . | indent 6 }}
+    args:
+    - --config
+    - /etc/sharedMount/curator.yml
+    - /etc/sharedMount/actions.yml
+    - --dry-run
+    resources:
+{{ include "bssc-indexmgr.resources" (tuple . .Values.indexmgr.resources "120m") | indent 6 }}
+    volumeMounts:
+    {{- if not .Values.security.enable }}
+    - mountPath: /etc/sharedMount
+      name: indexmgr-configs
+      readOnly: true
+    {{- else }}
+    - name: shared-volume
+      mountPath: "/etc/sharedMount/"
+    {{- end }}
+  restartPolicy: Never
+  volumes:
+  - name: indexmgr-configs
+    configMap:
+    {{- if empty .Values.indexmgr.configMaps.preCreatedConfigmap }}
+      name: {{ template "bssc-indexmgr.fullname" . }}
+    {{- else }}
+      name: {{ .Values.indexmgr.configMaps.preCreatedConfigmap }}
+    {{- end }}
+      items:
+      - key: curator.yml
+        path: curator.yml
+      - key: actions.yml
+        path: actions.yml
+  {{- if .Values.security.enable }}
+  {{- if eq (tpl (.Values.security.sensitiveInfoInSecret.enabled | toString ) .) "true" }}
+  - name: shared-volume
+    emptyDir:
+      sizeLimit: {{ default "10Mi"  .Values.emptyDirSizeLimit.sharedVolume }}
+  - name: indexmgr-passwordsecret
+    secret:
+      secretName: {{ .Values.security.sensitiveInfoInSecret.credentialNamePassword }}
+      items:
+      - key: {{ .Values.security.sensitiveInfoInSecret.indexmgrIsUsername }}
+        path: .indexmgrIsUsername
+      - key: {{ .Values.security.sensitiveInfoInSecret.indexmgrIsPassword }}
+        path: .indexmgrIsPassword
+        {{- if not $.istio.enabled }}
+          {{- if .Values.security.sensitiveInfoInSecret.ca_certificate }}
+  - name: indexmgr-certsecrets
+    secret:
+      secretName: {{ .Values.security.sensitiveInfoInSecret.credentialNameCert }}
+      items:
+      - key: {{ .Values.security.sensitiveInfoInSecret.ca_certificate }}
+        path: .ca_certificate
+          {{- else }}
+            {{- if eq $.isCertManagerEnabled "true" }}
+               {{- if .Values.indexmgr.certificate.enabled }}
+  - name: cert-manager-secret
+    secret:
+      secretName: {{ .Values.indexmgr.certificate.secretName | default (printf "%s-certmgr" (include "bssc-indexmgr.fullname" .)) }}
+      items:
+      - key: ca.crt
+        path: .ca_certificate
+                {{- end }}
+            {{- end }}
+           {{- end }}
+        {{- end }}
+  {{- end }}
+  {{- end }}

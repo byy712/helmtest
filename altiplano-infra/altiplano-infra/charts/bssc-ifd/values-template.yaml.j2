@@ -1,0 +1,179 @@
+## global registry
+global:
+  registry: {{ (imagesregistry | default("")).registry | default(model.properties.imagesregistry.properties.registry.default) }}
+  registry1: {{ (imagesregistry | default("")).registry1 | default(model.properties.imagesregistry.properties.registry1.default) }}
+
+## Enable or disable components of umbrella chart for IFD.
+tags:
+  bssc-fluentd: {{ (ifd | default("")).bsscFluentd | default(model.properties.ifd.properties.bsscFluentd.default) }}
+  bssc-indexsearch: {{ (ifd | default("")).bsscIndexsearch | default(model.properties.ifd.properties.bsscIndexsearch.default) }}
+  bssc-dashboards: {{ (ifd | default("")).bsscDashboards | default(model.properties.ifd.properties.bsscDashboards.default) }}
+  bssc-indexmgr: {{ (ifd | default("")).bsscIndexmgr | default(model.properties.ifd.properties.bsscIndexmgr.default) }}
+
+## To overwrite child helm chart values by parent define:
+## chart_name:
+##   parameters in values.yaml in child chart
+bssc-fluentd:
+  fluentd:
+    resources:
+      limits:
+        cpu: {{ (fluentd | default("")).fluentdCpuLimit | default(model.properties.fluentd.properties.fluentdCpuLimit.default) }}
+        memory: {{ (fluentd | default(512)).fluentdMemoryLimit | default(model.properties.fluentd.properties.fluentdMemoryLimit.default) }}
+      requests:
+        cpu: {{ (fluentd | default("")).fluentdCpuRequest | default(model.properties.fluentd.properties.fluentdCpuRequest.default) }}
+        memory: {{ (fluentd | default(512)).fluentdMemoryRequest | default(model.properties.fluentd.properties.fluentdMemoryRequest.default) }}
+    enable_root_privilege: false
+    kind: {{ (fluentd | default("")).kind | default(model.properties.fluentd.properties.kind.default) }}
+    #fluentd_certificates:
+      #This part will be added when CSFP provides a way to configure a text box & maintain the indentation
+      #enabled: {{ (fluentd | default("")).enabledCertificates | default(model.properties.fluentd.properties.enabledCertificates.default) }}
+      #This part will be added when CSFP provides a way to configure a text box & maintain the indentation
+      #data: {{ (fluentd | default("")).dataCertificates | default(model.properties.fluentd.properties.dataCertificates.default) }}
+    service:
+      enabled: {{ (fluentd | default("")).enabledService | default(model.properties.fluentd.properties.enabledService.default) }}
+      custom_name: {{ (fluentd | default("")).custom_name | default(model.properties.fluentd.properties.custom_name.default) }}  
+      type: {{ (fluentd | default("")).type | default(model.properties.fluentd.properties.type.default) }}
+      port: {{ (fluentd | default("")).port | default(model.properties.fluentd.properties.port.default) }}
+      metricsPort: {{ (fluentd | default("")).metricsPort | default(model.properties.fluentd.properties.metricsPort.default) }}	
+    volume_mount_enable: false
+    persistence:
+      storageClassName: {{ (fluentd | default("")).storageClassNameFluentd | default(model.properties.fluentd.properties.storageClassNameFluentd.default) }}
+      size: {{ (fluentd | default("")).sizeFluentd | default(model.properties.fluentd.properties.sizeFluentd.default) }}
+      pvc_auto_delete: {{ (fluentd | default("")).pvc_auto_delete | default(model.properties.fluentd.properties.pvc_auto_delete.default) }}
+    fluentd_config: custom-value    
+    configFile: {{ (fluentd | default("")).configFile | default(model.properties.fluentd.properties.configFile.default) }}
+  cbur:
+    enabled: {{ (fluentd | default("")).enableCburFluentd | default(model.properties.fluentd.properties.enableCburFluentd.default) }}
+    maxCopy: {{ (fluentd | default("")).maxCopyCburFluentd | default(model.properties.fluentd.properties.maxCopyCburFluentd.default) }}
+    backendMode: {{ (fluentd | default("")).backendModeCburFluentd | default(model.properties.fluentd.properties.backendModeCburFluentd.default) }}
+    cronJob: {{ (fluentd | default("")).cronJobCburFluentd | default(model.properties.fluentd.properties.cronJobCburFluentd.default) }}
+    autoEnableCron: {{ (fluentd | default("")).autoEnableCronCburFluentd | default(model.properties.fluentd.properties.autoEnableCronCburFluentd.default) }}
+
+
+## Overwrite values for indexsearch
+bssc-indexsearch:
+  manager:
+    replicas: {{ (indexsearch | default(1)).replicasManager | default(model.properties.indexsearch.properties.replicasManager.default) }}
+    resources:
+      limits:
+        cpu: {{ (indexsearch | default("")).managerCpuLimit | default(model.properties.indexsearch.properties.managerCpuLimit.default) }}
+        memory: {{ (indexsearch | default(512)).managerMemoryLimit | default(model.properties.indexsearch.properties.managerMemoryLimit.default) }}
+      requests:
+        cpu: {{ (indexsearch | default("")).managerCpuRequest | default(model.properties.indexsearch.properties.managerCpuRequest.default) }}
+        memory: {{ (indexsearch | default(512)).managerMemoryRequest | default(model.properties.indexsearch.properties.managerMemoryRequest.default) }}
+    java_opts: {{ (indexsearch | default("")).jvmOptsManager | default(model.properties.indexsearch.properties.jvmOptsMaster.default) }}
+
+  client:
+    replicas: {{ (indexsearch | default(1)).replicasClient | default(model.properties.indexsearch.properties.replicasClient.default) }}
+    resources:
+      limits:
+        cpu: {{ (indexsearch | default("")).clientCpuLimit | default(model.properties.indexsearch.properties.clientCpuLimit.default) }}
+        memory: {{ (indexsearch | default(512)).clientMemoryLimit | default(model.properties.indexsearch.properties.clientMemoryLimit.default) }}
+      requests:
+        cpu: {{ (indexsearch | default("")).clientCpuRequest | default(model.properties.indexsearch.properties.clientCpuRequest.default) }}
+        memory: {{ (indexsearch | default(512)).clientMemoryRequest | default(model.properties.indexsearch.properties.clientMemoryRequest.default) }}
+    java_opts: {{ (indexsearch | default("")).jvmOptsClient | default(model.properties.indexsearch.properties.jvmOptsClient.default) }}
+
+  data:
+    replicas: {{ (indexsearch | default(1)).replicasData | default(model.properties.indexsearch.properties.replicasData.default) }}
+    resources:
+      limits:
+        cpu: {{ (indexsearch | default("")).dataCpuLimit | default(model.properties.indexsearch.properties.dataCpuLimit.default) }}
+        memory: {{ (indexsearch | default(512)).dataMemoryLimit | default(model.properties.indexsearch.properties.dataMemoryLimit.default) }}
+      requests:
+        cpu: {{ (indexsearch | default("")).dataCpuRequest | default(model.properties.indexsearch.properties.dataCpuRequest.default) }}
+        memory: {{ (indexsearch | default(512)).dataMemoryRequest | default(model.properties.indexsearch.properties.dataMemoryRequest.default) }}
+    java_opts: {{ (indexsearch | default("")).jvmOptsData | default(model.properties.indexsearch.properties.jvmOptsData.default) }}
+
+  persistence:
+    size: {{ (indexsearch | default(5)).storageData | default(model.properties.indexsearch.properties.storageData.default) }}
+    masterStorage: {{ (indexsearch | default(1)).storageManager | default(model.properties.indexsearch.properties.storageManager.default) }}
+    auto_delete:  {{ (indexsearch | default("")).autoDeletePvc | default(model.properties.indexsearch.properties.autoDeletePvc.default) }}
+    storageClassName: {{ (indexsearch | default("")).storageClassNameIndexsearch | default(model.properties.indexsearch.properties.storageClassNameIndexsearch.default) }}
+  backup_restore:
+    size:  {{ (indexsearch | default(1)).storageBackup | default(model.properties.indexsearch.properties.storageBackup.default) }}
+  cbur:
+    enabled: {{ (indexsearch | default("")).enableCburIndexsearch | default(model.properties.indexsearch.properties.enableCburIndexsearch.default) }}
+    maxCopy: {{ (indexsearch | default("")).maxCopyCburIndexsearch | default(model.properties.indexsearch.properties.maxCopyCburIndexsearch.default) }}
+    backendMode: {{ (indexsearch | default("")).backendModeCburIndexsearch | default(model.properties.indexsearch.properties.backendModeCburIndexsearch.default) }}
+    cronJob: {{ (indexsearch | default("")).cronJobCburIndexsearch | default(model.properties.indexsearch.properties.cronJobCburIndexsearch.default) }}
+    autoEnableCron: {{ (indexsearch | default("")).autoEnableCronCburIndexsearch | default(model.properties.indexsearch.properties.autoEnableCronCburIndexsearch.default) }}
+    cbura:
+      tmp_size: {{ (indexsearch | default(1)).storageTmp | default(model.properties.indexsearch.properties.storageTmp.default) }}
+
+  service:
+    name:  {{ (indexsearch | default("")).serviceNameIndexsearch | default(model.properties.indexsearch.properties.serviceNameIndexsearch.default) }}
+
+  searchguard:
+    enable: {{ (indexsearch | default("")).enableSearchGuard | default(model.properties.indexsearch.properties.enableSearchGuard.default) }}
+    user_name: {{ (indexsearch | default("")).user_name | default(model.properties.indexsearch.properties.user_name.default) }}
+    keystore_type: {{ (indexsearch | default("")).keystore_type | default(model.properties.indexsearch.properties.keystore_type.default) }}
+    base64KeystorePasswd: {{ (indexsearch | default("")).base64KeystorePasswd | default(model.properties.indexsearch.properties.base64KeystorePasswd.default) }}
+    base64Truststore: {{ (indexsearch | default("")).base64Truststore | default(model.properties.indexsearch.properties.base64Truststore.default) }}
+    base64TruststorePasswd: {{ (indexsearch | default("")).base64TruststorePasswd | default(model.properties.indexsearch.properties.base64TruststorePasswd.default) }}
+    base64ClientKeystore: {{ (indexsearch | default("")).base64ClientKeystore | default(model.properties.indexsearch.properties.base64ClientKeystore.default) }}
+    base64RootCA: {{ (indexsearch | default("")).base64RootCA | default(model.properties.indexsearch.properties.base64RootCA.default) }}
+    base64_client_cert: {{ (indexsearch | default("")).base64_client_cert | default(model.properties.indexsearch.properties.base64_client_cert.default) }}
+    base64_client_key: {{ (indexsearch | default("")).base64_client_key | default(model.properties.indexsearch.properties.base64_client_key.default) }}
+    auth_admin_identity: {{ (indexsearch | default("")).auth_admin_identity | default(model.properties.indexsearch.properties.auth_admin_identity.default) }}
+    sg_configmap:
+      sg_internal_users_yml: {{ (indexsearch | default("")).sg_internal_users_yml | default(model.properties.indexsearch.properties.sg_internal_users_yml.default) }}
+      sg_action_groups_yml: {{ (indexsearch | default("")).sg_action_groups_yml | default(model.properties.indexsearch.properties.sg_action_groups_yml.default) }}
+      sg_config_yml: {{ (indexsearch | default("")).sg_config_yml | default(model.properties.indexsearch.properties.sg_config_yml.default) }}
+      sg_roles_yml: {{ (indexsearch | default("")).sg_roles_yml | default(model.properties.indexsearch.properties.sg_roles_yml.default) }}
+      sg_roles_mapping_yml: {{ (indexsearch | default("")).sg_roles_mapping_yml | default(model.properties.indexsearch.properties.sg_roles_mapping_yml.default) }}
+
+## Overwrite values for indexmgr
+bssc-indexmgr:
+  searchguard:
+    enable: {{ (indexmgr | default("")).enableSearchGuardIndexmgr | default(model.properties.indexmgr.properties.enableSearchGuardIndexmgr.default) }}
+    base64_ca_certificate: {{ (indexmgr | default("")).base64_ca_certificate | default(model.properties.indexmgr.properties.base64_ca_certificate.default) }}
+  indexmgr:
+    resources:
+      limits:
+        cpu: {{ (indexmgr | default("")).indexmgrCpuLimit | default(model.properties.indexmgr.properties.indexmgrCpuLimit.default) }}
+        memory: {{ (indexmgr | default(512)).indexmgrMemoryLimit | default(model.properties.indexmgr.properties.indexmgrMemoryLimit.default) }}
+      requests:
+        cpu: {{ (indexmgr | default("")).indexmgrCpuRequest | default(model.properties.indexmgr.properties.indexmgrCpuRequest.default) }}
+        memory: {{ (indexmgr | default("")).indexmgrMemoryRequest | default(model.properties.indexmgr.properties.indexmgrMemoryRequest.default) }}
+
+    schedule: {{ (indexmgr | default("")).scheduleIndexmgr | default(model.properties.indexmgr.properties.scheduleIndexmgr.default) }}
+    configMaps:
+      action_file_yml: {{ (indexmgr | default("")).action_file_ymlIndexmgr | default(model.properties.indexmgr.properties.action_file_ymlIndexmgr.default) }}
+      config_yml: {{ (indexmgr | default("")).config_ymlIndexmgr | default(model.properties.indexmgr.properties.config_ymlIndexmgr.default) }}
+
+## Overwrite values for dashboards
+bssc-dashboards:
+  searchguard:
+    enable: {{ (dashboards | default("")).enableSearchGuardDashboards | default(model.properties.dashboards.properties.enableSearchGuardDashboards.default) }}
+    #base64_keycloak_rootca_pem: {{ (dashboards | default("")).base64_keycloak_rootca_pem | default(model.properties.dashboards.properties.base64_keycloak_rootca_pem.default) }}
+    base64_dbo_is_username: {{ (dashboards | default("")).base64_dbo_is_username | default(model.properties.dashboards.properties.base64_dbo_is_username.default) }}
+    base64_dbo_is_password: {{ (dashboards | default("")).base64_dbo_is_password | default(model.properties.dashboards.properties.base64_dbo_is_password.default) }}
+    base64_IS_RootCA: {{ (dashboards | default("")).base64_IS_RootCA | default(model.properties.dashboards.properties.base64_IS_RootCA.default) }}
+    base64ServerCrt: {{ (dashboards | default("")).base64ServerCrt | default(model.properties.dashboards.properties.base64ServerCrt.default) }}
+    base64ServerKey: {{ (dashboards | default("")).base64ServerKey | default(model.properties.dashboards.properties.base64ServerKey.default) }}
+  dashboards:
+    resources:
+      limits:
+        cpu: {{ (dashboards | default("")).dashboardsCpuLimit | default(model.properties.dashboards.properties.dashboardsCpuLimit.default) }}
+        memory: {{ (dashboards | default(512)).dashboardsMemoryLimit | default(model.properties.dashboards.properties.dashboardsMemoryLimit.default) }}
+      requests:
+        cpu: {{ (dashboards | default("")).dashboardsCpuRequest | default(model.properties.dashboards.properties.dashboardsCpuRequest.default) }}
+        memory: {{ (dashboards | default("")).dashboardsMemoryRequest | default(model.properties.dashboards.properties.dashboardsMemoryRequest.default) }}
+    initialDelaySeconds: {{ (dashboards | default("")).initialDelaySeconds | default(model.properties.dashboards.properties.initialDelaySeconds.default) }}
+    configMaps:
+      dashboards_configmap_yml: {{ (dashboards | default("")).dashboards_configmap_yml | default(model.properties.dashboards.properties.dashboards_configmap_yml.default) }}
+    #This part will be added when CSFP provides a way to configure a text box & maintain the indentation.
+    #env: {{ (dashboards | default("")).envDashboards | default(model.properties.dashboards.properties.envDashboards.default) }}
+  service:
+    name: {{ (dashboards | default("")).serviceNameDashboards | default(model.properties.dashboards.properties.serviceNameDashboards.default) }}
+    type: {{ (dashboards | default("")).type | default(model.properties.dashboards.properties.type.default) }}
+  dbobaseurl:
+    url: {{ (dashboards | default("")).urlDashboards | default(model.properties.dashboards.properties.urlDashboards.default) }}
+    cg: {{ (dashboards | default("")).cg | default(model.properties.dashboards.properties.cg.default) }}
+  cbur:
+    enabled: {{ (dashboards | default("")).enableCburDashboards | default(model.properties.dashboards.properties.enableCburDashboards.default) }}
+    maxCopy: {{ (dashboards | default("")).maxCopyCburDashboards | default(model.properties.dashboards.properties.maxCopyCburDashboards.default) }}
+    backendMode: {{ (dashboards | default("")).backendModeCburDashboards | default(model.properties.dashboards.properties.backendModeCburDashboards.default) }}
+    cronJob: {{ (dashboards | default("")).cronJobCburDashboards | default(model.properties.dashboards.properties.cronJobCburDashboards.default) }}
+    autoEnableCron: {{ (dashboards | default("")).autoEnableCronCburDashboards| default(model.properties.dashboards.properties.autoEnableCronCburDashboards.default) }}

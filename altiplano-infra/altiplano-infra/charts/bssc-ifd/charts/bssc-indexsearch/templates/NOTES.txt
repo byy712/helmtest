@@ -1,0 +1,37 @@
+{{- include "bssc-indexsearch.isCertManagerEnable" . }}
+
+Getting Indexsearch pod details in {{ .Release.Namespace }} namespace
+
+kubectl get pods --namespace {{ .Release.Namespace }} -l 'app.kubernetes.io/instance={{ .Release.Name }},app.kubernetes.io/name={{ default .Chart.Name .Values.nameOverride }},role in (is-client,is-data,is-manager)'
+
+Indesearch service details in {{ .Release.Namespace }} namespace 
+kubectl get svc {{ .Values.service.name }} --namespace {{ .Release.Namespace }} 
+
+Indexsearch REST API endpoint details:
+Run the below commands on same shell to get information about Opensearch/Indexsearch cluster once client pods are in Ready state
+
+{{- if .Values.security.enable }}
+
+Default admin-username and admin-pwd is admin:admin. If you have changed the admin username and password during installation of chart then use those values.
+  export INDEXSEARCH_PROTOCOL="--insecure -u <admin-username>:<admin-pwd> https"
+{{- else }}
+  export INDEXSEARCH_PROTOCOL="http"
+{{- end }}
+
+export INDEXSEARCH_SVC="{{ .Values.service.name }}.{{ .Release.Namespace }}.svc.cluster.local"
+export INDEXSEARCH_PORT=$(kubectl get --namespace {{ .Release.Namespace }} service {{.Values.service.name}} -o jsonpath="{.spec.ports[0].port}")
+
+curl $INDEXSEARCH_PROTOCOL://$INDEXSEARCH_SVC:$INDEXSEARCH_PORT
+
+Checking Opensearch/Indexsearch cluster health:
+curl $INDEXSEARCH_PROTOCOL://$INDEXSEARCH_SVC:$INDEXSEARCH_PORT/_cluster/health?pretty
+
+Checking the indices created in Opensearch/Indexsearch
+curl $INDEXSEARCH_PROTOCOL://$INDEXSEARCH_SVC:$INDEXSEARCH_PORT/_cat/indices?v
+
+{{- if eq $.isCertManagerEnabled "true" }}
+  {{- if not .Values.security.enable }}
+
+WARNING: certManager will not be used in this deployment as it has been enabled without enabling security. 
+  {{- end }}
+{{- end }}

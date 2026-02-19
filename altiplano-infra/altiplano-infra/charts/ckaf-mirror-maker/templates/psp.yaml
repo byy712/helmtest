@@ -1,0 +1,3 @@
+{{- if eq (include "ckaf-mirror-maker.PspCreation" .) "true" }}
+{{ include "ckaf-mirror-maker.istioPsp" . }}
+{{- end }}

@@ -1,0 +1,54 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ template "ckaf-kafka.name" .}}-kf-test-configmap
+  labels:
+{{ include "ckaf-kafka.commonLabels" . | indent 4 }}
+{{- include "csf-common-lib.v1.customLabels" (tuple .Values.global.labels) | indent 4 }}
+  namespace: {{ .Release.Namespace }}
+  annotations:
+    "helm.sh/hook": test
+    "helm.sh/hook-delete-policy": before-hook-creation,hook-succeeded
+    "helm.sh/hook-weight": "1"
+{{- include "csf-common-lib.v1.customAnnotations" (tuple .Values.global.annotations) | indent 4 }}
+data:
+  status_function_check.sh: |
+    #!/bin/bash
+    RETRY=5
+    replicas={{ .Values.Replicas }}
+
+    function check_pod_status() {
+       i=0
+       echo "CHECKING KAFKA POD STATUS"
+       while [ $i -lt $RETRY ]
+       do
+           kf_pods=$(kubectl get pod --namespace {{ .Release.Namespace }} -l app={{ .Chart.Name }},release={{ .Release.Name }} |grep  Running| grep {{ template "ckaf-kafka.statefulset" .}}|wc -l)
+           if [[ "$replicas" == "$kf_pods" ]]
+           then
+              echo "Kafka Pods are Up and Running"
+              break
+           else
+              if [[ $i == $(($RETRY-1)) ]]
+              then
+                 echo "Failed while checking the pod status...Exiting" 
+                 return 1
+              fi
+              echo "Kafka is not Running...Retrying for $i time" 
+              sleep 60
+              (( i=i+1 ))
+           fi
+       done
+    }
+
+    function verification() {
+      unset RC1
+      echo "Running the functional validation check for kafka brokers"
+      echo " sh /etc/kafka/test/producer.sh {{ .Release.Name }}-test {{ .Values.Replicas }}" | kubectl exec -i {{ template "ckaf-kafka.statefulset" .}}-0 -n {{ .Release.Namespace }} -c {{ template "ckaf-kafka.containerName" . }} bash; RC1=$?
+      if [[ $RC1 == 0 ]]
+      then
+        echo "All the kafka brokers are functional"
+      else
+        echo "Kafka brokers are not functional"
+        return 1 
+      fi
+    }

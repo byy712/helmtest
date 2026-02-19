@@ -1,0 +1,262 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "hbase.fullname" . }}
+  labels:
+    app.kubernetes.io/name: {{ include "hbase.name" . }}
+    {{- include "hbase.labels" . | nindent 4 }}
+data:
+  bootstrap.sh: |
+    #!/bin/bash
+
+    : ${HBASE_PREFIX:=/usr/local/hbase}
+
+    . $HBASE_PREFIX/conf/hbase-env.sh
+
+    # Directory to find config artifacts
+    CONFIG_DIR="/tmp/hbase-config"
+
+    # Copy config files from volume mount
+
+    for f in hbase-site.xml hbase-env.sh hbase-policy.xml core-site.xml hdfs-site.xml; do
+      if [[ -e ${CONFIG_DIR}/$f ]]; then
+        cp ${CONFIG_DIR}/$f $HBASE_PREFIX/conf/$f
+      else
+        echo "ERROR: Could not find $f in $CONFIG_DIR"
+        exit 1
+      fi
+    done
+
+    # Copy cbur scripts for b/r hooks
+    for f in cbur-prebackup.sh cbur-prerestore.sh cbur-postrestore.sh; do
+      if [[ -e ${CONFIG_DIR}/$f ]]; then
+        cp ${CONFIG_DIR}/$f $HBASE_PREFIX/$f
+        chmod 775 $HBASE_PREFIX/$f
+      else
+        echo "ERROR: Could not find $f in $CONFIG_DIR"
+        exit 1
+      fi
+    done
+
+    {{- if .Values.prometheus.enabled }}
+    # SET HBASE_OPTS_GC_SETTING with prometheus javaagent jmx exporter port
+    export HBASE_OPTS_GC_SETTING="$HBASE_OPTS_GC_SETTING -javaagent:/jmx-exporter/jmx_prometheus_javaagent.jar={{ .Values.prometheus.port }}:/etc/exporter/jmx-hbase-prometheus.yml"
+    {{- end }}
+    if [[ $2 == "master" ]]; then
+      $HBASE_PREFIX/bin/hbase-daemon.sh start master
+    fi
+    if [[ $2 == "regionserver" ]]; then
+      #  wait up to 30 seconds for masternode
+      (while [[ $count -lt 15 && -z `curl -sf http://{{ include "hbase.fullname" . }}-master:16010` ]]; do ((count=count+1)) ; echo "Waiting for {{ include "hbase.fullname" . }}-master" ; sleep 2; done && [[ $count -lt 15 ]])
+      [[ $? -ne 0 ]] && echo "Timeout waiting for hbase-master, exiting." && exit 1
+      $HBASE_PREFIX/bin/hbase-daemon.sh start regionserver
+    fi
+    if [[ $1 == "-d" ]]; then
+      until find ${HBASE_PREFIX}/logs -mmin -1 | egrep -q '.*'; echo "`date`: Waiting for logs..." ; do sleep 2 ; done
+      tail -F ${HBASE_PREFIX}/logs/* &
+      while true; do sleep 1000; done
+    fi
+
+    if [[ $1 == "-bash" ]]; then
+      /bin/bash
+    fi
+  hbase-env.sh: |
+    # Extra Java runtime options.
+    # Below are what we set by default.  May only work with SUN JVM.
+    # For more on why as well as other possible settings,
+    # see http://hbase.apache.org/book.html#performance
+    export HBASE_OPTS="$HBASE_OPTS_GC_SETTING -Dhbase.log.level=$HBASE_LOG_LEVEL"
+    export HBASE_ROOT_LOGGER=$HBASE_ROOT_LOGGER
+    export HBASE_SECURITY_LOGGER=$HBASE_SECURITY_LOGGER
+  hbase-site.xml: |
+    <?xml version="1.0"?>
+    <?xml-stylesheet type="text/xsl" href="configuration.xsl"?>
+    <configuration>
+      <property>
+        <name>hbase.cluster.distributed</name>
+        <value>true</value>
+      </property>
+      <property>
+        <name>hbase.master</name>
+        <value>>{{ include "hbase.fullname" . }}-master:16000</value>
+      </property>
+      {{- if (.Values.global.zookeeperquorum) }}
+      <property>
+        <name>hbase.zookeeper.quorum</name>
+        <value>{{ .Values.global.zookeeperquorum }}</value>
+      </property>
+      {{- else }}
+      <property>
+        <name>hbase.zookeeper.quorum</name>
+        <value>{{- printf "altiplano-zookeeper-headless.%s:%s" .Release.Namespace .Values.conf.hbaseSite.zookeeperquorumPort -}}</value>
+      </property>
+      {{- end }}
+      {{- if .Values.global.namenodeHAEnabled }}
+      <property>
+        <name>hbase.rootdir</name>
+        <value>hdfs://altiplano-hdfs/hbase</value>
+      </property>
+      {{- else }}
+      <property>
+        <name>hbase.rootdir</name>
+        <value>{{- printf "hdfs://%s-altiplano-hdfs-namenode:8020/hbase" .Release.Name }}</value>
+      </property>
+      {{- end }}
+
+      {{- if .Values.global.namenodeHAEnabled }}
+      <property>
+        <name>zookeeper.znode.parent</name>
+        <value>/hbase</value>
+      </property>
+      {{- end }}
+      <property>
+        <name>hbase.regionserver.thread.compaction.small</name>
+        <value>{{ .Values.conf.hbaseSite.hbase_regionserver_thread_compaction_small }}</value>
+      </property>
+      <property>
+        <name>hbase.zookeeper.session.timeout</name>
+        <value>{{ .Values.conf.hbaseSite.hbase_zookeeper_session_timeout }}</value>
+       </property>
+      <property>
+        <name>hbase.status.published</name>
+        <value>{{ .Values.conf.hbaseSite.hbase_status_published }}</value>
+      </property>
+      <property>
+        <name>hbase.region.replica.replication.enabled</name>
+        <value>{{ .Values.conf.hbaseSite.hbase_region_replica_replication_enabled }}</value>
+      </property>
+      <property>
+        <name>hbase.regionserver.handler.count</name>
+        <value>{{ .Values.conf.hbaseSite.hbase_regionserver_handler_count }}</value>
+      </property>
+      <property>
+        <name>hbase.ipc.server.callqueue.read.ratio</name>
+        <value>{{ .Values.conf.hbaseSite.hbase_ipc_server_callqueue_read_ratio }}</value>
+      </property>
+      <property>
+        <name>hbase.meta.replica.count</name>
+        <value>{{ .Values.conf.hbaseSite.hbase_meta_replica_count }}</value>
+      </property>
+      <property>
+        <name>hbase.regionserver.hostname.disable.master.reversedns</name>
+        <value>{{ .Values.conf.hbaseSite.hbase_regionserver_hostname_disable_master_reversedns }}</value>
+      </property>
+      <property>
+        <name>hbase.zookeeper.dns.interface</name>
+        <value>{{ .Values.conf.hbaseSite.hbase_zookeeper_dns_interface }}</value>
+      </property>
+      <property>
+        <name>hbase.regionserver.dns.interface</name>
+        <value>{{ .Values.conf.hbaseSite.hbase_regionserver_dns_interface }}</value>
+      </property>
+      <property>
+        <name>hbase.master.dns.interface</name>
+        <value>{{ .Values.conf.hbaseSite.hbase_master_dns_interface }}</value>
+      </property>
+      <property>
+        <name>hbase.zookeeper.property.tickTime</name>
+        <value>{{ .Values.conf.hbaseSite.hbase_zookeeper_property_tickTime }}</value>
+      </property>
+      <property>
+        <name>hbase.rpc.timeout</name>
+        <value>{{ .Values.conf.hbaseSite.hbase_rpc_timeout }}</value>
+      </property>
+      <property>
+        <name>hbase.wal.async.wait.on.shutdown.seconds</name>
+        <value>{{ .Values.conf.hbaseSite.hbase_wal_async_wait_on_shutdown_seconds }}</value>
+      </property>
+    </configuration>
+  hbase-policy.xml: |
+    <?xml version="1.0"?>
+    <?xml-stylesheet type="text/xsl" href="configuration.xsl"?>
+    <configuration>
+      {{- if index .Values.conf "hbasePolicy" }}
+      {{- range $key, $value := index .Values.conf "hbasePolicy" }}
+      <property><name>{{ $key }}</name><value>{{ $value }}</value></property>
+      {{- end }}
+      {{- end }}
+    </configuration>
+
+  core-site.xml: |
+    <?xml version="1.0"?>
+    <?xml-stylesheet type="text/xsl" href="configuration.xsl"?>
+    <configuration>
+       {{- if .Values.global.namenodeHAEnabled }}
+        <property>
+            <name>fs.defaultFS</name>
+            <value>hdfs://altiplano-hdfs</value>
+        </property>
+        {{- else }}
+        <property>
+            <name>fs.defaultFS</name>
+            <value>{{- printf "hdfs://%s-altiplano-hdfs-namenode:8020" .Release.Name }}</value>
+        </property>
+        {{- end }}
+        <property>
+                <name>hadoop.proxyuser.root.hosts</name>
+                <value>*</value>
+        </property>
+        <property>
+            <name>hadoop.proxyuser.root.groups</name>
+            <value>*</value>
+        </property>
+    </configuration>
+
+  hdfs-site.xml: |
+    <?xml version="1.0"?>
+    <?xml-stylesheet type="text/xsl" href="configuration.xsl"?>
+    <configuration>
+        {{- if .Values.global.namenodeHAEnabled }}
+        <property>
+            <name>dfs.nameservices</name>
+            <value>altiplano-hdfs</value>
+        </property>
+        <property>
+            <name>dfs.ha.namenodes.altiplano-hdfs</name>
+            <value>nn0,nn1</value>
+        </property>
+        <property>
+            <name>dfs.namenode.rpc-address.altiplano-hdfs.nn0</name>
+            <value>{{- printf "%s-altiplano-hdfs-namenode-0.%s-altiplano-hdfs-namenode.%s.svc.cluster.local:8020" .Release.Name .Release.Name .Release.Namespace}}</value>
+        </property>
+        <property>
+            <name>dfs.namenode.rpc-address.altiplano-hdfs.nn1</name>
+            <value>{{- printf "%s-altiplano-hdfs-namenode-1.%s-altiplano-hdfs-namenode.%s.svc.cluster.local:8020" .Release.Name .Release.Name .Release.Namespace}}</value>
+        </property>
+        <property>
+            <name>dfs.namenode.http-address.altiplano-hdfs.nn0</name>
+            <value>{{- printf "%s-altiplano-hdfs-namenode-0.%s-altiplano-hdfs-namenode.%s.svc.cluster.local:50070" .Release.Name .Release.Name .Release.Namespace}}</value>
+        </property>
+        <property>
+            <name>dfs.namenode.http-address.altiplano-hdfs.nn1</name>
+            <value>{{- printf "%s-altiplano-hdfs-namenode-1.%s-altiplano-hdfs-namenode.%s.svc.cluster.local:50070" .Release.Name .Release.Name .Release.Namespace}}</value>
+        </property>
+
+        <property>
+            <name>dfs.ha.automatic-failover.enabled</name>
+            <value>true</value>
+        </property>
+        <property>
+            <name>dfs.ha.nn.not-become-active-in-safemode</name>
+            <value>true</value>
+        </property>
+        <property>
+            <name>dfs.ha.fencing.methods</name>
+            <value>shell(/bin/true)</value>
+        </property>
+        <property>
+            <name>dfs.journalnode.edits.dir</name>
+            <value>/dfs/journal</value>
+        </property>
+        <property>
+            <name>dfs.client.failover.proxy.provider.altiplano-hdfs</name>
+            <value>org.apache.hadoop.hdfs.server.namenode.ha.ConfiguredFailoverProxyProvider</value>
+        </property>
+        {{- end }}
+    </configuration>
+  cbur-prebackup.sh: |
+{{ tpl (.Files.Get "resources/config/cbur-prebackup.sh") . | indent 4 }}
+  cbur-prerestore.sh: |
+{{ tpl (.Files.Get "resources/config/cbur-prerestore.sh") . | indent 4 }}
+  cbur-postrestore.sh: |
+{{ tpl (.Files.Get "resources/config/cbur-postrestore.sh") . | indent 4 }}

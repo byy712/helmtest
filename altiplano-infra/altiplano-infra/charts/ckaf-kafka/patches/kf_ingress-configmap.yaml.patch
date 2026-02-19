@@ -1,0 +1,18 @@
+--- ckaf-kafka-8.0.2-origin/templates/ingress-configmap.yaml	2024-02-20 15:47:14.000000000 +0530
++++ ckaf-kafka-8.0.2-nokia-patch-1/templates/ingress-configmap.yaml	2024-03-07 15:52:59.846561653 +0530
+@@ -12,13 +12,13 @@
+ {{- $managedBy := .Values.managedBy }}
+ {{- $externalListeners := .Values.ingress.externalListeners }}
+ {{- range $extlistener := $externalListeners }}
+-{{- $citmName :=  required "A valid citm configmap prefix name is needed." $extlistener.IngressConfigMap.citmPrefixName }}
++{{- $citmName :=  required "A valid citm configmap prefix name is needed." (tpl ($extlistener.IngressConfigMap.citmPrefixName) $) }}
+ {{- range $replica := until $replicas }}
+ ---
+ apiVersion: v1
+ kind: ConfigMap
+ metadata:
+-  name: {{ $citmName }}-tcp-{{ $extlistener.externalServiceName }}-{{ $replica }}
++  name: {{ $citmName }}-tcp-{{ (tpl ($extlistener.name | lower) $) }}-{{ $replica }}
+   labels:
+ {{ include "ckaf-kafka.commonLabels" $root | indent 4 }}
+ {{- include "csf-common-lib.v1.customLabels" (tuple $root.Values.global.labels) | indent 4 }}

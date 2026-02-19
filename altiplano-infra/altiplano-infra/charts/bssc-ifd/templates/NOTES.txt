@@ -1,0 +1,136 @@
+BSSC chart is deployed in {{ .Release.Namespace }} namespace
+{{- if index .Values.tags "bssc-indexsearch" }}
+
+Indexsearch:
+Indexsearch pod details:
+    kubectl get pods --namespace {{ .Release.Namespace }} -l 'app.kubernetes.io/instance={{ .Release.Name }},role in (is-client,is-data,is-manager)'
+
+Indexsearch service details:
+    kubectl get svc {{ index .Values "bssc-indexsearch" "service" "name" }} --namespace {{ .Release.Namespace }}
+
+Indexsearch REST API endpoint details:
+    Run the below commands in the same shell to get information about Indexsearch cluster after client pods are in Ready state:
+
+{{- if (index .Values "bssc-indexsearch" "security" "enable") }}
+    Default admin-username and admin-pwd is admin:admin. If you have changed the admin username and password during installation of BSSC then use those values.
+      export INDEXSEARCH_PROTOCOL="--insecure -u <admin-username>:<admin-pwd> https"
+{{- else }}
+      export INDEXSEARCH_PROTOCOL="http"
+{{- end }}
+      export INDEXSEARCH_SVC="{{ index .Values "bssc-indexsearch" "service" "name" }}.{{ .Release.Namespace }}.svc.cluster.local"
+      export INDEXSEARCH_PORT=$(kubectl get --namespace {{ .Release.Namespace }} service {{ index .Values "bssc-indexsearch" "service" "name" }} -o jsonpath="{.spec.ports[0].port}")
+
+    Checking Indexsearch cluster health:
+      curl $INDEXSEARCH_PROTOCOL://$INDEXSEARCH_SVC:$INDEXSEARCH_PORT/_cluster/health?pretty
+
+    Checking the indices created in Indexsearch
+      curl $INDEXSEARCH_PROTOCOL://$INDEXSEARCH_SVC:$INDEXSEARCH_PORT/_cat/indices?v
+
+---------------------------------------------------------------------------
+{{- end }}
+
+{{- if index .Values.tags "bssc-dashboards" }}
+Dashboards:
+Dashboards pod details:
+    kubectl get pods --namespace {{ .Release.Namespace }} -l app.kubernetes.io/instance={{ .Release.Name }},app.kubernetes.io/component=dashboards,role=dashboards-gui
+
+Dashboards UI access details:
+The url to access Dashboards UI from browser can be fetched by running below commands:
+
+{{- if index .Values "bssc-dashboards" "istio" "enabled" }}
+
+    If default ingress-istio-gateway running with NodePort is used then use below command: otherwise refer https://istio.io/latest/docs/tasks/traffic-management/ingress/ingress-control/#determining-the-ingress-ip-and-ports
+
+      INGRESS_PORT=$(kubectl -n istio-system get service istio-ingressgateway -o jsonpath='{.spec.ports[?(@.name=="http2")].nodePort}')
+      SECURE_INGRESS_PORT=$(kubectl -n istio-system get service istio-ingressgateway -o jsonpath='{.spec.ports[?(@.name=="https")].nodePort}')
+      INGRESS_HOST=$(kubectl get pod -l istio=ingressgateway -n istio-system -o jsonpath='{.items[0].status.hostIP}')
+
+      echo $INGRESS_PORT $SECURE_INGRESS_PORT $INGRESS_HOST
+
+    If tls is enabled for istio ingress gateway then use https protocol, $SECURE_INGRESS_PORT else use http port, $INGRESS_PORT
+
+      Dashboards url: <http/https>://<$INGRESS_HOST>:<$INGRESS_PORT/$SECURE_INGRESS_PORT>{{ index .Values "bssc-dashboards" "dbobaseurl" "url" }}
+{{- else }}
+
+  {{- if index .Values "bssc-dashboards" "ingress" "enabled" }}
+      {{- if index .Values "bssc-dashboards" "ingress" "host" }}
+          {{- if index .Values "bssc-dashboards" "security" "enable" }}
+      https://{{ index .Values "bssc-dashboards" "ingress" "host" }}{{ index .Values "bssc-dashboards" "dbobaseurl" "url" }}
+          {{- else }}
+      http://{{ index .Values "bssc-dashboards" "ingress" "host" }}{{ index .Values "bssc-dashboards" "dbobaseurl" "url" }}
+          {{- end }}
+      {{- else }}
+      DASHBOARDS_IP=$(kubectl get nodes -l is_edge=true -o jsonpath='{ $.items[*].status.addresses[?(@.type=="ExternalIP")].address }' | cut -d ' ' -f 1)
+    NOTE- If "echo $DASHBOARDS_IP" is empty then it means ExternalIP is not configured for edge node, try using "InternalIP" instead of "ExternalIP" in the above command.
+
+      Dashboards url: https://$DASHBOARDS_IP{{ index .Values "bssc-dashboards" "dbobaseurl" "url" }}
+
+      {{- end }}
+  {{- else }}
+      {{- if eq "NodePort" (index .Values "bssc-dashboards" "service" "type") }}
+      DASHBOARDS_IP=$(kubectl get nodes -l is_edge=true -o jsonpath='{ $.items[*].status.addresses[?(@.type=="ExternalIP")].address }' | cut -d ' ' -f 1)
+    NOTE- If "echo $DASHBOARDS_IP" is empty then it means ExternalIP is not configured for edge node, try using "InternalIP" instead of "ExternalIP" in the above command.
+      DASHBOARDS_PORT={{ index .Values "bssc-dashboards" "dashboards" "node_port" }}
+            {{- if index .Values "bssc-dashboards" "security" "enable" }}
+
+      Dashboards url: https://<$DASHBOARDS_IP>:<$DASHBOARDS_PORT>
+
+            {{- else }}
+
+      Dashboards url: http://<$DASHBOARDS_IP>:<$DASHBOARDS_PORT>
+
+            {{- end }}
+      {{- else }}
+    Dashboards UI will not be accessible externally. It is suggested to either enable ingress or set service type to NodePort"
+
+      {{- end }}
+
+  {{- end }}
+
+{{- end }}
+---------------------------------------------------------------------------
+{{- end }}
+
+{{- if index .Values.tags "bssc-indexmgr" }}
+Indexmgr:
+Indexmgr chart creates a cronjob
+    kubectl get cronjob  --namespace {{ .Release.Namespace }} -l app.kubernetes.io/component=indexmgr,app.kubernetes.io/instance={{ .Release.Name }},role=indexmanager
+
+Indexmgr cronjob is scheduled at "{{ index .Values "bssc-indexmgr" "indexmgr" "schedule" }}"
+
+Indexmgr cronjob runs with the configuration stored in below configmap:
+{{- if empty (index .Values "bssc-indexmgr" "indexmgr" "configMaps" "preCreatedConfigmap") }}
+    kubectl get cm --namespace {{ .Release.Namespace }} -l app.kubernetes.io/instance={{ .Release.Name }},role=indexmanager,app.kubernetes.io/component=indexmgr
+{{- else }}
+    kubectl get cm {{ index .Values "bssc-indexmgr" "indexmgr" "configMaps" "preCreatedConfigmap" }} --namespace {{ .Release.Namespace }}
+{{- end }}
+
+---------------------------------------------------------------------------
+{{- end }}
+
+{{- if index .Values.tags "bssc-fluentd" }}
+Fluentd:
+Fluentd is deployed as {{ index .Values "bssc-fluentd" "fluentd" "kind"  }}
+
+Fluentd pod details:
+    kubectl get pods --namespace {{ .Release.Namespace }} -l app.kubernetes.io/instance={{ .Release.Name }},app.kubernetes.io/component=fluentd,role=fluentd-logprocessor
+
+Fluentd runs with the configuration stored in below configmap:
+    kubectl get cm --namespace {{ .Release.Namespace }} -l app.kubernetes.io/instance={{ .Release.Name }},app.kubernetes.io/component=fluentd
+
+{{- if index .Values "bssc-fluentd" "fluentd" "service" "enabled" }}
+
+Fluentd promethues service is enabled and metrics scrape port is {{ index .Values "bssc-fluentd" "fluentd" "service" "metricsPort" }}
+    kubectl get svc --namespace {{ .Release.Namespace }} -l app.kubernetes.io/instance={{ .Release.Name }},app.kubernetes.io/component=fluentd,role=prometheus-svc
+
+{{- end }}
+
+{{- if index .Values "bssc-fluentd" "fluentd" "forward_service" "enabled" }}
+
+Fluentd forward service is enabled on port {{ index .Values "bssc-fluentd" "fluentd" "forward_service" "port" }}
+    kubectl get svc --namespace {{ .Release.Namespace }} -l app.kubernetes.io/instance={{ .Release.Name }},app.kubernetes.io/component=fluentd,role=forward-svc
+
+{{- end }}
+
+{{- end }}
+

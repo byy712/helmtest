@@ -1,0 +1,293 @@
+{{- include "cbur.initCelery" . }}
+{{- include "cbur.unifiedLoggingMerge" (tuple . "avamar") }}
+{{- include "cbur.unifiedLogging" (tuple . "avamar") }}
+{{- include "cbur.tls" . }}
+{{- if .Values.avamar.enabled }}
+{{- if and (not .Values.volumeType.glusterfs) (not .Values.isPvRwx) }}
+{{- fail "Avamar feature requires storage with ReadWriteMany mode" }}
+{{- end }}
+apiVersion: {{ template "cbur.DeploymentAPI" . }}
+kind: Deployment
+metadata:
+  name: {{ include "cbur.proxy.resourceName" (tuple . "Deployment" "avamar") }}
+  labels:
+    heritage: {{ .Release.Service }}
+    app: {{ template "cbur.fullname" . }}-avamar
+    release: {{ .Release.Name }}
+    component: "{{ .Release.Name }}-{{ .Values.component }}"
+    {{- include "cbur.proxy.commonLabels" (tuple . .Values.avamar.name) | indent 4 }}
+    {{- include "cbur.customLabels" (tuple .Values.avamar.labels .Values.global.labels) | indent 4 }}
+  annotations:
+    {{- include "cbur.customAnnotations" (tuple .Values.avamar.annotations .Values.global.annotations) | indent 4 }}
+spec:
+  replicas: {{ .Values.replicas }}
+  strategy:
+    type: Recreate
+    rollingUpdate:
+  selector:
+    matchLabels:
+      heritage: {{ .Release.Service }}
+      app: {{ template "cbur.fullname" . }}-avamar
+      release: {{ .Release.Name }}
+      component: "{{ .Release.Name }}-{{ .Values.component }}"
+  template:
+    metadata:
+      name: {{ include "cbur.proxy.resourceName" (tuple . "Deployment" "avamar") }}
+      labels:
+        altiplano-role: {{ .Values.accessRoleLabel }}
+        heritage: {{ .Release.Service }}
+        app: {{ template "cbur.fullname" . }}-avamar
+        release: {{ .Release.Name }}
+        component: "{{ .Release.Name }}-{{ .Values.component }}"
+        {{- include "cbur.proxy.commonLabels" (tuple . .Values.avamar.name) | indent 8 }}
+        {{- include "cbur.customLabels" (tuple .Values.avamar.labels .Values.global.labels) | indent 8 }}
+      annotations:
+      {{- include "cbur.customAnnotations" (tuple .Values.avamar.annotations .Values.custom.pod.annotations .Values.global.annotations) | indent 8 }}
+      {{- include "cbur.defaultContainer4avamar" . | indent 8 }}
+      {{- include "cbur.syslogCmChecksum" (tuple . "avamar") | indent 8 }}
+      {{- include "cbur.certCmChecksum" . | indent 8 }}
+      {{- if .Values.istio.enabled }}
+        sidecar.istio.io/inject: "true"
+        {{- if .Values.istio.mtls.enabled }}
+        sidecar.istio.io/rewriteAppHTTPProbers: "true"
+        {{- end }}
+      {{- else }}
+        sidecar.istio.io/inject: "false"
+      {{- end }}
+      {{- if .Values.multus.enabled }}
+        {{- include "cbur.multus.annotation" . | nindent 8 }}
+      {{- end }}
+    spec:
+      {{- if .Values.rbac.enabled }}
+      serviceAccountName: {{ template "cbur.fullname" . }}
+      {{- else if .Values.rbac.serviceAccountName }}
+      serviceAccountName: {{ .Values.rbac.serviceAccountName }}
+      {{- end }}
+{{ include "cbur.podSecurityContext" . | indent 6 }}
+      automountServiceAccountToken: true
+      {{- if .Values.hostNetwork.avamar }}
+      hostNetwork: true
+      {{- else }}
+      hostNetwork: false
+      {{- end }}
+      {{- if .Values.avamar.hostAliases }}
+      hostAliases: {{ toYaml .Values.avamar.hostAliases | nindent 8 }}
+      {{- end }}
+      {{- if .Values.avamar.dnsPolicy }}
+      dnsPolicy: {{ .Values.avamar.dnsPolicy }}
+      {{- end }}
+      {{- if .Values.priorityClassName }}
+      priorityClassName: {{ .Values.priorityClassName | quote }}
+      {{- else if .Values.global.priorityClassName }}
+      priorityClassName: {{ .Values.global.priorityClassName | quote }}
+      {{- end }}
+      {{- if .Values.image.avamar.imagePullSecrets }}
+      imagePullSecrets: {{ toYaml .Values.image.avamar.imagePullSecrets | nindent 8 }}
+      {{- else if .Values.global.imagePullSecrets }}
+      imagePullSecrets: {{ toYaml .Values.global.imagePullSecrets | nindent 8 }}
+      {{- end }}
+      containers:
+{{ include "cbur.syslogSidecar4avamar" (tuple . .Values.avamar.unifiedLogging.extension) | indent 8 }}
+        - name: {{ include "cbur.proxy.containerName" (tuple . "cbur-avamar") }}
+          image: {{ include "cbur.image.mapper" (tuple $ .Values.image.avamar .Values.internalCBURAvamarRegistry) }}
+          imagePullPolicy: {{ .Values.image.avamar.pullPolicy | default "IfNotPresent" | quote }}
+{{ include "cbur.containerSecurityContext" . | indent 10 }}
+{{ include "cbur.readOnlyRootFilesystem" . | indent 12 }}
+{{ include "cbur.containerRunAsUser" . | indent 12 }}
+{{ include "cbur.containerRunAsGroup" . | indent 12 }}
+          env:
+          - name: KUBE_VERSION
+            value: {{ include "cbur.kubeVersion" . }}
+          - name: AVAMAR_SERVER
+            value: {{ .Values.avamar.server }}
+          - name: DOMAIN
+            value: {{ .Values.avamar.domain }}
+          - name: IP_LIST
+            value: {{ .Values.control_node_ip_list }}
+          - name: CBURM_PORT
+          {{- if eq (include "cbur.proxy.coalesceBoolean" (tuple .Values.tls.enabled .Values.global.tls.enabled false)) "true" }}
+            value: "{{ .Values.tls.port }}"
+          {{- else }}
+            value: "{{ .Values.serverPort }}"
+          {{- end }}
+          - name: CBURM_NAME
+            value: {{ template "cbur.fullname" . }}
+          - name: CBURM_NAMESPACE
+            value: {{ .Release.Namespace }}
+          - name: TZ
+            value: {{ .Values.global.timeZoneEnv | default "UTC" | quote }}
+          {{- if .Values.direct_redis.enabled }}
+          - name: CELERY_ENABLED
+            value: "True"
+          {{- end }}
+          {{- if eq (include "cbur.proxy.coalesceBoolean" (tuple .Values.tls.enabled .Values.global.tls.enabled false)) "true" }}
+          - name: HTTPS_ENABLED
+            value: "YES"
+          {{- if .Values.tls.clientSecretRef.credentialName }}
+          - name: TLS_CLIENT_CA_CRT_NAME
+            value: {{ .Values.tls.clientSecretRef.keyNames.caCrt | default "ca.crt" }}
+          - name: TLS_CLIENT_TLS_CRT_NAME
+            value: {{ .Values.tls.clientSecretRef.keyNames.tlsCrt | default "tls.crt" }}
+          - name: TLS_CLIENT_TLS_KEY_NAME
+            value: {{ .Values.tls.clientSecretRef.keyNames.tlsKey | default "tls.key" }}
+          {{- end }}
+          {{- end }}
+          volumeMounts:
+{{ include "cbur.tmpemptydirvolumemount" . | indent 10 }}
+          - mountPath: /var/avamar
+            name: "cbur-repo"
+            subPath: avamarconf
+          - mountPath: /usr/local/avamar/etc
+            name: "cbur-repo"
+            subPath: avamarfile
+          - mountPath: /CBUR_REPO
+            name: "cbur-repo"
+            subPath: repo
+          - mountPath: /BACKUP
+            name: "cbur-backup"
+            subPath: avamar
+          {{- if and .Values.k8swatcher.enabled .Values.k8swatcher.clusterBrEnabled }}
+          - mountPath: /CLUSTER
+            name: "cbur-backup-cluster"
+            subPath: avamar
+          {{- end }}
+          {{- if eq (include "cbur.proxy.coalesceBoolean" (tuple .Values.tls.enabled .Values.global.tls.enabled false)) "true" }}
+          - mountPath: /etc/ssl/certs/cbur
+            name: "certs"
+            readOnly: true
+          {{- end }}
+          command:
+            - "bash"
+            - "-c"
+            - |
+              TIMESTAMP=$(date +%Y%m%d%H%M%S)
+              [[ -f /usr/local/avamar/var/avagent.log ]] && mv /usr/local/avamar/var/avagent.log /usr/local/avamar/var/avagent.log.${TIMESTAMP}
+              cp -r /usr/local/avamar/etc.bk/* /usr/local/avamar/etc/ &&
+              {{- if and .Values.istio.enabled (not .Values.hostNetwork.avamar) }}
+              trap "curl --max-time 2 -s -f -XPOST http://localhost:15020/quitquitquit" EXIT &&
+              while ! curl -s -f http://localhost:15020/healthz/ready; do sleep 1; echo "Waiting istio network Ready"; done &&
+              {{- end }}
+              {{- if .Values.avamar.clientName }}
+              host_name={{ .Values.avamar.clientName }} &&
+              {{- else }}
+              name=$(cat /etc/hostname) &&
+              host_name=${name%-*} &&
+              {{- end }}
+              /usr/local/avamar/bin/avagent.bin --bindir="/usr/local/avamar/bin" --vardir="/usr/local/avamar/var" --sysdir="/usr/local/avamar/etc" --logfile="/usr/local/avamar/var/avagent.log" --mcsaddr=${AVAMAR_SERVER} --mcsport=28001 --dpndomain=${DOMAIN} --hostname=${host_name} --iplist=${IP_LIST// /,} &&
+              rm -f /usr/local/avamar/var/avtar.cmd &&
+              {{- if .Values.avamar.preScriptTimeoutSeconds }}
+              echo "--run-at-start-clauses=timeout-seconds={{ .Values.avamar.preScriptTimeoutSeconds }}" > /usr/local/avamar/var/avtar.cmd &&
+              {{- end }}
+              {{- if .Values.avamar.postScriptTimeoutSeconds }}
+              echo "--run-at-end-clauses=timeout-seconds={{ .Values.avamar.postScriptTimeoutSeconds }}" >> /usr/local/avamar/var/avtar.cmd &&
+              {{- end }}
+              tail -F /usr/local/avamar/var/avagent.log
+          ports:
+          - containerPort: 28002
+          - containerPort: 30001
+          - containerPort: 30002
+          startupProbe:
+            exec:
+              command:
+              - sh
+              - "-c"
+              - |
+                 cat /usr/local/avamar/var/avagent.log |grep Registration |grep successful |grep MCS
+            periodSeconds: 5
+            failureThreshold: 60
+          livenessProbe:
+            exec:
+              command:
+              - sh
+              - "-c"
+              - |
+                 ps -ef |grep avagent.bin
+            initialDelaySeconds: 10
+            periodSeconds: 10
+            failureThreshold: 180
+          resources:
+{{ include "cbur.resources" (tuple . .Values.avamar.resources "1") | indent 12 }}
+    {{- if .Values.nodeSelectorOverride }}
+      nodeSelector:
+{{ toYaml .Values.nodeSelectorOverride | indent 8 }}
+    {{- else if .Values.nodeSelector }}
+      nodeSelector:
+{{ toYaml .Values.nodeSelector | indent 8 }}
+    {{- end }}
+    {{- if .Values.avamar.affinity }}
+      affinity:
+{{ toYaml .Values.avamar.affinity | indent 8 }}
+    {{- else if .Values.avamar.podAntiAffinity }}
+      affinity:
+      {{- include "cbur.proxy.podAntiAffinity" (tuple . .Values.avamar) | nindent 8}}
+    {{- end }}
+    {{- with .Values.tolerations }}
+      tolerations:
+{{ toYaml . | indent 8 }}
+    {{- end }}
+    {{- with .Values.topologySpreadConstraints }}
+      topologySpreadConstraints:
+{{- toYaml . | nindent 8 }}
+    {{- end }}
+      volumes:
+{{ include "cbur.syslogSidecarVolume" (tuple . "avamar") | indent 8  }}
+{{ include "cbur.syslogSidecarVolume4avamar" . | indent 8  }}
+        - name: "cbur-backup"
+          {{- if .Values.volumeType.glusterfs }}
+          glusterfs:
+            endpoints: {{ .Values.volumeType.backupEndpoints | quote }}
+            path: {{ .Values.volumeType.backupPath }}
+          {{- else  }}
+          persistentVolumeClaim:
+            {{- if .Values.directPvc.enabled }}
+            claimName: {{ .Values.directPvc.backupPvcName }}
+            {{- else }}
+            claimName: {{ template "cbur.fullname" . }}-backup
+            {{- end }}
+          {{- end }}
+        - name: "cbur-repo"
+          {{- if .Values.volumeType.glusterfs }}
+          glusterfs:
+            endpoints: {{ .Values.volumeType.repoEndpoints | quote }}
+            path: {{ .Values.volumeType.repoPath }}
+          {{- else  }}
+          persistentVolumeClaim:
+            {{- if .Values.directPvc.enabled }}
+            claimName: {{ .Values.directPvc.repoPvcName }}
+            {{- else }}
+            claimName: {{ template "cbur.fullname" . }}-repo
+            {{- end }}
+          {{- end }}
+        {{- if and .Values.k8swatcher.enabled .Values.k8swatcher.clusterBrEnabled }}
+        - name: "cbur-backup-cluster"
+          {{- if .Values.volumeType.glusterfs }}
+          glusterfs:
+            endpoints: {{ .Values.volumeType.backupClusterEndpoints | quote }}
+            path: {{ .Values.volumeType.backupClusterPath }}
+          {{- else  }}
+          persistentVolumeClaim:
+            {{- if .Values.directPvc.enabled }}
+            claimName: {{ .Values.directPvc.backupClusterPvcName }}
+            {{- else }}
+            claimName: {{ template "cbur.fullname" . }}-backup-cluster
+            {{- end }}
+          {{- end }}
+        {{- end  }}
+        {{- if eq (include "cbur.proxy.coalesceBoolean" (tuple .Values.tls.enabled .Values.global.tls.enabled false)) "true" }}
+        {{- if .Values.tls.clientSecretRef.credentialName }}
+        - name: "certs"
+          secret:
+            secretName: {{ .Values.tls.clientSecretRef.credentialName }}
+        {{- else if .Values.tls.certsPath }}
+        - name: "certs"
+          hostPath:
+            path: {{ .Values.tls.certsPath }}
+        {{- else }}
+        - name: "certs"
+          secret:
+            secretName: {{ template "cbur.fullname" . }}-client-srt
+        {{- end  }}
+        {{- end  }}
+{{ include "cbur.tmpemptydirvolume" . | indent 8 }}
+            sizeLimit: {{ index .Values.avamar.resources.limits "ephemeral-storage" | quote }}
+{{- end }}

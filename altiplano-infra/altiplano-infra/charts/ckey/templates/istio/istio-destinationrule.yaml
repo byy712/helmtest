@@ -1,0 +1,32 @@
+{{- include "ckey.isTlsExternalCertViaCertManager" . -}}
+{{ $firstGateway := (first .Values.istio.gateways) }}
+{{ $isDedicatedGwInSimple:= and $firstGateway.enabled (ne $firstGateway.tls.mode "PASSTHROUGH") }}
+{{ $isSharedGwInSimple := (.Values.istio.sharedHttpGateway.name) }}
+{{- if and .Values.istio.enabled .Values.httpsPort (or $isDedicatedGwInSimple $isSharedGwInSimple) -}}
+apiVersion: networking.istio.io/v1alpha3
+kind: DestinationRule
+metadata:
+  name: {{ template "ckey.fullName" . }}-mlts-dr-ckey
+  annotations:
+    {{- include "ckey.customAnnotations" (tuple .Values.global.annotations) | indent 4 }}
+  labels:
+    app: {{ template "ckey.fullName" . }}
+    chart: "{{ .Chart.Name }}-{{ .Chart.Version }}"
+    release: "{{ .Release.Name }}"
+    heritage: "{{ .Release.Service }}"
+    {{- include "ckey.customLabels" (tuple .Values.global.labels ) | indent 4 }}
+    {{- include "ckey.commonLabels" . | indent 4 }}
+spec:
+  host: {{ template "ckey.fullName" . }}.{{ .Release.Namespace }}.svc.{{ .Values.clusterDomain }}
+  trafficPolicy: {{ .Values.istio.drTrafficPolicy | toYaml | nindent 4 }}
+    portLevelSettings:
+    - port:
+        number: {{ .Values.httpsPort }}
+      tls:
+        mode: SIMPLE
+        {{- if and (.Values.istio.drCredentialName) (eq .Values.tls.certManager.isTlsExternalCertViaCertManager false) }}
+        credentialName: {{ .Values.istio.drCredentialName }}
+        {{- else if and (eq .Values.tls.certManager.isTlsExternalCertViaCertManager true) (eq (include "ckey.certManagerCheck" . ) "true" ) }}
+        credentialName: {{ template "ckey.fullName" . }}-server-cert-istio
+        {{ end }}
+{{- end -}}

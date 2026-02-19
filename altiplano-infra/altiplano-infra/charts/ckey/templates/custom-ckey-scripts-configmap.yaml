@@ -1,0 +1,29 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ template "ckey.fullName" . }}-custom-ckey-scripts
+  annotations:
+    {{- include "ckey.customAnnotations" (tuple .Values.global.annotations) | indent 4 }}
+  labels:
+    app: {{ template "ckey.fullName" . }}
+    release: "{{ .Release.Name }}"
+    heritage: "{{ .Release.Service }}"
+    {{- include "ckey.customLabels" (tuple .Values.global.labels ) | indent 4 }}
+    {{- include "ckey.commonLabels" . | indent 4 }}
+data:
+  keycloak-custom-script.sh: |
+    # Install extension-jar and theme
+{{- range .Values.customProviders }}
+{{- if eq .type "extension-jar" }}
+{{- range .resources }}
+    cp -R /customProviders/extension-jar/{{ . }} /tmp/opt/keycloak/providers/
+{{- end }}
+{{- else if eq .type "theme" }}
+{{- range .resources }}
+    cp -R /customProviders/themes/{{ . }} /tmp/opt/keycloak/themes/
+    (cd  /tmp/opt/keycloak/themes/ && unzip /tmp/opt/keycloak/themes/{{ . }} && rm {{ . }})
+{{- end }}
+{{- end }}
+{{- end }}
+
+{{ .Values.customPreStartScript | indent 4 }}

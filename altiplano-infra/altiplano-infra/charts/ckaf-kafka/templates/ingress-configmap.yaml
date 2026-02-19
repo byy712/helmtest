@@ -1,0 +1,33 @@
+# Render config map only in case of istio enabled env, till the support of istio
+# is provided for TransportIngress CRD.
+{{- if and (eq .Values.ingress.enableExternalAccess true) (eq .Values.ingress.type "IngressConfigMap") }}
+{{- $replicas := .Values.Replicas | int }}
+{{- $hostName := include "ckaf-kafka.statefulset" . }}
+{{- $root := . }}
+{{- $releaseNamespace :=  .Release.Namespace }}
+{{- $chartName :=  .Chart.Name }}
+{{- $releaseName := .Release.Name }}
+{{- $chartVersion := .Chart.Version }}
+{{- $partOf := .Values.partOf }}
+{{- $managedBy := .Values.managedBy }}
+{{- $externalListeners := .Values.ingress.externalListeners }}
+{{- range $extlistener := $externalListeners }}
+{{- $citmName :=  required "A valid citm configmap prefix name is needed." (tpl ($extlistener.IngressConfigMap.citmPrefixName) $) }}
+{{- range $replica := until $replicas }}
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ $citmName }}-tcp-{{ (tpl ($extlistener.name | lower) $) }}-{{ $replica }}
+  labels:
+{{ include "ckaf-kafka.commonLabels" $root | indent 4 }}
+{{- include "csf-common-lib.v1.customLabels" (tuple $root.Values.global.labels) | indent 4 }}
+  annotations:
+{{- include "csf-common-lib.v1.customAnnotations" (tuple $root.Values.global.annotations) | indent 4 }}
+  namespace: {{ $releaseNamespace }}
+data:
+  {{- $externalListenerPort := add $extlistener.startPortRangeOnEdgeNode $replica }}
+  {{ $externalListenerPort }}: {{ $releaseNamespace }}/{{ $hostName }}-{{ $replica }}-broker-external:{{ $externalListenerPort }}:STREAM-RESPONSE=2,NODE-PORT={{ $externalListenerPort }}
+{{- end }}
+{{- end }}
+{{- end }}

@@ -1,0 +1,629 @@
+# valuesModelG.yaml is used for,
+#  -------------------
+# | Deployment scale  |
+#  -------------------
+# | 2M subscribers   |
+#  -------------------
+# non-HA,non-slicing AAC Variant deployment with this model requires following footprint,
+#  --------------------------------------------------
+# |   vCPU  |  Memory (GB)  | (Shared) Storage (GB)  |
+#  --------------------------------------------------
+# |   248   |    710        |          9150          |
+#  --------------------------------------------------
+#
+#***The above information is for a quick reference, for more information please refer to the NOKIA documentation***
+
+# Below are configuration for various subcharts
+#
+altiplano-indexsearch:
+  bssc-indexsearch:
+    initContainer:
+      resources:
+        limits:
+          ephemeral-storage: 10Gi
+    cbur:
+      cbura:
+        resources:
+          limits:
+            cpu: 2
+            memory: 2Gi
+          requests:
+            cpu: 500m
+            memory: 1Gi
+    manager:
+      resources:
+        limits:
+          cpu: "1"
+          ephemeral-storage: 10Gi
+          memory: "2Gi"
+        requests:
+          cpu: "500m"
+          memory: "1Gi"
+      java_opts: "-Xms1g -Xmx1g -Dlog4j2.formatMsgNoLookups=true"
+
+    client:
+      replicas: 1
+      resources:
+        limits:
+          cpu: "5"
+          ephemeral-storage: 10Gi
+          memory: "10Gi"
+        requests:
+          cpu: "3"
+          memory: "5Gi"
+      java_opts: "-Xms6g -Xmx6g -Dlog4j2.formatMsgNoLookups=true"
+      processors: "8"
+
+    data:
+      replicas: 3
+      resources:
+        limits:
+          cpu: "8"
+          ephemeral-storage: 10Gi
+          memory: 22Gi
+        requests:
+          cpu: "4"
+          memory: "10Gi"
+      java_opts: "-Xms10g -Xmx10g -Dlog4j2.formatMsgNoLookups=true"
+      processors: "8"
+
+    jobs:
+      secAdminUpgradeJob:
+        resources:
+          requests:
+            cpu: 200m
+            memory: 500Mi
+          limits:
+            cpu: 500m
+            memory: 1Gi
+
+    extraConfig:
+      config_yml: |-
+        search.max_open_scroll_context: 1000
+
+  bssc-fluentd:
+    fluentd:
+      init_resources:
+        limits:
+          ephemeral-storage: 10Gi
+      resources:
+        requests:
+          cpu: 0.5
+          memory: 1Gi
+        limits:
+          cpu: 1
+          ephemeral-storage: 10Gi
+          memory: 2Gi
+
+  bssc-dashboards:
+    dashboards:
+      resources:
+        requests:
+          cpu: 0.5
+          memory: 1Gi
+        limits:
+          cpu: 1
+          memory: 2Gi
+          ephemeral-storage: 10Gi
+    initContainer:
+      resources:
+        limits:
+          ephemeral-storage: 10Gi
+
+altiplano-mariadb:
+  cbur:
+    resources:
+      limits:
+        cpu: 2
+        memory: 2Gi
+      requests:
+        cpu: 1
+        memory: 1Gi
+  mariadb:
+    ## Resource QOS (per MariaDB container)
+    resources:
+      requests:
+        memory: 10Gi
+        cpu: 3
+      limits:
+        memory: 12Gi
+        cpu: 5 ## A customized mysqld.conf to import
+        ephemeral-storage: 10Gi
+    ## metrics
+    metrics:
+      resources:
+        requests:
+          memory: 256Mi
+          cpu: 250m
+        limits:
+          memory: 256Mi
+          cpu: 250m
+
+    mysqld_site_conf: |-
+      [mysqld]
+      version = 24.6.1-REL_256-altiplano-infra-MariaDB
+      skip-host-cache
+      skip-name-resolve
+      datadir		= /mariadb/data
+      lc_messages_dir	= /usr/share/mysql
+      lc_messages	= en_US
+      skip-external-locking
+      #
+      # * Fine Tuning
+      #
+      max_connections		= 1000
+      connect_timeout		= 5
+      wait_timeout		= 1800
+      max_allowed_packet	= 100M
+      thread_cache_size       = 128
+      sort_buffer_size	= 4M
+      bulk_insert_buffer_size	= 16M
+      tmp_table_size		= 32M
+      max_heap_table_size	= 32M
+      #
+      # * MyISAM
+      #
+      # This replaces the startup script and checks MyISAM tables if needed
+      # the first time they are touched. On error, make copy and try a repair.
+      myisam_recover_options = BACKUP
+      key_buffer_size		= 128M
+      #open-files-limit	= 2000
+      table_open_cache	= 400
+      myisam_sort_buffer_size	= 512M
+      concurrent_insert	= 2
+      read_buffer_size	= 2M
+      read_rnd_buffer_size	= 1M
+      #
+      # * Query Cache Configuration
+      #
+      # Cache only tiny result sets, so we can fit more in the query cache.
+      query_cache_limit		= 128K
+      query_cache_size		= 64M
+      # for more write intensive setups, set to DEMAND or OFF
+      #query_cache_type		= DEMAND
+      #
+      # * Logging and Replication
+      #
+      # Both location gets rotated by the cronjob.
+      # Be aware that this log type is a performance killer.
+      # As of 5.1 you can enable the log at runtime!
+      #general_log_file        = /var/log/mysql/mysql.log
+      #general_log             = 1
+      #
+      # Error logging goes to syslog due to /etc/mysql/conf.d/mysqld_safe_syslog.cnf.
+      #
+      # we do want to know about network errors and such
+      #log_warnings		= 2
+      #
+      # Enable the slow query log to see queries with especially long duration
+      #slow_query_log[={0|1}]
+      slow_query_log_file	= /var/log/mysql/mariadb-slow.log
+      long_query_time = 10
+      #log_slow_rate_limit	= 1000
+      #log_slow_verbosity	= query_plan
+
+      #log-queries-not-using-indexes
+      #log_slow_admin_statements
+      #
+      # The following can be used as easy to replay backup logs or for replication.
+      # note: if you are setting up a replication slave, see README.Debian about
+      #       other settings you may need to change.
+      #server-id		= 1
+      #report_host		= master1
+      #auto_increment_increment = 2
+      #auto_increment_offset	= 1
+      #log_bin			= /var/log/mysql/mariadb-bin
+      #log_bin_index		= /var/log/mysql/mariadb-bin.index
+      # not fab for performance, but safer
+      #sync_binlog		= 1
+      expire_logs_days	= 1
+      max_binlog_size         = 100M
+      # slaves
+      #relay_log		= /var/log/mysql/relay-bin
+      #relay_log_index	= /var/log/mysql/relay-bin.index
+      #relay_log_info_file	= /var/log/mysql/relay-bin.info
+      #log_slave_updates
+      #read_only
+      #
+      # If applications support it, this stricter sql_mode prevents some
+      # mistakes like inserting invalid dates etc.
+      #sql_mode		= NO_ENGINE_SUBSTITUTION,TRADITIONAL
+      #
+      # * InnoDB
+      #
+      # InnoDB is enabled by default with a 10MB datafile in /var/lib/mysql/.
+      # Read the manual for more InnoDB related options. There are many!
+      default_storage_engine	= InnoDB
+      # you can't just change log file size, requires special procedure
+      #innodb_log_file_size	= 50M
+      innodb_buffer_pool_size	= 8192M
+      innodb_log_buffer_size	= 8M
+      innodb_file_per_table	= 1
+      innodb_open_files	= 400
+      innodb_io_capacity	= 400
+      innodb_flush_method	= O_DIRECT
+      innodb_buffer_pool_instances	= 8
+      innodb_read_only_compressed = OFF
+      tls_version = TLSv1.2,TLSv1.3
+
+altiplano-sso:
+  customJavaOpts: -Xmx2048m -Xms2048m -Djdk.tls.ephemeralDHKeySize=2048 -Dlog4j2.formatMsgNoLookups=true
+  resources:
+    requests:
+      cpu: 2
+      memory: 2500Mi
+    limits:
+      cpu: 3
+      memory: 3500Mi
+
+altiplano-kafka:
+  #enabled: true
+  Replicas: 1
+  resources:
+    requests:
+      cpu: 0.5
+      memory: 5G
+    limits:
+      cpu: 2
+      memory: 8Gi
+  OffsetsTopicReplicationFactor: "1"
+  MessageMaxBytes: "314572800"
+  KafkaHeapOpts: "-Xmx4096m -Xms4096m"
+  configurationOverrides:
+    ssl.endpoint.identification.algorithm: "" #To skip hostname verification in ssl
+    offsets.retention.minutes: "1440"
+
+  JmxExporter:
+    jmxResources:
+      resources:
+        requests:
+          cpu: 10m
+          memory: 10Mi
+        limits:
+          cpu: 100m
+          memory: 100Mi
+
+  ckaf-zookeeper:
+    servers: 1
+    resources:
+      requests:
+        cpu: 0.1
+        memory: 1Gi
+      limits:
+        cpu: 1
+        memory: 2Gi
+    heap: "1G"
+    JmxExporter:
+      jmxResources:
+        resources:
+          requests:
+            cpu: 10m
+            memory: 10Mi
+          limits:
+            cpu: 100m
+            memory: 100Mi
+    zk_fluentd_sidecar:
+      resources:
+        limits:
+          cpu: 100m
+          memory: 512Mi
+        requests:
+          cpu: 10m
+          memory: 256Mi
+
+altiplano-grafana:
+  resources:
+    requests:
+      cpu: 0.5
+      memory: 256Mi
+    limits:
+      cpu: 1
+      memory: 1Gi
+  grafanaUtil:
+    resources:
+      limits:
+        cpu: 100m
+        memory: 64Mi
+      requests:
+        cpu: 10m
+        memory: 32Mi
+  sidecar:
+    resources:
+      limits:
+        cpu: 100m
+        memory: 256Mi
+      requests:
+        cpu: 50m
+        memory: 128Mi
+
+altiplano-webdav:
+  cbur:
+    cbura:
+      resources:
+        limits:
+          cpu: 2
+          memory: 2Gi
+        requests:
+          cpu: 500m
+          memory: 1Gi
+  resources:
+    requests:
+      cpu: 600m
+      memory: 800Mi
+    limits:
+      cpu: 2
+      memory: 4Gi
+
+altiplano-redis:
+  server:
+    resources:
+      requests:
+        memory: 15Gi
+        cpu: 1000m
+      limits:
+        memory: 20Gi
+        cpu: 3000m
+  admin:
+    resources:
+      requests:
+        memory: 256Mi
+        cpu: 500m
+      limits:
+        memory: 256Mi
+        cpu: 500m
+
+altiplano-opentsdb-cluster:
+  altiplano-opentsdb:
+    env:
+      init:
+        TSD_UID_LRU_ID_SIZE: "10000000"
+        TSD_UID_LRU_NAME_SIZE: "70000000"
+        TSDB_TTL: "604800"
+      open:
+        JVMARGS: "-XX:+UseG1GC -Xms30G -Xmx30G -XX:MaxGCPauseMillis=1000 -XX:ActiveProcessorCount=6 -XX:ConcGCThreads=4 --add-opens java.base/java.nio=ALL-UNNAMED --add-opens java.security.jgss/sun.security.krb5=ALL-UNNAMED"
+    resources:
+      requests:
+        cpu: 2
+        memory: 37Gi
+      limits:
+        cpu: 6
+        memory: 40Gi
+
+  altiplano-opentsdb-av:
+    enabled: true
+    startupProbe:
+      initialDelaySeconds: 10
+      periodSeconds: 20
+      timeoutSeconds: 10
+      failureThreshold: 15
+    livenessProbe:
+      initialDelaySeconds:
+        k8sversiongt118: 20
+        k8sversionlt118: 120
+      periodSeconds: 20
+      timeoutSeconds: 10
+      failureThreshold: 6
+    readinessProbe:
+      initialDelaySeconds: 20
+      periodSeconds: 20
+      timeoutSeconds: 10
+      failureThreshold: 6
+    env:
+      init:
+        TSD_UID_LRU_ID_SIZE: "6000000"
+        TSD_UID_LRU_NAME_SIZE: "36000000"
+        TSDB_TTL: "604800"
+      open:
+        JVMARGS: "-XX:+UseG1GC -Xms15360m -Xmx15360m -XX:MaxGCPauseMillis=1000 -XX:ActiveProcessorCount=6 -XX:ConcGCThreads=4 --add-opens java.base/java.nio=ALL-UNNAMED --add-opens java.security.jgss/sun.security.krb5=ALL-UNNAMED"
+    resources:
+      requests:
+        cpu: 2
+        memory: 15Gi
+      limits:
+        cpu: 6
+        memory: 19Gi
+
+  altiplano-hbase:
+    hbase:
+      master:
+        env:
+          HBASE_HEAPSIZE: 2500M
+          HBASE_OPTS_GC_SETTING: "-XX:+UseG1GC"
+        resources:
+          requests:
+            memory: 1Gi
+            cpu: 10m
+          limits:
+            memory: 2Gi
+            cpu: 1000m
+      regionServer:
+        env:
+          HBASE_HEAPSIZE: 16G
+          HBASE_OPTS_GC_SETTING: "-XX:+UseG1GC"
+        replicas: 5
+        resources:
+          requests:
+            memory: 12Gi
+            cpu: 3000m
+          limits:
+            memory: 18Gi
+            cpu: 6000m
+    cbur:
+      cbura:
+        resources:
+          limits:
+            cpu: 2
+            memory: 2Gi
+          requests:
+            cpu: 1
+            memory: 1Gi
+
+  altiplano-hdfs:
+    nameNode:
+      resources:
+        requests:
+          memory: 500Mi
+          cpu: 10m
+        limits:
+          memory: 1000Mi
+          cpu: 1000m
+    dataNode:
+      env:
+        HADOOP_HEAPSIZE: 4096M
+      resources:
+        requests:
+          memory: 500Mi
+          cpu: 500m
+        limits:
+          memory: 10Gi
+          cpu: 2000m
+
+altiplano-ingress:
+  metrics: true
+  controller:
+    config:
+      max-worker-connections: 60000
+    resources:
+      limits:
+        cpu: 0.5
+        memory: 1Gi
+      requests:
+        cpu: 250m
+        memory: 256Mi
+  default404:
+    resources:
+      requests:
+        memory: 10Mi
+        cpu: 1m
+      limits:
+        memory: 64Mi
+        cpu: 10m
+
+altiplano-pts:
+  pushgateway:
+    resources:
+      limits:
+        cpu: 2
+        memory: 1Gi
+      requests:
+        cpu: 500m
+        memory: 128Mi
+  server:
+    resources:
+      limits:
+        cpu: 2
+        memory: 10Gi
+      requests:
+        cpu: 500m
+        memory: 3Gi
+  configmapReload:
+    resources:
+      limits:
+        cpu: 100m
+        memory: 32Mi
+      requests:
+        cpu: 10m
+        memory: 32Mi
+  kubeStateMetrics:
+    resources:
+      limits:
+        cpu: 500m
+        memory: 512Mi
+      requests:
+        cpu: 10m
+        memory: 16Mi
+  nodeExporter:
+    resources:
+      limits:
+        cpu: 500m
+        memory: 512Mi
+      requests:
+        cpu: 100m
+        memory: 30Mi
+  cproUtil:
+    resources:
+      limits:
+        cpu: 100m
+        memory: 200Mi
+      requests:
+        cpu: 10m
+        memory: 32Mi
+
+altiplano-cbur:
+  resources:
+    limits:
+      cpu: 1
+      memory: 2Gi
+    requests:
+      cpu: 500m
+      memory: 1Gi
+
+  k8swatcher:
+    resources:
+      limits:
+        cpu: 500m
+        memory: 500Mi
+      requests:
+        cpu: 200m
+        memory: 200Mi
+
+  celery:
+    resources:
+      limits:
+        cpu: 1
+        memory: 4Gi
+      requests:
+        cpu: 500m
+        memory: 2Gi
+
+altiplano-oauth2-proxy:
+  resources:
+    limits:
+      cpu: 200m
+      memory: 300Mi
+    requests:
+      cpu: 100m
+      memory: 200Mi
+
+altiplano-alarms-indexsearch:
+  bssc-indexsearch:
+    manager:
+      resources:
+        limits:
+          cpu: 1
+          memory: 2Gi
+        requests:
+          cpu: 500m
+          memory: 1Gi
+
+    client:
+      resources:
+        limits:
+          cpu: 1
+          memory: 10Gi
+        requests:
+          cpu: 500m
+          memory: 5Gi
+
+    data:
+      resources:
+        limits:
+          cpu: 2
+          memory: 10Gi
+        requests:
+          cpu: 500m
+          memory: 8Gi
+
+  bssc-dashboards:
+    dashboards:
+      resources:
+        limits:
+          cpu: 1
+          memory: 2Gi
+        requests:
+          cpu: 500m
+          memory: 1Gi
+
+altiplano-installation-info:
+  installationStatus:
+    valuesModelG: installed

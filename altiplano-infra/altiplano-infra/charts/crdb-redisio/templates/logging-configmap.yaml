@@ -1,0 +1,38 @@
+{{- include "crdb-redisio.init" . -}}
+{{- if or (eq (include "crdb-redisio.logging.syslog_enabled" .) "true") (include "crdb-redisio.logging.extension" . | fromJson) }}
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "csf-common-lib.v3.resourceName" (tuple . "configmap" "flexlog-config") }}
+  labels:
+    {{- include "crdb-redisio.labels" (tuple . "configmap") | nindent 4 }}
+  annotations:
+    {{- include "crdb-redisio.annotations" (tuple . "configmap") | nindent 4 }}
+data:
+{{- if eq (include "crdb-redisio.logging.syslog_enabled" .) "true" }}
+  log4cxx.property.helm: |
+    log4j.rootLogger=INFO, consoleAppender, rootSyslogAppender
+    log4j.appender.consoleAppender=org.apache.log4j.ConsoleAppender
+    log4j.appender.consoleAppender.layout=org.apache.log4j.PatternLayout
+    log4j.appender.consoleAppender.Encoding=UTF-8
+    log4j.appender.rootSyslogAppender=org.apache.log4j.net.SyslogAppender
+    log4j.appender.rootSyslogAppender.Facility={{- coalesce .Values.unifiedLogging.syslog.facility .Values.global.unifiedLogging.syslog.facility }}
+    log4j.appender.rootSyslogAppender.Encoding=UTF-8
+    log4j.appender.rootSyslogAppender.Host={{ coalesce .Values.unifiedLogging.syslog.host .Values.global.unifiedLogging.syslog.host }}
+    log4j.appender.rootSyslogAppender.Port={{ coalesce .Values.unifiedLogging.syslog.port .Values.global.unifiedLogging.syslog.port }}
+    log4j.appender.rootSyslogAppender.Protocol={{ include "crdb-redisio.logging.syslog_protocol" . }}
+  {{- if eq (include "crdb-redisio.logging.syslog_protocol" .) "SSL" }}
+    log4j.appender.rootSyslogAppender.Ssl.TimeoutMillis={{ include "crdb-redisio.logging.syslog_timeout" . }}
+    log4j.appender.rootSyslogAppender.Ssl.CloseRequestType={{ include "crdb-redisio.logging.syslog_closeReqType" .}}
+    log4j.appender.rootSyslogAppender.Ssl.TrustStore.location=/var/run/flexlog-certs/truststore/truststore.p12
+    log4j.appender.rootSyslogAppender.Ssl.TrustStore.passwordFile=/var/run/flexlog-certs/truststore-pass/truststore.pass
+    log4j.appender.rootSyslogAppender.Ssl.KeyStore.location=/var/run/flexlog-certs/keystore/keystore.p12
+    log4j.appender.rootSyslogAppender.Ssl.KeyStore.passwordFile=/var/run/flexlog-certs/keystore-pass/keystore.pass
+  {{- end }}
+{{- end }}
+{{- if include "crdb-redisio.logging.extension" . | fromJson }}
+  extension: |
+    {{ include "crdb-redisio.logging.extension" . }}
+{{- end }}
+{{- end }}

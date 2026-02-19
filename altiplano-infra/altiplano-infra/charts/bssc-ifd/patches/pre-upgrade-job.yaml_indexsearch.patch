@@ -1,0 +1,10 @@
+--- bssc-ifd-13.0.1/bssc-ifd/charts/bssc-indexsearch/templates/pre-upgrade-job.yaml	2023-12-06 18:41:43.000000000 +0530
++++ bssc-ifd-patch/bssc-ifd/charts/bssc-indexsearch/templates/pre-upgrade-job.yaml	2023-12-21 09:39:19.269812000 +0530
+@@ -139,6 +139,7 @@
+   template:
+     metadata:
+       labels:
++        altiplano-role: {{ .Values.accessRoleLabel }}
+ {{- include "bssc-indexsearch.csf-toolkit-helm.labels" (tuple . .Values.custom.hookJobs.pod.labels) | indent 8 }}
+ {{- include "bssc-indexsearch.commonLabels" (tuple .) | indent 8 }}
+       annotations:

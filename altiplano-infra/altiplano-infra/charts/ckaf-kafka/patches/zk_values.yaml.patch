@@ -1,0 +1,47 @@
+--- ckaf-kafka-8.0.2-origin/charts/ckaf-zookeeper/values.yaml	2024-02-20 15:47:14.000000000 +0530
++++ ckaf-kafka-8.0.2-nokia-patch-1/charts/ckaf-zookeeper/values.yaml	2024-03-07 15:50:20.899970019 +0530
+@@ -108,6 +108,8 @@
+ ipFamilyPolicy:
+ ipFamilies: []
+ 
++accessRoleLabel: internal-access
++
+ imagePullSecrets: 
+ imageRepo: ckaf/ckaf-zookeeper
+ imageTag: "9.0.2-rocky8-jre17-3.6.4-70"
+@@ -119,6 +121,15 @@
+ #User can configure the precreated SA specifically for this chart here.
+ serviceAccountName:
+ 
++zk_fluentd_sidecar:
++  image:
++    name: "fnms-fluent"
++    tag: "nokia-3.1.4"
++    pullPolicy: IfNotPresent
++  securityContext:
++    runAsUser: 1000
++    runAsGroup: 997
++
+ # Configure PodDisruptionBudget here
+ # Specify the minimum number of pods that must be available after the eviction, even in the absence of the evicted pod.
+ # Either set minAvailable or maxUnavailable but not both. Values can be numeric like 1,2,3 or percentage like 50%.(Float percent is not valid )
+@@ -129,7 +140,7 @@
+   minAvailable: 2
+ 
+ # Enable this flag to set default pod CPU resources limit in all containers. Default value is set to false
+-enableDefaultCpuLimits: 
++enableDefaultCpuLimits: true
+ #unifiedLogging.extension has precedence over global.unifiedLogging.extension
+ #extension accepts key: value pair
+ #example:
+@@ -187,6 +198,10 @@
+     zkTransactionLogBackup: 2Gi
+     cburaTmpVolume: 1Gi
+ 
++persistence:
++  ## If true, use a Persistent Volume Claim, If false, use emptyDir
++  enabled: true
++
+ #Common lables for k8s objects. Set below to configure label app.kubernetes.io/part-of:
+ partOf: ckaf-kafka
+ managedBy: Helm

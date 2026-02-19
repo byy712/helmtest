@@ -1,0 +1,93 @@
+{{- if .Values.server.enabled }}
+{{- include "cpro.istio.cproInitIstio" . }}
+apiVersion: v1
+kind: Service
+metadata:
+  annotations:
+    prometheus.io/path: {{ template "cpro.server.routePrefixURL" . }}/metrics
+    prometheus.io/scheme: {{ template "cpro.prometheus.server.scheme" . }}
+{{- include "cpro.labelsOrAnnotations" (tuple .Values.server.service.annotationsForScrape .Values.server.service.annotations .Values.global.annotations) | indent 4}}
+  labels:
+    {{- include "cpro.app.labels.v3" ( dict "root" . "context" .Values.server ) | nindent 4 }}
+{{- include "cpro.labelsOrAnnotations" (tuple .Values.server.service.labels .Values.global.labels) | indent 4}}
+  {{- if .Values.ha.enabled }}
+  name: {{ template "cpro.prometheus.server.fullname" . }}-ext
+  {{- else }}
+  name: {{ template "cpro.prometheus.server.fullname" . }}
+  {{- end }}
+spec:
+{{- if .Values.server.service.clusterIP }}
+  clusterIP: {{ .Values.server.service.clusterIP | quote }}
+{{- end }}
+{{- if .Values.server.service.externalIPs }}
+  externalIPs:
+{{ toYaml .Values.server.service.externalIPs | indent 4 }}
+{{- end }}
+{{- if .Values.server.service.loadBalancerIP }}
+  loadBalancerIP: {{ .Values.server.service.loadBalancerIP }}
+{{- end }}
+{{- if .Values.server.service.loadBalancerSourceRanges }}
+  loadBalancerSourceRanges:
+  {{- range $cidr := .Values.server.service.loadBalancerSourceRanges }}
+    - {{ $cidr }}
+  {{- end }}
+{{- end }}
+  ports:
+    - name: tcp-http
+      port: {{ .Values.server.service.servicePort }}
+      protocol: TCP
+      targetPort: tcp-metrics
+    {{- if (and (eq .Values.server.service.type "NodePort") (not (empty .Values.server.service.nodePort))) }}  
+      nodePort: {{ .Values.server.service.nodePort }}
+    {{- end }}
+      #appProtocol: {{ template "cpro.prometheus.server.scheme" }}
+  {{- include "cpro.dualStack.ipFamilyPolicy.config" ( dict "root" . "context" .Values.server )  | indent 2 }}
+  {{- include "cpro.dualStack.ipFamilies.config" ( dict "root" . "context" .Values.server )| indent 2 }}
+  selector:
+    app: {{ template "cpro.prometheus.name" . }}
+    component: "{{ .Values.server.name }}"
+    release: {{ .Release.Name }}
+  type: "{{ .Values.server.service.type }}"
+---
+{{- if or .Values.ha.enabled $.istio.enabled .Values.includeWorkloadInIstioMesh }}
+apiVersion: v1
+kind: Service
+metadata:
+  annotations:
+{{- include "cpro.labelsOrAnnotations" (tuple .Values.server.service.annotations .Values.global.annotations) | indent 4}}
+  labels:
+    {{- include "cpro.app.labels.v3" ( dict "root" . "context" .Values.server ) | nindent 4 }}
+{{- include "cpro.labelsOrAnnotations" (tuple .Values.server.service.labels .Values.global.labels) | indent 4}}
+## int has been appended to fix immutable clusterip issue in helm3 during upgrade
+## This will be appended for headless service, in HA mode
+  name: {{ template "cpro.prometheus.server.fullname" . }}-int
+spec:
+{{- if .Values.server.service.externalIPs }}
+  externalIPs:
+{{ toYaml .Values.server.service.externalIPs | indent 4 }}
+{{- end }}
+{{- if .Values.server.service.loadBalancerIP }}
+  loadBalancerIP: {{ .Values.server.service.loadBalancerIP }}
+{{- end }}
+{{- if .Values.server.service.loadBalancerSourceRanges }}
+  loadBalancerSourceRanges:
+  {{- range $cidr := .Values.server.service.loadBalancerSourceRanges }}
+    - {{ $cidr }}
+  {{- end }}
+{{- end }}
+  ports:
+    - name: tcp-http
+      port: {{ .Values.server.service.webPort }}
+      protocol: TCP
+      targetPort: tcp-metrics
+      #appProtocol: {{ template "cpro.prometheus.server.scheme" }}
+  {{- include "cpro.dualStack.ipFamilyPolicy.config" ( dict "root" . "context" .Values.server )  | indent 2 }}
+  {{- include "cpro.dualStack.ipFamilies.config" ( dict "root" . "context" .Values.server )| indent 2 }}
+  selector:
+    app: {{ template "cpro.prometheus.name" . }}
+    component: "{{ .Values.server.name }}"
+    release: {{ .Release.Name }}
+  type: ClusterIP
+  clusterIP: None
+{{- end }}
+{{- end }}

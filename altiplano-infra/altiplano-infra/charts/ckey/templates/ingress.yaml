@@ -1,0 +1,110 @@
+# Below Check will assure that kubernetes ingress resource will not be created when istio is enabled and istio-gateway/sharedHttpGateway is configured. Also if user wants to use kubernetes ingress inconjunction with istio, then this check will make sure right configurations are done from user.
+{{ $firstGateway := (first .Values.istio.gateways) }}
+{{- if and (eq .Values.ingress.enabled true) (eq .Values.istio.enabled true) (or ($firstGateway.enabled) (.Values.istio.sharedHttpGateway.name)) -}}
+{{- fail "Kubernetes Ingress must be disabled when both istio and istio's dedicated gateway or sharedgateway is configured" -}}
+{{- end }}
+{{- if .Values.ingress.enabled -}}
+{{- include "ckey.isTlsExternalCertViaCertManager" . -}}
+{{- $servicePort := .Values.ingress.keycloakServicePort -}}
+{{- $servicePath := .Values.httpRelativePath | default "" -}}
+{{- $keycloakHttpPort := .Values.httpPort | quote -}}
+{{- $keycloakHttpsPort := .Values.httpsPort | quote -}}
+{{- $frontendURL := regexReplaceAll "(https?://)" .Values.frontendURL "" -}}
+{{- $matchFound := false }}
+{{- if and (ne (quote $servicePort) $keycloakHttpsPort) (ne (quote $servicePort) $keycloakHttpPort) -}}
+{{- fail "Keycloak ingress service Port should be same as httpsPort or httpPort" -}}
+{{- end }}
+{{- if $keycloakHttpPort }}
+{{- if and ( eq (quote $servicePort) $keycloakHttpPort ) ( ne ( .Values.kcProxy ) "edge") }}
+{{- fail "kcProxy mode should be edge when httpPort is equal to keycloak ingress service port" }}
+{{- end }}
+{{- end }}
+{{- if and .Values.ingress.hosts .Values.frontendURL -}}
+{{- range .Values.ingress.hosts }}
+{{- if hasPrefix . $frontendURL }}
+{{- $matchFound = true }}
+{{- end }}
+{{- end }}
+{{- if not $matchFound }}
+{{- fail (printf "Ingress.hosts value should match with the frontendURL") }}
+{{- end }}
+{{- end }}
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  annotations:
+    {{- if ( ne (quote $servicePort) $keycloakHttpPort) }}
+    nginx.ingress.kubernetes.io/backend-protocol: "HTTPS"
+    {{- end }}
+    #Below annotation to enable the tls communication between ckey and ingress.
+    #In passthrough mode directly ckey servers public cert will be visible and In edge mode in internal side https is absent
+
+{{- if and (eq (include "ckey.certManagerCheck" . ) "true" ) ( ne ( .Values.kcProxy ) "passthrough") ( ne ( .Values.kcProxy ) "edge") }}
+    nginx.ingress.kubernetes.io/proxy-ssl-secret: "{{ .Release.Namespace }}/{{ template "ckey.fullName" . }}-server-cert-ingress-internal"
+    {{- if eq (include "ckey.checkOcpRouteCondition" .) "true" }}
+    route.openshift.io/termination: "reencrypt"
+    route.openshift.io/destination-ca-certificate-secret: "{{ template "ckey.fullName" . }}-ocp-secret"
+    {{ end }}
+    {{ end }}
+  {{- range $key, $value := .Values.ingress.annotations }}
+    {{ $key }}: {{ $value | quote }}
+  {{- end }}
+    {{- include "ckey.customAnnotations" (tuple .Values.global.annotations) | indent 4 }}
+  labels:
+    app: {{ template "ckey.fullName" . }}
+    chart: "{{ .Chart.Name }}-{{ .Chart.Version }}"
+    release: "{{ .Release.Name }}"
+    heritage: "{{ .Release.Service }}"
+    {{- include "ckey.customLabels" (tuple .Values.global.labels ) | indent 4 }}
+    {{- include "ckey.commonLabels" . | indent 4 }}
+  name: {{ template "ckey.ingress.fullName" . }}
+spec:
+  {{ if .Values.ingress.ingressClassName }}
+  ingressClassName: {{ .Values.ingress.ingressClassName }}
+  {{ end }}
+  rules:
+  {{ $allowedPaths := .Values.ingress.allowedPaths }}
+  {{- if .Values.ingress.hosts -}}
+  {{- range .Values.ingress.hosts }}
+  - host: {{ . }}
+    http:
+      paths:
+      {{- range $allowedPaths }}
+      - path: {{ printf "%s%s" $servicePath (trimSuffix "/" .path) }}
+        pathType: {{ printf "%s" .type }}
+        backend:
+          service:
+            name: {{ template "ckey.fullName" $ }}
+            port:
+              number: {{ printf "%.0f" $servicePort }}
+      {{- end }}
+  {{- end }}
+  {{ else }}
+  - http:
+      paths:
+      {{- range $allowedPaths }}
+      - path: {{ printf "%s%s" $servicePath (trimSuffix "/" .path) }}
+        pathType: {{ printf "%s" .type }}
+        backend:
+          service:
+            name: {{ template "ckey.fullName" $ }}
+            port:
+              number: {{ printf "%.0f" $servicePort }}
+      {{- end }}
+  {{- end -}}
+  {{- if (eq .Values.tls.certManager.isTlsExternalCertViaCertManager true) }}
+  {{- if .Values.ingress.tls }}
+    {{- fail "If isTlsExternalCertViaCertManager is set to true then .Values.ingress.tls section must be commented out" }}
+  {{- else }}
+  tls:
+   - secretName: {{ template "ckey.fullName" . }}-server-cert-ingress-external
+     hosts:
+{{ tpl (toYaml .Values.ingress.hosts) . | indent 9 }}
+  {{- end }}
+  {{- else }}
+  {{- if .Values.ingress.tls }}
+  tls:
+{{ tpl (toYaml .Values.ingress.tls) . | indent 4 }}
+  {{- end }}
+  {{- end }}
+{{- end -}}

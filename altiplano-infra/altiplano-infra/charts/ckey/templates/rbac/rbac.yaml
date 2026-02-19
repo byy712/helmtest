@@ -1,0 +1,205 @@
+{{- if (and .Values.rbac.enabled (not .Values.global.serviceAccountName)) }}
+apiVersion: v1
+kind: ServiceAccount
+automountServiceAccountToken: false
+metadata:
+  name: {{ template "ckey.fullName" . }}-sa
+  namespace: "{{.Release.Namespace}}"
+  annotations:
+    {{- include "ckey.customAnnotations" (tuple .Values.global.annotations) | indent 4 }}
+  labels:
+    app: {{ template "ckey.fullName" . }}
+    heritage: {{ .Release.Service }}
+    release: {{ .Release.Name }}
+    {{- include "ckey.customLabels" (tuple .Values.global.labels ) | indent 4 }}
+    {{- include "ckey.commonLabels" . | indent 4 }}
+
+---
+kind: Role
+apiVersion: rbac.authorization.k8s.io/v1
+metadata:
+  namespace: "{{.Release.Namespace}}"
+  name: {{ template "ckey.fullName" . }}-role
+  annotations:
+    {{- include "ckey.customAnnotations" (tuple .Values.global.annotations) | indent 4 }}
+  labels:
+    app: {{ template "ckey.fullName" . }}
+    release: {{ .Release.Name }}
+    {{- include "ckey.customLabels" (tuple .Values.global.labels ) | indent 4 }}
+    {{- include "ckey.commonLabels" . | indent 4 }}
+rules:
+- apiGroups: [""]
+  resources: ["pods"]
+  verbs: ["get", "list", "delete"]
+- apiGroups: [""]
+  resources: ["configmaps"]
+  verbs: ["get", "list", "delete"]
+- apiGroups: [""]
+  resources: ["pods/exec"]
+  verbs: ["create"]
+- apiGroups: ["apps"]
+  resources: ["statefulsets"]
+  verbs: ["get", "list", "watch", "patch", "create", "delete"]
+- apiGroups: [""]
+  resources: ["services"]
+  verbs: ["get", "patch"]
+- apiGroups: [""]
+  resources: ["persistentvolumeclaims"]
+  verbs: ["get", "list", "delete", "patch"]
+- apiGroups: [""]
+  resources: ["secrets"]
+  verbs: ["get", "list", "delete"]
+- apiGroups: [""]
+  resources: ["pods/log"]
+  verbs: ["get"]
+- apiGroups: ["batch"]
+  resources: ["jobs"]
+  verbs: ["get", "list", "watch"]
+{{- if eq (include "ckey.certAPIexist" .) "true" }}
+- apiGroups: ["cert-manager.io"]
+  resources: ["certificates"]
+  verbs: ["get", "list","delete"]
+{{- end }}
+---
+kind: RoleBinding
+apiVersion: rbac.authorization.k8s.io/v1
+metadata:
+  name: {{ template "ckey.fullName" . }}-rolebinding
+  namespace: "{{.Release.Namespace}}"
+  annotations:
+    {{- include "ckey.customAnnotations" (tuple .Values.global.annotations) | indent 4 }}
+  labels:
+    app: {{ template "ckey.fullName" . }}
+    release: {{ .Release.Name }}
+    {{- include "ckey.customLabels" (tuple .Values.global.labels ) | indent 4 }}
+    {{- include "ckey.commonLabels" . | indent 4 }}
+subjects:
+- kind: ServiceAccount
+  name: {{ template "ckey.fullName" . }}-sa
+  namespace: "{{.Release.Namespace}}"
+  apiGroup: ""
+roleRef:
+  kind: Role
+  name: {{ template "ckey.fullName" . }}-role
+  apiGroup: rbac.authorization.k8s.io
+---
+{{- if and .Values.istio.enabled (eq .Values.istio.cni.enabled false) -}}
+{{- if (.Capabilities.APIVersions.Has "policy/v1beta1/PodSecurityPolicy") }}
+apiVersion: policy/v1beta1
+kind: PodSecurityPolicy
+metadata:
+  name: {{ template "ckey.fullName" . }}-istio-psp
+  namespace: {{ .Release.Namespace }}
+  annotations:
+    {{- include "ckey.customAnnotations" (tuple .Values.global.annotations) | indent 4 }}
+  labels:
+    app: {{ template "ckey.fullName" . }}
+    release: {{ .Release.Name }}
+    {{- include "ckey.customLabels" (tuple .Values.global.labels ) | indent 4 }}
+    {{- include "ckey.commonLabels" . | indent 4 }}
+spec:
+  privileged: true
+  allowedCapabilities:
+    - 'NET_ADMIN'
+    - 'NET_RAW'
+  fsGroup:
+    rule: RunAsAny
+  runAsUser:
+    rule: RunAsAny
+  seLinux:
+    rule: RunAsAny
+  supplementalGroups:
+    rule: RunAsAny
+  volumes:
+  - '*'
+ {{- end }}
+---
+kind: Role
+apiVersion: rbac.authorization.k8s.io/v1
+metadata:
+  name: {{ template "ckey.fullName" . }}-istio-role
+  namespace: {{ .Release.Namespace }}
+  annotations:
+    {{- include "ckey.customAnnotations" (tuple .Values.global.annotations) | indent 4 }}
+  labels:
+    app: {{ template "ckey.fullName" . }}
+    release: {{ .Release.Name }}
+    {{- include "ckey.customLabels" (tuple .Values.global.labels ) | indent 4 }}
+    {{- include "ckey.commonLabels" . | indent 4 }}
+rules:
+{{- if (.Capabilities.APIVersions.Has "policy/v1beta1/PodSecurityPolicy") }}
+- apiGroups: ["extensions"]
+  resourceNames: ["{{ template "ckey.fullName" . }}-istio-psp"]
+  resources: ["podsecuritypolicies"]
+  verbs: ["use"]
+{{- end }}
+- apiGroups: ["apps"]
+  resources: ["statefulsets"]
+  verbs: ["get","list"]
+---
+kind: RoleBinding
+apiVersion: rbac.authorization.k8s.io/v1
+metadata:
+  name: {{ template "ckey.fullName" . }}-istio-rolebinding
+  namespace: {{ .Release.Namespace }}
+  annotations:
+    {{- include "ckey.customAnnotations" (tuple .Values.global.annotations) | indent 4 }}
+  labels:
+    app: {{ template "ckey.fullName" . }}
+    release: {{ .Release.Name }}
+    {{- include "ckey.customLabels" (tuple .Values.global.labels ) | indent 4 }}
+    {{- include "ckey.commonLabels" . | indent 4 }}
+subjects:
+- kind: ServiceAccount
+  name: {{ template "ckey.fullName" . }}-sa
+  namespace: {{ .Release.Namespace }}
+  apiGroup: ""
+{{ if not .Values.global.brHookServiceAccountName }}
+- kind: ServiceAccount
+  name: {{ template "ckey.fullName" . }}-brhook-sa
+  namespace: {{ .Release.Namespace }}
+  apiGroup: ""
+{{ end }}
+{{ if not .Values.global.deletionServiceAccountName }}
+- kind: ServiceAccount
+  name: {{ template "ckey.fullName" . }}-delete-sa
+  namespace: {{ .Release.Namespace }}
+  apiGroup: ""
+{{ end }}
+{{ if not .Values.global.healingServiceAccountName }}
+- kind: ServiceAccount
+  name: {{ template "ckey.fullName" . }}-heal-sa
+  namespace: {{ .Release.Namespace }}
+  apiGroup: ""
+{{ end }}
+{{ if not .Values.global.isuServiceAccountName }}
+- kind: ServiceAccount
+  name: {{ template "ckey.fullName" . }}-isu-sa
+  namespace: {{ .Release.Namespace }}
+  apiGroup: ""
+{{ end }}
+{{ if not .Values.global.masterRealmServiceAccountName }}
+- kind: ServiceAccount
+  name: {{ template "ckey.fullName" . }}-master-realm-sa
+  namespace: {{ .Release.Namespace }}
+  apiGroup: ""
+{{ end }}
+{{ if not .Values.global.statefulServiceAccountName }}
+- kind: ServiceAccount
+  name: {{ template "ckey.fullName" . }}-stateful-sa
+  namespace: {{ .Release.Namespace }}
+  apiGroup: ""
+{{ end }}
+{{ if not .Values.global.resourceWatcherServiceAccountName }}
+- kind: ServiceAccount
+  name: {{ template "ckey.fullName" . }}-resource-watcher-sa
+  namespace: {{ .Release.Namespace }}
+  apiGroup: ""
+{{ end }}
+roleRef:
+  kind: Role
+  name: {{ template "ckey.fullName" . }}-istio-role
+  apiGroup: rbac.authorization.k8s.io
+---
+{{- end }}
+{{- end }}

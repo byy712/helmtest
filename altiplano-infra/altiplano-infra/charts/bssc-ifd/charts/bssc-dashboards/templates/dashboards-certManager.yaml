@@ -1,0 +1,19 @@
+{{- include "bssc-dashboards.isCertManagerEnable" . }}
+{{- if and (eq $.isCertManagerEnabled "true") (.Values.dashboards.certificate.enabled) ( not $.istio.enabled) }}
+{{- if eq (tpl (.Values.security.sensitiveInfoInSecret.enabled | toString ) .) "true" }}
+{{- if eq .Values.security.tls.secretRef.name "" }}
+apiVersion: {{ template "bssc-dashboards.apiVersionCertManager" . }}
+kind: Certificate
+metadata:
+  name: {{ template "bssc-dashboards.fullname" . }}-cert
+  namespace: {{ .Release.Namespace }}
+  labels:
+{{- include "bssc-dashboards.commonLabels" (tuple .  "dashboards" ) | indent 4 }}
+{{- include "bssc-dashboards.csf-toolkit-helm.labels" (tuple .) | nindent 4 }}
+  annotations:
+{{- include "bssc-dashboards.csf-toolkit-helm.annotations" (tuple .) | nindent 4 }}
+spec:
+{{- include "bssc-dashboards.certificateValues" (tuple . .Values.dashboards) | indent 2}}
+{{- end }}
+{{- end }}
+{{- end }}

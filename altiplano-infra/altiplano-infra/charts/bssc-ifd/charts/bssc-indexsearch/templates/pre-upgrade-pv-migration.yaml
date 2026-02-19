@@ -1,0 +1,251 @@
+##As BELK is replaced by BSSC in the asset and chart names, existing PVCs are migrated to new names in pre-upgrade so there is no loss of data on upgrade. Pre-upgrade-pv migration job calls pv-migrate.sh script where actual PV migration code is present. 
+#Below is the flow:
+#1. Arguments to be passed to pv-migrate.sh script  - (NAMESPACE, SRC_STS_MASTER, SRC_STS_DATA, DST_STS_MASTER, DST_STS_DATA)
+#2. Fetch volumeClaimtemplteName of master, data sts
+#3. Delete statefulset of master, data 
+#4. Fetch PVC names of master, data by using volumeClaimtemplateName
+#5. Fetch PV name from PVC name.
+#6. Fetch current reclaim policy of PV before migration
+#7. Change PV retain policy to "Retain" (This is done to keep PV eventhough PVC is deleted)
+#8. Create new PVC using old PVC spec
+#9. Patch PV to rebound it to new PVC
+#10. Delete old PVC
+#11. Restore PV retain policy back to original. 
+{{- if .Values.upgrade.autoMigratePV }}
+{{- if .Values.rbac.enabled  }}
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: {{ template "bssc-indexsearch.preUpgradePvMigrateServiceAccount.name" . }}
+  namespace: "{{.Release.Namespace}}"
+  labels:
+{{- include "bssc-indexsearch.commonLabels" (tuple .) | nindent 4 }}
+{{- include "bssc-indexsearch.csf-toolkit-helm.labels" (tuple .) | nindent 4 }}
+  annotations:
+{{- include "bssc-indexsearch.csf-toolkit-helm.annotations" (tuple .) | nindent 4 }}
+    "helm.sh/hook": pre-upgrade
+    "helm.sh/hook-weight": "-8"
+    "helm.sh/hook-delete-policy": before-hook-creation, hook-succeeded
+    seccomp.security.alpha.kubernetes.io/allowedProfileNames: {{ .Values.global.seccompAllowedProfileNames }}
+    seccomp.security.alpha.kubernetes.io/defaultProfileName: {{ .Values.global.seccompDefaultProfileName }}
+automountServiceAccountToken: false
+---
+{{- if .Values.global.allowClusterLevelPrivileges }}
+apiVersion: {{ template "bssc-indexsearch.apiVersionRbacAuthorizatioK8sIoV1Beta1orV1" . }}
+kind: ClusterRoleBinding
+metadata:
+  name: {{ template "bssc-indexsearch.fullname" . }}-preupgpv-crb
+  namespace: "{{.Release.Namespace}}"
+  labels:
+{{- include "bssc-indexsearch.commonLabels" (tuple .) | nindent 4 }}
+{{- include "bssc-indexsearch.csf-toolkit-helm.labels" (tuple .) | nindent 4 }}
+  annotations:
+{{- include "bssc-indexsearch.csf-toolkit-helm.annotations" (tuple .) | nindent 4 }}
+    "helm.sh/hook": pre-upgrade
+    "helm.sh/hook-weight": "-7"
+    "helm.sh/hook-delete-policy": before-hook-creation, hook-succeeded
+    seccomp.security.alpha.kubernetes.io/allowedProfileNames: {{ .Values.global.seccompAllowedProfileNames }}
+    seccomp.security.alpha.kubernetes.io/defaultProfileName: {{ .Values.global.seccompDefaultProfileName }}
+subjects:
+- kind: ServiceAccount
+  name: {{ template "bssc-indexsearch.preUpgradePvMigrateServiceAccount.name" . }}
+  namespace: "{{.Release.Namespace}}"
+roleRef:
+  kind: ClusterRole
+  name: {{ template "bssc-indexsearch.fullname" . }}-preupgpv-cr
+  apiGroup: rbac.authorization.k8s.io
+---
+apiVersion: {{ template "bssc-indexsearch.apiVersionRbacAuthorizatioK8sIoV1Beta1orV1" . }}
+kind: ClusterRole
+metadata:
+  name: {{ template "bssc-indexsearch.fullname" . }}-preupgpv-cr
+  labels:
+{{- include "bssc-indexsearch.commonLabels" (tuple .) | nindent 4 }}
+{{- include "bssc-indexsearch.csf-toolkit-helm.labels" (tuple .) | nindent 4 }}
+  annotations:
+{{- include "bssc-indexsearch.csf-toolkit-helm.annotations" (tuple .) | nindent 4 }}
+    "helm.sh/hook": pre-upgrade
+    "helm.sh/hook-weight": "-7"
+    "helm.sh/hook-delete-policy": before-hook-creation, hook-succeeded
+    seccomp.security.alpha.kubernetes.io/allowedProfileNames: {{ .Values.global.seccompAllowedProfileNames }}
+    seccomp.security.alpha.kubernetes.io/defaultProfileName: {{ .Values.global.seccompDefaultProfileName }}
+rules:
+- apiGroups:
+  - ""
+  resources:
+  - persistentvolumes
+  verbs:
+  - create
+  - patch
+  - update
+  - get
+  - list
+{{- end }}
+---
+kind: RoleBinding
+apiVersion: {{ template "bssc-indexsearch.apiVersionRbacAuthorizatioK8sIoV1Beta1orV1" . }}
+metadata:
+  name: {{ template "bssc-indexsearch.fullname" . }}-preupgpv-rb
+  namespace: "{{.Release.Namespace}}"
+  labels:
+{{- include "bssc-indexsearch.commonLabels" (tuple .) | nindent 4 }}
+{{- include "bssc-indexsearch.csf-toolkit-helm.labels" (tuple .) | nindent 4 }}
+  annotations:
+{{- include "bssc-indexsearch.csf-toolkit-helm.annotations" (tuple .) | nindent 4 }}
+    "helm.sh/hook": pre-upgrade
+    "helm.sh/hook-weight": "-7"
+    "helm.sh/hook-delete-policy": before-hook-creation, hook-succeeded
+    seccomp.security.alpha.kubernetes.io/allowedProfileNames: {{ .Values.global.seccompAllowedProfileNames }}
+    seccomp.security.alpha.kubernetes.io/defaultProfileName: {{ .Values.global.seccompDefaultProfileName }}
+subjects:
+- kind: ServiceAccount
+  name: {{ template "bssc-indexsearch.preUpgradePvMigrateServiceAccount.name" . }}
+  namespace: "{{.Release.Namespace}}"
+  apiGroup: ""
+roleRef:
+  kind: Role
+  name: {{ template "bssc-indexsearch.fullname" . }}-preupgpv-role
+  apiGroup: rbac.authorization.k8s.io
+---
+kind: Role
+apiVersion: {{ template "bssc-indexsearch.apiVersionRbacAuthorizatioK8sIoV1Beta1orV1" . }}
+metadata:
+  namespace: "{{.Release.Namespace}}"
+  name: {{ template "bssc-indexsearch.fullname" . }}-preupgpv-role
+  labels:
+{{- include "bssc-indexsearch.commonLabels" (tuple .) | nindent 4 }}
+{{- include "bssc-indexsearch.csf-toolkit-helm.labels" (tuple .) | nindent 4 }}
+  annotations:
+{{- include "bssc-indexsearch.csf-toolkit-helm.annotations" (tuple .) | nindent 4 }}
+    "helm.sh/hook": pre-upgrade
+    "helm.sh/hook-weight": "-8"
+    "helm.sh/hook-delete-policy": before-hook-creation, hook-succeeded
+    seccomp.security.alpha.kubernetes.io/allowedProfileNames: {{ .Values.global.seccompAllowedProfileNames }}
+    seccomp.security.alpha.kubernetes.io/defaultProfileName: {{ .Values.global.seccompDefaultProfileName }}
+rules:
+- apiGroups:
+  - apps
+  resources:
+  - statefulsets
+  verbs:
+  - get
+  - list
+  - delete
+- apiGroups:
+  - ""
+  resources:
+  - persistentvolumeclaims
+  verbs:
+  - create
+  - delete
+  - patch
+  - update
+  - get
+  - list
+{{- end }}
+---
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: {{ template "bssc-indexsearch.preUpgradePvMigrateJob.name" . }}
+  labels:
+{{- include "bssc-indexsearch.commonLabels" (tuple .) | indent 4 }}
+{{- include "bssc-indexsearch.csf-toolkit-helm.labels" (tuple . .Values.custom.hookJobs.job.labels) | indent 4 }}
+  annotations:
+    "helm.sh/hook-weight": "6"
+    "helm.sh/hook": pre-upgrade
+    "helm.sh/hook-delete-policy": {{ .Values.upgrade.hookDelPolicy }}
+    seccomp.security.alpha.kubernetes.io/allowedProfileNames: {{ .Values.global.seccompAllowedProfileNames }}
+    seccomp.security.alpha.kubernetes.io/defaultProfileName: {{ .Values.global.seccompDefaultProfileName }}
+{{- include "bssc-indexsearch.csf-toolkit-helm.annotations" (tuple . .Values.custom.hookJobs.job.annotations) | indent 4 }}
+spec:
+  template:
+    metadata:
+      labels:
+{{- include "bssc-indexsearch.csf-toolkit-helm.labels" (tuple . .Values.custom.hookJobs.pod.labels) | indent 8 }}
+{{- include "bssc-indexsearch.commonLabels" (tuple .) | indent 8 }}
+      annotations:
+        sidecar.istio.io/inject: "false"
+{{- include "bssc-indexsearch.csf-toolkit-helm.annotations" (tuple . .Values.custom.hookJobs.pod.annotations) | indent 8 }}
+    spec:
+      {{- if .Values.global.allowClusterLevelPrivileges }}
+      serviceAccountName: {{ template "bssc-indexsearch.preUpgradePvMigrateServiceAccount.name" . }}
+      {{- else }}
+      serviceAccountName: {{ .Values.upgrade.preUpgradePVMigrationSAName }}
+      {{- end }}
+      automountServiceAccountToken: true
+      {{- if .Values.jobs.affinity }}
+      affinity:
+{{ toYaml .Values.jobs.affinity | indent 8 }}
+      {{- end }}
+      {{- if .Values.jobs.nodeSelector }}
+      nodeSelector:
+{{ toYaml .Values.jobs.nodeSelector | indent 8 }}
+      {{- end }}
+      {{- if .Values.jobs.tolerations }}
+      tolerations:
+{{ toYaml .Values.jobs.tolerations | indent 8 }}
+      {{- end }}
+      restartPolicy: Never
+      securityContext:
+{{ include "bssc-indexsearch.pod.securityContext" . | indent 8 }}
+      {{- with or .Values.imagePullSecrets .Values.global.imagePullSecrets }}
+      imagePullSecrets:
+{{- toYaml . | nindent 8 }}
+      {{- end }}
+      containers:
+      - name: {{ template "bssc-indexsearch.preUpgradePvMigrateContainer.name" . }}
+        image: {{ include "bssc-indexsearch.registry" (tuple .Values .Values.internalToolsRegistry) }}/{{ include "bssc-indexsearch.imageRepositoryPath" (tuple .Values.global.flatRegistry .Values.kubectl.image.repo) }}:{{ (include "bssc-indexsearch.imageTag" (tuple .Values.kubectl.image.tag .Values.kubectl.image.supportedImageFlavor .Values .Values.kubectl .Values.kubectl.image )) }}
+        env:
+        - name: TZ
+          value: {{ or .Values.timezone.timeZoneEnv .Values.global.timeZoneEnv "UTC" | quote }}
+        - name: NAMESPACE
+          value: {{ .Release.Namespace }}
+        - name: DST_STS_MASTER
+          value: {{ template "bssc-indexsearch.manager.fullname" . }}
+        - name: DST_STS_DATA
+          value: {{ template "bssc-indexsearch.data.fullname" . }}
+        command:
+        - bash
+        - -c
+        - |
+          echo "Checking if PV migration is required"
+          sleep 5
+          if [[ `kubectl --namespace {{ .Release.Namespace }} get sts -l component=elasticsearch,role=master,release={{ .Release.Name}} --no-headers` ]]; then
+            echo "PV migration is required"
+            SRC_STS_MASTER=$(kubectl --namespace $NAMESPACE get sts -l component=elasticsearch,role=master,release={{ .Release.Name}} --no-headers=true -o custom-columns=:metadata.name)
+            SRC_STS_DATA=$(kubectl --namespace $NAMESPACE get sts -l component=elasticsearch,role=data,release={{ .Release.Name}} --no-headers=true -o custom-columns=:metadata.name)
+            sh /tmp/indexsearch/pv-migrate.sh $NAMESPACE $SRC_STS_MASTER $SRC_STS_DATA $DST_STS_MASTER $DST_STS_DATA
+            PVC_data=$(kubectl get pvc --namespace $NAMESPACE --no-headers | grep datadir-{{ template "bssc-indexsearch.data.fullname" . }} | awk '{print$1}')
+            for pvc in $PVC_data
+            do
+              {{- if .Values.partOf  }}
+                kubectl label pvc $pvc  --namespace {{ .Release.Namespace }} app.kubernetes.io/name={{ default .Chart.Name .Values.nameOverride }} app.kubernetes.io/instance={{ .Release.Name }}  app.kubernetes.io/managed-by={{ .Values.managedBy | default .Release.Service | quote}} app.kubernetes.io/component={{ .Values.data.name }} app.kubernetes.io/part-of={{ .Values.partOf }} --overwrite app- release- component-
+              {{- else }}
+                kubectl label pvc $pvc  --namespace {{ .Release.Namespace }} app.kubernetes.io/name={{ default .Chart.Name .Values.nameOverride }} app.kubernetes.io/instance={{ .Release.Name }}  app.kubernetes.io/managed-by={{ .Values.managedBy | default .Release.Service | quote}} app.kubernetes.io/component={{ .Values.data.name }} --overwrite app- release- component-
+              {{- end }}
+            done
+            PVC_manager=$(kubectl get pvc --namespace $NAMESPACE --no-headers | grep managerdir-{{ template "bssc-indexsearch.manager.fullname" . }} | awk '{print$1}')
+            for pvc in $PVC_manager
+            do
+              {{- if .Values.partOf  }}
+                kubectl label pvc $pvc  --namespace {{ .Release.Namespace }} app.kubernetes.io/name={{ default .Chart.Name .Values.nameOverride }} app.kubernetes.io/instance={{ .Release.Name }}  app.kubernetes.io/managed-by={{ .Values.managedBy | default .Release.Service | quote}} app.kubernetes.io/component={{ .Values.manager.name }} app.kubernetes.io/part-of={{ .Values.partOf }} --overwrite
+              {{- else }}
+                kubectl label pvc $pvc  --namespace {{ .Release.Namespace }} app.kubernetes.io/name={{ default .Chart.Name .Values.nameOverride }} app.kubernetes.io/instance={{ .Release.Name }}  app.kubernetes.io/managed-by={{ .Values.managedBy | default .Release.Service | quote}} app.kubernetes.io/component={{ .Values.manager.name }} --overwrite
+              {{- end }}
+            done
+          else
+            echo "PV migration is not required"
+          fi
+        volumeMounts:
+        - name: pv-migrate
+          mountPath: "/tmp/indexsearch/"
+        securityContext:
+{{ include "bssc-indexsearch.container.securityContext" . | indent 10 }}
+        resources:
+{{ include "bssc-indexsearch.resources" (tuple . .Values.jobs.secAdminUpgradeJob.resources "500m") | indent 10 }}
+      volumes:
+      - configMap:
+          name: {{ template "bssc-indexsearch.fullname" . }}-preupgpv
+        name: pv-migrate
+{{- end }}

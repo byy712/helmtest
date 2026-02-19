@@ -1,0 +1,40 @@
+{{- include "cbur.initCelery" . }}
+{{- if .Values.direct_redis.enabled }}
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ template "cbur.fullname" . }}-redis
+  labels:
+    app: {{ template "cbur.name" . }}-mycelery
+    release: {{ .Release.Name }}
+    {{- include "cbur.proxy.commonLabels" (tuple .) | indent 4 }}
+    {{- include "cbur.customLabels" (tuple .Values.celery.labels .Values.global.labels) | indent 4 }}
+  annotations:
+    {{- include "cbur.customAnnotations" (tuple .Values.celery.annotations .Values.global.annotations) | indent 4 }}
+spec:
+  ports:
+  - port: {{ .Values.direct_redis.redis_port }}
+    targetPort: 6379
+    name: tcp-redis
+    {{- if semverCompare ">=1.19.0-0" .Capabilities.KubeVersion.GitVersion }}
+    appProtocol: tcp
+    {{- end }}
+  selector:
+    app: "{{ template "cbur.fullname" . }}-mycelery"
+  {{- if .Values.ipFamilyPolicy }}
+  ipFamilyPolicy: "{{ .Values.ipFamilyPolicy }}"
+  {{- else if .Values.global.ipFamilyPolicy }}
+  ipFamilyPolicy: "{{ .Values.global.ipFamilyPolicy }}"
+  {{- end }}
+  {{- if .Values.ipFamilies }}
+  ipFamilies:
+  {{- range .Values.ipFamilies }}
+  - {{ . | title }}
+  {{- end }}
+  {{- else if .Values.global.ipFamilies }}
+  ipFamilies:
+  {{- range .Values.global.ipFamilies }}
+  - {{ . | title }}
+  {{- end }}
+  {{- end }}
+{{- end }}

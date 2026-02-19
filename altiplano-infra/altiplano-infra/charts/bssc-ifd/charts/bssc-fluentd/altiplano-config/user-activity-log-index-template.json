@@ -1,0 +1,79 @@
+{
+  "version": 4,
+  "index_patterns": ["--UAL_INDEX_PATTERN---*"],
+  "settings": {
+    "index": {
+      "number_of_shards": 1,
+      "number_of_replicas": "--NUMBER_OF_REPLICAS--",
+      "allocation": {
+        "max_retries": 15
+      }
+    },
+    "analysis": {
+      "analyzer": {
+        "path-analyzer": {
+          "type": "custom",
+          "tokenizer": "path-tokenizer"
+        }
+      },
+      "tokenizer": {
+        "path-tokenizer": {
+          "type": "path_hierarchy",
+          "delimiter": "."
+        }
+      }
+    }
+  },
+  "mappings": {
+      "properties": {
+        "invocation_time": {
+          "type": "date",
+          "index": true
+        },
+        "container_name": {
+          "type": "keyword",
+          "index": true
+        },
+        "container_id": {
+          "type": "keyword",
+          "index": true
+        },
+        "user": {
+          "type": "keyword",
+          "index": true
+        },
+        "session": {
+          "type": "keyword",
+          "index": true
+        },
+        "application_name": {
+          "type": "keyword",
+          "index": true
+        },
+        "operation": {
+          "type": "keyword",
+          "index": true
+        },
+        "arguments": {
+          "type": "keyword",
+          "index": true
+        },
+        "result": {
+          "type": "keyword",
+          "index": true
+        },
+        "delegate_user": {
+          "type": "keyword",
+          "index": true
+        },
+        "delegate_session": {
+          "type": "keyword",
+          "index": true
+        },
+        "payload": {
+          "type": "keyword",
+          "index": true
+        }
+      }
+  }
+}

@@ -1,0 +1,22 @@
+--- ckaf-kafka-8.0.2-origin/templates/post-delete-job.yaml	2024-02-20 15:47:14.000000000 +0530
++++ ckaf-kafka-8.0.2-nokia-patch-1/templates/post-delete-job.yaml	2024-03-07 15:53:38.233119927 +0530
+@@ -145,6 +145,7 @@
+   template:
+     metadata:
+       labels:
++        altiplano-role: {{ .Values.accessRoleLabel }}
+         app: {{ .Chart.Name }}
+ {{ include "ckaf-kafka.commonLabels" . | indent 8 }}
+ {{- include "csf-common-lib.v1.customLabels" (tuple .Values.global.labels) | indent 8 }}
+@@ -197,7 +198,10 @@
+           readOnlyRootFilesystem: {{ .Values.security.readOnlyRootFilesystem }}
+           {{- if ( ne ( toString ( .Values.security.runAsUser )) "auto" ) }}
+           runAsUser: {{ .Values.security.runAsUser }}
+-          {{- end }}          
++          {{- end }}  
++          {{- if .Values.security.runAsGroup }}
++          runAsGroup: {{ .Values.security.runAsGroup }}
++          {{- end }}        
+           allowPrivilegeEscalation: false
+           {{- if eq (include "ckaf-kafka.renderSeccompProfile" .) "true" }}
+           seccompProfile:

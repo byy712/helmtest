@@ -1,0 +1,8 @@
+--- cpro-grafana/Chart.yaml	2024-05-06 16:58:59.994003260 +0530
++++ Chart.yaml	2024-05-06 17:00:48.034134948 +0530
+@@ -16,4 +16,4 @@
+ name: cpro-grafana
+ sources:
+ - https://github.com/grafana/grafana
+-version: 7.0.4-nokia-patch-1
++version: 7.0.4-nokia-patch-4

@@ -1,0 +1,112 @@
+{{- include "cmdb.init" . -}}
+{{- if .Values.cbur.enabled }}
+{{- if .Values.cbur.apiVersion }}
+apiVersion: {{ .Values.cbur.apiVersion }}
+{{- else }}
+apiVersion: {{ .Capabilities.APIVersions.Has "cbur.csf.nokia.com/v1/BrPolicy" | ternary "cbur.csf.nokia.com/v1" "cbur.bcmt.local/v1" }}
+{{- end }}
+kind: BrPolicy
+metadata:
+  name: {{ template "cmdb.pod-prefix" . }}-mariadb
+  labels:
+    {{- include "cmdb-mariadb.labels" (tuple . "cbur" "brpolicy") | nindent 4 }}
+  annotations:
+    {{- include "cmdb-mariadb.annotations" (tuple . "cbur" "brpolicy") | nindent 4 }}
+
+spec:
+  selector:
+    matchLabels:
+      app: {{ template "cmdb.fullname" . }}
+      release: {{ .Release.Name | quote }}
+      csf-subcomponent: mariadb
+  {{- include "cmdb.get_security_context" (tuple . "container" "cbur" 1771) | nindent 2 }}
+  resources:
+    {{- include "cmdb.get_resources" ( tuple . .Values.cbur.resources) | nindent 4 }}
+    {{- if and ( not .Values.cbur.containerSecurityContext.disabled ) (eq  .Values.cbur.volumeBackupType "snapshot") }}
+    {{- if hasKey .Values.cbur.containerSecurityContext "fsgroup" -}}
+      {{- pick .Values.cbur.containerSecurityContext "fsgroup" | toYaml | nindent 4 -}}
+    {{- end }}
+    {{- if hasKey .Values.cbur.containerSecurityContext "runAsUser" -}}
+      {{- pick .Values.cbur.containerSecurityContext "runAsUser" | toYaml | nindent 4 -}}
+    {{- end }}
+    {{- end }}
+  {{- if eq  .Values.cbur.volumeBackupType "volume" }}
+  volumes:
+  {{- if and (.Values.mariadb.persistence.backup) (.Values.mariadb.persistence.backup.enabled) }}
+  - backupdir
+  {{- else }}
+  - datadir
+  {{- end }}
+  {{- end }}
+  {{- if eq  .Values.cbur.volumeBackupType "snapshot" }}
+  volumeSnapshot:
+    volumeSnapshotClassName: {{ default "cinder-csi-snapclass" .Values.cbur.volumeSnapshotClassName }}
+    saveVolumeContentToBackend: {{ default "false" .Values.cbur.saveVolumeContentToBackend }}
+    createVolumeOnly: {{ default "false" .Values.cbur.createVolumeOnly }}
+    keepLocalSnapshotIfSaveToBackend: {{ default "false" .Values.cbur.keepLocalSnapshotIfSaveToBackend }}
+    retrieveVolumeContentFromBackend: {{ .Values.cbur.retrieveVolumeContentFromBackend | ternary true false }}
+    {{- if .Values.cbur.pvcName }}
+    pvcName: .Values.cbur.pvcName | toYaml
+    {{- else }}
+    pvcName:
+    - matchCriteria: startname
+      matchString: datadir-{{ template "cmdb.pod-prefix" . }}
+    {{- end }}
+  {{- end }}
+  selectPod:
+    matchLabels:
+      cbur: backup
+  backend:
+    mode: "{{ .Values.cbur.backendMode }}"
+  autoEnableCron: {{ .Values.cbur.autoEnableCron }}
+  autoUpdateCron: {{ .Values.cbur.autoUpdateCron }}
+  cronSpec: "{{ .Values.cbur.cronSpec }}"
+  dataEncryption:
+    enable: {{ .Values.cbur.dataEncryption }}
+  k8sType: statefulset
+  {{- if eq .Values.cluster_type "galera" }}
+  brOption: 2
+  {{- else }}
+  brOption: 1
+  {{- end }}
+  maxiCopy: {{ .Values.cbur.maxiCopy}}
+  ignoreFileChanged: {{ .Values.cbur.ignoreFileChanged }}
+  hooks:
+  {{- if eq  .Values.cbur.volumeBackupType "volume" }}
+  - name: {{ template "cmdb.container-prefix" . }}mariadb
+    applyType: volume
+    commands:
+      {{- $mydir := .Values.mariadb.persistence.backup.enabled | ternary .Values.mariadb.persistence.backup.dir "/mariadb/backup" }}
+      {{- $parallel := (print "--parallel " .Values.mariadb.backupRestore.parallel) }}
+      {{- $preserve := .Values.mariadb.backupRestore.preserve | ternary "--preserve " "" }}
+      {{- $fullBackupInterval := (print "--fullbackup-interval " .Values.mariadb.backupRestore.fullBackupInterval) }}
+      preBackupCmd: ["sh", "-c", "if pgrep -f -a mariadb_db_backup | egrep -v pgrep > /dev/null; then echo 'Another backup is running.'; exit 2 ; fi; rm -rf {{ $mydir }}/tmp; sh -c 'while sleep 10; do echo .; if ! pgrep -f -a mariadb_db_backup | egrep -v pgrep > /dev/null; then break; fi; done &'; /usr/bin/mariadb_db_backup --backup --cbur --keystore --dir {{ $mydir }} {{ $parallel }} {{ $fullBackupInterval }} -- {{ default "" .Values.cbur.prebackup_mariabackup_args }}; echo volume pre-backup finished; date"]
+      postBackupCmd: ["sh", "-c", "echo volume post-backup finished dir={{ $mydir }}; date"]
+      preRestoreCmd: ["sh", "-c", "rm -rf {{ $mydir }}/tmp {{ $mydir }}/incr/*_backup.*gz* ; echo volume pre-restore finished; date"]
+      {{- $tables_preserve := empty .Values.cbur.tablesPreserve | ternary "" (print "--tables-preserve " .Values.cbur.tablesPreserve)  -}}
+      {{- $use_memory := (print "--use-memory " .Values.mariadb.backupRestore.useMemory)  -}}
+      {{- if eq .Values.cluster_type "galera" }}
+      postRestoreCmd: ["sh", "-c", "sh -c 'while sleep 10; do echo .; if ! pgrep -f -a mariadb_db_backup | egrep -v pgrep > /dev/null; then break; fi ; done &';/usr/bin/mariadb_db_backup --restore --cbur --all --nostart --keystore {{ $tables_preserve }} --dir {{ $mydir }} {{ $parallel }} {{ $use_memory }} {{ $preserve }} -- {{ default "" .Values.cbur.postrestore_mariabackup_args }}"]
+      {{- else }}
+      postRestoreCmd: ["sh", "-c", "sh -c 'while sleep 10; do echo .; if ! pgrep -f -a mariadb_db_backup | egrep -v pgrep > /dev/null; then break; fi; done &';/usr/bin/mariadb_db_backup --restore --cbur --all --keystore {{ $tables_preserve }} --dir {{ $mydir }} {{ $parallel }} {{ $use_memory }} {{ $preserve }} -- {{ default "" .Values.cbur.postrestore_mariabackup_args }} ; echo volume post-restore finished; date "]
+      {{- end }}
+  {{- end }}
+  {{- if eq  .Values.cbur.volumeBackupType "snapshot" }}
+  - name: {{ template "cmdb.container-prefix" . }}mariadb
+    applyType: snapshot
+    commands:
+      {{- $waitDisk := .Values.cbur.snapshotWaitDisk | default 15 }}
+      preBackupCmd: ["sh", "-c", ". /usr/lib/mariadb/functions ; DATADIR=$(get_default_value datadir); [[ $CLUSTER_TYPE == 'simplex' || `mariadb_adm --my-role` == 'master' ]] && ( echo start stage; PWD=$(/usr/bin/mariadb_passwd --get --user=root); mysql -uroot -p${PWD} -e 'BACKUP STAGE START; BACKUP STAGE BLOCK_COMMIT; SELECT SLEEP(617);' >/tmp/quiesce.log 2>&1 & for i in 1..10; do sleep 1; mysql -uroot -p${PWD} -e 'SHOW PROCESSLIST' | grep 'SLEEP(617)' > /tmp/backup_stage.pid ; done );  hostname -s > ${DATADIR}/snapshot_host; cat ${DATADIR}/snapshot_host; /usr/bin/sync ${DATADIR}/snapshot_host; /usr/bin/sync ${DATADIR}; sleep {{ $waitDisk }} ; echo snapshot pre-backup finished; date"]
+      preBackupCmdOnAll: false
+      postBackupCmd: ["sh", "-c", ". /usr/lib/mariadb/functions ; DATADIR=$(get_default_value datadir); rm -f ${DATADIR}/snapshot_host; [[ $CLUSTER_TYPE == 'simplex' || `mariadb_adm --my-role` == 'master' ]] && ( STAGEPID=$(cut -f1 /tmp/backup_stage.pid); rm -f /tmp/backup_stage.pid; echo end stage; [[ -z $STAGEPID ]] && exit 33; mysql -uroot -p$(mariadb_passwd --get --user root) -e \"KILL $STAGEPID;\";); echo snapshot post-backup finished; date"]
+      postBackupCmdOnAll: false
+      {{- if eq .Values.cluster_type "master-slave" }}
+      preRestoreCmd: ["sh", "-c", ". /usr/lib/mariadb/functions ; save_server_id_to_admin_db ; echo snapshot pre-restore finished; date"]
+      {{- else }}
+      preRestoreCmd: ["sh", "-c", "echo snapshot pre-restore for simplex; date"]
+      {{- end }}
+      preRestoreCmdOnAll: false
+      postRestoreCmd: ["sh", "-c", "echo snapshot post-restore finished; date"]
+      postRestoreCmdOnAll: false
+  {{- end }}
+{{- end }}

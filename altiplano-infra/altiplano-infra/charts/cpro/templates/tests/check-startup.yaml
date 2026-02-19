@@ -1,0 +1,142 @@
+{{- if or .Values.server.enabled .Values.alertmanager.enabled .Values.nodeExporter.enabled .Values.kubeStateMetrics.enabled .Values.pushgateway.enabled }}
+{{- include "cpro.istio.cproInitIstio" . }}
+apiVersion: v1
+kind: Pod
+metadata:
+  name: {{ template "cpro.prometheus.server.serverHelmTestPod" . }}
+  labels:
+    {{- include "cpro.app.labels.v3" ( dict "root" . "context" .Values.server ) | nindent 4 }}
+    {{- include "cpro.labelsOrAnnotations" (tuple .Values.helmtest.labels .Values.custom.pod.labels .Values.global.labels) | indent 4}}
+  annotations:
+    "helm.sh/hook": test-success
+    "helm.sh/hook-delete-policy": "{{ .Values.helmtest.deletepolicy }}"
+    {{- include "cpro.labelsOrAnnotations" (tuple .Values.helmtest.annotations .Values.custom.pod.annotations .Values.global.annotations) | indent 4}}
+    sidecar.istio.io/inject: "{{ $.istio.enabled }}"
+spec:
+{{$data_csc := dict "cSecCtx" .Values.helmtest.containerSecurityContext "ctx" . }}
+  {{- if $.istio.enabled }}
+  automountServiceAccountToken: true
+  {{- end }}
+  serviceAccountName: {{ template "cpro.prometheus.serviceAccountName" . }}
+  securityContext:
+  {{$data := dict "securitycontext" .Values.helmtest.securityContext "ctx" . }}
+  {{- include "cpro.securitycontext" $data | nindent 4 }}
+{{ include "cpro.helmtest.imagePullSecrets" . | indent 2 }}
+  containers:
+    - name: {{ template "cpro.prometheus.server.serverHelmTestContainer" . }}
+{{- include "cpro.prometheus.python.image" (dict "root" . "workload" .Values.server "container" .Values.helmtest ) | nindent 6}}
+{{- include "cpro.terminationMessage" . | nindent 6 }}
+      env:
+        {{- include "cpro.timeZoneEnvName" . | nindent 8 }}
+      resources:
+{{- include "cpro-common-lib.v1.resources" ( dict "root" . "workloadresources" .Values.helmtest.resources "defaultcpulimit" "10m") | nindent 8 }}
+      volumeMounts:
+      {{- if ne .Values.nodeExporter.auth.credentialName "" }}
+      {{- include "cpro-common-lib.v1-includeCredentialMount" (dict "cred" .Values.nodeExporter.auth "root" . "volumeName" "nxp-auth") | indent 8 }}
+      {{- end }}
+        - name: gittest
+          mountPath: /test/
+        {{- if and ( ne .Values.sensitiveDataSecretName "") ( .Values.nodeExporter.enabled ) ( .Values.nodeExporter.tls_auth_config.basic_auth.enabled ) }}
+        - name: nodeexporterconf
+          mountPath: /etc/.nodeexporterconf
+        {{- end }}
+        {{- if and .Values.nodeExporter.enabled .Values.nodeExporter.tls_auth_config.tls.enabled }}
+        - name: nodeexporter-sc
+          mountPath: /etc/nodeexporter
+        {{- end }}
+        {{- if and .Values.kubeStateMetrics.enabled  .Values.kubeStateMetrics.tls_auth_config.tls.enabled }}
+        - mountPath: /etc/ksm
+          name: kubestatemetrics-tls
+          readOnly: true
+        {{- end }}
+        {{- if and .Values.alertmanager.enabled .Values.alertmanager.tls_auth_config.tls.enabled }}
+        - mountPath: /etc/am
+          name: alertmanager-tls
+          readOnly: true
+        {{- end }}
+        {{- if and .Values.pushgateway.enabled .Values.pushgateway.tls_auth_config.tls.enabled }}
+        - mountPath: /etc/pgw
+          name: pushgateway-tls
+          readOnly: true
+        {{- end }}
+        {{- if and .Values.server.enabled .Values.server.tls_auth_config.tls.enabled }}
+        - mountPath: /etc/server
+          name: server-tls
+          readOnly: true
+        {{- end }}
+      securityContext:
+           {{- include "cpro.containerSecurityContext" $data_csc | nindent 8 }}
+      command:
+        - bash
+        - -c
+        - |
+          {{- if $.istio.enabled }}
+          until [ $(curl --fail --silent --output /dev/stderr --write-out "%{http_code}" localhost:{{- template "cpro-common-lib.istioHealthCheckPort" . -}}/healthz/ready) -eq 200 ]
+            do
+            echo "Waiting for proxy..."
+            sleep 1
+          done
+          sleep_time={{- .Values.helmtest.timeout }};
+          sleep $sleep_time
+          echo "istio-proxy available"
+          {{- end }}
+          bash /test/run.sh; RC=$?
+          {{- if $.istio.enabled }}
+          curl -X POST http://localhost:{{- template "cpro-common-lib.istioStopPort" . -}}/quitquitquit
+          {{- end }}
+          exit $RC
+  volumes:
+  {{- if ne .Values.nodeExporter.auth.credentialName "" }}
+  {{- include "cpro-common-lib.v1-includeCredential" (dict "creds" .Values.nodeExporter.auth "volumeName" "nxp-auth") | indent 4 -}} 
+  {{- end }}
+    - name: gittest
+      configMap:
+        name: "{{ .Release.Name }}-{{ .Chart.Name }}-status-test-configmap"
+  {{- if and ( ne .Values.sensitiveDataSecretName "") ( .Values.nodeExporter.tls_auth_config.basic_auth.enabled ) }}
+    - name: nodeexporterconf
+      secret:
+        secretName: "{{ .Values.sensitiveDataSecretName }}"
+        defaultMode: 0440
+  {{- end }}
+  {{- if and .Values.nodeExporter.enabled ( or .Values.nodeExporter.tls_auth_config.tls.enabled  .Values.nodeExporter.tls.enabled )  }}
+    - name: nodeexporter-sc
+      secret:
+        secretName: "{{ template "cpro.nodeexporter.client.secret" . }}"
+        defaultMode: 0440
+  {{- end }}
+  {{- if  and .Values.kubeStateMetrics.enabled (or .Values.kubeStateMetrics.tls_auth_config.tls.enabled .Values.kubeStateMetrics.tls.enabled)  }}
+    - name: kubestatemetrics-tls
+      secret:
+        secretName: {{ template "cpro.kubeStateMetrics.client.secret" . }}
+  {{- end }}
+  {{- if and .Values.alertmanager.enabled (or .Values.alertmanager.tls_auth_config.tls.enabled .Values.alertmanager.tls.enabled) }}
+    - name: alertmanager-tls
+      secret:
+        secretName: {{ template "cpro.alertmanager.client.secret" . }}
+  {{- end }}
+  {{- if and .Values.pushgateway.enabled (or .Values.pushgateway.tls_auth_config.tls.enabled .Values.pushgateway.tls.enabled) }}
+    - name: pushgateway-tls
+      secret:
+        secretName: {{ template "cpro.pushgateway.client.secret" . }}
+  {{- end }}
+  {{- if and .Values.server.enabled ( or .Values.server.tls_auth_config.tls.enabled .Values.server.tls.enabled)}}
+    - name: server-tls
+      secret:
+        secretName: {{ template "cpro.server.client.secret" . }}
+  {{- end }}
+{{$data := dict "component_pc" .Values.helmtest  "ctx" . }}
+{{- include "cpro.pod.priority.classname" $data | nindent 2 }}
+{{- with .Values.hooks.nodeSelector }}
+  nodeSelector:
+{{ toYaml . | indent 4 }}
+{{- end }}
+{{- with .Values.hooks.tolerations }}
+  tolerations:
+{{ toYaml . | indent 4 }}
+{{- end }}
+{{- with .Values.hooks.affinity }}
+  affinity:
+{{ toYaml . | indent 4 }}
+{{- end }}
+  restartPolicy: Never
+{{- end }}

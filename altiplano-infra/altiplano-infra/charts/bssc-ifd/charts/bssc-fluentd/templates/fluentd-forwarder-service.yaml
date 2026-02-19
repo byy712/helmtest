@@ -1,0 +1,85 @@
+{{- include "bssc-fluentd.istio.properties" . }}
+{{- include "bssc-fluentd.istio.initIstio" . }}
+{{- if .Values.fluentd.forward_service.enabled }}
+#Added a condition check (if preheal and postheal is set to 0) on service template to limit rendering during heal because of helm3 restriction.
+{{ if and ( eq (int .Values.global.preheal ) 0 ) ( eq (int .Values.global.postheal ) 0 ) }}
+apiVersion: v1
+kind: Service
+metadata:
+  annotations:
+{{- include "bssc-fluentd.csf-toolkit-helm.annotations" (tuple .) | nindent 4 }}
+{{- with .Values.fluentd.forward_service.annotations }}
+{{ toYaml . | indent 4 }}
+{{- end }}
+  labels:
+{{- include "bssc-fluentd.commonLabels" (tuple . "fluentd" ) | nindent 4 }}
+    addonmanager.kubernetes.io/mode: Reconcile
+    role: forward-svc
+{{- include "bssc-fluentd.csf-toolkit-helm.labels" (tuple .) | nindent 4 }}
+{{- if .Values.fluentd.forward_service.custom_name }}
+  name: {{ .Values.fluentd.forward_service.custom_name }}
+{{- else }}
+  name: {{ include "bssc-fluentd.fullname" . | trunc ((sub .Values.customResourceNames.resourceNameLimit 10)|int) }}-forwarder
+{{- end }}
+spec:
+  type: {{ .Values.fluentd.forward_service.type }}
+  ports:
+    - name: tcp-forwarder
+      port: {{ .Values.fluentd.forward_service.port }}
+      protocol: {{ .Values.fluentd.forward_service.protocol }}
+      appProtocol: {{ .Values.fluentd.forward_service.appProtocol }}
+      targetPort: tcp-forwarder
+      {{- if and (eq "NodePort" .Values.fluentd.forward_service.type) .Values.fluentd.forward_service.fluentdNodePort }}
+      nodePort: {{ .Values.fluentd.forward_service.fluentdNodePort }}
+      {{- end }}
+    - name: syslog-forward
+      port: {{ .Values.fluentd.forward_service.syslogPort }}
+      protocol: {{ .Values.fluentd.forward_service.syslogProtocol }}
+      targetPort: syslog-forward
+      {{- if and (eq "NodePort" .Values.fluentd.forward_service.type) .Values.fluentd.forward_service.syslogNodePort }}
+      nodePort: {{ .Values.fluentd.forward_service.syslogNodePort }}
+      {{- end }}
+  selector:
+{{- include "bssc-fluentd.selectorLabels" (tuple . "fluentd" ) | indent 4 }}
+    role: fluentd-logprocessor
+{{ include "bssc-fluentd.dualStack.config" . | indent 2 }}
+---
+{{ if and ($.istio.enabled) (eq $.istioVersion "1.4") }}
+apiVersion: {{ template "bssc-fluentd.apiVersionNetworkIstioV1Alpha3orV1Beta1" . }}
+kind: "DestinationRule"
+metadata:
+  name: {{ template "bssc-fluentd.fullname" . }}-fw
+  labels:
+{{- include "bssc-fluentd.commonLabels" (tuple . "fluentd" ) | nindent 4 }}
+{{- include "bssc-fluentd.csf-toolkit-helm.labels" (tuple .) | nindent 4 }}
+  annotations:
+{{- include "bssc-fluentd.csf-toolkit-helm.annotations" (tuple .) | nindent 4 }}
+spec:
+  host: {{ default (printf "%s-forwarder" (include "bssc-fluentd.fullname" .)) .Values.fluentd.forward_service.custom_name }}.{{ .Release.Namespace }}.svc.cluster.local
+  trafficPolicy:
+    tls:
+      mode: ISTIO_MUTUAL
+{{- end }}
+---
+{{- if and (eq $.istio.createDrForClient true) (eq $.istio.enabled false) }}
+apiVersion: {{ template "bssc-fluentd.apiVersionNetworkIstioV1Alpha3orV1Beta1" . }}
+kind: DestinationRule
+metadata:
+  name: {{ template "bssc-fluentd.fullname" . }}-fw
+  namespace: {{ .Release.Namespace }}
+  labels:
+{{- include "bssc-fluentd.commonLabels" (tuple . "fluentd" ) | nindent 4 }}
+{{- include "bssc-fluentd.csf-toolkit-helm.labels" (tuple .) | nindent 4 }}
+  annotations:
+{{- include "bssc-fluentd.csf-toolkit-helm.annotations" (tuple .) | nindent 4 }}
+spec:
+  {{- if .Values.fluentd.forward_service.custom_name }}
+  host: {{ .Values.fluentd.forward_service.custom_name }}.{{ .Release.Namespace }}.svc.cluster.local
+  {{- else }}
+  host: {{ include "bssc-fluentd.fullname" . | trunc ((sub .Values.customResourceNames.resourceNameLimit 10)|int) }}-forwarder.{{ .Release.Namespace }}.svc.cluster.local
+  {{- end }}
+{{ toYaml $.istio.customDrSpecForClientForwarderSvc | indent 2 }}
+{{- end }}
+{{ end }}
+{{- end }}
+

@@ -1,0 +1,84 @@
+{{- if .Values.persistence.auto_delete }}
+{{ if gt (int .Values.postscalein ) 0 }}
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: {{ template "bssc-indexsearch.postScaleInJob.name" . }}
+  labels:
+{{- include "bssc-indexsearch.commonLabels" (tuple .) | nindent 4 }}
+{{- include "bssc-indexsearch.csf-toolkit-helm.labels" (tuple . .Values.custom.hookJobs.job.labels) | nindent 4 }}
+  annotations:
+{{- include "bssc-indexsearch.csf-toolkit-helm.annotations" (tuple . .Values.custom.hookJobs.job.annotations) | indent 4 }}
+spec:
+  template:
+    metadata:
+      labels:
+        altiplano-role: {{ .Values.accessRoleLabel }}
+{{- include "bssc-indexsearch.commonLabels" (tuple .) | nindent 8 }}
+{{- include "bssc-indexsearch.csf-toolkit-helm.labels" (tuple . .Values.custom.hookJobs.pod.labels) | nindent 8 }}
+      annotations:
+        sidecar.istio.io/inject: "false"
+{{- include "bssc-indexsearch.csf-toolkit-helm.annotations" (tuple . .Values.custom.hookJobs.pod.annotations) | indent 8 }}
+    spec:
+      serviceAccountName: {{ template "bssc-indexsearch.scaleServiceAccount.name" . }}
+      automountServiceAccountToken: true
+      {{- if .Values.jobs.affinity }}
+      affinity:
+{{ toYaml .Values.jobs.affinity | indent 8 }}
+      {{- end }}
+      {{- if .Values.jobs.nodeSelector }}
+      nodeSelector:
+{{ toYaml .Values.jobs.nodeSelector | indent 8 }}
+      {{- end }}
+      {{- if .Values.jobs.tolerations }}
+      tolerations:
+{{ toYaml .Values.jobs.tolerations | indent 8 }}
+      {{- end }}
+      restartPolicy: Never
+      securityContext:
+{{ include "bssc-indexsearch.pod.securityContext" . | indent 8 }}
+      {{- with or .Values.imagePullSecrets .Values.global.imagePullSecrets }}
+      imagePullSecrets:
+{{- toYaml . | nindent 8 }}
+      {{- end }}
+      containers:
+      - name: {{ template "bssc-indexsearch.postScaleInContainer.name" .}}
+        image: {{ include "bssc-indexsearch.registry" (tuple .Values .Values.internalToolsRegistry) }}/{{ include "bssc-indexsearch.imageRepositoryPath" (tuple .Values.global.flatRegistry .Values.kubectl.image.repo) }}:{{ (include "bssc-indexsearch.imageTag" (tuple .Values.kubectl.image.tag .Values.kubectl.image.supportedImageFlavor .Values .Values.kubectl .Values.kubectl.image )) }}
+        securityContext:
+{{ include "bssc-indexsearch.container.securityContext" . | indent 10 }}
+        env:
+        - name: TZ
+          value: {{ or .Values.timezone.timeZoneEnv .Values.global.timeZoneEnv "UTC" | quote }}
+        resources:
+{{ include "bssc-indexsearch.resources" (tuple . .Values.jobs.hookJobs.resources "120m") | indent 10 }}
+        command:
+        - bash
+        - "-c"
+        - |
+          echo 'Deleting the pvc of the disconnected indexsearch data pods'
+          IS_DATA_UPDATED_COUNT={{.Values.data.replicas}}
+          echo "IS-DATA_UPDATED_COUNT = ${IS_DATA_UPDATED_COUNT}"
+          IS_DATA_PVC_IN_CLUSTER=`kubectl get pvc -l app.kubernetes.io/instance={{ .Release.Name }},app.kubernetes.io/name={{ default .Chart.Name .Values.nameOverride }},app.kubernetes.io/component={{ .Values.data.name}} -n={{ .Release.Namespace }}|awk '{print $1}'| grep -v NAME`
+          echo "IS-DATA_PVC_IN_CLUSTER = ${IS_DATA_PVC_IN_CLUSTER}"
+          for eachpvc in ${IS_DATA_PVC_IN_CLUSTER};do
+          IS_DATA_PVC_NUMBER=${eachpvc##*-}
+          if ((${IS_DATA_PVC_NUMBER} >= ${IS_DATA_UPDATED_COUNT}));then
+          kubectl delete pvc ${eachpvc} --namespace {{ .Release.Namespace }}
+          echo "PVC Deleted is : ${eachpvc}"
+          fi;
+          done;
+
+          echo 'Deleting the pvc of the disconnected cluster manager pods'
+          IS_MASTER_UPDATED_COUNT={{.Values.manager.replicas}}
+          echo "IS-MASTER_UPDATED_COUNT = ${IS_MASTER_UPDATED_COUNT}"
+          IS_MASTER_PVC_IN_CLUSTER=`kubectl get pvc -l app.kubernetes.io/instance={{ .Release.Name }},app.kubernetes.io/name={{ default .Chart.Name .Values.nameOverride }},app.kubernetes.io/component={{ .Values.manager.name}}  -n={{ .Release.Namespace }}|awk '{print $1}'| grep -v NAME`
+          echo "IS_MASTER_PVC_IN_CLUSTER = ${IS_MASTER_PVC_IN_CLUSTER}"
+          for eachpvc in ${IS_MASTER_PVC_IN_CLUSTER};do
+          IS_MASTER_PVC_NUMBER=${eachpvc##*-}
+          if ((${IS_MASTER_PVC_NUMBER} >= ${IS_MASTER_UPDATED_COUNT}));then
+          kubectl delete pvc ${eachpvc} --namespace {{ .Release.Namespace }}
+          echo "PVC Deleted is : ${eachpvc}"
+          fi;
+          done;
+{{- end }}
+{{- end }}

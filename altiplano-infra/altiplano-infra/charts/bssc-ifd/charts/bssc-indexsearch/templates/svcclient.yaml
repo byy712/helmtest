@@ -1,0 +1,54 @@
+# This condition is to limit rendering the template during heal because of restriction that two resources with same name cannot be created in the same namespace.
+{{ if and ( eq (int .Values.global.preheal ) 0 ) ( eq (int .Values.global.postheal ) 0 ) }}
+{{- include "bssc-indexsearch.istio.initIstio" . }}
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{.Values.service.name}}
+  annotations:
+{{- include "bssc-indexsearch.csf-toolkit-helm.annotations" (tuple .) | nindent 4 }}
+   {{- if .Values.service.prometheus_metrics.enabled }}
+   {{- if .Values.security.enable }}
+   {{ .Values.service.prometheus_metrics.pro_annotation_https_scrape }}: "true"
+   prometheus.io/scheme: "https"
+   {{- else }}
+   prometheus.io/scrape: "true"
+   prometheus.io/scheme: "http"
+   {{- end }}
+   prometheus.io/path: /_prometheus/metrics
+   prometheus.io/port: "{{.Values.service.client_port}}"
+  {{- end }}
+  labels:
+    source: opensearch
+{{- include "bssc-indexsearch.csf-toolkit-helm.labels" (tuple .) | nindent 4 }}
+{{- include "bssc-indexsearch.commonLabels" (tuple . .Values.client.name) | indent 4 }}
+spec:
+  type: {{ .Values.service.type }}
+  selector:
+{{- include "bssc-indexsearch.selectorLabels" (tuple . .Values.client.name ) | indent 4 }}
+  ports:
+    - name: tcp-rest
+      port: {{.Values.service.client_port}}
+      protocol: TCP
+      {{- if .Values.security.enable }}
+      appProtocol: https
+      {{- else }}
+      appProtocol: http
+      {{- end }}
+      {{- if (and (eq .Values.service.type "NodePort") (not (empty .Values.service.client_nodeport))) }}
+      nodePort: {{.Values.service.client_nodeport}}
+      {{- end }}
+      targetPort: tcp-rest
+      {{- if .Values.crossClusterReplication.leader.enabled }}
+    - name: tcp-transport
+      port: {{.Values.service.manager_port}}
+      protocol: TCP
+      appProtocol: tcp
+      targetPort: tcp-transport
+      {{- if (and (eq .Values.service.type "NodePort") (not (empty .Values.service.manager_nodeport))) }}
+      nodePort: {{.Values.service.manager_nodeport}}
+      {{- end }}
+      {{- end }}
+{{ include "bssc-indexsearch.dualStack.config" . | indent 2 }}
+{{ end }}
+

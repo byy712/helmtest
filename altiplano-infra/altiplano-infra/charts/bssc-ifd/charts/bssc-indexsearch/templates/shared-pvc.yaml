@@ -1,0 +1,80 @@
+{{- if .Values.cbur.enabled }}
+kind: PersistentVolumeClaim
+apiVersion: v1
+metadata:
+  name: {{ template "bssc-indexsearch.fullname" . }}-pvc
+  labels:
+{{- include "bssc-indexsearch.commonLabelsWithoutChartVersion" (tuple .)  | nindent 4 }}
+{{- include "bssc-indexsearch.csf-toolkit-helm.labels" (tuple .) | nindent 4 }}
+    release: {{ .Release.Name }}
+  annotations:
+{{- include "bssc-indexsearch.csf-toolkit-helm.annotations" (tuple .) | nindent 4 }}
+    "helm.sh/resource-policy": keep
+spec:
+  {{- if .Values.backup_restore.storageClassName }}
+  {{- if (eq "-" .Values.backup_restore.storageClassName) }}
+  storageClassName: ""
+  {{- else }}
+  storageClassName: "{{ .Values.backup_restore.storageClassName }}"
+  {{- end }}
+  {{- end }}
+  accessModes:
+    - ReadWriteMany
+  resources:
+    requests:
+      storage: {{.Values.backup_restore.size}}
+---
+kind: PersistentVolumeClaim
+apiVersion: v1
+metadata:
+  name: {{ template "bssc-indexsearch.fullname" . }}-cbur-tmp-pvc
+  labels:
+{{- include "bssc-indexsearch.commonLabelsWithoutChartVersion" (tuple .) | nindent 4 }}
+{{- include "bssc-indexsearch.csf-toolkit-helm.labels" (tuple .) | nindent 4 }}
+    release: {{ .Release.Name }}
+  annotations:
+    "helm.sh/resource-policy": keep
+{{- include "bssc-indexsearch.csf-toolkit-helm.annotations" (tuple .) | nindent 4 }}
+spec:
+  {{- if .Values.backup_restore.storageClassName }}
+  {{- if (eq "-" .Values.backup_restore.storageClassName) }}
+  storageClassName: ""
+  {{- else }}
+  storageClassName: "{{ .Values.backup_restore.storageClassName }}"
+  {{- end }}
+  {{- end }}
+  accessModes:
+    - ReadWriteMany
+  resources:
+    requests:
+      storage: {{.Values.cbur.cbura.tmp_size}}
+{{- else }}
+{{- if .Values.persistence.backup.enabled }}
+kind: PersistentVolumeClaim
+apiVersion: v1
+metadata:
+  name: {{ template "bssc-indexsearch.fullname" . }}-backup-pvclaim
+  labels:
+{{- include "bssc-indexsearch.commonLabelsWithoutChartVersion" (tuple .) | nindent 4 }}
+{{- include "bssc-indexsearch.csf-toolkit-helm.labels" (tuple .) | nindent 4 }}
+    release: {{ .Release.Name }}
+  annotations:
+{{- include "bssc-indexsearch.csf-toolkit-helm.annotations" (tuple .) | nindent 4 }}
+    "helm.sh/resource-policy": keep
+spec:
+{{- if .Values.persistence.storageClassName }}
+{{- if (eq "-" .Values.persistence.storageClassName) }}
+  storageClassName: ""
+{{- else }}
+  storageClassName: "{{ .Values.persistence.storageClassName }}"
+{{- end }}
+{{- else }}
+  storageClassName: ""
+{{- end }}
+  accessModes:
+    - ReadWriteMany
+  resources:
+    requests:
+      storage: {{ .Values.persistence.backup.backupStorage | quote }}
+{{- end }}
+{{- end }}

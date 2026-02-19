@@ -1,0 +1,21 @@
+{{- include "cpro.istio.cproInitIstio" . }}
+{{- if .Values.nodeExporter.enabled }}
+{{- if or ($.istio.enabled) ($.istio.createDrForClient) }}
+apiVersion: {{ template "cpro.apiVersion.destinationRule" . }}
+kind: DestinationRule
+metadata:
+  labels:
+    {{- include "cpro.app.labels.v3" ( dict "root" . "context" .Values.nodeExporter ) | nindent 4 }}
+{{- include "cpro.labelsOrAnnotations" (tuple .Values.global.labels) | indent 4}}
+  name: {{ template "cpro.prometheus.nodeExporter.fullname" . }}
+  namespace: {{ .Release.Namespace }}
+  annotations:
+{{- include "cpro.labelsOrAnnotations" (tuple .Values.global.annotations) | indent 4}}
+spec:
+  host: "{{ template "cpro.prometheus.nodeExporter.fullname" . }}.{{ .Release.Namespace }}.svc.{{ .Values.clusterDomain }}"
+  trafficPolicy:
+    tls:
+      mode: DISABLE
+{{- end }}
+{{- end }}
+

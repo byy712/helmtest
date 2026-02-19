@@ -1,0 +1,60 @@
+{{- if .Values.istio.enabled }}
+{{- include "cbur.istio.initIstio" . }}
+{{- include "cbur.tls" . }}
+apiVersion: {{ template "cbur.virtualServiceVersion" . }}
+kind: VirtualService
+metadata:
+  name: {{ template "cbur.fullname" . }}
+  labels:
+    app: {{ template "cbur.name" . }}
+    release: {{ .Release.Name }}
+    {{- include "cbur.proxy.commonLabels" (tuple .) | indent 4 }}
+    {{- include "cbur.customLabels" (tuple .Values.cburm.labels .Values.global.labels) | indent 4 }}
+  annotations:
+    {{- include "cbur.customAnnotations" (tuple .Values.cburm.annotations .Values.global.annotations) | indent 4 }}
+spec:
+  hosts:
+  {{- if .istio.virtualservice.hosts }}
+{{ toYaml ( .istio.virtualservice.hosts ) | indent 2 }}
+  {{- else }}
+  - "*"
+  {{- end }}
+  {{- if or $.shared_istio_gateway $.istio.gateway.enabled }}
+  gateways:
+  {{- if $.shared_istio_gateway }}
+  - {{ $.shared_istio_gateway }}
+  {{- else }}
+  - {{ template "cbur.fullname" . }}
+  {{- end }}
+  {{- end }}
+{{- if eq (include "cbur.proxy.coalesceBoolean" (tuple .Values.tls.enabled .Values.global.tls.enabled false)) "false" }}
+  http:
+  - route:
+    - destination:
+        host: {{ template "cbur.host" . }}
+        port:
+          number: {{ .Values.serverPort }}
+  {{- if .Values.istio.matchUriPrefix }}
+    match:
+    - uri:
+        prefix: {{ .Values.istio.matchUriPrefix }}
+    rewrite:
+      uri: "/"
+  {{- end }}
+{{- else }}
+  tls:
+  - match:
+    - sniHosts:
+      {{- if .istio.virtualservice.hosts }}
+{{ toYaml ( .istio.virtualservice.hosts ) | indent 6 }}
+      {{- else }}
+      - "*"
+      {{- end }}
+    route:
+      - destination:
+          host: {{ template "cbur.host" . }}
+          port:
+            number: {{ .Values.tls.port }}
+{{- end }}
+{{- end }}
+

@@ -1,0 +1,12 @@
+#Config map used for unit testing of the templates
+{{- if .Values.testConfigMap }}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: unit-test-template-configmap
+data:
+  {{- if $.istio.enabled }}
+  istioHealthCheckPort: {{ include "cpro-common-lib.istioHealthCheckPort" . | quote }}
+  istioStopPort: {{ include "cpro-common-lib.istioStopPort" . | quote }}
+  {{- end }}
+{{- end }}

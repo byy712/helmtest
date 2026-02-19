@@ -1,0 +1,11 @@
+--- ckaf-kafka-8.0.2-origin/templates/_helpers.tpl	2024-02-20 15:47:14.000000000 +0530
++++ ckaf-kafka-8.0.2-nokia-patch-1/templates/_helpers.tpl	2024-03-07 16:02:55.314260298 +0530
+@@ -747,7 +747,7 @@
+ {{- end }}
+ 
+ {{- define "ckaf-kafka.kubectlImageRepo" }}
+-{{- coalesce .Values.kubectlImage .Values.kubectlImageRepo }}
++{{- coalesce .Values.kubectlImageRepo .Values.kubectlImage }}
+ {{- end }}
+ 
+ {{/* render kubernetes resources */}}

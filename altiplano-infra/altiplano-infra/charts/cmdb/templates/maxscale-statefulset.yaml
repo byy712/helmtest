@@ -1,0 +1,380 @@
+{{- include "cmdb.init" . -}}
+{{- if eq (include "cmdb.has_maxscale" .) "true" }}
+{{- $api := .Capabilities.APIVersions.Has "autoscaling/v2/HorizontalPodAutoscaler" | ternary "autoscaling/v2" "autoscaling/v2beta2" }}
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: {{ template "cmdb.pod-prefix" . }}-maxscale
+  labels:
+    {{- include "cmdb-maxscale.labels"  (tuple . "statefulset") | nindent 4 }}
+    {{- include "cmdb.get_mtls_labels" . | nindent 4 }}
+  annotations:
+    {{- include "cmdb-maxscale.annotations"  (tuple . "statefulset") | nindent 4 }}
+
+spec:
+  serviceName: {{ template "cmdb.fullname" . }}
+{{- if or (ne (include "cmdb.maxscale_hpa_enabled" .) "true") (and .Release.IsUpgrade (not (lookup $api "HorizontalPodAutoscaler" .Release.Namespace (printf "%s-maxscale" (include "cmdb.pod-prefix" .))))) }}
+  # There are two conditions where we will allow replicas to be set:
+  #   1. MaxScale HPA is not enabled, or
+  #   2. MaxScale HPA is enabled, and we are in upgrade, but the
+  #      HorizontalPodAutoscaler resource is not yet created.
+  # For case #2, we will leave the replica count here to prevent an inadvertent
+  # scale-in to a single pod.  The next update after the HPA is created, the
+  # replica count will be removed.
+  replicas: {{ .Values.maxscale.count }}
+{{- end }}
+  updateStrategy:
+    type: RollingUpdate
+  selector:
+    matchLabels:
+      {{- include "cmdb-maxscale.selector_labels" . | nindent 6 }}
+      {{- include "cmdb.get_custom_selectors" (tuple . "maxscaleSts") | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        altiplano-role: {{ .Values.maxscale.accessRoleLabel }}
+        {{- include "cmdb-maxscale.labels" (tuple . "pod") | nindent 8 }}
+        {{- include "cmdb.get_custom_selectors" (tuple . "maxscaleSts") | nindent 8 }}
+        {{- include "cmdb.get_mtls_labels" . | nindent 8 }}
+        type: maxscale
+      annotations:
+      {{- if .Values.admin.configAnnotation }}
+        checksum/config: {{ include (print $.Template.BasePath "/maxscale-config-configmap.yaml") . | sha256sum }}
+      {{- end }}
+        checksum/datacenter: {{ include (print $.Template.BasePath "/maxscale-datacenter-configmap.yaml") . | sha256sum }}
+        {{- include "cmdb.istio-annotation" . | nindent 8 }}
+      {{- if .Values.istio.enabled }}
+        sidecar.istio.io/rewriteAppHTTPProbers: "true"
+      {{- end }}
+        {{- include "cmdb-maxscale.annotations" (tuple . "pod") | nindent 8 }}
+    spec:
+    {{- include "cmdb.get_security_context" (tuple . "pod" "maxscale" 1772) | nindent 6 }}
+    {{- if .Values.maxscale.priorityClassName }}
+      priorityClassName: {{ .Values.maxscale.priorityClassName | quote }}
+    {{- else if .Values.global.priorityClassName }}
+      priorityClassName: {{ .Values.global.priorityClassName | quote }}
+    {{- end }}
+      {{- include "cmdb.maxscale-sa" . | nindent 6 }}
+      {{- include "cmdb.get_image_pull_secrets" (tuple . "maxscale") | nindent 6 }}
+
+      initContainers:
+      - name: {{ template "cmdb.container-prefix" . }}init-config
+        {{- include "cmdb-maxscale.image" . | nindent 8 }}
+        {{- include "cmdb.get_security_context" (tuple . "container" "maxscale" 1772) | nindent 8 }}
+        env:
+        {{- include "cmdb-tz.env" . | nindent 8 }}
+        command:
+          - bash
+          - "-c"
+          - |
+            . /usr/lib/mariadb/docker-functions
+            import_config_common
+            import_config_maxscale
+            {{- include "cmdb-tls.import-certs" . | nindent 12 }}
+            {{- include "cmdb-tls.wait-maxscale-certs" . | nindent 12 }}
+        volumeMounts:
+        {{- include "cmdb-tls.vm-mariadb" . | nindent 8 }}
+        {{- include "cmdb-tls.vm-maxscale" . | nindent 8 }}
+        - name: fs-etcmariadb
+          mountPath: /etc/mariadb
+        - name: fs-etcmycnfd
+          mountPath: /my.cnf.d
+        - name: import-maxscale-cm
+          mountPath: /import/maxscale-cm
+        - name: import-datacenter-cm
+          mountPath: /import/datacenter-cm
+        - name: import-mariadb-cm
+          mountPath: /import/mariadb-cm
+        - name: auth-secrets
+          mountPath: /import/auth
+        resources:
+          {{- include "cmdb.get_resources" ( tuple . .Values.maxscale.initContainers.resources) | nindent 10 }}
+
+      containers:
+      - name: {{ template "cmdb.container-prefix" . }}maxscale
+        {{- include "cmdb.get_security_context" (tuple . "container" "maxscale" 1772) | nindent 8 }}
+        {{- include "cmdb-maxscale.image" . | nindent 8 }}
+        lifecycle:
+          preStop:
+            exec:
+              command:
+              - bash
+              - "-c"
+              - |
+                /usr/bin/maxscale_adm --release-locks ;
+        ports:
+        {{- include "cmdb-maxscale.mysql-listener-ports" (tuple . "rwSplit" 3306) | nindent 8 }}
+        {{- include "cmdb-maxscale.mysql-listener-ports" (tuple . "readOnly" 3307) | nindent 8 }}
+        {{- include "cmdb-maxscale.mysql-listener-ports" (tuple . "masterOnly" 3308) | nindent 8 }}
+        - containerPort: {{ .Values.services.maxscale.port }}
+          name: tcp-maxscale
+        env:
+        - name: CLUSTER_NAME
+          value: "{{ .Values.cluster_name | default .Release.Name | trunc 32 }}"
+        - name: MYIP
+          valueFrom:
+            fieldRef:
+              fieldPath: status.podIP
+        - name: K8S_NAMESPACE
+          value: "{{ .Release.Namespace }}"
+        - name: KEYSTORE_DIR
+          value: "/.keydir"
+        - name: KEYSTORE_PULL
+          value: {{ .Values.maxscale.keystorePullTimeout | quote }}
+        {{- include "cmdb-tz.env" . | nindent 8 }}
+        {{- include "cmdb-users.common-env" . | nindent 8 }}
+        {{- include "cmdb-users.maxscale-metrics-env" . | nindent 8 }}
+        {{- include "cmdb-admin.service" . | nindent 8 }}
+        {{- include "cmdb-logging.env" . | nindent 8 }}
+        {{- /*
+         * construct listener port list(s)
+         */ -}}
+        {{- $listener_ports := (list) -}}
+        {{- $listener_unsecured_ports := (list) -}}
+        # Read-Write-Split Service
+        {{- $rw_port := include "cmdb-maxscale.listener-port" (tuple . "rwSplit" 3306) -}}
+        {{- $rw_alt_port := include "cmdb-maxscale.listener-alt-port" (tuple . "rwSplit") -}}
+        {{- if gt (int $rw_port) 0 }}
+          {{- $listener_ports = append $listener_ports (printf "rwsplit:%s" (toString $rw_port)) -}}
+        {{- end }}
+        {{- if gt (int $rw_alt_port) 0 }}
+          {{- $listener_unsecured_ports = append $listener_unsecured_ports (printf "rwsplit:%s" (toString $rw_alt_port)) -}}
+        {{- end }}
+        # Read-Only Service
+        {{- $ro_port := include "cmdb-maxscale.listener-port" (tuple . "readOnly" 3307) -}}
+        {{- $ro_alt_port := include "cmdb-maxscale.listener-alt-port" (tuple . "readOnly") -}}
+        {{- if gt (int $ro_port) 0 }}
+          {{- $listener_ports = append $listener_ports (printf "readonly:%s" (toString $ro_port)) -}}
+        {{- end }}
+        {{- if gt (int $ro_alt_port) 0 }}
+          {{- $listener_unsecured_ports = append $listener_unsecured_ports (printf "readonly:%s" (toString $ro_alt_port)) -}}
+        {{- end }}
+        # Master-Only Service
+        {{- $mstr_port := include "cmdb-maxscale.listener-port" (tuple . "masterOnly" 3308) -}}
+        {{- $mstr_alt_port := include "cmdb-maxscale.listener-alt-port" (tuple . "masterOnly") -}}
+        {{- if gt (int $mstr_port) 0 }}
+          {{- $listener_ports = append $listener_ports (printf "masteronly:%s" (toString $mstr_port)) -}}
+        {{- end }}
+        {{- if gt (int $mstr_alt_port) 0 }}
+            {{- $listener_unsecured_ports = append $listener_unsecured_ports (printf "masteronly:%s" (toString $mstr_alt_port)) -}}
+        {{- end }}
+        - name: MAXSCALE_LISTENERS
+          value: {{ $listener_ports | join "," }}
+        - name: MAXSCALE_US_LISTENERS
+          value: {{ $listener_unsecured_ports | join "," }}
+
+        volumeMounts:
+        {{- include "cmdb-fs.vm" (tuple . "maxscale") | nindent 8 }}
+        {{- include "cmdb-tls.vm-mariadb" . | nindent 8 }}
+        {{- include "cmdb-tls.vm-maxscale" . | nindent 8 }}
+        {{- include "cmdb-logging.vm" (tuple . .Values.maxscale) | nindent 8 }}
+        - name: cluster-cm
+          mountPath: /chart
+        - name: keydir
+          mountPath: /.keydir
+        {{- if .Values.maxscale.metrics.enabled }}
+        - name: metrics
+          mountPath: /metrics
+        {{- end }}
+        {{- if semverCompare ">=1.18" (include "cmdb.k8sver" .) }}
+        startupProbe:
+          httpGet:
+            path: /started
+            port: 38989
+          initialDelaySeconds: {{ .Values.maxscale.startupProbe.initialDelaySeconds | default 1 }}
+          periodSeconds: {{ .Values.maxscale.startupProbe.periodSeconds | default 5 }}
+          timeoutSeconds: {{ .Values.maxscale.startupProbe.timeoutSeconds | default 1 }}
+          failureThreshold: {{ .Values.maxscale.startupProbe.failureThreshold | default 60 }}
+          successThreshold: {{ .Values.maxscale.startupProbe.successThreshold | default 1 }}
+        {{- end }}
+        livenessProbe:
+          httpGet:
+            path: /alive
+            port: 38989
+          initialDelaySeconds: {{ .Values.maxscale.livenessProbe.initialDelaySeconds | default 120 }}
+          periodSeconds: {{ .Values.maxscale.livenessProbe.periodSeconds | default 10 }}
+          timeoutSeconds: {{ .Values.maxscale.livenessProbe.timeoutSeconds | default 5 }}
+          failureThreshold: {{ .Values.maxscale.livenessProbe.failureThreshold | default 6 }}
+          successThreshold: {{ .Values.maxscale.livenessProbe.successThreshold | default 1 }}
+        readinessProbe:
+          httpGet:
+            path: /ready
+            port: 38989
+          initialDelaySeconds: {{ .Values.maxscale.readinessProbe.initialDelaySeconds | default 10 }}
+          periodSeconds: {{ .Values.maxscale.readinessProbe.periodSeconds | default 10 }}
+          timeoutSeconds: {{ .Values.maxscale.readinessProbe.timeoutSeconds | default 1 }}
+          failureThreshold: {{ .Values.maxscale.readinessProbe.failureThreshold | default 4 }}
+          successThreshold: {{ .Values.maxscale.readinessProbe.successThreshold | default 1 }}
+        resources:
+          {{- include "cmdb.get_resources" ( tuple . .Values.maxscale.resources) | nindent 10 }}
+
+      {{- if .Values.maxscale.metrics.enabled }}
+      {{- $scrape_port := default 9195 .Values.services.maxscale.exporter.port }}
+      {{- $exporter_port := (eq (include "cmdb.maxscale_use_zt_proxy" .) "true") | ternary "9090" $scrape_port }}
+      {{- if (eq (include "cmdb.maxscale_use_zt_proxy" .) "true") }}
+      - name: {{ template "cmdb.container-prefix" . }}zt-proxy
+        {{- include "maxscale-auth.image" . | nindent 8 }}
+        {{- include "cmdb.get_security_context" (tuple . "container" "maxscale.auth" 1772) | nindent 8 }}
+        args:
+        - "-port={{ $scrape_port }}"
+        - "-proxy-url=http://localhost:9090"
+        ports:
+        - name: tcp-mxs-auth
+          containerPort: {{ $scrape_port }}
+        env:
+        {{- include "cmdb-tz.env" . | nindent 8 }}
+        {{- include "cmdb-auth.env" (tuple . "maxscale") | nindent 8 }}
+        {{- include "cmdb-tls.env-prom-auth" (tuple . "maxscale") | nindent 8 }}
+        volumeMounts:
+        {{- include "cmdb-fs.vm-auth" (tuple . "maxscale") | nindent 8 }}
+        {{- include "cmdb-tls.vm-prom-auth" (tuple . "maxscale") | nindent 8 }}
+        resources:
+          {{- include "cmdb.get_resources" ( tuple .  .Values.maxscale.auth.resources) | nindent 10 }}
+        {{- end }}
+
+      - name: {{ template "cmdb.container-prefix" . }}metrics
+        {{- include "maxscale-metrics.image" . | nindent 8 }}
+        {{- include "cmdb.get_security_context" (tuple . "container" "maxscale.metrics" 1772) | nindent 8 }}
+        lifecycle:
+          preStop:
+            exec:
+              command:
+              - bash
+              - "-c"
+              - touch /metrics/.stop
+        args:
+          - start-dir=/metrics
+          - start-timeout=300
+          - "-address={{ eq (include "cmdb.tls_enabled" (tuple . "maxscale")) "true" | ternary "https" "http" }}://localhost:{{ default 8989 .Values.services.maxscale.port }}"
+          - "-port={{ $exporter_port }}"
+        ports:
+        - name: tcp-mxs-metrics
+          containerPort: {{ $exporter_port }}
+        env:
+        {{- include "cmdb-tz.env" . | nindent 8 }}
+        volumeMounts:
+        - name: metrics
+          mountPath: /metrics
+        {{- include "cmdb-tls.vm-maxscale" . | nindent 8 }}
+        resources:
+          {{- include "cmdb.get_resources" ( tuple . .Values.maxscale.metrics.resources) | nindent 10 }}
+      {{- end }}
+      - name: {{ template "cmdb.container-prefix" . }}fluentd-sidecar
+        image: "{{ .Values.global.registry }}/{{ .Values.maxscale.fluentd_sidecar.image.name }}:{{ .Values.maxscale.fluentd_sidecar.image.tag }}"
+        imagePullPolicy: {{ .Values.maxscale.fluentd_sidecar.image.pullPolicy }}
+        securityContext:
+          readOnlyRootFilesystem: {{ .Values.maxscale.fluentd_sidecar.securityContext.readOnlyRootFilesystem | default true }}
+          runAsUser: {{ .Values.maxscale.fluentd_sidecar.securityContext.runAsUser | default 1000 }}
+          runAsGroup: {{ .Values.maxscale.fluentd_sidecar.securityContext.runAsGroup | default 1772 }}
+        resources:
+{{ toYaml .Values.maxscale.fluentd_sidecar.resources | indent 12 }}
+        env:
+        - name: CONTAINER_NAME
+          valueFrom:
+            fieldRef:
+              apiVersion: v1
+              fieldPath: metadata.name
+        - name: POD_IP
+          valueFrom:
+            fieldRef:
+              fieldPath:  status.podIP
+        {{- if .Values.maxscale.fluentd_sidecar.secrets }}
+        - name: IS_USERNAME
+          valueFrom:
+            secretKeyRef:
+              key: {{ .Values.maxscale.env.secrets.IS_USERNAME }}
+              name: {{ .Values.maxscale.fluentd_sidecar.secrets.passwordSecret | quote }}
+        - name: IS_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              key: {{ .Values.maxscale.env.secrets.IS_PASSWORD }}
+              name: {{ .Values.maxscale.fluentd_sidecar.secrets.passwordSecret | quote }}
+        {{- end }} 
+        volumeMounts:
+        - name: tmp
+          mountPath: /tmp
+        - name: fs-varlogmaxscale
+          mountPath: /logs
+        - name: fluentd-config
+          mountPath: /etc/fluent/
+        - name: mdb-certificates
+          readOnly: true
+          mountPath: "/etc/.certificates"
+
+      terminationGracePeriodSeconds: {{ default 30 .Values.maxscale.terminationGracePeriodSeconds }}
+
+      volumes:
+      {{- include "cmdb-fs.vol" (tuple . "maxscale") | nindent 6 }}
+      {{- include "cmdb-fs.vol-auth" (tuple . "maxscale") | nindent 6 }}
+      {{- include "cmdb-logging.vol" (tuple . .Values.maxscale "false") | nindent 6 }}
+      {{- include "cmdb-tls.vol" . | nindent 6 }}
+      {{- include "cmdb-tls.vol-prom-auth" (tuple . "maxscale") | nindent 6 }}
+      - name: tmp
+        emptyDir: {}
+      - name: cluster-cm
+        configMap:
+          name: {{ template "cmdb.fullname" . }}-mariadb-cluster
+      - name: import
+        emptyDir: {}
+      - name: keydir
+        emptyDir: {}
+      - name: import-maxscale-cm
+        configMap:
+          name: {{ template "cmdb.fullname" . }}-maxscale-config
+      - name: import-datacenter-cm
+        configMap:
+          name: {{ template "cmdb.fullname" . }}-datacenter
+      - name: import-mariadb-cm
+        configMap:
+          name: {{ template "cmdb.fullname" . }}-mariadb-config
+      - name: auth-secrets
+        secret:
+          secretName: {{ template "cmdb.fullname" . }}-admin-secrets
+          items:
+          - key: maria
+            path: admin.auth
+      {{- if .Values.maxscale.metrics.enabled }}
+      - name: metrics
+        emptyDir:
+          medium: Memory
+      {{- end }}
+      - name: logs
+        emptyDir: {}
+      - name: fluentd-config
+        configMap:
+          name: {{ template "cmdb.fullname" . }}-fluentd-config
+      {{- if .Values.maxscale.fluentd_sidecar.secrets }}
+      - name: certificates
+        secret:
+          secretName: {{ (tpl (.Values.maxscale.fluentd_sidecar.secrets.certSecret) .) }}
+      - name: passwords
+        secret:
+          secretName: {{ (tpl .Values.maxscale.fluentd_sidecar.secrets.passwordSecret .) }}
+      {{- end }}
+
+    {{- if .Values.maxscale.tolerations }}
+      tolerations:
+        {{- toYaml .Values.maxscale.tolerations | nindent 8 }}
+    {{- end }}
+    {{- if .Values.maxscale.nodeSelector }}
+      nodeSelector:
+        {{- toYaml .Values.maxscale.nodeSelector | nindent 8 }}
+    {{- end }}
+    {{- if .Values.maxscale.topologySpreadConstraints }}
+      topologySpreadConstraints:
+      {{- include "cmdb.spread-constraints" (tuple . "maxscale") | nindent 8 }}
+    {{- end }}
+      affinity:
+      {{- if .Values.maxscale.nodeAffinity.enabled }}
+        nodeAffinity:
+          requiredDuringSchedulingIgnoredDuringExecution:
+            nodeSelectorTerms:
+            - matchExpressions:
+              - key: {{ .Values.maxscale.nodeAffinity.key }}
+                operator: In
+                values:
+                - {{ quote .Values.maxscale.nodeAffinity.value }}
+      {{- end }}
+        {{- include "csf-common-lib.v3.podAntiAffinity" (tuple . .Values.maxscale) | nindent 8}}
+{{- end }}

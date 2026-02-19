@@ -1,0 +1,38 @@
+--- cmdb-9.2.1/cmdb-original/templates/maxscale-config-configmap.yaml	2024-04-25 05:27:41.000000000 +0530
++++ /home/chautruo/nokia/helm-dev/altiplano-infra/charts/cmdb/templates/maxscale-config-configmap.yaml	2024-05-07 13:53:08.612498000 +0530
+@@ -23,7 +23,7 @@
+     admin_ssl_cert=/etc/certs/maxscale/{{ eq (include "cmdb.maxscale_use_cmgr" .) "true" | ternary "mxs-server-cert.pem" .Values.maxscale.tls.secretRef.keyNames.tlsCrt }}
+     admin_ssl_key=/etc/certs/maxscale/{{ eq (include "cmdb.maxscale_use_cmgr" .) "true" | ternary "mxs-server-key.pem" .Values.maxscale.tls.secretRef.keyNames.tlsKey }}
+     admin_ssl_ca_cert=/etc/certs/maxscale/{{ eq (include "cmdb.maxscale_use_cmgr" .) "true" | ternary "mxs-server-ca-cert.pem" .Values.maxscale.tls.secretRef.keyNames.caCrt }}
+-    admin_ssl_version=TLSv12
++    admin_ssl_version={{ .Values.maxscale.admin_ssl_version }}
+ {{- end }}
+ {{- if and (eq (include "cmdb.tls_enabled" (tuple . "mariadb")) "true") (or (eq (include "cmdb.mariadb_use_cmgr" .) "true") (and (ne (default "none" .Values.mariadb.tls.secretRef.name) "none") (ne (default "none" .Values.clients.mariadb.tls.secretRef.name) "none"))) }}
+     [SSL]
+@@ -32,7 +32,7 @@
+     ssl_key=/etc/my.cnf.d/ssl/{{ eq (include "cmdb.mariadb_use_cmgr" .) "true" | ternary "client-key.pem" .Values.clients.mariadb.tls.secretRef.keyNames.tlsKey }}
+     ssl_ca_cert=/etc/my.cnf.d/ssl/{{ eq (include "cmdb.mariadb_use_cmgr" .) "true" | ternary "client-ca-cert.pem" .Values.clients.mariadb.tls.secretRef.keyNames.caCrt }}
+     ssl_cert_verify_depth=9
+-    ssl_version=TLSv12
++    ssl_version={{ .Values.maxscale.ssl_version }}
+ {{- end }}
+ 
+ {{- $add_promotion := and .Values.maxscale.semiSyncReplication (not (contains "rpl_semi_sync" (.Values.maxscale.sql.promotion | join " "))) }}
+@@ -64,3 +64,17 @@
+ {{- .Values.maxscale.logrotate_conf | nindent 4 }}
+ {{- end }}
+ {{- end }}
++---
++apiVersion: v1
++kind: ConfigMap
++metadata:
++  name: {{ template "cmdb.fullname" . }}-fluentd-config
++  labels:
++    {{- include "cmdb-maxscale.labels" (tuple . "configmap") | nindent 4 }}
++data:
++  fluentd.conf: |-
++{{- if .Values.maxscale.fluentd_sidecar.fluent_conf }}
++{{ tpl .Values.maxscale.fluentd_sidecar.fluent_conf . | indent 4 }}
++{{- end }}
++  
++---

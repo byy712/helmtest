@@ -1,0 +1,17 @@
+{{- if eq (include "csf-common-lib.v1.coalesceBoolean" (tuple .Values.hpa.enabled .Values.global.hpa.enabled false)) "true" }}
+apiVersion: {{ .Capabilities.APIVersions.Has "autoscaling/v2/HorizontalPodAutoscaler" | ternary "autoscaling/v2" "autoscaling/v2beta2" }}
+kind: HorizontalPodAutoscaler
+metadata:
+  name: {{ template "ckaf-ksql.name" . }}
+  labels:
+  {{- include "csf-common-lib.v1.commonLabels" (tuple .) | indent 4 }}
+  {{- include "csf-common-lib.v1.customLabels" (tuple .Values.global.labels) | indent 4 }}
+  annotations:
+  {{- include "csf-common-lib.v1.customAnnotations" (tuple .Values.global.annotations) | indent 4 }}
+spec:
+{{ include "csf-common-lib.v1.hpaValues" .Values.hpa | indent 2 }}
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: {{ include "ckaf-ksql.resourceName" (tuple . "Deployment" "") }}
+{{- end }}

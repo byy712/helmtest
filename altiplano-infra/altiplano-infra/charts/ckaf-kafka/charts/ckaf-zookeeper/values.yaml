@@ -1,0 +1,528 @@
+# Default values for zookeeper.
+# This is a YAML-formatted file.
+# Declare name/value pairs to be passed into your templates.
+# name: value
+global:
+  # This registry references to delivered images.
+  registry: csf-docker-delivered.repo.cci.nokia.net
+ 
+  # If flatRegistry is set to true then, user is open to use their own flat registries. By default flatRegistry is set to false.
+  # When flatRegistry is enabled then repo path will not be used.
+  flatRegistry: false
+  # Enable this flag to set default pod CPU resources limit in all containers. Default value is set to false
+  enableDefaultCpuLimits: false       
+  #Refer section "LabelsandAnnotations" from the Helm Best Practices documentation 
+  annotations: {}
+    #Add the annotations here
+  labels: {}
+    #Add the labels here
+  #Refer section "CommonLabels" from the Helm Best Practices documentation  
+  common_labels: true
+  seccompAllowedProfileNames: runtime/default
+  seccompDefaultProfileName: runtime/default
+  storageClass: ""
+  rbac:
+   enabled: true
+  jmx:
+   enabled: true
+  # Enable this flag to forcefully upgrade kafka
+  forceUpgrade: true
+  # Enable this flag to prepare kafka for rollback
+  prepareRollback: false
+  preheal: 0
+  postheal: 0
+  #CLOG configuration
+  clog:
+   enabled: true
+  #unifiedLogging.extension has precedence over global.unifiedLogging.extension
+  #extension accepts key: value pair
+  #example:
+  #unifiedLogging:
+  #  extension:
+  #    component: ckaf
+  #    ns_uuid: 123  
+  unifiedLogging:
+    extension: {}
+    syslog:
+      enabled: false
+      host:
+      port:
+      facility:
+      protocol: "UDP"
+  jobtimeout: 600
+  prerestore: 0
+  postrestore: 0
+  #GenericEphermalVolume
+  #enabled value left empty intentionally, default value is False
+  #emptyDir is used by Default
+  #ephemeralVolume.enabled has precedence over global.ephemeralVolume.enabled
+  ephemeralVolume:
+    enabled:
+  # istio configurations
+  istio:
+    # Supports istio version > 1.4
+    version: 1.6
+    # setting "enabled: true" injects istio proxy side cars to the zookeeper pods.
+    enabled: false
+    # set "createDrForClient: true" iff disabling istio for zookeeper in a istio  mtls environment
+    # setting this to true creates a Destination rule for zookeeper workload with tls mode as "DISABLE".
+    createDrForClient: false
+    # Whether istio cni is enabled in the environment.
+    cni:
+      enabled: true
+    # MTLS section of configuration.
+    # if mtls.enabled==true and permissive==true, will create peerauthentication with mtls mode PERMISSIVE for zookeeper.
+    # if mtls.enabled==false and permissive==false, will create peerauthentication with mtls mode STRICT for zookeeper.
+    mtls:
+      #Is strict MTLS enabled in the environment.
+      enabled: false
+    # Should allow mutual TLS as well as clear text for your deployment.
+    permissive: true
+    envoy:
+    # Health check port of istio envoy proxy.
+      healthCheckPort: 15021
+    # Port used to terminate istio envoy sidecar using /quitquitquit endpoint
+      stopPort: 15000
+  # enable this flag to perform scale via upgrade 
+  enable_scale_via_upgrade: false
+  # Consider suffixing the podName and containerName with either - or . for convenience.
+  podNamePrefix: ""
+  # Note that the conatinerName given in caps will be converted to lowercase.
+  containerNamePrefix: ""
+  # To ensure that logs and other data use a common timezone configure timeZoneEnv.Defaults to UTC  
+  timeZoneEnv: ""
+  # Specify the PriorityClass name for zookeeper statefulset.
+  # If left blank or empty quotes, pods will be configured with priorityClassName config at root level or cluster default PriorityClass.
+  # See https://kubernetes.io/docs/concepts/configuration/pod-priority-preemption/#priorityclass
+  priorityClassName: ""
+  # For IPv4 and IPv6 dual stack support
+  # ipFamilyPolicy:  SingleStack | PreferDualStack | RequireDualStack
+  ipFamilyPolicy: 
+  # ipFamilies: ["IPv4"] | ["IPv6"] | ["IPv4","IPv6"] | ["IPv6","IPv4"]
+  ipFamilies: []
+# - IPv4
+# - IPv6
+  imagePullSecrets: 
+
+# workload level scope
+ipFamilyPolicy:
+ipFamilies: []
+
+accessRoleLabel: internal-access
+
+imagePullSecrets: 
+imageRepo: ckaf/ckaf-zookeeper
+imageTag: "9.0.2-rocky8-jre17-3.6.4-70"
+imageName: "ckaf-zookeeper"
+kubectlImage: "tools/kubectl"
+kubectlImageName: "kubectl"
+kubectlTag: "1.28.5-rocky8-nano-20231222"
+servers: 3
+#User can configure the precreated SA specifically for this chart here.
+serviceAccountName:
+
+zk_fluentd_sidecar:
+  image:
+    name: "fnms-fluent"
+    tag: "nokia-4.1.4"
+    pullPolicy: IfNotPresent
+  securityContext:
+    runAsUser: 1000
+    runAsGroup: 997
+
+# Configure PodDisruptionBudget here
+# Specify the minimum number of pods that must be available after the eviction, even in the absence of the evicted pod.
+# Either set minAvailable or maxUnavailable but not both. Values can be numeric like 1,2,3 or percentage like 50%.(Float percent is not valid )
+# Input values(minAvailable/maxUnavailable) should satisfy the quoram value for zookeeper.Check README.md for detail description.
+pdb:
+  enabled: true
+  #maxUnavailable: 1
+  minAvailable: 2
+
+# Enable this flag to set default pod CPU resources limit in all containers. Default value is set to false
+enableDefaultCpuLimits: true
+#unifiedLogging.extension has precedence over global.unifiedLogging.extension
+#extension accepts key: value pair
+#example:
+#unifiedLogging:
+#  extension:
+#    component: ckaf
+#    ns_uuid: 123
+
+# To forward logs to the syslog server enable syslog.enabled to "true"
+# As of now ckaf components only support UDP protocol to fwd the logs,
+# since log4j1/slf4j only supports  UDP.
+unifiedLogging:
+  extension: {}
+  syslog:
+    enabled:
+    host:
+    port:
+    facility:
+    protocol: "UDP"
+# If left blank or empty quotes, pods will be configured with global.priorityClassName if defined or cluster default PriorityClass.
+# See https://kubernetes.io/docs/concepts/configuration/pod-priority-preemption/#priorityclass
+priorityClassName: "" 
+
+antiAffinity: "hard"
+
+# if labelSelector key is omitted and autoGenerateLabelSelector is set to true in a constraint block
+# then labelSelector is automatically generated otherwise labelSelector are taken from labelSelector key
+topologySpreadConstraints:
+#  - maxSkew: 1
+#    topologyKey: zone
+#    whenUnsatisfiable: DoNotSchedule/ScheduleAnyway
+#    labelSelector:
+#      matchLabels:
+#        app: ckaf-kafka
+#    autoGenerateLabelSelector: True
+
+
+
+clusterDomain: "cluster.local"
+# To ensure that logs and other data use a common timezone configure timeZoneEnv.
+# This has precedence over the global level timeZoneEnv. 
+timeZone:
+  timeZoneEnv: ""
+
+#GenericEphermalVolume
+#enabled value left empty intentionally, default value is False
+#When ephemeralVolume.enabled is set to false emptyDir is used.
+#ephemeralVolume.enabled has precedence over global.ephemeralVolume.enabled
+ephemeralVolume:
+  enabled:
+  storageClass: ""
+#volumes used in cbur backup and restore
+#storageSize of zk-transaction-log-backup and cbura-tmp-volume needs to be set based on the size of data which is being restored.
+  storageSize:
+    zkTransactionLogBackup: 2Gi
+    cburaTmpVolume: 1Gi
+
+persistence:
+  ## If true, use a Persistent Volume Claim, If false, use emptyDir
+  enabled: true
+
+#Common lables for k8s objects. Set below to configure label app.kubernetes.io/part-of:
+partOf: ckaf-kafka
+managedBy: Helm
+name: Analytics
+
+# workload level annotations/labels
+zkStatefulset:
+  annotations: {}
+  #Add the annotations here
+  labels: {}
+  #Add the labels here
+# Pod level annotations/labels
+zkPodLevel:
+  annotations: {}
+  #Add the annotations here
+  labels: {}
+  #Add the labels here
+                
+# Configure zookeeper specific annotations/labels below. Use 6 space indentation
+custom:
+  # custom workload level annotations/labels
+  zkStatefulset:
+    annotations: {}
+     #Add the annotations here
+    labels: {}
+    #Add the labels here
+  #pod level annotations/labels ( *istio related annotations must go in annotation section below)
+  zkPodLevel:
+    annotations: {}
+     #Add the annotations here
+    labels: {}
+    #Add the labels here
+
+# Add user defined label under nodeLabel as key value pair. 
+# Enable it to true to use nodeLabel feature
+# Always quote the value part. Example nodeType: "zk-enable" 
+# Example:
+# zookeeperNodeSelector:
+#   enable: true
+#   nodeLabel:
+#     "key1" : "value1"
+zookeeperNodeSelector:
+  enable: false
+  nodeLabel: {}
+
+
+customResourceNames:
+# Length of pod/job names
+  resourceNameLimit: 63
+  zookeeperPod:  
+# Configurable Zookeeper Container Names
+    zkContainerName: ""
+    jmxContainerName: ""
+# Configurable Zookeeper Job Names and Job container Names
+# Delete Job
+  postDeleteJob: 
+    name: ""
+    containerName: ""
+# RollBack Job
+  postRollBackJob: 
+    name: ""
+    containerName: ""
+  preRollBackJob: 
+    name: ""
+    containerName: ""    
+# Heal Job
+  preHealJob:
+    name: ""
+    containerName: ""    
+  postHealJob:
+    name: ""
+    containerName: ""       
+# Upgrade Job
+  preUpgradeJob: 
+    name: ""
+    containerName: ""  
+  postUpgradeJob: 
+    name: ""
+    containerName: ""   
+# Scale Job
+  postScaleInJob: 
+    name: ""
+    containerName: ""       
+  postScaleOutJob:
+    name: ""
+    containerName: ""       
+  preScaleInJob: 
+    name: ""
+    containerName: ""
+# Restore Job
+  postRestoreJob:
+    name: ""
+    containerName: ""       
+  preRestoreJob:
+    name: ""
+    containerName: ""  
+# Scale Via Upgrade/Rollback Job
+  postUpgradeScaleJob: 
+    name: ""
+    containerName: ""               
+  preRollBackScaleJob:
+    name: ""
+    containerName: ""               
+  preUpgradeScaleJob: 
+    name: ""
+    containerName: ""       
+# Helm Test
+  helmTest:
+    name: ""
+    containerName: ""
+# PodDisruptionBudget
+  podDisruptionBudget:
+    name: ""
+
+
+#This section allows to configure user defined name for component resources
+# Options include:
+# nameOverride: use this to have 'ckaf-zk'-'user-defined' naming convention.
+# fullnameOverride: use this to have custom name for all the resources.
+# default (below parameters commented): 'zk'-'release-name' naming convention.
+# If specified both, fullnameOverride would take the precedence.
+
+#nameOverride: "user-defined"
+#fullnameOverride: "user-defined"
+
+
+
+# toleration can be added for three types of taints : NoSchedule, PreferNoSchedule and NoExecute
+# operator can also be given as Exists and value parameter can be omitted in that case
+# tolerationSeconds (in seconds) can be added as part of NoExecute toleration that specifies how long the pod will stay bound after the node tainting.
+# Multiple tolerations can be added
+# Example: 
+# tolerations:
+# - key: "testing1"
+#   operator: "Equal"
+#   value: "no1"
+#   effect: "NoSchedule"
+# - key: "testing2"
+#   operator: "Exists"
+#   effect: "NoExecute"
+#   tolerationSeconds: 120
+# toleration matches a taint if key and effect is same. 
+# An empty 'key' with operator Exists will tolerate everything as it matches all keys, values and effects.
+# Example: 
+# - operator: "Exists"
+# An empty 'effect' matches all effects with key 'key'
+# Example:
+# - key: "key"
+#   operator: "Exists"
+tolerations: []
+
+# Feature dev In-progress CSFID-1967
+# This feature allows the user to access zookeeper services outside the k8s cluster.
+# To turn ON the feature set "EnableExternalAccess" to true.
+# "EdgeNodePort" port on all the edge nodes available for zookeeper service to be deployed,
+# port availability check must be done by the user prior to the installation.
+# Pre-requisite for this feature, user is expected to install the citm ingress controller. 
+# And provide the configmap prefix name which the citm controller monitors 
+# For eg: if the configmap naming convention is "citmrelease-citm-ingress-tcp"
+# in citmPrefixName: "citmrelease-citm-ingress" needs to be provided 
+# field "type": options to configure
+#   "TransportIngress" : use TransportIngress CR to expose the service.
+#                        (can be used only when istio is disabled)
+#   "IngressConfigMap" : use config map to expose the service.
+ingress:
+  enableExternalAccess: false
+  edgeNodePort: ""
+  citmPrefixName: ""
+  type: "IngressConfigMap"
+
+resources:
+  requests:
+    cpu: 500m
+    memory: 2Gi
+    ephemeral-storage: 1G
+  limits:
+    cpu: "" 
+    memory: 4Gi
+    ephemeral-storage: 1G
+heapConfig: "-Xmx512M -Xms512M"
+dataStorage: "10Gi"
+logStorage: "10Gi"
+serverPort: 2888
+leaderElectionPort: 3888
+imagePullPolicy: "IfNotPresent"
+zookeeperClientPort: 2181
+tickTimeMs: 2000
+initTicks: 10
+syncTicks: 5
+preAllocSize: 64000000
+clientCnxns: 60
+snapRetain: 3
+purgeHours: 1
+snapshotTrustEmpty: false
+snapCount: 100000
+configurationOverrides: {}
+  # override only additional zookeeper configs not defined in the above section.
+  # example format:
+  # maxClientCnxns:60 
+
+
+livenessProbe:
+  probeInitialDelaySeconds: 15
+  probeTimeoutSeconds: 5
+  failureThreshold: 3
+  periodSeconds: 10
+
+readinessProbe:
+  probeInitialDelaySeconds: 15
+  probeTimeoutSeconds: 5
+  failureThreshold: 3
+  periodSeconds: 10
+
+#Below is the example of creating zk krb secret object.
+#kubectl create secret generic zookeeper-sasl --from-literal=krbPrincipalKey=zookeeper/zk-<releaseName>.<namespace>.svc.cluster.local@<REALM> --from-file=krbKeytabKey=<local Keytab path eg. /home/cloud-user/zk.keytab>
+krb:
+  enable: false
+  krbSecretName: <zookeeper-sasl>
+  krbPrincipalKey: <krbPrincipalKey>
+  krbKeytabKey: <krbKeytabKey>
+  #provide the krb5.conf as a configmap
+  #kubectl create configmap <krbConfigmapName> --from-file=<KrbConfKeyName>=<path to krb5.conf>
+  krbConfigmapName:
+  KrbConfKeyName: 
+      
+logLevel: "INFO"
+maxFileSize: 50MB
+maxBackupIndex: 10
+autoPvEnabledZk: false
+autoPvEnabledLabelZk: zookeeper
+security:
+  enabled: true
+  runAsUser: 999
+  fsGroup: 998
+  runAsGroup: 997
+  readOnlyRootFilesystem: true
+  supplementalGroups: "" 
+  seLinuxOptions:
+    enabled: false
+    level: ""
+    role: ""
+    type: ""
+    user: ""
+  seccompProfile:
+    type: "RuntimeDefault"
+
+#Jmx Exporter
+JmxExporter:
+  imageRepo: "cpro/cpro-jmx-exporter"
+  imageName: "cpro-jmx-exporter"
+  imageTag: "4.0.2-rocky8-0.20.0-138"
+  imagePullPolicy: "IfNotPresent"
+  port: 7072
+  jmxResources:
+    resources:
+      requests:
+        cpu: 100m
+        memory: 1Gi
+        ephemeral-storage: 200M
+      limits:
+        cpu: "" 
+        memory: 4Gi
+        ephemeral-storage: 200M
+jobResources:
+  requests:
+    cpu: 200m
+    memory: 1Gi
+    ephemeral-storage: 200M
+  limits:
+    cpu: "" 
+    memory: 4Gi
+    ephemeral-storage: 200M
+
+# Delete hook config
+deleteZookeeperJob:
+  auto_remove_zk_pvc: true
+
+# Scale hook config
+prescalein: 0
+postscalein: 0
+lcm:
+  scale_hooks: all
+  scale_timeout: 180
+  heal:
+    timeout: 600
+# Upgrade config
+enableUpgrade: false
+
+
+# Rollback config
+enableRollback: false
+
+# CBUR agent config
+cbur:
+  enabled: true
+  name: cbur-agent
+  image: cbur/cbur-agent
+  tag: 1.1.1-alpine-6578
+  imagePullPolicy: IfNotPresent
+  brhookTimeout: 600
+  resources:
+    requests:
+      cpu: 200m
+      memory: 1Gi
+      ephemeral-storage: 1G
+    limits:
+      cpu: "" 
+      memory: 4Gi
+      ephemeral-storage: 1G
+  # Limit the number of copies that can be saved. Once it is reached, the newer backup will overwritten the oldest one
+  maxCopy: 5
+  #Modes supported now: "local","NETBKUP","AVAMAR", case insensitive
+  backendMode: "local"
+  #autoEnableCron = true indicates that the cron job is immediately scheduled when the BrPolicy is created,
+  #while autoEnableCron = false indicates that scheduling of the cron job should be done on a subsequent backup request.
+  #This option only works when k8swatcher.enabled is true
+  autoEnableCron: false
+  #Indicate if subsequent update of cronjob will be done via brpoilicy update.
+  #true means cronjob must be updated via brpolicy update,
+  #false means cronjob must be updated via manual "helm backup -t app -a enable/disable" command.
+  autoUpdateCron: false
+  #same format of cron job setting. It is used for scheduled backup task. Empty string is allowed for no scheduled backup
+  cronJob: "0 23 * * *"
+

@@ -1,0 +1,1169 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ template "altiplano-long-retention-opentsdb.fullname" . }}-metrics-exporter
+data:
+  opentsdb-metrics-mapper-auto-sanitize-name.json: |-
+    [
+      {
+        "match": {
+          "metric": "tsd.connectionmgr.connections",
+          "tags": {
+            "type": "open"
+          }
+        },
+        "target": {
+          "type": "gauge",
+          "help": "The number of currently open Telnet and HTTP connections."
+        }
+      },
+      {
+        "match": {
+          "metric": "tsd.connectionmgr.connections",
+          "tags": {
+            "type": "total"
+          }
+        },
+        "target": {
+          "type": "counter",
+          "help": "The total number of connections made to OpenTSDB. This includes all Telnet and HTTP connections."
+        }
+      },
+      {
+        "match": {
+          "metric": "tsd.connectionmgr.exceptions",
+          "tags": {
+            "type": "closed"
+          }
+        },
+        "target": {
+          "type": "counter",
+          "help": "The total number of exceptions caused by writes to a channel that was already closed. This can occur if a query takes too long, the client closes their connection gracefully, and the TSD attempts to write to the socket. This includes all Telnet and HTTP connections."
+        }
+      },
+      {
+        "match": {
+          "metric": "tsd.connectionmgr.exceptions",
+          "tags": {
+            "type": "reset"
+          }
+        },
+        "target": {
+          "type": "counter",
+          "help": "The total number of exceptions caused by a client disconnecting without closing the socket. This includes all Telnet and HTTP connections."
+        }
+      },
+      {
+        "match": {
+          "metric": "tsd.connectionmgr.exceptions",
+          "tags": {
+            "type": "timeout"
+          }
+        },
+        "target": {
+          "type": "counter",
+          "help": "The total exceptions caused by a socket inactivity timeout, i.e. the TSD neither wrote nor received data from a socket within the timeout period. This includes all Telnet and HTTP connections."
+        }
+      },
+      {
+        "match": {
+          "metric": "tsd.connectionmgr.exceptions",
+          "tags": {
+            "type": "unknown"
+          }
+        },
+        "target": {
+          "type": "counter",
+          "help": "The total exceptions with an unknown cause. Check the logs for details. This includes all Telnet and HTTP connections."
+        }
+      },
+      {
+        "match": {
+          "metric": "tsd.rpc.received",
+          "tags": {
+            "type": "telnet"
+          }
+        },
+        "target": {
+          "type": "counter",
+          "help": "The total number of telnet RPC requests received"
+        }
+      },
+      {
+        "match": {
+          "metric": "tsd.rpc.received",
+          "tags": {
+            "type": "http"
+          }
+        },
+        "target": {
+          "type": "counter",
+          "help": "The total number of Http RPC requests received."
+        }
+      },
+      {
+        "match": {
+          "metric": "tsd.rpc.received",
+          "tags": {
+            "type": "http_plugin"
+          }
+        },
+        "target": {
+          "type": "counter",
+          "help": "The total number of Http RPC requests received and handled by a plugin instead of the built-in APIs."
+        }
+      },
+      {
+        "match": {
+          "metric": "tsd.rpc.exceptions"
+        },
+        "target": {
+          "type": "counter",
+          "help": "The total number exceptions caught during RPC calls. These may be user error or bugs."
+        }
+      },
+      {
+        "match": {
+          "metric": "tsd.http.latency_50pct",
+          "tags": {
+            "type": "all"
+          }
+        },
+        "target": {
+          "type": "gauge",
+          "help": "The time it took, in milliseconds, to answer HTTP requests for the 50th percentile cases"
+        }
+      },
+      {
+        "match": {
+          "metric": "tsd.http.latency_75pct",
+          "tags": {
+            "type": "all"
+          }
+        },
+        "target": {
+          "type": "gauge",
+          "help": "The time it took, in milliseconds, to answer HTTP requests for the 75th percentile cases"
+        }
+      },
+      {
+        "match": {
+          "metric": "tsd.http.latency_90pct",
+          "tags": {
+            "type": "all"
+          }
+        },
+        "target": {
+          "type": "gauge",
+          "help": "The time it took, in milliseconds, to answer HTTP requests for the 90th percentile cases"
+        }
+      },
+      {
+        "match": {
+          "metric": "tsd.http.latency_95pct",
+          "tags": {
+            "type": "all"
+          }
+        },
+        "target": {
+          "type": "gauge",
+          "help": "The time it took, in milliseconds, to answer HTTP requests for the 95th percentile cases"
+        }
+      },
+      {
+        "match": {
+          "metric": "tsd.http.latency_50pct",
+          "tags": {
+            "type": "graph"
+          }
+        },
+        "target": {
+          "type": "gauge",
+          "help": "The time it took, in milliseconds, to answer graphing requests for the 50th percentile cases"
+        }
+      },
+      {
+        "match": {
+          "metric": "tsd.http.latency_75pct",
+          "tags": {
+            "type": "graph"
+          }
+        },
+        "target": {
+          "type": "gauge",
+          "help": "The time it took, in milliseconds, to answer graphing requests for the 75th percentile cases"
+        }
+      },
+      {
+        "match": {
+          "metric": "tsd.http.latency_90pct",
+          "tags": {
+            "type": "graph"
+          }
+        },
+        "target": {
+          "type": "gauge",
+          "help": "The time it took, in milliseconds, to answer graphing requests for the 90th percentile cases"
+        }
+      },
+      {
+        "match": {
+          "metric": "tsd.http.latency_95pct",
+          "tags": {
+            "type": "graph"
+          }
+        },
+        "target": {
+          "type": "gauge",
+          "help": "The time it took, in milliseconds, to answer graphing requests for the 95th percentile cases"
+        }
+      },
+      {
+        "match": {
+          "metric": "tsd.http.latency_50pct",
+          "tags": {
+            "type": "gnuplot"
+          }
+        },
+        "target": {
+          "type": "gauge",
+          "help": "The time it took, in milliseconds, to generate the GnuPlot graphs for the 50th percentile cases"
+        }
+      },
+      {
+        "match": {
+          "metric": "tsd.http.latency_75pct",
+          "tags": {
+            "type": "gnuplot"
+          }
+        },
+        "target": {
+          "type": "gauge",
+          "help": "The time it took, in milliseconds, to generate the GnuPlot graphs for the 75th percentile cases"
+        }
+      },
+      {
+        "match": {
+          "metric": "tsd.http.latency_90pct",
+          "tags": {
+            "type": "gnuplot"
+          }
+        },
+        "target": {
+          "type": "gauge",
+          "help": "The time it took, in milliseconds, to generate the GnuPlot graphs for the 90th percentile cases"
+        }
+      },
+      {
+        "match": {
+          "metric": "tsd.http.latency_95pct",
+          "tags": {
+            "type": "gnuplot"
+          }
+        },
+        "target": {
+          "type": "gauge",
+          "help": "The time it took, in milliseconds, to generate the GnuPlot graphs for the 95th percentile cases"
+        }
+      },
+      {
+        "match": {
+          "metric": "tsd.http.graph.requests",
+          "tags": {
+            "cache": "disk"
+          }
+        },
+        "target": {
+          "type": "counter",
+          "help": "The total number of graph requests satisfied from the disk cache"
+        }
+      },
+      {
+        "match": {
+          "metric": "tsd.http.graph.requests",
+          "tags": {
+            "cache": "miss"
+          }
+        },
+        "target": {
+          "type": "counter",
+          "help": "The total number of graph requests that were not cached and required a fetch from storage"
+        }
+      },
+      {
+        "match": {
+          "metric": "tsd.http.query.invalid_requests"
+        },
+        "target": {
+          "type": "counter",
+          "help": "The total number data queries sent to the /api/query endpoint that were invalid due to user errors such as using the wrong HTTP method, missing parameters or using metrics and tags without UIDs."
+        }
+      },
+      {
+        "match": {
+          "metric": "tsd.http.query.exceptions"
+        },
+        "target": {
+          "type": "counter",
+          "help": "The total number data queries sent to the /api/query endpoint that threw an exception due to bad user input or an underlying error. See logs for details."
+        }
+      },
+      {
+        "match": {
+          "metric": "tsd.http.query.success"
+        },
+        "target": {
+          "type": "counter",
+          "help": "The total number data queries sent to the /api/query endpoint that completed successfully. Note that these may have returned an empty result."
+        }
+      },
+      {
+        "match": {
+          "metric": "tsd.rpc.received",
+          "tags": {
+            "type": "put"
+          }
+        },
+        "target": {
+          "type": "counter",
+          "help": "The total number of put requests for writing data points"
+        }
+      },
+      {
+        "match": {
+          "metric": "tsd.rpc.errors",
+          "tags": {
+            "type": "hbase_errors"
+          }
+        },
+        "target": {
+          "type": "counter",
+          "help": "The total number of RPC errors caused by HBase exceptions"
+        }
+      },
+      {
+        "match": {
+          "metric": "tsd.rpc.errors",
+          "tags": {
+            "type": "invalid_values"
+          }
+        },
+        "target": {
+          "type": "counter",
+          "help": "The total number of RPC errors caused invalid put values from user requests, such as a string instead of a number"
+        }
+      },
+      {
+        "match": {
+          "metric": "tsd.rpc.errors",
+          "tags": {
+            "type": "illegal_arguments"
+          }
+        },
+        "target": {
+          "type": "counter",
+          "help": "The total number of RPC errors caused by bad data from the user"
+        }
+      },
+      {
+        "match": {
+          "metric": "tsd.rpc.errors",
+          "tags": {
+            "type": "socket_writes_blocked"
+          }
+        },
+        "target": {
+          "type": "counter",
+          "help": "The total number of times the TSD was unable to write back to the telnet socket due to a full buffer. If this happens it likely means a number of exceptions were happening."
+        }
+      },
+      {
+        "match": {
+          "metric": "tsd.rpc.errors",
+          "tags": {
+            "type": "unknown_metrics"
+          }
+        },
+        "target": {
+          "type": "counter",
+          "help": "The total number of RPC errors caused by attempts to put a metric without an assigned UID. This only increments if auto metrics is disabled."
+        }
+      },
+      {
+        "match": {
+          "metric": "tsd.uid.cache-hit",
+          "tags": {
+            "kind": "metrics"
+          }
+        },
+        "target": {
+          "type": "counter",
+          "help": "The total number of successful cache lookups for metric UIDs"
+        }
+      },
+      {
+        "match": {
+          "metric": "tsd.uid.cache-miss",
+          "tags": {
+            "kind": "metrics"
+          }
+        },
+        "target": {
+          "type": "counter",
+          "help": "The total number of failed cache lookups for metric UIDs that required a call to storage"
+        }
+      },
+      {
+        "match": {
+          "metric": "tsd.uid.cache-size",
+          "tags": {
+            "kind": "metrics"
+          }
+        },
+        "target": {
+          "type": "gauge",
+          "help": "The current number of cached metric UIDs"
+        }
+      },
+      {
+        "match": {
+          "metric": "tsd.uid.ids-used",
+          "tags": {
+            "kind": "metrics"
+          }
+        },
+        "target": {
+          "type": "counter",
+          "help": "The current number of assigned metric UIDs. (NOTE: if random metric UID generation is enabled ids-used will always be 0)"
+        }
+      },
+      {
+        "match": {
+          "metric": "tsd.uid.ids-available",
+          "tags": {
+            "kind": "metrics"
+          }
+        },
+        "target": {
+          "type": "counter",
+          "help": "The current number of available metric UIDs, decrements as UIDs are assigned. (NOTE: if random metric UID generation is enabled ids-used will always be 0)"
+        }
+      },
+      {
+        "match": {
+          "metric": "tsd.uid.random-collisions",
+          "tags": {
+            "kind": "metrics"
+          }
+        },
+        "target": {
+          "type": "counter",
+          "help": "How many times metric UIDs attempted a reassignment due to a collision with an existing UID."
+        }
+      },
+      {
+        "match": {
+          "metric": "tsd.uid.cache-hit",
+          "tags": {
+            "kind": "tagk"
+          }
+        },
+        "target": {
+          "type": "counter",
+          "help": "The total number of successful cache lookups for tagk UIDs"
+        }
+      },
+      {
+        "match": {
+          "metric": "tsd.uid.cache-miss",
+          "tags": {
+            "kind": "tagk"
+          }
+        },
+        "target": {
+          "type": "counter",
+          "help": "The total number of failed cache lookups for tagk UIDs that required a call to storage"
+        }
+      },
+      {
+        "match": {
+          "metric": "tsd.uid.cache-size",
+          "tags": {
+            "kind": "tagk"
+          }
+        },
+        "target": {
+          "type": "gauge",
+          "help": "The current number of cached tagk UIDs"
+        }
+      },
+      {
+        "match": {
+          "metric": "tsd.uid.ids-used",
+          "tags": {
+            "kind": "tagk"
+          }
+        },
+        "target": {
+          "type": "counter",
+          "help": "The current number of assigned tagk UIDs"
+        }
+      },
+      {
+        "match": {
+          "metric": "tsd.uid.ids-available",
+          "tags": {
+            "kind": "tagk"
+          }
+        },
+        "target": {
+          "type": "counter",
+          "help": "The current number of available tagk UIDs, decrements as UIDs are assigned."
+        }
+      },
+      {
+        "match": {
+          "metric": "tsd.uid.cache-hit",
+          "tags": {
+            "kind": "tagv"
+          }
+        },
+        "target": {
+          "type": "counter",
+          "help": "The total number of successful cache lookups for tagv UIDs"
+        }
+      },
+      {
+        "match": {
+          "metric": "tsd.uid.cache-miss",
+          "tags": {
+            "kind": "tagv"
+          }
+        },
+        "target": {
+          "type": "counter",
+          "help": "The total number of failed cache lookups for tagv UIDs that required a call to storage"
+        }
+      },
+      {
+        "match": {
+          "metric": "tsd.uid.cache-size",
+          "tags": {
+            "kind": "tagv"
+          }
+        },
+        "target": {
+          "type": "gauge",
+          "help": "The current number of cached tagv UIDs"
+        }
+      },
+      {
+        "match": {
+          "metric": "tsd.uid.ids-used",
+          "tags": {
+            "kind": "tagv"
+          }
+        },
+        "target": {
+          "type": "counter",
+          "help": "The current number of assigned tagv UIDs"
+        }
+      },
+      {
+        "match": {
+          "metric": "tsd.uid.ids-available",
+          "tags": {
+            "kind": "tagv"
+          }
+        },
+        "target": {
+          "type": "counter",
+          "help": "The current number of available tagv UIDs, decrements as UIDs are assigned."
+        }
+      },
+      {
+        "match": {
+          "metric": "tsd.jvm.ramfree"
+        },
+        "target": {
+          "type": "gauge",
+          "help": "The number of bytes reported as free by the JVM’s Runtime.freeMemory()"
+        }
+      },
+      {
+        "match": {
+          "metric": "tsd.jvm.ramused"
+        },
+        "target": {
+          "type": "gauge",
+          "help": "The number of bytes reported as used by the JVM’s Runtime.totalMemory()"
+        }
+      },
+      {
+        "match": {
+          "metric": "tsd.hbase.latency_50pct",
+          "tags": {
+            "method": "put"
+          }
+        },
+        "target": {
+          "type": "gauge",
+          "help": "The time it took, in milliseconds, to execute a Put call for the 50th percentile cases"
+        }
+      },
+      {
+        "match": {
+          "metric": "tsd.hbase.latency_75pct",
+          "tags": {
+            "method": "put"
+          }
+        },
+        "target": {
+          "type": "gauge",
+          "help": "The time it took, in milliseconds, to execute a Put call for the 75th percentile cases"
+        }
+      },
+      {
+        "match": {
+          "metric": "tsd.hbase.latency_90pct",
+          "tags": {
+            "method": "put"
+          }
+        },
+        "target": {
+          "type": "gauge",
+          "help": "The time it took, in milliseconds, to execute a Put call for the 90th percentile cases"
+        }
+      },
+      {
+        "match": {
+          "metric": "tsd.hbase.latency_95pct",
+          "tags": {
+            "method": "put"
+          }
+        },
+        "target": {
+          "type": "gauge",
+          "help": "The time it took, in milliseconds, to execute a Put call for the 95th percentile cases"
+        }
+      },
+      {
+        "match": {
+          "metric": "tsd.hbase.latency_50pct",
+          "tags": {
+            "method": "scan"
+          }
+        },
+        "target": {
+          "type": "gauge",
+          "help": "The time it took, in milliseconds, to execute a Scan call for the 50th percentile cases"
+        }
+      },
+      {
+        "match": {
+          "metric": "tsd.hbase.latency_75pct",
+          "tags": {
+            "method": "scan"
+          }
+        },
+        "target": {
+          "type": "gauge",
+          "help": "The time it took, in milliseconds, to execute a Scan call for the 75th percentile cases"
+        }
+      },
+      {
+        "match": {
+          "metric": "tsd.hbase.latency_90pct",
+          "tags": {
+            "method": "scan"
+          }
+        },
+        "target": {
+          "type": "gauge",
+          "help": "The time it took, in milliseconds, to execute a Scan call for the 90th percentile cases"
+        }
+      },
+        {
+        "match": {
+          "metric": "tsd.hbase.latency_95pct",
+          "tags": {
+            "method": "scan"
+          }
+        },
+        "target": {
+          "type": "gauge",
+          "help": "The time it took, in milliseconds, to execute a Scan call for the 95th percentile cases"
+        }
+      },
+      {
+        "match": {
+          "metric": "tsd.hbase.root_lookups"
+        },
+        "target": {
+          "type": "counter",
+          "help": "The total number of root lookups performed by the client"
+        }
+      },
+      {
+        "match": {
+          "metric": "tsd.hbase.meta_lookups",
+          "tags": {
+            "type": "uncontended"
+          }
+        },
+        "target": {
+          "type": "counter",
+          "help": "The total number of uncontended meta table lookups performed by the client"
+        }
+      },
+      {
+        "match": {
+          "metric": "tsd.hbase.meta_lookups",
+          "tags": {
+            "type": "contended"
+          }
+        },
+        "target": {
+          "type": "counter",
+          "help": "The total number of contended meta table lookups performed by the client"
+        }
+      },
+      {
+        "match": {
+          "metric": "tsd.hbase.rpcs",
+          "tags": {
+            "type": "increment"
+          }
+        },
+        "target": {
+          "type": "counter",
+          "help": "The total number of Increment requests performed by the client"
+        }
+      },
+      {
+        "match": {
+          "metric": "tsd.hbase.rpcs",
+          "tags": {
+            "type": "delete"
+          }
+        },
+        "target": {
+          "type": "counter",
+          "help": "The total number of Delete requests performed by the client"
+        }
+      },
+      {
+        "match": {
+          "metric": "tsd.hbase.rpcs",
+          "tags": {
+            "type": "get"
+          }
+        },
+        "target": {
+          "type": "counter",
+          "help": "The total number of Get requests performed by the client"
+        }
+      },
+      {
+        "match": {
+          "metric": "tsd.hbase.rpcs",
+          "tags": {
+            "type": "put"
+          }
+        },
+        "target": {
+          "type": "counter",
+          "help": "The total number of Put requests performed by the client"
+        }
+      },
+      {
+        "match": {
+          "metric": "tsd.hbase.rpcs",
+          "tags": {
+            "type": "rowLock"
+          }
+        },
+        "target": {
+          "type": "counter",
+          "help": "The total number of Row Lock requests performed by the client"
+        }
+      },
+      {
+        "match": {
+          "metric": "tsd.hbase.rpcs",
+          "tags": {
+            "type": "openScanner"
+          }
+        },
+        "target": {
+          "type": "counter",
+          "help": "The total number of Open Scanner requests performed by the client"
+        }
+      },
+      {
+        "match": {
+          "metric": "tsd.hbase.rpcs",
+          "tags": {
+            "type": "scan"
+          }
+        },
+        "target": {
+          "type": "counter",
+          "help": "The total number of Scan requests performed by the client. These indicate a scan->next() call."
+        }
+      },
+      {
+        "match": {
+          "metric": "tsd.hbase.rpcs.batched"
+        },
+        "target": {
+          "type": "counter",
+          "help": "The total number of batched requests sent by the client"
+        }
+      },
+      {
+        "match": {
+          "metric": "tsd.hbase.flushes"
+        },
+        "target": {
+          "type": "counter",
+          "help": "The total number of flushes performed by the client"
+        }
+      },
+      {
+        "match": {
+          "metric": "tsd.hbase.connections.created"
+        },
+        "target": {
+          "type": "counter",
+          "help": "The total number of connections made by the client to region servers"
+        }
+      },
+      {
+        "match": {
+          "metric": "tsd.hbase.nsre"
+        },
+        "target": {
+          "type": "counter",
+          "help": "The total number of No Such Region Exceptions caught. These can happen when a region server crashes, is taken offline or when a region splits (?)"
+        }
+      },
+      {
+        "match": {
+          "metric": "tsd.hbase.nsre.rpcs_delayed"
+        },
+        "target": {
+          "type": "counter",
+          "help": "The total number of calls delayed due to an NSRE that were later successfully executed"
+        }
+      },
+      {
+        "match": {
+          "metric": "tsd.hbase.region_clients.open"
+        },
+        "target": {
+          "type": "counter",
+          "help": "The total number of connections opened to region servers since the TSD started. If this number is climbing the region servers may be crashing and restarting."
+        }
+      },
+      {
+        "match": {
+          "metric": "tsd.hbase.region_clients.idle_closed"
+        },
+        "target": {
+          "type": "counter",
+          "help": "The total number of connections to region servers that were closed due to idle connections. This indicates nothing was read from or written to a server in some time and the TSD will reconnect when it needs to."
+        }
+      },
+      {
+        "match": {
+          "metric": "tsd.compaction.count",
+          "tags": {
+            "type": "trivial"
+          }
+        },
+        "target": {
+          "type": "counter",
+          "help": "The total number of trivial compactions performed by the TSD"
+        }
+      },
+      {
+        "match": {
+          "metric": "tsd.compaction.count",
+          "tags": {
+            "type": "complex"
+          }
+        },
+        "target": {
+          "type": "counter",
+          "help": "The total number of complex compactions performed by the TSD"
+        }
+      },
+      {
+        "match": {
+          "metric": "tsd.compaction.duplicates",
+          "tags": {
+            "type": "identical"
+          }
+        },
+        "target": {
+          "type": "counter",
+          "help": "The total number of data points found during compaction that were duplicates at the same time and with the same value."
+        }
+      },
+      {
+        "match": {
+          "metric": "tsd.compaction.duplicates",
+          "tags": {
+            "type": "variant"
+          }
+        },
+        "target": {
+          "type": "counter",
+          "help": "The total number of data points found during compaction that were duplicates at the same time but with a different value."
+        }
+      },
+      {
+        "match": {
+          "metric": "tsd.compaction.queue.size"
+        },
+        "target": {
+          "type": "gauge",
+          "help": "How many rows of data are currently in the queue to be compacted."
+        }
+      },
+      {
+        "match": {
+          "metric": "tsd.compaction.errors",
+          "tags": {
+            "type": "read"
+          }
+        },
+        "target": {
+          "type": "counter",
+          "help": "The total number of rows that couldn’t be read from storage due to an error of some sort."
+        }
+      },
+      {
+        "match": {
+          "metric": "tsd.compaction.errors",
+          "tags": {
+            "type": "put"
+          }
+        },
+        "target": {
+          "type": "counter",
+          "help": "The total number of rows that couldn’t be re-written to storage due to an error of some sort."
+        }
+      },
+      {
+        "match": {
+          "metric": "tsd.compaction.errors",
+          "tags": {
+            "type": "delete"
+          }
+        },
+        "target": {
+          "type": "counter",
+          "help": "The total number of rows that couldn’t have the old non-compacted data deleted from storage due to an error of some sort."
+        }
+      },
+      {
+        "match": {
+          "metric": "tsd.compaction.writes",
+          "tags": {
+            "type": "read"
+          }
+        },
+        "target": {
+          "type": "counter",
+          "help": "The total number of writes back to storage of compacted values."
+        }
+      },
+      {
+        "match": {
+          "metric": "tsd.compaction.deletes",
+          "tags": {
+            "type": "read"
+          }
+        },
+        "target": {
+          "type": "counter",
+          "help": "The total number of delete calls made to storage to remove old data that has been compacted."
+        }
+      }
+    ]
+
+  opentsdb-whitelisted-metrics.json: |-
+    [
+        {
+            "relativeURL": "/api/stats/jvm",
+            "whiteListMetrics": [
+                {
+                    "metricName": "tsd_jvm_memory_nonHeapMemoryUsage_init",
+                    "type": "GAUGE"
+                },
+                {
+                    "metricName": "tsd_jvm_memory_nonHeapMemoryUsage_used",
+                    "type": "GAUGE"
+                },
+                {
+                    "metricName": "tsd_jvm_memory_nonHeapMemoryUsage_committed",
+                    "type": "GAUGE"
+                },
+                {
+                    "metricName": "tsd_jvm_memory_nonHeapMemoryUsage_max",
+                    "type": "GAUGE"
+                },
+                {
+                    "metricName": "tsd_jvm_memory_heapMemoryUsage_init",
+                    "type": "GAUGE"
+                },
+                {
+                    "metricName": "tsd_jvm_memory_heapMemoryUsage_used",
+                    "type": "GAUGE"
+                },
+                {
+                    "metricName": "tsd_jvm_memory_heapMemoryUsage_committed",
+                    "type": "GAUGE"
+                },
+                {
+                    "metricName": "tsd_jvm_memory_heapMemoryUsage_max",
+                    "type": "GAUGE"
+                },
+                {
+                    "metricName": "tsd_jvm_pools_g1SurvivorSpace_usage_init",
+                    "type": "GAUGE"
+                },
+                {
+                    "metricName": "tsd_jvm_pools_g1SurvivorSpace_usage_used",
+                    "type": "GAUGE"
+                },
+                {
+                    "metricName": "tsd_jvm_pools_g1SurvivorSpace_usage_committed",
+                    "type": "GAUGE"
+                },
+                {
+                    "metricName": "tsd_jvm_pools_g1SurvivorSpace_usage_max",
+                    "type": "GAUGE"
+                },
+                {
+                    "metricName": "tsd_jvm_pools_g1OldGen_usage_init",
+                    "type": "GAUGE"
+                },
+                {
+                    "metricName": "tsd_jvm_pools_g1OldGen_usage_used",
+                    "type": "GAUGE"
+                },
+                {
+                    "metricName": "tsd_jvm_pools_g1OldGen_usage_committed",
+                    "type": "GAUGE"
+                },
+                {
+                    "metricName": "tsd_jvm_pools_g1OldGen_usage_max",
+                    "type": "GAUGE"
+                },
+                {
+                    "metricName": "tsd_jvm_pools_g1EdenSpace_usage_init",
+                    "type": "GAUGE"
+                },
+                {
+                    "metricName": "tsd_jvm_pools_g1EdenSpace_usage_used",
+                    "type": "GAUGE"
+                },
+                {
+                    "metricName": "tsd_jvm_pools_g1EdenSpace_usage_committed",
+                    "type": "GAUGE"
+                },
+                {
+                    "metricName": "tsd_jvm_pools_g1EdenSpace_usage_max",
+                    "type": "GAUGE"
+                },
+                {
+                    "metricName": "tsd_jvm_gc_g1OldGeneration_collectionTime",
+                    "type": "COUNTER"
+                },
+                {
+                    "metricName": "tsd_jvm_gc_g1OldGeneration_collectionCount",
+                    "type": "COUNTER"
+                },
+                {
+                    "metricName": "tsd_jvm_gc_g1YoungGeneration_collectionTime",
+                    "type": "COUNTER"
+                },
+                {
+                    "metricName": "tsd_jvm_gc_g1YoungGeneration_collectionCount",
+                    "type": "COUNTER"
+                }
+            ]
+        },
+        {
+            "relativeURL": "/api/stats/region_clients",
+            "whiteListMetrics": [
+                {
+                    "metricName": "tsd_jvm_memory_nonHeapMemoryUsage_init",
+                    "type": "GAUGE"
+                },
+                {
+                    "metricName": "tsd_region_clients_writesBlocked",
+                    "type": "GAUGE"
+                },
+                {
+                    "metricName": "tsd_region_clients_inflightBreached",
+                    "type": "GAUGE"
+                },
+                {
+                    "metricName": "tsd_region_clients_pendingRPCs",
+                    "type": "GAUGE"
+                },
+                {
+                    "metricName": "tsd_region_clients_rpcsInFlight",
+                    "type": "GAUGE"
+                },
+                {
+                    "metricName": "tsd_region_clients_rpcsSent",
+                    "type": "GAUGE"
+                },
+                {
+                    "metricName": "tsd_region_clients_rpcResponsesUnknown",
+                    "type": "GAUGE"
+                },
+                {
+                    "metricName": "tsd_region_clients_pendingBatchedRPCs",
+                    "type": "GAUGE"
+                },
+                {
+                    "metricName": "tsd_region_clients_rpcsTimedout",
+                    "type": "GAUGE"
+                },
+                {
+                    "metricName": "tsd_region_clients_rpcResponsesTimedout",
+                    "type": "GAUGE"
+                },
+                {
+                    "metricName": "tsd_region_clients_rpcid",
+                    "type": "GAUGE"
+                }
+            ]
+        },
+        {
+      	    "relativeURL": "/api/stats/query/count",
+            "whiteListMetrics": [
+                {
+                    "metricName": "tsd_queries_running_count",
+                    "type": "GAUGE"
+                }
+            ]
+      	},
+        {
+            "relativeURL": "/api/stats/threads",
+            "whiteListMetrics": [
+                {
+                    "metricName": "tsd_thread_state",
+                    "type": "GAUGE"
+                }
+      		]
+        }
+              
+    ]
+

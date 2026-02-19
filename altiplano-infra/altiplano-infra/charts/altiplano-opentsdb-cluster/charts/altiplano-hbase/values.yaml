@@ -1,0 +1,202 @@
+# Default values for hbase
+# This is a YAML-formatted file.
+# Declare variables to be passed into your templates.
+
+# The base hadoop image to use for all components.
+# See this repo for image build details: https://github.com/Comcast/kube-yarn/tree/master/image
+global:
+  timeZoneEnv: ""
+  registry: artifactory.net.nokia.com
+  persistence: false
+  vault:
+    enabled: false
+  namenodeHAEnabled: true
+  #ipFamilyPolicy:  SingleStack | PreferDualStack | RequireDualStack
+  # ipFamilies: ["IPv4"] | ["IPv6"] | ["IPv4","IPv6"] | ["IPv6","IPv4"]
+#ipFamilyPolicy:  SingleStack | PreferDualStack | RequireDualStack
+#ipFamilies: ["IPv4"] | ["IPv6"] | ["IPv4","IPv6"] | ["IPv6","IPv4"]
+image:
+  registry: #artifactory.net.nokia.com
+  repository: fnms-gradiant-hbase
+  tag: nokia-4.0.2
+  pullPolicy: IfNotPresent
+
+init:
+  image:
+    name: fnms-init-container
+    tag: nokia-2.0.1
+    pullPolicy: IfNotPresent
+  securityContext:
+    runAsUser: 1000
+    runAsGroup: 1000
+
+securityContext:
+  fsGroup: 114
+  runAsUser: 201
+  runAsGroup: 114
+
+# Select antiAffinity as either hard or soft, default is 'soft'
+# 'hard' is recommended for higher availaility
+antiAffinity: "soft"
+timeZoneEnv: ""
+conf:
+  hbaseSite:
+    zookeeperquorumPort: "2181"
+    hbase_regionserver_thread_compaction_small: "3"
+    hbase_zookeeper_session_timeout: "60000"
+    hbase_status_published: "true"
+    hbase_region_replica_replication_enabled: "true"
+    hbase_regionserver_handler_count: "30"
+    hbase_ipc_server_callqueue_read_ratio: "0.5"
+    hbase_meta_replica_count: "1"
+    hbase_regionserver_hostname_disable_master_reversedns: "true"
+    hbase_zookeeper_dns_interface: "default"
+    hbase_regionserver_dns_interface: "default"
+    hbase_master_dns_interface: "default"
+    hbase_zookeeper_property_tickTime: "6000"
+    hbase_rpc_timeout: "120000"
+    hbase_wal_async_wait_on_shutdown_seconds: "60"
+  hbasePolicy:
+    security.client.protocol.acl: "hdfs hdfs"
+    security.admin.protocol.acl: "hdfs hdfs"
+    security.masterregion.protocol.acl: "hdfs hdfs"
+hbase:
+  securityContext:
+    runAsUser: 1000
+    runAsGroup: 114 #hdfs uid
+  master:
+    accessRoleLabel: internal-access
+    env:
+      META_TABLE: 'tsdb-meta'
+      TREE_TABLE: 'tsdb-tree'
+      TSDB_TABLE: 'tsdb'
+      UID_TABLE: 'tsdb-uid'
+      HBASE_HEAPSIZE: 500M
+      HBASE_OPTS_GC_SETTING: "-XX:+UseG1GC"
+      HBASE_LOG_LEVEL: INFO
+      HBASE_ROOT_LOGGER: "INFO,RFA"
+      HBASE_SECURITY_LOGGER: "INFO,RFAS"
+    replicas: 1
+    resources:
+      requests:
+        memory: "256Mi"
+        cpu: "10m"
+      limits:
+        memory: "2048Mi"
+        cpu: "1000m"
+    startupProbe:
+      initialDelaySeconds: 10
+      periodSeconds: 10
+      timeoutSeconds: 5
+      failureThreshold: 6
+    livenessProbe:
+      initialDelaySeconds: 5
+      periodSeconds: 5
+      timeoutSeconds: 2
+      failureThreshold: 3
+    readinessProbe:
+      initialDelaySeconds: 5
+      periodSeconds: 5
+      timeoutSeconds: 2
+      failureThreshold: 3
+    fluentd_sidecar:
+      image:
+        name: "fnms-fluent"
+        tag: "nokia-4.1.8"
+        pullpolicy: IfNotPresent
+    nodeSelector: {}
+  regionServer:
+    accessRoleLabel: internal-access
+    env:
+      HBASE_HEAPSIZE: 1000M
+      HBASE_OPTS_GC_SETTING: "-XX:+UseG1GC"
+      HBASE_LOG_LEVEL: WARN
+      HBASE_ROOT_LOGGER: "WARN,RFA"
+      HBASE_SECURITY_LOGGER: "WARN,RFAS"
+    replicas: 1
+    resources:
+      requests:
+        memory: "256Mi"
+        cpu: "10m"
+      limits:
+        memory: "2048Mi"
+        cpu: "1000m"
+    fluentd_sidecar:
+      image:
+        name: "fnms-fluent"
+        tag: "nokia-4.1.8"
+        pullpolicy: IfNotPresent
+    nodeSelector: {}
+  persistence:
+    enabled: true
+    storageClassName: ""
+    accessMode: ReadWriteOnce
+    # Size of persistent storage of data pod to store the hbase data.
+    size: 1Gi
+
+## Prometheus Exporter Configuration
+## ref: https://prometheus.io/docs/instrumenting/exporters/
+prometheus:
+  ## JMX Exporter Configuration
+  ## ref: https://github.com/prometheus/jmx_exporter
+  ## ref: https://github.com/chuyeow/prometheus-jmx-exporter-kubernetes
+  enabled: true
+  port: 5556
+  # hbase-master pods runs two jvm processes: hbase and the thrift api.
+  thriftPort: 5557
+  resources: {}
+  image: fnms-prometheus-jmx-exporter-kubernetes
+  imageTag: nokia-3.0.0
+  # prometheus jmx_exporter config https://github.com/prometheus/jmx_exporter
+  config:
+    lowercaseOutputName: true
+    lowercaseOutputLabelNames: true
+    blacklistObjectNames: ["Hadoop:service=Hbase,name=RegionServer,sub=Regions"]
+    rules:
+    - pattern: Hadoop<service=(\w+), name=(\w+)><>([\w._]+)
+      name: $1_$2_$3
+    - pattern: Hadoop<service=(\w+), name=(\w+), sub=(\w+)><>([\w._]+)
+      name: $1_$2_$3_$4
+      labels:
+        "name": "$2"
+        "sub": "$3"
+    - pattern: .+
+persistence:
+  enabled: true
+
+cbur:
+  enabled: true
+  apiVersion: "cbur.csf.nokia.com/v1"
+  #an integer. This value only applies to statefulset. The value can be 0,1 or 2.
+  #Recommended value of brOption for BELK is 0.
+  brOption: 0
+  #the maximum copy you want to saved.
+  maxiCopy: 5
+  #Modes supported now: "local","NETBKUP","AVAMAR","CEPHS3","AWSS3", case insensitive
+  backendMode: local
+  #It is used for scheduled backup task
+  cronSpec: "*/30 * * * *"
+  #Set below parameters to true for auto enabling cron job
+  autoEnableCron: true
+  #Set below parameter to true in case you want cronjob to be automatically deleted/updated based on autoEnableCron or cronJob parameters
+  autoUpdateCron: true
+  ## should backups be encrypted?
+  dataEncryption: false
+  persistence:
+    cburtmp:
+      enabled: true
+      size: 3Gi
+      storageClass: ""
+      accessMode: ReadWriteOnce
+      dir: /tmp
+  cbura:
+    imageRepo: cbur/cbura
+    imageTag: 1.0.3-5650
+    imagePullPolicy: IfNotPresent
+    resources:
+      limits:
+        cpu: "1"
+        memory: "2Gi"
+      requests:
+        cpu: "500m"
+        memory: "1Gi"

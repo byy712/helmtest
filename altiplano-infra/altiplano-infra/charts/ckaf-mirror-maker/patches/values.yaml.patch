@@ -1,0 +1,192 @@
+--- ckaf-mirror-maker-5.1.0/ckaf-mirror-maker/values.yaml	2024-03-29 01:11:14.000000000 +0700
++++ ckaf-mirror-maker-5.1.0-nokia-patch-4/ckaf-mirror-maker/values.yaml	2024-05-23 17:11:34.301131798 +0700
+@@ -7,6 +7,8 @@
+   # If flatRegistry is set to true then, user is open to use their own flat registries. By default flatRegistry is set to false.
+   # When flatRegistry is enabled then repo path will not be used.
+   flatRegistry: false
++  vault:
++    enabled: false
+   rbac:
+     enabled: true
+   jmx:
+@@ -86,6 +88,8 @@
+ ipFamilyPolicy:
+ ipFamilies: []
+ 
++
++
+ #To ensure logs and other data are synchronized between pods and the hosted components are using the same timezone.
+ ## If set will take precedence over global.timeZoneEnv
+ timeZone:
+@@ -105,6 +109,9 @@
+ #        release: 'kmm'
+ #    autoGenerateLabelSelector: False
+ 
++strategy:
++  type:
++
+ clusterDomain: "cluster.local"
+ 
+ managedBy: Helm
+@@ -180,10 +187,10 @@
+ # replicaCount can be incresed but its not advisable to have more than 1 replica.
+ replicaCount: 1
+ 
+-kubectlImageRepo:
++kubectlImageRepo: tools/kubectl
+ #deprecated: kubectlImageName will be used instead of kubectlImageRepo when flatRegistry is set to true.
+ #kubectlImageName:
+-kubectlTag:
++kubectlTag: 1.28.7-rocky8-nano-20240301
+ 
+ kubectl:
+   imageFlavor:
+@@ -196,10 +203,10 @@
+   imagePullPolicy: "IfNotPresent"
+ 
+ image:
+-  repository:
+-  #depreacted: name will be used instead of repository when flatRegistry is set to true.
+-  #name:
+-  tag:
++  repository: "ckaf/ckaf-mirror-maker"
++  #name will be used instead of repository when flatRegistry is set to true.
++  name: "ckaf-mirror-maker"
++  tag: "8.6.0-rocky8-jre17-3.6.0-8105"
+   pullPolicy: IfNotPresent
+   imageFlavor:
+   imageFlavorPolicy:
+@@ -231,7 +238,7 @@
+ #Mirror Maker init container resources
+ initContainerResources:
+   limits:
+-    cpu: "" 
++    cpu: "1" 
+     memory: 256Mi
+     ephemeral-storage: 500M
+   requests:
+@@ -261,7 +268,7 @@
+         memory: 1Gi
+         ephemeral-storage: 200M
+       limits:
+-        cpu: ""
++        cpu: "1"
+         memory: 1Gi
+         ephemeral-storage: 200M
+   tls:
+@@ -349,7 +356,7 @@
+ 
+ resources:
+   limits:
+-    cpu: ""
++    cpu: "1"
+     memory: 2Gi
+     ephemeral-storage: 1G
+   requests:
+@@ -357,6 +364,15 @@
+     memory: 1Gi
+     ephemeral-storage: 1G
+ 
++fluentd_sidecar:
++  image:
++    name: "fnms-fluent"
++    tag: "nokia-4.1.4"
++    pullPolicy: IfNotPresent
++  securityContext:
++    runAsUser: 1000
++    runAsGroup: 998
++
+ #Job Resources
+ jobResources:
+   requests:
+@@ -364,7 +380,7 @@
+     memory: 1Gi
+     ephemeral-storage: 200M
+   limits:
+-    cpu: ""
++    cpu: "1"
+     memory: 1Gi
+     ephemeral-storage: 200M
+ 
+@@ -385,8 +401,29 @@
+ #User can configure the precreated SA specifically for this chart here.
+ serviceAccountName:
+ 
+-
+-
++initContainer:
++  image:
++    name: fnms-init-container
++    tag: nokia-1.0.8
++    pullPolicy: IfNotPresent
++  securityContext:
++    runAsNonRoot: true
++    runAsUser: 1000
++    runAsGroup: 1000
++certificates:
++  altiplano_keystore_secrets: altiplano-keystore-secrets
++  altiplano_keystore_password: keystore-password
++  secrets:
++    altiplano_kafka_certificate_secrets: altiplano-kafka-mirrormaker-certificate-secrets
++    altiplano_keystore_secrets: altiplano-keystore-secrets
++  fileNames:
++    kafka_server_key_pem: kafka-mirrormaker-kafka-client-key.pem
++    kafka_server_key_pass: kafka-mirrormaker-kafka-client-key.pass
++    kafka_server_cert_pem: kafka-mirrormaker-kafka-client-cert.pem
++    altiplano_keystore_password: keystore-password
++    kafka_server_keystore_jks: server.jks
++    kafka_server_trustchain_cert_pem: kafka-mirrormaker-kafka-client-trustchain-cert.pem
++    kafka_server_truststore_jks: trustchain.jks
+ mirrorMakerConfig:
+   # Give comma separated cluster aliases for each of the kafka cluster between whom you want to enable the data replication.
+   # If you want to enable data replication between two kafka-clusters, give two comma-separated alias and for 3 clusters give 3 comma-separated alias.
+@@ -454,6 +491,20 @@
+     # Mount client keytab using below secret and it will be used to connect this kafka cluster.
+     # kubectl create secret generic <secret-name> --from-literal=<krbPrincipalKey>=<principal-name> --from-file=<krbKeytabKey>=<local-path-to-keytab>
+     # For eg. kubectl create secret generic mirror-sasl-secret --from-literal=krbPrincipalKey=mirrormaker@EXAMPLE.COM --from-file=krbKeytabKey=/home/cloud-user/test/client.keytab
++      certificates:
++        altiplano_keystore_secrets: altiplano-keystore-secrets
++        altiplano_keystore_password: keystore-password
++        secrets:
++          altiplano_kafka_certificate_secrets: altiplano-kafka-mirrormaker-certificate-secrets
++          altiplano_keystore_secrets: altiplano-keystore-secrets
++        fileNames:
++          kafka_server_key_pem: kafka-mirrormaker-kafka-client-key.pem
++          kafka_server_key_pass: kafka-mirrormaker-kafka-client-key.pass
++          kafka_server_cert_pem: kafka-mirrormaker-kafka-client-cert.pem
++          altiplano_keystore_password: keystore-password
++          kafka_server_keystore_jks: server.jks
++          kafka_server_trustchain_cert_pem: kafka-mirrormaker-kafka-client-trustchain-cert.pem
++          kafka_server_truststore_jks: trustchain.jks
+     saslKrb:
+       enabled: false
+       krbSecretName: <mirror-maker-sasl-secret>
+@@ -489,6 +540,20 @@
+           truststore_passwd_key: 
+           keystore_passwd_key: 
+           keystore_key_passwd_key: 
++      certificates:
++        altiplano_keystore_secrets: altiplano-keystore-secrets
++        altiplano_keystore_password: keystore-password
++        secrets:
++          altiplano_kafka_certificate_secrets: altiplano-kafka-mirrormaker-certificate-secrets
++          altiplano_keystore_secrets: altiplano-keystore-secrets
++        fileNames:
++          kafka_server_key_pem: kafka-mirrormaker-kafka-client-key.pem
++          kafka_server_key_pass: kafka-mirrormaker-kafka-client-key.pass
++          kafka_server_cert_pem: kafka-mirrormaker-kafka-client-cert.pem
++          altiplano_keystore_password: keystore-password
++          kafka_server_keystore_jks: server.jks
++          kafka_server_trustchain_cert_pem: kafka-mirrormaker-kafka-client-trustchain-cert.pem
++          kafka_server_truststore_jks: trustchain.jks
+     saslKrb:
+       enabled: false
+       krbSecretName: <mirror-maker-sasl-secret>
+@@ -550,6 +615,7 @@
+     targetCluster: ""
+     # MirrorMaker replicates topics in target cluster with replication factor set under sourceConnector.config.replication.factor
+     # MirroMaker doesn't replicate replication factors of the topics.
++    purgeKafkaTopic: "true"
+     sourceConnector:
+       config:
+         replication.factor: 2

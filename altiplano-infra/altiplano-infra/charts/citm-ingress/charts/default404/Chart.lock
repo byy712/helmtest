@@ -1,0 +1,6 @@
+dependencies:
+- name: csf-common-lib
+  repository: https://repo.cci.nokia.net/csf-helm-stable
+  version: 1.10.0
+digest: sha256:8248a2af1f51bded96ed896a9d2d344d31db40914ec0573fa92125d9b089cd6e
+generated: "2023-12-06T06:51:28.822460561Z"

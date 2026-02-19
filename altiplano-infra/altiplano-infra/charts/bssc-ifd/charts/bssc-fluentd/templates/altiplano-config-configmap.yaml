@@ -1,0 +1,10 @@
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ .Release.Name }}-altiplano-config
+  namespace: {{ .Release.Namespace }}
+data:
+  {{- (.Files.Glob "altiplano-config/*").AsConfig | nindent 2 }}
+
+---

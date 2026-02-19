@@ -1,0 +1,119 @@
+{{- if and (not .Values.global.podSecurityPolicy.userProvided) (eq (include "citm-ingress.createPSP" .) "true") }}
+{{- if and .Values.rbac.enabled .Values.rbac.podSecurityPolicy.enabled }}
+apiVersion: {{ template "citm-ingress.getPodSecurityPolicyAPI" . }}
+kind: PodSecurityPolicy
+metadata:
+  name: {{ template "citm-ingress.fullname" . }}
+  labels:
+    app: {{ template "citm-ingress.name" . }}
+    chart: {{ .Chart.Name }}-{{ .Chart.Version }}
+    heritage: {{ .Release.Service }}
+    release: {{ .Release.Name }}
+    {{- include "citm-ingress.commonLabels" . | indent 4 }}
+  annotations:
+    {{ toYaml .Values.rbac.podSecurityPolicy.annotations | indent 4 }}
+spec:
+{{- if .Values.rbac.bindCapability.enabled }}
+  allowedCapabilities:
+    - NET_BIND_SERVICE
+  # We need this for setcap cap_net_bind_service
+  allowPrivilegeEscalation: true
+{{- end }}
+{{- if .Values.controller.securityContextPrivileged }}
+  privileged: true
+  allowPrivilegeEscalation: true
+{{- else }}
+  privileged: false
+{{- end }}
+  volumes:
+    - 'configMap'
+    - 'secret'
+    - 'hostPath'
+    - 'emptyDir'
+{{- if .Values.controller.hostNetwork }}
+  hostNetwork: {{ .Values.controller.hostNetwork }}
+  hostPorts:
+  {{- if and (.Values.controller.forcePort) (not .Values.controller.disableHttpPortListening) }}
+  - min: {{ .Values.controller.forcePortHttp }}
+    max: {{ .Values.controller.forcePortHttp }}
+  {{- end }}
+  {{- if .Values.controller.forcePort  }}
+  - min: {{ .Values.controller.forcePortHttps }}
+    max: {{ .Values.controller.forcePortHttps }}
+  {{- end }}
+  {{- if and (.Values.controller.httpPort) (not .Values.controller.disableHttpPortListening) }}
+  - min: {{ .Values.controller.httpPort }}
+    max: {{ .Values.controller.httpPort }}
+  {{- end }}
+  {{- if .Values.controller.httpsPort  }}
+  - min: {{ .Values.controller.httpsPort }}
+    max: {{ .Values.controller.httpsPort }}
+  {{- end }}
+  {{- if and (.Values.controller.statusPort) (.Values.controller.addStatusPortToHostports) }}
+  - min: {{ .Values.controller.statusPort }}
+    max: {{ .Values.controller.statusPort }}
+  {{- end }}
+{{- if .Values.forceTcp }}
+{{- range $key, $value := .Values.forceTcp }}
+  # {{ $key }}-tcp
+  - min: {{ $key }}
+    max: {{ $key }}
+{{- end }}
+{{- else }}
+{{- range $key, $value := .Values.tcp }}
+  # {{ $key }}-tcp
+  - min: {{ $key }}
+    max: {{ $key }}
+{{- end }}
+{{- end }}
+{{- if .Values.forceUdp }}
+{{- range $key, $value := .Values.forceUdp }}
+  # {{ $key }}-udp
+  - min: {{ $key }}
+    max: {{ $key }}
+{{- end }}
+{{- else }}
+{{- range $key, $value := .Values.udp }}
+  # {{ $key }}-udp
+  - min: {{ $key }}
+    max: {{ $key }}
+{{- end }}
+{{- end }}
+{{- end }}
+  hostIPC: false
+  hostPID: false
+  runAsUser:
+{{- if or .Values.controller.workerProcessAsRoot .Values.controller.securityContextPrivileged }}
+    rule: 'RunAsAny'
+  supplementalGroups:
+    rule: 'MustRunAs'
+    ranges:
+      # Forbid adding the root group.
+      - min: 0
+        max: 65535
+  fsGroup:
+    rule: 'MustRunAs'
+    ranges:
+      - min: 0
+        max: 65535
+{{- else }}
+    # Require the container to run without root privileges.
+    rule: 'MustRunAsNonRoot'
+  supplementalGroups:
+    rule: 'MustRunAs'
+    ranges:
+      # Forbid adding the root group.
+      - min: 1
+        max: 65535
+  fsGroup:
+    rule: 'MustRunAs'
+    ranges:
+      # Forbid adding the root group.
+      - min: 1
+        max: 65535
+{{- end }}
+  readOnlyRootFilesystem: {{ .Values.securityContext.readOnlyRootFilesystem }}
+  seLinux:
+    rule: 'RunAsAny'
+{{- end }}
+{{- end }}

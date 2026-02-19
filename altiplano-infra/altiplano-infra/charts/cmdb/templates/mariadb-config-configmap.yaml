@@ -1,0 +1,63 @@
+{{- include "cmdb.init" . -}}
+{{ $use_tls := eq (include "cmdb.tls_enabled" (tuple . "mariadb")) "true" }}
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ template "cmdb.fullname" . }}-mariadb-config
+  labels:
+    {{- include "cmdb-mariadb.labels" (tuple . "configmap") | nindent 4 }}
+  annotations:
+    {{- include "cmdb-mariadb.annotations" (tuple . "configmap") | nindent 4 }}
+data:
+  mysqld.site: |-
+{{- if .Values.mariadb.mysqld_site_conf }}
+{{- .Values.mariadb.mysqld_site_conf | nindent 4 }}
+{{- end }}
+{{- if .Values.mariadb.audit_logging }}
+    [mysqld]
+    plugin-load-add = server_audit=server_audit.so
+    server_audit_logging = {{ if .Values.mariadb.audit_logging.enabled -}}on{{- else -}}off{{- end }}
+    server_audit_events = {{ .Values.mariadb.audit_logging.events | default "CONNECT,QUERY_DCL,QUERY_DDL" }}
+{{- end }}
+{{- if .Values.mariadb.persistence.temp.enabled }}
+    [mysqld]
+    tmpdir = {{ default "/mariadb/tmp" .Values.mariadb.persistence.temp.dir }}
+{{- end }}
+{{- if $use_tls }}
+    [mysqld]
+    ssl
+    tls_version = TLSv1.2,TLSv1.3
+{{- if or (eq (include "cmdb.mariadb_use_cmgr" .) "true") (and (ne (default "none" .Values.mariadb.tls.secretRef.name) "none") (ne (default "none" .Values.clients.mariadb.tls.secretRef.name) "none")) }}
+    [mysqld]
+    ssl-ca=/etc/my.cnf.d/ssl/{{ eq (include "cmdb.mariadb_use_cmgr" .) "true" | ternary "server-ca-cert.pem" .Values.mariadb.tls.secretRef.keyNames.caCrt }}
+    ssl-cert=/etc/my.cnf.d/ssl/{{ eq (include "cmdb.mariadb_use_cmgr" .) "true" | ternary "server-cert.pem" .Values.mariadb.tls.secretRef.keyNames.tlsCrt }}
+    ssl-key=/etc/my.cnf.d/ssl/{{ eq (include "cmdb.mariadb_use_cmgr" .) "true" | ternary "server-key.pem" .Values.mariadb.tls.secretRef.keyNames.tlsKey }}
+{{- end }}
+{{- end }}
+{{- if .Values.mariadb.encryption.enabled }}
+    [mariadb]
+    plugin_load_add = file_key_management
+    file_key_management_encryption_algorithm = AES_CTR
+    file_key_management_filename = /etc/my.cnf.d/encryption/{{ .Values.mariadb.encryption.keyFile }}
+{{- if .Values.mariadb.encryption.keyFileKey }}
+    file_key_management_filekey = FILE:/etc/my.cnf.d/encryption/{{ .Values.mariadb.encryption.keyFileKey }}
+{{- end }}
+    innodb_default_encryption_key_id = {{ default 1 (int .Values.mariadb.encryption.keyFileId) }}
+    innodb_encryption_threads = 4
+    innodb_encrypt_tables = ON
+    innodb_encrypt_log = ON
+    encrypt_binlog = ON
+{{- end }}
+{{- if and (eq (include "cmdb.has_maxscale" .) "true") .Values.maxscale.semiSyncReplication (not (contains "rpl_semi_sync" .Values.mariadb.mysqld_site_conf)) }}
+    [mariadb]
+    rpl_semi_sync_master_enabled = OFF
+    rpl_semi_sync_slave_enabled = ON
+    rpl_semi_sync_master_wait_point = AFTER_SYNC
+{{- end }}
+{{- if and $use_tls (or (eq (include "cmdb.mariadb_use_cmgr" .) "true") (and (ne (default "none" .Values.mariadb.tls.secretRef.name) "none") (ne (default "none" .Values.clients.mariadb.tls.secretRef.name) "none")))  }}
+    [SSL]
+    ssl_cert = /etc/my.cnf.d/ssl/{{ eq (include "cmdb.mariadb_use_cmgr" .) "true" | ternary "client-cert.pem" .Values.clients.mariadb.tls.secretRef.keyNames.tlsCrt }}
+    ssl_key = /etc/my.cnf.d/ssl/{{ eq (include "cmdb.mariadb_use_cmgr" .) "true" | ternary "client-key.pem" .Values.clients.mariadb.tls.secretRef.keyNames.tlsKey }}
+    ssl_ca_cert = /etc/my.cnf.d/ssl/{{ eq (include "cmdb.mariadb_use_cmgr" .) "true" | ternary "client-ca-cert.pem" .Values.clients.mariadb.tls.secretRef.keyNames.caCrt }}
+{{- end }}

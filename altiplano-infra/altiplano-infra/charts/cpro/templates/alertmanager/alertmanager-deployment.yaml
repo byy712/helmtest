@@ -1,0 +1,434 @@
+
+{{- include "cpro.istio.cproInitIstio" . }}
+{{- if .Values.alertmanager.enabled -}}
+{{- if not .Values.ha.enabled -}}
+{{- include "cpro-common-lib.v1.tlsValues" ( dict "root" . "context" .Values.webhook4fluentd) }}
+{{- $syslogEnabled := eq (include "csf-common-lib.v1.coalesceBoolean" (tuple .Values.alertmanager.unifiedLogging.syslog.enabled .Values.global.unifiedLogging.syslog.enabled false )) "true"  }}
+{{- $tlsEnabled := eq (include "csf-common-lib.v1.coalesceBoolean" (tuple .Values.alertmanager.tls.enabled .Values.tls.enabled .Values.global.tls.enabled .Values.alertmanager.tls_auth_config.tls.enabled false)) "true" }}
+{{- $webhookTlsEnabled := eq (include "csf-common-lib.v1.coalesceBoolean" (tuple .Values.webhook4fluentd.tls.enabled .Values.tls.enabled .Values.global.tls.enabled false)) "true" }}
+{{- include "cpro-common-lib.v1.syslog" ( dict "root" . "context" .Values.alertmanager) }}
+apiVersion: {{ template "cpro.apiVersion.DeploymentAPI" . }}
+kind: Deployment
+metadata:
+  labels:
+    {{- include "cpro.app.labels.v3" ( dict "root" . "context" .Values.alertmanager ) | nindent 4 }}
+{{- include "cpro.labelsOrAnnotations" (tuple .Values.alertmanager.labels .Values.custom.alertManagerDeployment.labels .Values.global.labels) | indent 4}}
+  name: {{ template "cpro.prometheus.alertmanager.DeploymentName" . }}
+  annotations:
+{{- if or $syslogEnabled .Values.alertmanager.unifiedLogging.extension .Values.global.unifiedLogging.extension }}
+    configmap.reloader.stakater.com/reload: "{{ template "cpro-common-lib-v1.ConfigmapName" (dict "name" "alertfluentdcm" "root" .) }},{{ template "cpro-common-lib-v1.ConfigmapName" (dict "name" "logrotatecm" "root" .) }}"
+{{- if and $syslogEnabled (tpl (default "" $.syslog.tls.secretRef.name) .) (tpl (default "" $.syslog.tls.secretRef.keyNames.caCrt) .) }}
+    secret.reloader.stakater.com/reload: "{{ tpl $.syslog.tls.secretRef.name . }}" 
+{{- end }}
+{{- end }}
+{{- include "cpro.labelsOrAnnotations" (tuple .Values.alertmanager.annotations .Values.custom.alertManagerDeployment.annotations .Values.global.annotations) | indent 4}}
+spec:
+{{$data_csc := dict "cSecCtx" .Values.alertmanager.containerSecurityContext "ctx" . }}
+{{ include "cpro.configure.progressDeadlineSeconds" ( dict "compPDSValue" .Values.alertmanager.progressDeadlineSeconds "context" . ) | indent 2}}
+  replicas: {{ template "cpro.alertmanager.replicas" . }}
+  strategy:
+  {{- if .Values.alertmanager.strategy }}
+{{ toYaml .Values.alertmanager.strategy | indent 4 }}
+  {{- else }}
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 1
+      maxUnavailable: 1
+  {{- end }}
+  {{- if semverCompare ">=1.16.0-0" .Capabilities.KubeVersion.GitVersion }}
+  selector:
+   matchLabels:
+    app: {{ template "cpro.prometheus.name" . }}
+    component: "{{ .Values.alertmanager.name }}"
+    release: {{ .Release.Name }}
+  {{- end }}
+  template:
+    metadata:
+      annotations:
+        sidecar.istio.io/inject: "{{ $.istio.enabled }}"
+{{- if and ($.istio.enabled) ($.istio.mtls.enabled) }}
+        sidecar.istio.io/rewriteAppHTTPProbers: "true"
+{{- end }}
+{{- include "cpro.labelsOrAnnotations" (tuple .Values.alertmanager.annotations .Values.alertmanager.podAnnotations .Values.custom.pod.annotations .Values.global.annotations) | indent 8}}
+{{- if .Values.rbac.pspUseAppArmor }}
+{{- include "cpro.labelsOrAnnotations" (tuple .Values.custom.pod.apparmorAnnotations) | indent 8}}
+{{- end }}
+      labels:
+        {{- include "cpro.app.labels.v3" ( dict "root" . "context" .Values.alertmanager ) | nindent 8 }}
+        app: {{ template "cpro.prometheus.name" . }}
+        component: "{{ .Values.alertmanager.name }}"
+        release: {{ .Release.Name }}
+{{- include "cpro.labelsOrAnnotations" (tuple .Values.alertmanager.labels .Values.custom.pod.labels .Values.global.labels) | indent 8}}
+    spec:
+{{- if .Values.alertmanager.schedulerName }}
+      schedulerName: "{{ .Values.alertmanager.schedulerName }}"
+{{- end }}
+      {{- if $.istio.enabled }}
+      automountServiceAccountToken: true
+      {{- end }}
+      serviceAccountName: {{ template "cpro.prometheus.serviceAccountName" . }}
+      securityContext:
+      {{$data := dict "securitycontext" .Values.alertmanager.securityContext "ctx" . }}
+      {{- include "cpro.securitycontext" $data | nindent 8 }}
+{{- if .Values.seLinuxOptions.enabled }}
+        seLinuxOptions:
+          level: {{ .Values.seLinuxOptions.level }}
+          role: {{ .Values.seLinuxOptions.role }}
+          type: {{ .Values.seLinuxOptions.type }}
+          user: {{ .Values.seLinuxOptions.user }}
+{{- end }}
+      initContainers:
+      - name: {{ template "cpro.prometheus.server.initConfigFileContainerName" . }}
+{{- include "cpro.prometheus.python.image" (dict "root" . "workload" .Values.alertmanager "container" .Values.initConfigFile  ) | nindent 8 }}
+{{- include "cpro.terminationMessage" . | nindent 8 }}
+        resources:
+{{- include "cpro-common-lib.v1.resources" ( dict "root" . "workloadresources" .Values.initConfigFile.resources "defaultcpulimit" "10m") | nindent 10 }}
+        # 65534 is the nobody user that prometheus uses.
+        command: ["/bin/sh", "-c"]
+        args: ["cp /etc/config/alertmanager.yml /.secrets/alertmanager.yml"]
+        volumeMounts:
+        - name: secure-data
+          mountPath: /.secrets/
+        - name: config-volume
+          mountPath: /etc/config
+        securityContext:
+           {{- include "cpro.containerSecurityContext" $data_csc | nindent 10 }}
+{{- if and ($tlsEnabled)  (eq (include "csf-common-lib.v1.isEmptyValue" .Values.alertmanager.tls.secretRef.name) "true") (eq .Values.alertmanager.tls_auth_config.tls.externalSecret "") (.Values.certManagerConfig.wait4Certs2BeConsumed.enabled) }}
+{{ $certs := dict "alertmanager-tls" "/var/lib/certs" }}
+{{ $_ := set . "certMountPaths" $certs }}
+{{ include "cpro.wait4Certs2BeConsumed.template" (dict "root" . "workload" .Values.alertmanager ) | indent 6 }}
+{{- end }}
+{{ include "cpro-common-lib.imagePullSecrets" (dict "workloadName" .Values.alertmanager  "root" .) | indent 6 }}
+      containers:
+            {{- if or $syslogEnabled .Values.alertmanager.unifiedLogging.extension .Values.global.unifiedLogging.extension }}
+        {{- include "cpro-common-lib.fluentd-v2" ( dict "root" . "context" .Values.fluentd "workload" .Values.alertmanager "registry" .Values.intFluentdReg ) | nindent 8 }}
+          volumeMounts:
+            - name: logs
+              mountPath: /var/log/cpro
+            - name: harmonized-logging-conf
+              mountPath: /etc/fluent/
+            - mountPath: /tmp
+              name: tempfolder
+             {{- if and $syslogEnabled (tpl (default "" $.syslog.tls.secretRef.name) .) (tpl (default "" $.syslog.tls.secretRef.keyNames.caCrt) .) }}
+            - mountPath: /etc/fluent/certs/
+              name: fluentd-tls
+             {{- end}}
+      {{- include "cpro-common-lib.logrotate" ( dict "root" . "context" .Values.logrotate "registry" .Values.intLogrotateReg ) | nindent 8 }}
+          volumeMounts:
+            - name: logs
+              mountPath: /var/log/cpro
+            - name: logrotate-cronie-file
+              mountPath: /logRotate
+       {{- end }}
+        - name: {{ template "cpro.prometheus.alertmanager.alertmanagerContainerName" . }}
+{{- include "cpro.prometheus.distro.image" (dict "root" . "workload" .Values.alertmanager ) | nindent 10}}
+            {{- if or $syslogEnabled .Values.alertmanager.unifiedLogging.extension .Values.global.unifiedLogging.extension }}
+          command: [ "/bin/klogrun" ]
+       {{- else }}
+          command: [ "/bin/alertmanager" ]
+       {{- end }}
+{{- include "cpro.terminationMessage" . | nindent 10 }}
+          env:
+            {{- include "cpro.timeZoneEnvName" . | nindent 12 }}
+            {{- range $key, $value := .Values.alertmanager.extraEnv }}
+            - name: {{ $key }}
+              value: {{ $value }}
+            {{- end }}
+            - name: POD_IP
+              valueFrom:
+                fieldRef:
+                  apiVersion: v1
+                  fieldPath: status.podIP
+{{- if $.istio.enabled }}
+            - name: "ISTIO_ENABLED"
+              value: "true"
+{{- end }}  
+{{- if and ($.istio.enabled) ($.istio.gateways.cproAlertmanager.enabled) (ne ($.istio.gateways.cproAlertmanager.protocol | upper) "HTTPS") }}
+            - name: "ISTIO_GATEWAY_ALERT"
+              value: "true"
+{{- end }}
+{{- if  and (not $.istio.enabled) ($syslogEnabled) (eq (tpl (default "" $.syslog.tls.secretRef.name) .) "") }}
+            - name: "RSYSLOG_SERVER_ALERT"
+              value: "true"
+{{- end }}
+            - name: K8S
+              value: "true"
+          args:
+            {{- if or $syslogEnabled .Values.alertmanager.unifiedLogging.extension .Values.global.unifiedLogging.extension }}
+            - -log-file=/var/log/cpro/alertmanager.log
+            - -also-stdout=true
+            - /bin/alertmanager
+            - --log.format=json
+            {{- end }}
+          {{- if .Values.alertmanager.retention.time }}
+            - --data.retention={{ .Values.alertmanager.retention.time }}
+          {{- end }}
+            - --config.file=/.secrets/alertmanager.yml
+            - --storage.path={{ .Values.alertmanager.persistentVolume.mountPath }}
+            - --web.listen-address=:{{ .Values.alertmanager.service.webPort }}
+            - --cluster.listen-address=
+          {{- range $key, $value := .Values.alertmanager.extraArgs }}
+            - --{{ $key }}={{ $value }}
+          {{- end }}
+          {{- if .Values.alertmanager.baseURL }}
+            - --web.external-url={{ .Values.alertmanager.baseURL }}
+          {{- end }}
+          {{- if ne .Values.alertmanager.prefixURL "" }}
+            - --web.route-prefix=/{{ .Values.alertmanager.prefixURL }}
+          {{- end }}
+          {{ if $tlsEnabled }}
+            - --web.config.file=/etc/webconfig/web.yml
+          {{ end }}
+          ports:
+            - name: tcp-webport
+              containerPort: {{ .Values.alertmanager.service.webPort }}
+          {{- include "cpro.prometheus.alertmanager.probe" . | indent 10 }}
+          resources:
+{{- include "cpro-common-lib.v1.resources" ( dict "root" . "workloadresources" .Values.alertmanager.resources "defaultcpulimit" "500m") | nindent 12 }}
+          volumeMounts:
+          {{- if .Values.externalCredentials }}
+          {{- include "cpro-common-lib.v1-includeExternalCredentialMounts" (dict "creds" .Values.externalCredentials "root" . ) | indent 12 }}
+          {{- end }}
+            {{- if and $webhookTlsEnabled $tlsEnabled }}
+            - name: webhookclienttls
+              mountPath: {{ .Values.webhook4fluentd.secretMountPath }}
+              readOnly: true
+            {{- end }}
+       {{- if or $syslogEnabled .Values.alertmanager.unifiedLogging.extension .Values.global.unifiedLogging.extension }}
+            - name: logs
+              mountPath: /var/log/cpro
+       {{- end }}
+            - name: config-volume
+              mountPath: /etc/config
+            - name: storage-volume
+              mountPath: "{{ .Values.alertmanager.persistentVolume.mountPath }}"
+              subPath: "{{ .Values.alertmanager.persistentVolume.subPath }}"
+            - name: secure-data
+              mountPath: /.secrets/
+            {{- if and .Values.alertmanager.outboundTLS.enabled .Values.alertmanager.outboundTLS.cert }}
+            - name: tls
+              readOnly: true
+              mountPath: "/etc/config/alertmanager/tls"
+            {{- end }}
+          {{- range .Values.alertmanager.extraSecretMounts }}
+            - name: {{ .name }}
+              mountPath: {{ .mountPath }}
+              readOnly: {{ .readOnly }}
+          {{- end }}
+{{ if $tlsEnabled }}
+            - name: alertmanager-tls
+              mountPath: /var/lib/certs
+            - name: webconfig-volume
+              mountPath: /etc/webconfig
+{{- end }}
+          securityContext:
+           {{- include "cpro.containerSecurityContext" $data_csc | nindent 12 }}
+        - name: {{ template "cpro.prometheus.alertmanager.alertmanagerReloadContainerName" . }}
+{{- include "cpro.prometheus.distro.image" (dict "root" . "workload" .Values.alertmanager "container" .Values.configmapReload  ) | nindent 10}}       
+       {{- if or $syslogEnabled .Values.alertmanager.unifiedLogging.extension .Values.global.unifiedLogging.extension }}
+          command: [ "/bin/klogrun" ]
+       {{- else }}
+          command: [ "/cproConfigReloader" ]
+       {{- end }}
+{{- include "cpro.terminationMessage" . | nindent 10 }}
+          env:
+            {{- include "cpro.timeZoneEnvName" . | nindent 12 }}
+          args:
+            {{- if or $syslogEnabled .Values.alertmanager.unifiedLogging.extension .Values.global.unifiedLogging.extension }}
+            - -log-file=/var/log/cpro/alertmanager_configreload.log
+            - -also-stdout=true
+            - /cproConfigReloader
+            - --log-format=json
+            {{- else }}
+            - --log-format=logfmt
+            {{- end }}
+            - --volume-dir=/etc/config
+          {{- range .Values.alertmanager.extraSecretMounts }}
+            - --volume-dir={{ .mountPath }}
+          {{- end }}
+            - --config-file=/etc/config/alertmanager.yml
+            - --output-file=/.secrets/alertmanager.yml
+            - --watch-interval=30
+            - --retry-interval=1
+            - --delay-interval=1
+            - --log-level=info
+{{ if $tlsEnabled }}
+            - --volume-dir=/var/lib/certs
+{{ if (ne (include "csf-common-lib.v1.isEmptyValue" .Values.alertmanager.tls.secretRef.name) "true") }}
+            - --ca-cert=/var/lib/certs/{{ .Values.alertmanager.tls.secretRef.keyNames.caCrt }}
+            - --client-cert=/var/lib/certs/{{ .Values.alertmanager.tls.secretRef.keyNames.tlsCrt }}
+            - --client-key=/var/lib/certs/{{ .Values.alertmanager.tls.secretRef.keyNames.tlsKey }}
+{{- else }}
+            - --ca-cert=/var/lib/certs/ca.crt
+            - --client-cert=/var/lib/certs/tls.crt
+            - --client-key=/var/lib/certs/tls.key
+{{- end }}
+            - --webhook-url=https://localhost:{{ .Values.alertmanager.service.webPort }}{{ template "cpro.alertmanager.routePrefixURL" . }}/-/reload
+            {{- if .Values.alertmanager.tls_auth_config.insecureReload }}
+            - --insecure-skip-verify=true
+            {{- end }}
+{{- else }}
+            - --webhook-url=http://localhost:{{ .Values.alertmanager.service.webPort }}{{ template "cpro.alertmanager.routePrefixURL" . }}/-/reload
+{{- end }}
+       {{- if ne .Values.sensitiveDataSecretName "" }}
+            - --secret-file=/etc/config/secrets/cpro_secret.yaml
+        {{- end }}
+        {{- if .Values.externalCredentials }}
+            - --volume-dir={{ .Values.secretPathPrefix }}
+            - --secretPathPrefix={{ .Values.secretPathPrefix }}
+        {{- end }}
+        {{- if .Values.externalCredentials }}
+            - --volume-dir={{ .Values.secretPathPrefix }}
+            - --secretPathPrefix={{ .Values.secretPathPrefix }}
+            {{- end }}
+          resources:
+{{- include "cpro-common-lib.v1.resources" ( dict "root" . "workloadresources" .Values.alertmanager.configmapReload.resources "defaultcpulimit" "10m") | nindent 12 }}
+          volumeMounts:
+          {{- if .Values.externalCredentials }}
+          {{- include "cpro-common-lib.v1-includeExternalCredentialMounts" (dict "creds" .Values.externalCredentials "root" . ) | indent 12 }}
+          {{- end }}
+       {{- if or $syslogEnabled .Values.alertmanager.unifiedLogging.extension .Values.global.unifiedLogging.extension }}
+            - name: logs
+              mountPath: /var/log/cpro
+       {{- end }}
+            - name: config-volume
+              mountPath: /etc/config
+              readOnly: true
+            - name: secure-data
+              mountPath: /.secrets/
+          {{- if ne .Values.sensitiveDataSecretName "" }}
+            - name: sensitivedata
+              mountPath: /etc/config/secrets
+              readOnly: true
+          {{- end }}
+          {{- range .Values.alertmanager.extraSecretMounts }}
+            - name: {{ .name }}
+              mountPath: {{ .mountPath }}
+              readOnly: {{ .readOnly }}
+          {{- end }}
+{{ if $tlsEnabled }}
+            - name: alertmanager-tls
+              mountPath: /var/lib/certs
+{{- end }}
+          securityContext:
+            {{- include "cpro.containerSecurityContext" $data_csc | nindent 12 }}
+        - name: {{ template "cpro.prometheus.alertmanager.alertMgrUtilContainerName" . }}
+{{- include "cpro.prometheus.python.image" (dict "root" . "workload" .Values.alertmanager "container" .Values.cproUtil  ) | nindent 10 }}
+{{- include "cpro.terminationMessage" . | nindent 10 }}
+          env:
+            {{- include "cpro.timeZoneEnvName" . | nindent 12 }}
+          command: ["sleep","infinity"]
+          resources:
+{{- include "cpro-common-lib.v1.resources" ( dict "root" . "workloadresources" .Values.alertmanager.cproUtil.resources "defaultcpulimit" "100m") | nindent 12 }}
+          volumeMounts:
+            - name: storage-volume
+              mountPath: "{{ .Values.alertmanager.persistentVolume.mountPath }}"
+              subPath: "{{ .Values.alertmanager.persistentVolume.subPath }}"
+          securityContext:
+           {{- include "cpro.containerSecurityContext" $data_csc | nindent 12 }}
+{{$data := dict "component_pc" .Values.alertmanager  "ctx" . }}
+{{- include "cpro.pod.priority.classname" $data | nindent 6 }}
+    {{- if .Values.alertmanager.nodeSelector }}
+      nodeSelector:
+{{ toYaml .Values.alertmanager.nodeSelector | indent 8 }}
+    {{- end }}
+    {{- if .Values.alertmanager.tolerations }}
+      tolerations:
+{{ toYaml .Values.alertmanager.tolerations | indent 8 }}
+    {{- end }}
+      affinity:
+      {{- include "cpro.alertmanager.podAntiAffinity" . | indent 8 }}
+      {{- if .Values.alertmanager.affinity }}
+      {{- if .Values.alertmanager.affinity.podAntiAffinity }}
+{{ toYaml .Values.alertmanager.affinity.podAntiAffinity | indent 10 }}
+      {{- end }}
+      {{- if .Values.alertmanager.affinity.podAffinity }}
+        podAffinity:
+{{ toYaml .Values.alertmanager.affinity.podAffinity | indent 10 }}
+      {{- end }}
+      {{- end }}
+      {{- if .Values.alertmanager.topologySpreadConstraints }}
+      topologySpreadConstraints: {{- include "cpro.topologySpreadConstraints" (tuple . .Values.alertmanager) | nindent 8 }}
+      {{- end }}
+      volumes:
+      {{- if .Values.externalCredentials  }}
+      {{- include "cpro-common-lib.v1-includeExternalCredentials" (dict "creds" .Values.externalCredentials ) | indent 8 }}
+      {{- end }}
+        {{- if and $webhookTlsEnabled $tlsEnabled }}
+        - name: webhookclienttls
+          secret:
+            {{- if (ne (include "csf-common-lib.v1.isEmptyValue" .Values.alertmanager.tls.secretRef.name) "true") }}
+            secretName: {{ .Values.alertmanager.tls.secretRef.name }}
+            {{- else }}
+            {{- if eq (include "csf-common-lib.v1.coalesceBoolean" (tuple .Values.certManager.enabled .Values.global.certManager.enabled false)) "true" }}
+            secretName: {{ template "cpro.webhook4fluentd.client.secretcertificate" . }}
+            {{- else }}
+            {{- required "either external secret has to be created or certmanager is to be set to true when tls is enabled" "" }}
+            {{- end }}
+            {{- end }}
+        {{- end }}
+        {{- if or $syslogEnabled .Values.alertmanager.unifiedLogging.extension .Values.global.unifiedLogging.extension }}
+        - name: logs
+          emptyDir: {}
+        - name: tempfolder
+          emptyDir: {}
+        - name: harmonized-logging-conf
+          configMap:
+            name: {{ template "cpro-common-lib-v1.ConfigmapName" (dict "name" "alertfluentdcm" "root" .) }} 
+        - name: logrotate-cronie-file
+          configMap:
+            defaultMode: 0640
+            items:
+              - key: logrotate.conf
+                path: logrotate.conf
+              - key: rotate.sh
+                path: rotate.sh
+            name: {{ template "cpro-common-lib-v1.ConfigmapName" (dict "name" "logrotatecm" "root" .) }} 
+              {{- if and $syslogEnabled (tpl (default "" $.syslog.tls.secretRef.name) .) (tpl (default "" $.syslog.tls.secretRef.keyNames.caCrt) .) }}
+        - name: fluentd-tls
+          secret:
+            secretName: {{ tpl $.syslog.tls.secretRef.name . }}
+            items:
+              - key: {{ tpl $.syslog.tls.secretRef.keyNames.caCrt . }}
+                path: syslogRootCaPem
+        {{- end }}
+        {{- end }}
+        {{- if and .Values.alertmanager.outboundTLS.enabled .Values.alertmanager.outboundTLS.cert }}
+        - name: tls
+          secret:
+            secretName: {{ template "cpro.prometheus.alertmanager.fullname" . }}
+        {{- end }}
+        - name: config-volume
+          configMap:
+            name: {{ if .Values.alertmanager.configMapOverrideName }}{{ .Release.Name }}-{{ .Values.alertmanager.configMapOverrideName }}{{- else }}{{ template "cpro.prometheus.alertmanager.fullname" . }}{{- end }}
+        {{- if ne .Values.sensitiveDataSecretName "" }}
+        - name: sensitivedata
+          secret:
+            secretName: {{ .Values.sensitiveDataSecretName }}
+        {{- end }}
+        - name: storage-volume
+        {{- if .Values.alertmanager.persistentVolume.enabled }}
+          persistentVolumeClaim:
+            claimName: {{ if .Values.alertmanager.persistentVolume.existingClaim }}{{ .Values.alertmanager.persistentVolume.existingClaim }}{{- else }}{{ template "cpro.prometheus.alertmanager.fullname" . }}{{- end }}
+        {{- else }}
+          emptyDir: {}
+        {{- end }}
+        - name: secure-data
+          emptyDir: {}
+      {{- range .Values.alertmanager.extraSecretMounts }}
+        - name: {{ .name }}
+          secret:
+            secretName: {{ tpl (.secretName) $ }}
+      {{- end }}
+{{ if $tlsEnabled }}
+        - name: alertmanager-tls
+          secret:
+            secretName: {{ template "cpro.alertmanager.server.secret" . }}
+            defaultMode: 0440
+        - name: webconfig-volume
+          secret:
+            secretName: {{ .Values.alertmanager.tls_auth_config.secretForWebConfig }}
+            defaultMode: 0440
+{{- end }}
+{{- end -}}
+{{- end -}}

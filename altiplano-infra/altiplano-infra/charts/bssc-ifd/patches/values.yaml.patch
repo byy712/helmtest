@@ -1,0 +1,112 @@
+--- bssc-ifd-13.0.1/bssc-ifd/values.yaml	2023-12-06 18:41:43.000000000 +0530
++++ bssc-ifd/values.yaml	2024-02-21 16:26:29.382281000 +0530
+@@ -105,6 +105,7 @@
+   imageFlavorPolicy: 
+ 
+ ## Enable or disable components of umbrella chart for EFKC.
++accessRoleLabel: internal-access
+ tags:
+   bssc-fluentd: true
+   bssc-indexsearch: true
+@@ -157,6 +158,7 @@
+         #When HPA is enabled it is recommended to set request same as limit because HPA considers requests for its calculation. If it is set to different value, HPA might unnecessarily scale up pods without using complete resources configured in requests.
+         memory: "500Mi"
+         ephemeral-storage: "200Mi"
++    accessRoleLabel: internal-access
+ 
+ #set the system name and system ID for non-container log messages
+     EnvVars:
+@@ -252,6 +254,8 @@
+     containerSecurityContext:
+       #When enable_root_privilege is set to 'true', fluentd containers will run as root user (runAsNonRoot: false) irrespective of value configured in runAsNonRoot.
+       runAsNonRoot: true
++      ##Set 'allowPrivilegeEscalation' to 'True' when fluentd.securityContext.privileged is set to True
++      allowPrivilegeEscalation: false
+       seccompProfile:
+         type: RuntimeDefault
+ 
+@@ -710,6 +714,7 @@
+ 
+ ## Overwrite values for indexsearch
+ bssc-indexsearch:
++  accessRoleLabel: internal-access
+   # set requested image flavor at root level. It has higher precedence than global.imageFlavor.
+   imageFlavor:
+   # set imageFlavorPolicy at root level. It supports Strict or BestMatch. Default value is BestMatch. It has higher precedence than global.imageFlavorPolicy.
+@@ -777,6 +782,31 @@
+     #Sets PriorityClass for manager pods. If left blank or empty quotes, pods will be configured to cluster default PriorityClass.
+     #manager.priorityClassName has higher precedence than priorityClassName in global scope
+     priorityClassName: ""
++  init:
++    image:
++      name: fnms-init-container
++      tag: nokia-1.0.7
++      pullPolicy: IfNotPresent
++  accessRoleLabel: internal-access
++  certificates:
++    secrets:
++      altiplano_keystore_secrets: altiplano-keystore-secrets
++      altiplano_indexsearch_certificate_secrets: altiplano-indexsearch-certificate-secrets
++    fileNames:
++      altiplano_keystore_password: keystore-password
++      indexsearch_server_key_pem: indexsearch-server-key.pem
++      indexsearch_server_key_pass: indexsearch-server-key.pass
++      indexsearch_server_cert_pem: indexsearch-server-cert.pem
++      indexsearch_server_keystore_jks: server.jks
++      indexsearch_server_trustchain_cert_pem: indexsearch-server-trustchain-cert.pem
++      altiplano_sso_trustchain_cert_pem: sso-server-trustchain-cert.pem
++      indexsearch_server_truststore_jks: trustchain.jks
++      client_key_pem: client-key.pem
++      client_key_pass: client-key.pass
++      client_cert_pem: client-cert.pem
++      client_keystore_jks: client.jks
++      client_trustchain_cert_pem: indexsearch-server-trustchain-cert.pem
++      client_truststore_jks: trustchain-client.jks
+ 
+     #Additional dns entries can be added to pod's /etc/hosts for dns resolution by configuring hostaliases
+     # For configuring hostAliases remove [], uncomment and configure like below example.
+@@ -1386,6 +1416,10 @@
+     #System indices - .opendistro_security index contains the configurations for interalusers, roles, rolesmapping, tenants, config, actiongroups. .kibana index contains saved index patterns/dashboard/visualizations created in dashboards. If dashboards multitenancy is enabled, there will be additional .kibana indices created for each tenant containing the saved index patterns/dashboard/visualizations of the respective tenant.
+     #When the flag is set to true, system indices content present at the time of backup will be restored. Configuration changes made after backup will be overwritten
+     restoreSystemIndices: false
++    # When backupGlobalState flag is set to true, existing cluster settings, templates etc will be backed up.
++    backupGlobalState: true
++    # When restoreGlobalState flag is set to true, existing cluster settings, templates etc whose names match those in the snapshot could be ovewritten.
++    restoreGlobalState: true
+ 
+   cbur:
+     enabled: false
+@@ -1440,6 +1474,8 @@
+       CBUR_RESTORE_SUFFIX_WITHTIME: true
+       CBUR_RESTORE_INDICES_OVERWRITE: false
+       CBUR_RESTORE_DELETE_INDICES_NOTPARTOF_RESTORE_SNAPSHOT: false  
++    # Set this flag to 'true' if you want CBUR to backup indexsearch configmaps
++    backup_configmap: false
+ 
+ 
+ # One can deploy mulitple indexsearch in same namespace with different indexsearch service names.
+@@ -1856,6 +1892,7 @@
+ ## Overwrite values for dashboards
+ #Follow BSSC userguide to create dashboards server certificates
+ bssc-dashboards:
++  accessRoleLabel: internal-access
+ 
+   #If enabled, then `podNamePrefix` would be added to the pod name without any restrictions. This has higher precedence than "global.disablePodNamePrefixRestrictions". Default value is false.
+   disablePodNamePrefixRestrictions: 
+@@ -1964,6 +2001,8 @@
+     imageFlavorPolicy:
+     replicas: 1
+     replicasManagedByHpa: False
++    updateStrategy:
++        type: Recreate
+     hpa:
+       #enabled value left empty intentionally, default value is False
+       enabled:
+@@ -2472,6 +2511,7 @@
+ 
+ ## Overwrite values for indexmgr
+ bssc-indexmgr:
++  accessRoleLabel: internal-access
+   #If enabled, then `podNamePrefix` would be added to the pod name without any restrictions. This has higher precedence than "global.disablePodNamePrefixRestrictions". Default value is false.
+   disablePodNamePrefixRestrictions:
+ 

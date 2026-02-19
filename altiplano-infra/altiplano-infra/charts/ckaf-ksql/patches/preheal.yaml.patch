@@ -1,0 +1,20 @@
+--- base_ksql/ckaf-ksql-8.1.0/ckaf-ksql/templates/preheal.yaml	2024-03-28 23:41:09.000000000 +0530
++++ charts/ckaf-ksql/templates/preheal.yaml	2024-04-16 12:18:21.064442252 +0530
+@@ -17,6 +17,7 @@
+         sidecar.istio.io/inject: "false"
+ {{- include "csf-common-lib.v1.customAnnotations" (tuple .Values.global.annotations) | indent 8 }}
+       labels:
++        altiplano-role: {{ .Values.accessRoleLabel }}
+ {{ include "ckaf-ksql.commonlabels" . | indent 8 }}
+ {{- include "csf-common-lib.v1.customLabels" (tuple .Values.global.labels) | indent 8 }}
+     spec:
+@@ -58,6 +59,9 @@
+         {{- if ( ne ( toString ( .Values.security.runAsUser )) "auto" ) }}
+           runAsUser: {{ .Values.security.runAsUser }}
+         {{- end }}
++        {{- if .Values.security.runAsGroup }}
++          runAsGroup: {{ .Values.security.runAsGroup }}
++        {{- end }}
+           allowPrivilegeEscalation: false
+         {{- if eq (include "ckaf-ksql.renderSeccompProfile" .) "true" }}
+           seccompProfile:

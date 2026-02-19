@@ -1,0 +1,10 @@
+--- ckey-12.2.0/templates/jobs/pre-upgrade-job.yaml	2024-03-16 01:47:07.000000000 +0530
++++ ckey-12.2.0-nokia-patch-3/templates/jobs/pre-upgrade-job.yaml	2024-04-23 16:53:48.996797323 +0530
+@@ -16,6 +16,7 @@
+   template:
+     metadata:
+       labels:
++        altiplano-role: {{ .Values.accessRoleLabel }}
+         app: {{ template "ckey.fullName" . }}
+         release: {{ .Release.Name }}
+         {{- include "ckey.customLabels" (tuple .Values.custom.job.labels .Values.global.labels ) | indent 8 }}

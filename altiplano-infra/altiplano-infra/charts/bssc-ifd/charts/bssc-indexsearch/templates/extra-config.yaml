@@ -1,0 +1,13 @@
+{{- if not (empty .Values.extraConfig) }}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ template "bssc-indexsearch.fullname" . }}-extra
+  labels:
+{{- include "bssc-indexsearch.commonLabels" (tuple .) | nindent 4 }}
+{{- include "bssc-indexsearch.csf-toolkit-helm.labels" (tuple .) | nindent 4 }}
+  annotations:
+{{- include "bssc-indexsearch.csf-toolkit-helm.annotations" (tuple .) | nindent 4 }}
+data:
+  extraOs.yml: {{ toYaml .Values.extraConfig.config_yml | indent 2 }}
+{{- end }}

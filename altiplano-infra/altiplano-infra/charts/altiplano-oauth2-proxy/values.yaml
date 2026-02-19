@@ -1,0 +1,253 @@
+# Default values for altiplano-oauth2-proxy.
+# This is a YAML-formatted file.
+# Declare variables to be passed into your templates.
+
+global:
+  timeZoneEnv: ""
+  registry: artifactory.net.nokia.com
+  use_tls: false
+  tls:
+    enabled: false
+
+  vault:
+    enabled: false
+    # External Certificate: if enabled, the helm chart expects a secret with all relevant files
+  externalCertificates:
+    enabled: true
+    # The secret is expected to contain the below listed arbitrary files
+    secretNames:
+      all:                 "altiplano-secrets-all-certs"
+    # The secret is expected to contain the below listed arbitrary files
+    fileNames:
+      # Generally these are the CA related files
+      ca_cert:             "ca-cert.pem"
+      ca_key:              "ca-key.pem"
+      # Generally these are the client related files
+      client_cert:         "client-cert.pem"
+      client_key:          "client-key.pem"
+      client_req:          "client-req.pem"
+      client_jks:          "client.jks"
+      # Generally these are the server related files
+      server_cert:         "server-cert.pem"
+      server_key:          "server-key.pem"
+      server_req:          "server-req.pem"
+      server_jks:          "server.jks"
+      # Generally these are the trustchain related files
+      trustchain_cert:     "trustchain-cert.pem"
+      trustchain_jks:      "trustchain.jks"
+      # The convention is to have an entry for each of the file
+      # The secret is expected to contain these entries
+    passwords:
+      # These contain the type and password for the CA related files
+      ca_key_type:         "PEM"
+      ca_key_pass:         "capass"
+      # These contain the type and password for the client related files
+      client_key_type:     "PEM"
+      client_key_pass:     "clientpass"
+      client_jks_type:     "JKS" #"PKCS12"
+      client_jks_pass:     "altiplanokeystore" #"mypass"
+      # These contain the type and password for the server related files
+      server_key_type:     "PEM"
+      server_key_pass:     "serverpass"
+      server_jks_type:     "JKS" #"PKCS12"
+      server_jks_pass:     "altiplanokeystore" #"mypass"
+      # These contain the type and password for the trustchain related files
+      trustchain_crt_type: "PEM"
+      trustchain_jks_type: "JKS" #"PKCS12"
+      trustchain_jks_pass: "altiplanokeystore" #"mypass"
+  #if you are deploying open source ingress controller of Nginxinc , need to change this value to nginxinc
+  INGRESS_CONTROLLER_TYPE: kubernetes #valid values are kubernetes / nginxinc
+  #ipFamilyPolicy:  SingleStack | PreferDualStack | RequireDualStack
+  #ipFamilies: ["IPv4"] | ["IPv6"] | ["IPv4","IPv6"] | ["IPv6","IPv4"]
+#ipFamilyPolicy:  SingleStack | PreferDualStack | RequireDualStack
+#ipFamilies: ["IPv4"] | ["IPv6"] | ["IPv4","IPv6"] | ["IPv6","IPv4"]
+replicaCount: 1
+accessRoleLabel: internal-access
+
+image:
+  registry: #artifactory.net.nokia.com
+  repository: fnms-oauth2-proxy
+  tag: nokia-3.0.0
+  pullPolicy: IfNotPresent
+  # Overrides the image tag whose default is the chart appVersion.
+
+init:
+  repository: fnms-init-container
+  tag: nokia-2.0.1
+  pullPolicy: IfNotPresent
+  securityContext:
+    runAsNonRoot: true
+    runAsUser: 1000
+    runAsGroup: 1000
+
+args:
+  oidcGroupsClaim: "group_membership"
+keycloakCheck: "https://altiplano-sso-headless:8443"
+timeoutSeconds: "10"
+
+livenessProbe:
+  initialDelaySeconds: "360"
+  periodSeconds: "60"
+  failureThreshold: "5"
+
+readinessProbe:
+  initialDelaySeconds: "30"
+  periodSeconds: "20"
+  failureThreshold: "5"
+
+imagePullSecrets: []
+nameOverride: ""
+fullnameOverride: ""
+
+serviceAccount:
+  # Specifies whether a service account should be created
+  create: true
+  # Annotations to add to the service account
+  annotations: {}
+  # The name of the service account to use.
+  # If not set and create is true, a name is generated using the fullname template
+  name: ""
+
+podAnnotations: {}
+
+podSecurityContext: {}
+  # fsGroup: 2000
+
+securityContext:
+  runAsNonRoot: true
+  runAsUser: 201
+  runAsGroup: 114
+
+service:
+#  name: altiplano-oauth2-proxy
+  type: ClusterIP
+  ports:
+    oauthproxyNodePort: 32590
+    oauthproxyPort: 4180
+
+tls:
+  overrideGlobal: false
+  enabled: false
+
+externalCertificates:
+  overrideGlobal: false
+  enabled: false
+  # The secret is expected to contain the below listed arbitrary files
+  secretNames:
+    all:                 #"EXTERNALCHARTNAME-all-certs"
+  # The secret is expected to contain the below listed arbitrary files
+  fileNames:
+    # Generally these are the CA related files
+    ca_cert:             "ca-cert.pem"
+    ca_key:              "ca-key.pem"
+    # Generally these are the client related files
+    client_cert:         "client-cert.pem"
+    client_key:          "client-key.pem"
+    client_req:          "client-req.pem"
+    client_jks:          "client.jks"
+    # Generally these are the server related files
+    server_cert:         "server-cert.pem"
+    server_key:          "server-key.pem"
+    server_req:          "server-req.pem"
+    server_jks:          "server.jks"
+    # Generally these are the trustchain related files
+    trustchain_cert:     "trustchain-cert.pem"
+    trustchain_jks:      "trustchain.jks"
+
+certificates:
+  secretNames:
+    all:                 #"CHARTNAME-all-certs"
+  # The secret is expected to contain the below listed arbitrary files
+  fileNames:
+    # Generally these are the CA related files
+    ca_cert:             "ca-cert.pem"
+    ca_key:              "ca-key.pem"
+    # Generally these are the client related files
+    client_cert:         "client-cert.pem"
+    client_key:          "client-key.pem"
+    client_req:          "client-req.pem"
+    client_jks:          "client.jks"
+    # Generally these are the server related files
+    server_cert:         "server-cert.pem"
+    server_key:          "server-key.pem"
+    server_req:          "server-req.pem"
+    server_jks:          "server.jks"
+    # Generally these are the trustchain related files
+    trustchain_cert:     "trustchain-cert.pem"
+    trustchain_jks:      "trustchain.jks"
+  # The convention is to have an entry for each of the file
+  # The secret is expected to contain these entries
+  passwords:
+    # These contain the type and password for the CA related files
+    ca_key_type:         "PEM"
+    ca_key_pass:         "capass"
+    # These contain the type and password for the client related files
+    client_key_type:     "PEM"
+    client_key_pass:     "clientpass"
+    client_jks_type:     "JKS" #"PKCS12"
+    client_jks_pass:     "altiplanokeystore" #"mypass"
+    # These contain the type and password for the server related files
+    server_key_type:     "PEM"
+    server_key_pass:     "serverpass"
+    server_jks_type:     "JKS" #"PKCS12"
+    server_jks_pass:     "altiplanokeystore" #"mypass"
+    # These contain the type and password for the trustchain related files
+    trustchain_crt_type: "PEM"
+    trustchain_jks_type: "JKS" #"PKCS12"
+    trustchain_jks_pass: "altiplanokeystore" #"mypass"
+
+env:
+  #OAUTH2_PROXY_PROVIDER: oidc
+  #OAUTH2_PROXY_OIDC_ISSUER_URL: https://K8S_PUBLIC_IP/altiplano-sso/realms/{{ .Values.global.ALTIPLANO_KEYCLOAK_UI_REALM }}
+  #OAUTH2_PROXY_OIDC_JWKS_URL: https://K8S_PUBLIC_IP/altiplano-sso/realms/{{ .Values.global.ALTIPLANO_KEYCLOAK_UI_REALM }}/protocol/openid-connect/certs
+  #OAUTH2_PROXY_LOGIN_URL: https://K8S_PUBLIC_IP/altiplano-sso/realms/{{ .Values.global.ALTIPLANO_KEYCLOAK_UI_REALM }}/protocol/openid-connect/auth
+  #OAUTH2_PROXY_REDEEM_URL: https://K8S_PUBLIC_IP/altiplano-sso/realms/{{ .Values.global.ALTIPLANO_KEYCLOAK_UI_REALM }}/protocol/openid-connect/token
+  #OAUTH2_PROXY_PROFILE_URL: https://K8S_PUBLIC_IP/altiplano-sso/realms/{{ .Values.global.ALTIPLANO_KEYCLOAK_UI_REALM }}/protocol/openid-connect/userinfo
+  #OAUTH2_PROXY_VALIDATE_URL: https://K8S_PUBLIC_IP/altiplano-sso/realms/{{ .Values.global.ALTIPLANO_KEYCLOAK_UI_REALM }}/protocol/openid-connect/userinfo
+  OAUTH2_PROXY_ALLOWED_GROUPS: /opentsdbadmin,/ksqldbadmin
+  #OAUTH2_PROXY_REDIRECT_URL: https://K8S_PUBLIC_IP/oauth2/callback
+  OAUTH2_PROXY_UPSTREAMS: http://altiplano-opentsdb:4242/api,http://altiplano-ksql-server:8088
+  #INGRESS_LIMIT_RPS: "1000"
+  #INGRESS_LIMIT_BURST_MULTIPLIER: "5"
+  timeZoneEnv: ""
+
+ingress:
+  enabled: true
+  annotations:
+    kubernetes.io/ingress.class: nginx
+    #nginx.ingress.kubernetes.io/proxy-pass-suffix: $uri
+    # kubernetes.io/ingress.class: nginx
+    # kubernetes.io/tls-acme: "true"
+    nginx.ingress.kubernetes.io/ssl-passthrough: "true"
+    nginx.ingress.kubernetes.io/force-ssl-redirect: "true"
+  path: /oauth2
+#  hosts:
+#    - host: chart-example.local
+#      paths: []
+  tls: []
+  #  - secretName: chart-example-tls
+  #    hosts:
+  #      - chart-example.local
+nginxIncIngress:
+  annotations:
+    kubernetes.io/ingress.class: nginx
+    nginx.org/mergeable-ingress-type: minion
+hostAliases: []
+
+resources: {}
+  # We usually recommend not to specify default resources and to leave this as a conscious
+  # choice for the user. This also increases chances charts run on environments with little
+  # resources, such as Minikube. If you do want to specify resources, uncomment the following
+  # lines, adjust them as necessary, and remove the curly braces after 'resources:'.
+  # limits:
+  #   cpu: 100m
+  #   memory: 128Mi
+  # requests:
+  #   cpu: 100m
+  #   memory: 128Mi
+
+nodeSelector: {}
+
+tolerations: []
+
+affinity: {}

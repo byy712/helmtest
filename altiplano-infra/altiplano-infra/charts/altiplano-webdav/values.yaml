@@ -1,0 +1,328 @@
+# Default values for altiplano-webdav.
+# This is a YAML-formatted file.
+# Declare variables to be passed into your templates.
+
+global:
+  vault:
+    enabled: #false
+    url: #https://10.131.223.164:8200/v1
+    token: #hvs.aJ7ZJba2MMIwNsk4bYKskcY5
+    kvPath: #altiplano-infra
+  timeZoneEnv: ""
+  registry: artifactory.net.nokia.com
+  persistence: false
+  tls:
+    enabled: false
+    # External Certificate: if enabled, the helm chart expects a secret with all relevant files
+  externalCertificates:
+    enabled: true
+    # The secret is expected to contain the below listed arbitrary files
+    secretNames:
+      all:                 "altiplano-secrets-all-certs"
+    # The secret is expected to contain the below listed arbitrary files
+    fileNames:
+      # Generally these are the CA related files
+      ca_cert:             "ca-cert.pem"
+      ca_key:              "ca-key.pem"
+      # Generally these are the client related files
+      client_cert:         "client-cert.pem"
+      client_key:          "client-key.pem"
+      client_req:          "client-req.pem"
+      client_jks:          "client.jks"
+      # Generally these are the server related files
+      server_cert:         "server-cert.pem"
+      server_key:          "server-key.pem"
+      server_req:          "server-req.pem"
+      server_jks:          "server.jks"
+      # Generally these are the trustchain related files
+      trustchain_cert:     "trustchain-cert.pem"
+      trustchain_jks:      "trustchain.jks"
+    # The convention is to have an entry for each of the file
+    # The secret is expected to contain these entries
+    passwords:
+      # These contain the type and password for the CA related files
+      ca_key_type:         "PEM"
+      ca_key_pass:         "capass"
+      # These contain the type and password for the client related files
+      client_key_type:     "PEM"
+      client_key_pass:     "clientpass"
+      client_jks_type:     "JKS" #"PKCS12"
+      client_jks_pass:     "altiplanokeystore" #"mypass"
+      # These contain the type and password for the server related files
+      server_key_type:     "PEM"
+      server_key_pass:     "serverpass"
+      server_jks_type:     "JKS" #"PKCS12"
+      server_jks_pass:     "altiplanokeystore" #"mypass"
+      # These contain the type and password for the trustchain related files
+      trustchain_crt_type: "PEM"
+      trustchain_jks_type: "JKS" #"PKCS12"
+      trustchain_jks_pass: "altiplanokeystore" #"mypass"
+  # For IPv4 and IPv6 dual stack support at global scope.
+  # ipFamilyPolicy:  SingleStack | PreferDualStack | RequireDualStack
+  ipFamilyPolicy:
+  # ipFamilies: ["IPv4"] | ["IPv6"] | ["IPv4","IPv6"] | ["IPv6","IPv4"]
+  ipFamilies: [ ]
+  # - IPv4
+  # - IPv6
+  #if you are deploying open source ingress controller of Nginxinc , need to change this value to nginxinc
+  INGRESS_CONTROLLER_TYPE: kubernetes #valid values are kubernetes / nginxinc
+#ipFamilyPolicy:  SingleStack | PreferDualStack | RequireDualStack
+ipFamilyPolicy:
+#ipFamilies: ["IPv4"] | ["IPv6"] | ["IPv4","IPv6"] | ["IPv6","IPv4"]
+ipFamilies: []
+accessRoleLabel: internal-access
+replicaCount: 1
+
+image:
+  #This value will override the value set by global.registry
+  #Set this to "-" if we need to just remove the value set by the global.registry
+  registry: #artifactory.net.nokia.com
+  repository: fnms-file-server
+  tag: nokia-1.2.25
+  pullPolicy: IfNotPresent
+
+init:
+  repository: fnms-init-container
+  tag: nokia-2.0.1
+  pullPolicy: IfNotPresent
+
+updateStrategy:
+  type: RollingUpdate
+  rollingUpdate:
+    maxSurge: 1
+    maxUnavailable: 1
+  #type: Recreate
+
+service:
+  type: ClusterIP
+  ports:
+    webdavPort: 8080
+    webdavNodePort: 30080
+    httpsPort: 8443
+    httpsNodePort: 30081
+
+tls:
+  overrideGlobal: false
+  enabled: false
+
+externalCertificates:
+  overrideGlobal: false
+  enabled: false
+  # The secret is expected to contain the below listed arbitrary files
+  secretNames:
+    all:                 "altiplano-secrets-all-certs"
+  # The secret is expected to contain the below listed arbitrary files
+  fileNames:
+    # Generally these are the CA related files
+    ca_cert:             "ca-cert.pem"
+    ca_key:              "ca-key.pem"
+    # Generally these are the client related files
+    client_cert:         "client-cert.pem"
+    client_key:          "client-key.pem"
+    client_req:          "client-req.pem"
+    client_jks:          "client.jks"
+    # Generally these are the server related files
+    server_cert:         "server-cert.pem"
+    server_key:          "server-key.pem"
+    server_req:          "server-req.pem"
+    server_jks:          "server.jks"
+    # Generally these are the trustchain related files
+    trustchain_cert:     "trustchain-cert.pem"
+    trustchain_jks:      "trustchain.jks"
+  # The convention is to have an entry for each of the file
+  # The secret is expected to contain these entries
+  passwords:
+    # These contain the type and password for the CA related files
+    ca_key_type:         "PEM"
+    ca_key_pass:         "capass"
+    # These contain the type and password for the client related files
+    client_key_type:     "PEM"
+    client_key_pass:     "clientpass"
+    # These contain the type and password for the client related files
+    client_key_type:     "PEM"
+    client_key_pass:     "clientpass"
+    client_jks_type:     "JKS" #"PKCS12"
+    client_jks_pass:     "altiplanokeystore" #"mypass"
+    # These contain the type and password for the server related files
+    server_key_type:     "PEM"
+    server_key_pass:     "serverpass"
+    server_jks_type:     "JKS" #"PKCS12"
+    server_jks_pass:     "altiplanokeystore" #"mypass"
+    # These contain the type and password for the trustchain related files
+    trustchain_crt_type: "PEM"
+    trustchain_jks_type: "JKS" #"PKCS12"
+    trustchain_jks_pass: "altiplanokeystore" #"mypass"
+
+certificates:
+  secretNames:
+    all:                 #"CHARTNAME-all-certs"
+  # The secret is expected to contain the below listed arbitrary files
+  fileNames:
+    # Generally these are the CA related files
+    ca_cert:             "ca-cert.pem"
+    ca_key:              "ca-key.pem"
+    # Generally these are the client related files
+    client_cert:         "client-cert.pem"
+    client_key:          "client-key.pem"
+    client_req:          "client-req.pem"
+    client_jks:          "client.jks"
+    # Generally these are the server related files
+    server_cert:         "server-cert.pem"
+    server_key:          "server-key.pem"
+    server_req:          "server-req.pem"
+    server_jks:          "server.jks"
+    # Generally these are the trustchain related files
+    trustchain_cert:     "trustchain-cert.pem"
+    trustchain_jks:      "trustchain.jks"
+  # The convention is to have an entry for each of the file
+  # The secret is expected to contain these entries
+  passwords:
+    # These contain the type and password for the CA related files
+    ca_key_type:         "PEM"
+    ca_key_pass:         "capass"
+    # These contain the type and password for the client related files
+    client_key_type:     "PEM"
+    client_key_pass:     "clientpass"
+    client_jks_type:     "JKS" #"PKCS12"
+    client_jks_pass:     "altiplanokeystore" #"mypass"
+    # These contain the type and password for the server related files
+    server_key_type:     "PEM"
+    server_key_pass:     "serverpass"
+    server_jks_type:     "JKS" #"PKCS12"
+    server_jks_pass:     "altiplanokeystore" #"mypass"
+    # These contain the type and password for the trustchain related files
+    trustchain_crt_type: "PEM"
+    trustchain_jks_type: "JKS" #"PKCS12"
+    trustchain_jks_pass: "altiplanokeystore" #"mypass"
+
+persistence:
+  ## If true, use a Persistent Volume Claim, If false, use emptyDir
+  ## NOTE if enabled, a pvc named "webdav-pvclaim" is required
+  enabled: true
+  ## Persistent Volume Storage Class
+  ## If defined, storageClassName: <storageClass>
+  ## If set to "-", storageClassName: "", which disables dynamic provisioning
+  ## If undefined (the default) or set to null, no storageClassName spec is
+  ##   set, choosing the default provisioner.  (gp2 on AWS, standard on
+  ##   GKE, AWS & OpenStack)
+  ##
+  # storageClass: "-"
+  ## Persistent Volume Claim annotations
+  ##
+  annotations:
+  ## Persistent Volume Access Mode
+  ##
+  accessModes:
+    - ReadWriteOnce
+  ## Persistent Volume size
+  ##
+  size: 10Gi
+  ##
+
+env:
+  secrets:
+    USERNAME: admin
+    PASSWORD: nokiafnms@123
+  timeZoneEnv: ""
+  # This ENV variable is used when multiple Network Virtualizers are managed from the same Access Controller.
+  # The ENV variable value is a string containing the name of the directory shared by all Network Virtualizers to store device software files
+  # When the ENV variable is empty, each Virtualizer use their own directory on WebDAV
+  OPTIMIZED_DEVICE_SW_FILE_STORAGE_DIRECTORY_ON_WEBDAV: ""
+  open: {}
+    #HTTPS_ENABLED: false #All other values are considered true
+
+ingress:
+  enabled: true
+  annotations:
+    kubernetes.io/ingress.class: nginx
+    nginx.ingress.kubernetes.io/proxy-pass-suffix: $uri
+    nginx.ingress.kubernetes.io/ssl-passthrough: "true"
+    nginx.ingress.kubernetes.io/force-ssl-redirect: "true"
+    #kubernetes.io/tls-acme: "true"
+  #path: /altiplano-webdav
+  #hosts:
+  #- "*"
+  tls: []
+  #  - secretName: chart-example-tls
+  #    hosts:
+  #      - chart-example.local
+nginxIncIngress:
+  annotations:
+    kubernetes.io/ingress.class: nginx
+    nginx.org/mergeable-ingress-type: minion
+securityContext:
+  runAsNonRoot: true
+  runAsUser: 1000
+  runAsGroup: 1000
+  fsGroup: 1000
+
+resources: {}
+  # We usually recommend not to specify default resources and to leave this as a conscious
+  # choice for the user. This also increases chances charts run on environments with little
+  # resources, such as Minikube. If you do want to specify resources, uncomment the following
+  # lines, adjust them as necessary, and remove the curly braces after 'resources:'.
+  # limits:
+  #  cpu: 100m
+  #  memory: 128Mi
+  # requests:
+  #  cpu: 100m
+  #  memory: 128Mi
+
+nodeSelector: {}
+
+tolerations: []
+
+affinity: {}
+
+cbur:
+  enabled: true
+  apiVersion: "cbur.csf.nokia.com/v1"
+  #the maximum copy you want to saved.
+  maxiCopy: 5
+  #Modes supported now: "local","NETBKUP","AVAMAR","CEPHS3","AWSS3", case insensitive
+  backendMode: local
+  #It is used for scheduled backup task
+  cronSpec: "*/2 * * * *"
+  #Set below parameters to true for auto enabling cron job
+  autoEnableCron: true
+  #Set below parameter to true in case you want cronjob to be automatically deleted/updated based on autoEnableCron or cronJob parameters
+  autoUpdateCron: true
+  ## should backups be encrypted?
+  dataEncryption: false
+  persistence:
+    cburtmp:
+      ## If true, use a Persistent Volume Claim, If false, use emptyDir
+      ## NOTE if enabled, a pvc named "webdav-cburtmp-pvclaim" is required
+      ##
+      enabled: true
+      ## Persistent Volume Storage Class
+      ## If defined, storageClassName: <storageClass>
+      ## If set to "-", storageClassName: "", which disables dynamic provisioning
+      ## If undefined (the default) or set to null, no storageClassName spec is
+      ##   set, choosing the default provisioner.  (gp2 on AWS, standard on
+      ##   GKE, AWS & OpenStack)
+      ##
+      # storageClass: "-"
+      ## Persistent Volume Claim annotations
+      ##
+      annotations:
+      ## Persistent Volume Access Mode
+      ##
+      accessModes:
+      - ReadWriteOnce
+      ## Persistent Volume size
+      ##
+      size: 20Gi
+      ##
+      dir: /tmp
+  cbura:
+    imageRepo: cbur/cbura
+    imageTag: 1.0.3-5650
+    imagePullPolicy: IfNotPresent
+    resources:
+      limits:
+        cpu: 100m
+        memory: 128Mi
+      requests:
+        cpu: 100m
+        memory: 128Mi

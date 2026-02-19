@@ -1,0 +1,46 @@
+# This values yaml contains the configuration for anti affinities
+altiplano-kafka:
+  antiAffinity: "soft"
+  ckaf-zookeeper:
+    antiAffinity: "soft"
+
+altiplano-redis:
+  nodeAntiAffinity: soft
+  sentinel:
+    podAntiAffinity:
+      node:
+        type: soft
+  server:
+    podAntiAffinity:
+      node:
+        type: soft
+
+altiplano-grafana:
+  nodeAntiAffinity: soft
+
+altiplano-mariadb:
+  nodeAntiAffinity: soft
+
+altiplano-opentsdb-cluster:
+  altiplano-hbase:
+    antiAffinity: "soft"
+  altiplano-hdfs:
+    antiAffinity: "soft"
+
+altiplano-indexsearch:
+  bssc-indexsearch:
+    manager:
+      podAntiAffinity:
+        ruleDefinition: "soft"
+
+    client:
+      podAntiAffinity:
+        ruleDefinition: "soft"
+
+    data:
+      podAntiAffinity:
+        ruleDefinition: "soft"
+
+altiplano-sso:
+  nodeAntiAffinity:
+    enabled: false

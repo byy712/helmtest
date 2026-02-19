@@ -1,0 +1,30 @@
+{{- $podName := index .Values "altiplano-ingress" }}
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  labels:
+    app: altiplano-ingress
+    chart: {{ .Chart.Name }}-{{ .Chart.Version }}
+    heritage: {{ .Release.Service }}
+    release: {{ .Release.Name }}
+  name:  {{ .Release.Name }}-altiplano-ingress-controller-config
+data:
+  client-max-body-size: "5000m"
+  proxy-buffering: "false"
+  proxy-buffers: "4 128k"
+  proxy-time-out: "3600"
+  proxy-read-timeout: "1200s"
+  proxy-connect-timeout: "5s"
+  server-snippets: |
+    add_header X-Frame-Options "SAMEORIGIN" always;
+    add_header cache-control "no-cache, no-store, must-revalidate" always;
+    add_header pragma  "no-cache" always;
+    add_header Cross-Origin-Resource-Policy "same-origin" always;
+    add_header Strict-Transport-Security "max-age=15724800; includeSubDomains; preload" always;
+    add_header X-Content-Type-Options "nosniff" always;
+  {{- if $podName.controller.config }}
+  {{- range $key, $value := $podName.controller.config }}
+  {{ $key }}: "{{ $value }}"
+  {{- end }}
+  {{- end }}

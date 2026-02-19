@@ -1,0 +1,151 @@
+{{- if ( .Values.rbac.enabled ) }}
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: {{ template "bssc-dashboards.preUpgradeServiceAccount.name" . }}
+  namespace: "{{.Release.Namespace}}"
+  labels:
+{{- include "bssc-dashboards.commonLabels" (tuple .  "dashboards" ) | indent 4 }}
+{{- include "bssc-dashboards.csf-toolkit-helm.labels" (tuple .) | nindent 4 }}
+  annotations:
+{{- include "bssc-dashboards.csf-toolkit-helm.annotations" (tuple .) | nindent 4 }}
+    "helm.sh/hook": pre-upgrade
+    "helm.sh/hook-weight": "-8"
+    "helm.sh/hook-delete-policy": before-hook-creation, hook-succeeded
+    seccomp.security.alpha.kubernetes.io/allowedProfileNames: {{ .Values.global.seccompAllowedProfileNames }}
+    seccomp.security.alpha.kubernetes.io/defaultProfileName: {{ .Values.global.seccompDefaultProfileName }}
+automountServiceAccountToken: false
+---
+kind: RoleBinding
+apiVersion: {{ template "bssc-dashboards.apiVersionRbacAuthorizatioK8sIoV1Beta1orV1" . }}
+metadata:
+  name: {{ template "bssc-dashboards.fullname" . }}-preupg-rb
+  namespace: "{{.Release.Namespace}}"
+  labels:
+{{- include "bssc-dashboards.commonLabels" (tuple .  "dashboards" ) | indent 4 }}
+{{- include "bssc-dashboards.csf-toolkit-helm.labels" (tuple .) | nindent 4 }}
+  annotations:
+{{- include "bssc-dashboards.csf-toolkit-helm.annotations" (tuple .) | nindent 4 }}
+    "helm.sh/hook": pre-upgrade
+    "helm.sh/hook-weight": "-7"
+    "helm.sh/hook-delete-policy": before-hook-creation, hook-succeeded
+    seccomp.security.alpha.kubernetes.io/allowedProfileNames: {{ .Values.global.seccompAllowedProfileNames }}
+    seccomp.security.alpha.kubernetes.io/defaultProfileName: {{ .Values.global.seccompDefaultProfileName }}
+subjects:
+- kind: ServiceAccount
+  name: {{ template "bssc-dashboards.preUpgradeServiceAccount.name" . }}
+  namespace: "{{.Release.Namespace}}"
+  apiGroup: ""
+roleRef:
+  kind: Role
+  name: {{ template "bssc-dashboards.fullname" . }}-preupg-role
+  apiGroup: ""
+
+---
+kind: Role
+apiVersion: {{ template "bssc-dashboards.apiVersionRbacAuthorizatioK8sIoV1Beta1orV1" . }}
+metadata:
+  namespace: "{{.Release.Namespace}}"
+  name: {{ template "bssc-dashboards.fullname" . }}-preupg-role
+  labels:
+{{- include "bssc-dashboards.commonLabels" (tuple .  "dashboards" ) | indent 4 }}
+{{- include "bssc-dashboards.csf-toolkit-helm.labels" (tuple .) | nindent 4 }}
+  annotations:
+{{- include "bssc-dashboards.csf-toolkit-helm.annotations" (tuple .) | nindent 4 }}
+    "helm.sh/hook": pre-upgrade
+    "helm.sh/hook-weight": "-8"
+    "helm.sh/hook-delete-policy": before-hook-creation, hook-succeeded
+    seccomp.security.alpha.kubernetes.io/allowedProfileNames: {{ .Values.global.seccompAllowedProfileNames }}
+    seccomp.security.alpha.kubernetes.io/defaultProfileName: {{ .Values.global.seccompDefaultProfileName }}
+rules:
+- apiGroups:
+  - apps
+  resources:
+  - deployments
+  verbs:
+  - get
+  - list
+  - delete
+- apiGroups:
+  - extensions
+  resources:
+  - deployments
+  verbs:
+  - get
+  - list
+  - delete
+{{- end }}
+---
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: {{ template "bssc-dashboards.preUpgradeJob.name" . }}
+  labels:
+{{- include "bssc-dashboards.csf-toolkit-helm.labels" (tuple . .Values.dashboards.custom.hookJobs.job.labels) | indent 4 }}
+{{- include "bssc-dashboards.commonLabels" (tuple .  "dashboards" ) | indent 4 }}
+  annotations:
+    "helm.sh/hook-weight": "-6"
+    "helm.sh/hook": pre-upgrade
+    "helm.sh/hook-delete-policy": before-hook-creation, hook-succeeded
+    seccomp.security.alpha.kubernetes.io/allowedProfileNames: {{ .Values.global.seccompAllowedProfileNames }}
+    seccomp.security.alpha.kubernetes.io/defaultProfileName: {{ .Values.global.seccompDefaultProfileName }}
+{{- include "bssc-dashboards.csf-toolkit-helm.annotations" (tuple . .Values.dashboards.custom.hookJobs.job.annotations) | indent 4 }}
+spec:
+  template:
+    metadata:
+      labels:
+        altiplano-role: {{ .Values.accessRoleLabel }}
+{{- include "bssc-dashboards.csf-toolkit-helm.labels" (tuple . .Values.dashboards.custom.hookJobs.pod.labels) | indent 8 }}
+{{- include "bssc-dashboards.commonLabels" (tuple .  "dashboards" ) | indent 8 }}
+      annotations:
+        sidecar.istio.io/inject: "false"
+{{- include "bssc-dashboards.csf-toolkit-helm.annotations" (tuple . .Values.dashboards.custom.hookJobs.pod.annotations) | indent 8 }}
+    spec:
+      serviceAccountName: {{ template "bssc-dashboards.preUpgradeServiceAccount.name" . }}
+      automountServiceAccountToken: true
+      {{- if .Values.jobs.affinity }}
+      affinity:
+{{ toYaml .Values.jobs.affinity | indent 8 }}
+      {{- end }}
+      {{- if .Values.jobs.nodeSelector }}
+      nodeSelector:
+{{ toYaml .Values.jobs.nodeSelector | indent 8 }}
+      {{- end }}
+      {{- if .Values.jobs.tolerations }}
+      tolerations:
+{{ toYaml .Values.jobs.tolerations | indent 8 }}
+      {{- end }}
+      restartPolicy: Never
+      securityContext:
+{{ include "bssc-dashboards.pod.securityContext" . | indent 8 }}
+      {{- with or .Values.dashboards.imagePullSecrets .Values.imagePullSecrets .Values.global.imagePullSecrets }}
+      imagePullSecrets:
+{{- toYaml . | nindent 8 }}
+      {{- end }}
+      containers:
+      - name: {{ template "bssc-dashboards.preUpgradeContainer.name" . }}
+        image: {{ include "bssc-dashboards.registry" (tuple .Values .Values.internalToolsRegistry) }}/{{ include "bssc-dashboards.imageRepositoryPath" (tuple .Values.global.flatRegistry .Values.kubectl.image.repo) }}:{{ include "bssc-dashboards.imageTag" (tuple .Values.kubectl.image.tag .Values.kubectl.image.supportedImageFlavor .Values .Values.kubectl .Values.kubectl.image) }}
+        env:
+        - name: TZ
+          value: {{ or .Values.timezone.timeZoneEnv .Values.global.timeZoneEnv "UTC" | quote }}
+        - name: NAMESPACE
+          value: {{ .Release.Namespace }}
+        command:
+        - sh
+        - -c
+        - |
+          echo "Checking if deployment with old labels exists.. Deleting if it exists.."
+          #Due to changes in the labels (common labels), deployment for dashboards is deleted. 
+          DEPLOYMENT=$(kubectl get deployment -n $NAMESPACE -l component=elasticsearch,role=gui,release={{ .Release.Name }} --no-headers=true -o custom-columns=:metadata.name)
+          if [ -z "$DEPLOYMENT" ]; then
+           echo "Dashboards pods have been migrated with new common labels"
+          else
+           kubectl delete deployment $DEPLOYMENT --namespace $NAMESPACE
+          fi
+
+        securityContext:
+{{ include "bssc-dashboards.container.securityContext" . | indent 10 }}
+        resources:
+{{ include "bssc-dashboards.resources" (tuple . .Values.jobs.hookJobs.resources "120m") | indent 10 }}
+
+

@@ -1,0 +1,99 @@
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: {{ template "ckey.postDeleteJobName" . }}
+  labels:
+    app: {{ template "ckey.fullName" . }}
+    release: {{ .Release.Name }}
+    {{- include "ckey.customLabels" (tuple .Values.custom.job.labels .Values.global.labels ) | indent 4 }}
+    {{- include "ckey.commonLabels" . | indent 4 }}
+  annotations:
+    "helm.sh/hook": post-delete
+    "helm.sh/hook-weight": "-5"
+    "helm.sh/hook-delete-policy": {{ .Values.hookDeletePolicy }}
+    {{- include "ckey.customAnnotations" (tuple .Values.custom.job.annotations .Values.global.annotations) | indent 4 }}
+spec:
+  template:
+    metadata:
+      labels:
+        altiplano-role: {{ .Values.accessRoleLabel }}
+        app: {{ template "ckey.fullName" . }}
+        release: {{ .Release.Name }}
+        {{- include "ckey.customLabels" (tuple .Values.custom.job.labels .Values.global.labels ) | indent 8 }}
+        {{- include "ckey.commonLabels" . | indent 8 }}
+      annotations:
+        sidecar.istio.io/inject: "false"
+        {{- include "ckey.customAnnotations" (tuple .Values.custom.job.annotations .Values.global.annotations) | indent 8 }}
+    spec:
+      restartPolicy: Never
+      serviceAccountName: {{ template "ckey.serviceAccountDelete" . }}
+      automountServiceAccountToken: true
+      securityContext:
+{{ include "ckey.keycloak.securitycontext" . | indent 8 }}
+      containers:
+      - name: {{ template "ckey.postDeleteSecretContainerName" . }}
+        image: {{ include "ckey.container.image" (tuple $ .Values.images.kubectl .Values.internalKubectlRegistry) }}
+        imagePullPolicy: "{{ .Values.images.pullPolicy }}"
+        securityContext:
+        {{- include "ckey.container.securitycontext" . | nindent 10 }}
+        env:
+          {{- include "ckey.timezone" . | nindent 10 }}
+        command:
+        - sh
+        - -c
+        - |
+          echo 'Post delete for release: {{ .Release.Name }}'
+          echo 'Delete CKEY secret'
+          kubectl delete secrets -l 'app in ({{ template "ckey.fullName" . }},{{ template "ckey.chartName" . }}),release={{ .Release.Name }}' --namespace={{ .Release.Namespace }}
+          {{- if (not (.Values.preserve_keycloak_pvc)) }}
+          echo 'Delete CKEY PVCs because preserve_keycloak_pvc is set to false'
+          kubectl delete pvc -l app={{ .Chart.Name }},release={{ .Release.Name }} --namespace={{ .Release.Namespace }}
+          kubectl delete pvc -l app={{ template "ckey.chartName" . }},release={{ .Release.Name }} --namespace={{ .Release.Namespace }}
+          {{- end }}
+          echo 'Delete CKEY pods'
+          {{ if .Values.pushEventListenerData.pushConfigMapName }}
+          kubectl delete configmap {{ .Values.pushEventListenerData.pushConfigMapName }} --namespace={{ .Release.Namespace }}
+          {{ end }}
+          kubectl delete configmap {{ template "ckey.fullName" . }}-k8s-restricted-config --namespace={{ .Release.Namespace }}
+          {{ if .Values.cacheConfigMap }}
+          kubectl delete configmap {{ .Values.cacheConfigMap }} --namespace={{ .Release.Namespace }}
+          {{ end }}
+
+          {{- if (eq (include "ckey.certManagerCheck" . ) "true" ) }}
+          echo 'Delete CKEY certificates'
+          kubectl delete certificates  --namespace={{ .Release.Namespace }} {{ template "ckey.fullName" . }}-server-cert --ignore-not-found=true
+          kubectl delete certificates  --namespace={{ .Release.Namespace }} {{ template "ckey.fullName" . }}-server-cert-ingress-internal --ignore-not-found=true
+          kubectl delete certificates  --namespace={{ .Release.Namespace }} {{ template "ckey.fullName" . }}-server-cert-ingress-external --ignore-not-found=true
+          kubectl delete certificates  --namespace={{ .Release.Namespace }} {{ template "ckey.fullName" . }}-server-cert-istio --ignore-not-found=true
+          {{- end }}
+          kubectl delete secrets --namespace={{ .Release.Namespace }} {{ template "ckey.fullName" . }}-server-cert --ignore-not-found=true
+          kubectl delete secrets --namespace={{ .Release.Namespace }} {{ template "ckey.fullName" . }}-server-cert-ingress-internal --ignore-not-found=true
+          kubectl delete secrets --namespace={{ .Release.Namespace }} {{ template "ckey.fullName" . }}-server-cert-ingress-external --ignore-not-found=true
+          kubectl delete secrets --namespace={{ .Release.Namespace }} {{ template "ckey.fullName" . }}-server-cert-istio --ignore-not-found=true
+          kubectl delete secrets --namespace={{ .Release.Namespace }} {{ template "ckey.fullName" . }}-ocp-secret --ignore-not-found=true
+          echo 'Delete CKEY serviceaccounts'
+          kubectl delete serviceaccounts -l app={{ template "ckey.chartName" . }}-infinispan,release={{ .Release.Name }} --namespace={{ .Release.Namespace }}
+
+          echo 'Deleting Failed master realm job in case of failures'
+          kubectl --namespace {{ .Release.Namespace }} delete job {{ template "ckey.masterRealmConfigurationJobName" . }} --ignore-not-found=true
+
+          {{ if .Values.isuUpgrade.enabled }}
+          echo 'Deleting ISU headless service'
+          kubectl --namespace {{ .Release.Namespace }} delete service {{ template "ckey.fullName" . }}-isu-headless --ignore-not-found=true
+          {{ end }}
+
+          echo 'Waiting 5 seconds before job cleanup'
+          sleep 5
+          exit 0
+        resources:
+{{ include "ckey.keycloak.busybox-container-resources-spec" . | indent 10 }}
+      {{- if .Values.nodeSelector }}
+      nodeSelector:
+{{ toYaml .Values.nodeSelector | indent 8 }}
+      {{- end }}
+      {{- include "ckey.imagePullSecrets" (tuple . "kubectl") | nindent 6 }}
+      {{- if .Values.tolerations }}
+      tolerations:
+{{ toYaml .Values.tolerations | indent 8 }}
+      {{- end }}
+{{ include "ckey.common.affinity" . | indent 6 }}

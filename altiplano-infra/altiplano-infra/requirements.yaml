@@ -1,0 +1,183 @@
+dependencies:
+  - name: bssc-ifd
+    repository: "@artifactory"
+    version: 13.0.1-nokia-patch-18
+    alias: altiplano-indexsearch
+    condition: altiplano-indexsearch.enabled,global.altiplano-indexsearch.enabled
+    tags:
+      - altiplano-indexsearch
+      - rdof
+      - infra
+
+  - name: bssc-ifd
+    repository: "@artifactory"
+    version: 13.0.1-nokia-patch-18
+    alias: altiplano-standalone-fluentd
+    condition: altiplano-standalone-fluentd.enabled,global.altiplano-standalone-fluentd.enabled
+    tags:
+      - altiplano-standalone-fluentd
+      - edge-infra
+  - name: bssc-ifd
+    repository: "@artifactory"
+    version: 13.0.1-nokia-patch-18
+    alias: altiplano-alarms-indexsearch
+    condition: altiplano-alarms-indexsearch.enabled,global.altiplano-alarms-indexsearch.enabled
+    tags:
+      - altiplano-alarms-indexsearch
+      - rdof
+      - infra
+  - name: altiplano-opentsdb-cluster
+    repository: http://127.0.0.1:30879
+    version: 24.6.1-REL-0256
+    condition: altiplano-opentsdb.enabled,global.altiplano-opentsdb.enabled
+    tags:
+      - altiplano-opentsdb
+      - rdof
+      - infra
+  - name: cmdb
+    repository: "@artifactory"
+    version: 9.2.1-nokia-patch-1
+    alias: altiplano-mariadb
+    condition: altiplano-mariadb.enabled,global.altiplano-mariadb.enabled
+    tags:
+      - altiplano-mariadb
+      - rdof
+      - infra
+      - edge-infra
+  - name: ckaf-kafka
+    repository: "@artifactory"
+    version: 8.0.2-nokia-patch-3
+    alias: altiplano-kafka
+    condition: altiplano-kafka.enabled,global.altiplano-kafka.enabled
+    tags:
+      - altiplano-kafka
+      - rdof
+      - infra
+      - edge-infra
+  - name: altiplano-webdav
+    repository: http://127.0.0.1:30879
+    version: 24.6.1-REL-0256
+    condition: altiplano-webdav.enabled,global.altiplano-webdav.enabled
+    tags:
+      - altiplano-webdav
+      - rdof
+      - infra
+      - edge-infra
+  - name: cpro
+    repository: "@artifactory"
+    version: 5.0.1-nokia-patch-3
+    alias: altiplano-pts
+    condition: altiplano-pts.enabled,global.altiplano-pts.enabled
+    tags:
+      - altiplano-pts
+      - rdof
+      - infra
+      - edge-infra
+  - name: crdb-redisio
+    repository: "@artifactory"
+    version: 9.0.3-nokia-patch-1
+    alias: altiplano-redis
+    condition: altiplano-redis.enabled,global.altiplano-redis.enabled
+    tags:
+      - altiplano-redis
+      - rdof
+      - infra
+      - edge-infra
+  - name: citm-ingress
+    repository: "@artifactory"
+    version: 3.0.1-nokia-patch-2
+    alias: altiplano-ingress
+    condition: altiplano-ingress.enabled,global.altiplano-ingress.enabled
+    tags:
+      - altiplano-ingress
+      - rdof
+      - infra
+      - edge-infra
+      - ingress-only
+  - name: ckaf-mirror-maker
+    repository: "@artifactory"
+    version: 5.1.0-nokia-patch-8
+    alias: altiplano-kafka-mirrormaker
+    condition: altiplano-kafka-mirrormaker.enabled,global.altiplano-kafka-mirrormaker.enabled
+    tags:
+      - altiplano-mirror-maker
+      - infra
+      - edge-infra
+  - name: altiplano-oauth2-proxy
+    repository: http://127.0.0.1:30879
+    version: 24.6.1-REL-0256
+    alias: altiplano-oauth2-proxy
+    condition: altiplano-oauth2-proxy.enabled,global.altiplano-oauth2-proxy.enabled
+    tags:
+      - altiplano-oauth2-proxy
+      - infra
+  - name: altiplano-oauth2-proxy
+    repository: http://127.0.0.1:30879
+    version: 24.6.1-REL-0256
+    alias: altiplano-oauth2-proxy-nbi
+    condition: altiplano-oauth2-proxy-nbi.enabled,global.altiplano-oauth2-proxy-nbi.enabled
+    tags:
+      - altiplano-oauth2-proxy-nbi
+      - infra
+  - name: altiplano-nspos-rabbitmq
+    repository:  http://127.0.0.1:30879
+    version: 24.6.1-REL-0256
+    condition: altiplano-nspos-rabbitmq.enabled,global.altiplano-nspos-rabbitmq.enabled
+    tags:
+      - altiplano-nspos-rabbitmq
+      - wfe
+  - name: cpro-grafana
+    repository: "@artifactory"
+    version: 7.0.4-nokia-patch-4
+    alias: altiplano-grafana
+    condition: altiplano-grafana.enabled,global.altiplano-grafana.enabled
+    tags:
+      - altiplano-grafana
+      - rdof
+      - infra
+  - name: cbur
+    repository: "@artifactory"
+    version: 1.17.0-nokia-patch-5
+    alias: altiplano-cbur
+    condition: altiplano-cbur.enabled,global.altiplano-cbur.enabled
+    tags:
+      - altiplano-cbur
+      - infra
+  - name: altiplano-backup-restore-helper
+    repository: http://127.0.0.1:30879
+    version: 24.6.1-REL-0256
+    condition: altiplano-backup-restore-helper.enabled,global.altiplano-backup-restore-helper.enabled
+    tags:
+      - altiplano-backup-restore-helper
+      - infra
+  - name: ckey
+    repository: "@artifactory"
+    version: 12.2.0-nokia-patch-3
+    alias: altiplano-sso
+    condition: altiplano-sso.enabled,global.altiplano-sso.enabled
+    tags :
+      - altiplano-sso
+      - rdof
+      - infra
+  - name: altiplano-diag
+    repository: http://127.0.0.1:30879
+    version: 24.6.1-REL-0256
+    condition: altiplano-diag.enabled,global.altiplano-diag.enabled
+    tags:
+      - altiplano-diag
+      - infra
+  - name: ckaf-ksql
+    repository: "@artifactory"
+    version: 8.1.0-nokia-patch-2
+    alias: altiplano-ksql-server
+    condition: altiplano-ksql-server.enabled,global.altiplano-ksql-server.enabled
+    tags:
+      - altiplano-ksql-server
+      - infra
+      - edge-infra
+  - name: altiplano-long-retention-opentsdb
+    repository: http://127.0.0.1:30879
+    version: 24.6.1-REL-0256
+    condition: altiplano-long-retention-opentsdb.enabled,global.altiplano-long-retention-opentsdb.enabled    
+    tags:
+      - altiplano-long-retention-opentsdb       

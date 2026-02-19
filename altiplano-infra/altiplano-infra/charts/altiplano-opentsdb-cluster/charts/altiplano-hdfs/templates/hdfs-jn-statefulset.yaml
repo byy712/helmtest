@@ -1,0 +1,181 @@
+{{- if .Values.global.namenodeHAEnabled -}}
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: {{ include "hdfs.fullname" . }}-journalnode
+  labels:
+    app.kubernetes.io/name: {{ include "hdfs.name" . }}
+    app.kubernetes.io/component: journalnode
+    {{- include "hdfs.labels" . | nindent 4 }}
+spec:
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: {{ include "hdfs.name" . }}
+      app.kubernetes.io/component: journalnode
+      {{- include "hdfs.labels" . | nindent 6 }}
+  serviceName: {{ include "hdfs.fullname" . }}-journalnode
+  replicas: {{ .Values.journalNode.journalnodeQuorumSize }}
+  template:
+    metadata:
+      labels:
+        altiplano-role: {{ .Values.journalNode.accessRoleLabel }}
+        release: "{{ .Release.Name }}"
+        app.kubernetes.io/name: {{ include "hdfs.name" . }}
+        app.kubernetes.io/component: journalnode
+        {{- include "hdfs.labels" . | nindent 8 }}
+    spec:
+      {{- with .Values.journalNode.nodeSelector }}
+      nodeSelector:
+{{ toYaml . | indent 8 }}
+      {{- end }}
+      affinity:
+        podAntiAffinity:
+        {{- if eq .Values.antiAffinity "hard" }}
+          requiredDuringSchedulingIgnoredDuringExecution:
+          - topologyKey: "kubernetes.io/hostname"
+            labelSelector:
+              matchExpressions:
+                - key: app.kubernetes.io/name
+                  operator: In
+                  values:
+                    - {{ include "hdfs.name" . }}
+                - key: app.kubernetes.io/component
+                  operator: In
+                  values:
+                    - journalnode
+                    - namenode
+        {{- else if eq .Values.antiAffinity "soft" }}
+          preferredDuringSchedulingIgnoredDuringExecution:
+          - weight: 5
+            podAffinityTerm:
+              topologyKey: "kubernetes.io/hostname"
+              labelSelector:
+                matchLabels:
+                  app.kubernetes.io/name: {{ include "hdfs.name" . }}
+                  app.kubernetes.io/component: journalnode
+                  {{- include "hdfs.labels" . | nindent 18 }}
+        {{- end }}
+      securityContext:
+        fsGroup: {{ .Values.securityContext.fsGroup | default 114 }}
+      containers:
+      - name: journalnode
+        image: {{ template "image.fullname" . }}
+        imagePullPolicy: {{ .Values.image.pullPolicy | quote }}
+        securityContext:
+          runAsUser: {{ .Values.securityContext.runAsUser | default 201 }}
+          runAsGroup: {{ .Values.securityContext.runAsGroup | default 114 }}
+        command:
+          - "/bin/bash"
+          - "/tmp/hadoop-config/bootstrap.sh"
+          - "-d"
+          - "journalnode"
+        ports:
+        - containerPort: 8485
+          name: jn
+        - containerPort: 8480
+          name: http
+        livenessProbe:
+          httpGet:
+            path: /
+            port: 8480
+          initialDelaySeconds: 120
+          periodSeconds: 20
+          timeoutSeconds: 10
+          failureThreshold: 28
+        readinessProbe:
+          httpGet:
+            path: /
+            port: 8480
+          initialDelaySeconds: 15
+          periodSeconds: 5
+          timeoutSeconds: 10
+        resources:
+{{ toYaml .Values.journalNode.resources | indent 10 }}
+        volumeMounts:
+        - name: hadoop-config
+          mountPath: /tmp/hadoop-config
+  {{- if .Values.persistence.journalNode.enabled }}
+        - name: dfs
+          mountPath: /dfs        
+        - name: logdir
+          mountPath: /opt/hadoop/logs
+  {{- end }}
+      - name: {{ template "hdfs.name" . }}-journalnode-fluentd-sidecar
+        image: "{{ .Values.global.registry }}/{{ .Values.journalNode.fluentd_sidecar.image.name }}:{{ .Values.journalNode.fluentd_sidecar.image.tag }}"
+        imagePullPolicy: {{ .Values.journalNode.fluentd_sidecar.image.pullPolicy }}
+        securityContext:
+          runAsUser: {{ .Values.journalNode.fluentd_sidecar.securityContext.runAsUser | default 1000 }}
+          runAsGroup: {{ .Values.journalNode.fluentd_sidecar.securityContext.runAsGroup | default 114 }}
+        volumeMounts:
+        - name: fluentd-config
+          mountPath: /etc/fluent/
+        {{- if .Values.journalNode.fluentd_sidecar.secrets }}
+        - name: certificates
+          mountPath: /etc/.certificates/
+        {{- end }}
+        - name: logdir
+          mountPath: /logs
+        resources:
+{{ toYaml .Values.journalNode.fluentd_sidecar.resources | indent 12 }}
+        env:
+        {{- if .Values.journalNode.fluentd_sidecar.secrets }}
+        - name: IS_USERNAME
+          valueFrom:
+            secretKeyRef:
+              key: {{ .Values.journalNode.env.secrets.IS_USERNAME }}
+              name: {{ .Values.journalNode.fluentd_sidecar.secrets.passwordSecret | quote }}
+        - name: IS_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              key: {{ .Values.journalNode.env.secrets.IS_PASSWORD }}
+              name: {{ .Values.journalNode.fluentd_sidecar.secrets.passwordSecret | quote }}
+        {{- end }}
+        - name: CONTAINER_NAME
+          valueFrom:
+            fieldRef:
+              apiVersion: v1
+              fieldPath: metadata.name
+        - name: POD_IP
+          valueFrom:
+            fieldRef:
+              fieldPath: status.podIP
+      volumes:
+      - name: hadoop-config
+        configMap:
+          name: {{ include "hdfs.fullname" . }}-hadoop
+      - name: logdir
+        emptyDir: {}
+      - name: fluentd-config
+        configMap:
+          name: {{ template "hdfs.name" . }}-journalnode-fluentd-config
+      {{- if .Values.journalNode.fluentd_sidecar.secrets }}
+      - name: certificates
+        secret:
+          secretName: {{ (tpl .Values.journalNode.fluentd_sidecar.secrets.certSecret .) }}
+      - name: passwords
+        secret:
+          secretName: {{ (tpl .Values.journalNode.fluentd_sidecar.secrets.passwordSecret .) }}
+      {{- end }}
+          
+  {{- if .Values.persistence.journalNode.enabled }}
+  volumeClaimTemplates:
+  - metadata:
+      name: dfs
+      labels:
+        app: {{ template "hdfs.fullname" . }}
+        release: "{{ .Release.Name }}"
+        heritage: "{{ .Release.Service }}"
+    spec:
+      accessModes: [ "ReadWriteOnce" ]
+      resources:
+        requests:
+          storage: "{{ .Values.persistence.journalNode.size }}"
+      {{- if .Values.persistence.journalNode.storageClass }}
+      {{- if (eq "-" .Values.persistence.journalNode.storageClass) }}
+      storageClassName: ""
+      {{- else }}
+      storageClassName: "{{ .Values.persistence.journalNode.storageClass }}"
+      {{- end }}
+      {{- end }}
+  {{- end }}
+{{- end -}}

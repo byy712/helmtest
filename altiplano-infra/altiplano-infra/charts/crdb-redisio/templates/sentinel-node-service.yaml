@@ -1,0 +1,23 @@
+{{- include "crdb-redisio.init" . -}}
+---
+{{- if (and .sentinel_enabled (gt (int .Values.server.count) 1)) }}
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "csf-common-lib.v3.resourceName" (tuple . "service" "sentinel-nodes") }}
+  labels:
+    {{- include "crdb-redisio.labels" (tuple . "sentinel" "service") | nindent 4 }}
+  annotations:
+    {{- include "crdb-redisio.annotations" (tuple . "sentinel" "service") | nindent 4 }}
+spec:
+  type: ClusterIP
+  {{- include "crdb-redisio.dual-stack" (tuple . .Values.services.sentinel) | nindent 2 }}
+  clusterIP: None
+  ports:
+  - name: tcp-sentinel
+    port: 26379
+    appProtocol: tcp
+  selector:
+    {{- include "crdb-redisio.selector_labels" . | nindent 4 }}
+    type: sentinel
+{{- end }}

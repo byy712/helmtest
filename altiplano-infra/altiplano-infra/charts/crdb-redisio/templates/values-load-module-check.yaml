@@ -1,0 +1,26 @@
+{{- include "crdb-redisio.init" . -}}
+{{/*
+*
+* A non-manifest helper to check that the values for server.loadModule are
+* valid.  This prevents performing an install/upgrade of a chart to an invalid
+* loadModules configuration
+*
+*/}}
+
+{{- if .Values.server.loadModules -}}
+{{- $ctx := . -}}
+{{- range .Values.server.loadModules }}
+{{- $mod := tpl (toYaml .) $ctx | fromYaml -}}
+
+{{- $_ := required "server.loadModules item missing required name" $mod.name }}
+{{- $_ := required (printf "server.loadModules item (%s) missing required image" $mod.name) $mod.image }}
+{{- $_ := required (printf "server.loadModules item (%s) missing required path" $mod.name) $mod.path }}
+
+{{- if not (isAbs $mod.path) }}
+{{- $_ := required (printf "server.loadModules item (%s) invalid path (%s) - not absolute" $mod.name $mod.path) "" -}}
+{{- else if ne (ext $mod.path) ".so" }}
+{{- $_ := required (printf "server.loadModules item (%s) invalid path/file (%s) - missing .so extension" $mod.name $mod.path) "" -}}
+{{- end }}
+
+{{- end }}
+{{- end -}}

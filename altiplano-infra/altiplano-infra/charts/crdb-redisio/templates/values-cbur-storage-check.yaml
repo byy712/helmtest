@@ -1,0 +1,49 @@
+{{- include "crdb-redisio.init" . -}}
+{{/*
+*
+* A non-manifest helper to check that the values for cbur sidecar
+* ephemeral-strorage are sufficient for Backup/Restore to work.
+* The CBURA sidecar uses /tmp (ephemeral-strorage) for transfer and
+* to compress/uncompress backups, and thus require the recommended
+* 2X the size of the server PVCs (server.persistence.size).
+*
+* This template is included in NOTES.txt so that warnings can be displayed
+* to the user.
+*
+*/}}
+
+{{- define "crdb-redisio.cbur-size-check" -}}
+
+{{- if .Values.cbur.enabled -}}
+
+{{- $disableCheck := .Values.cbur.disableSizeCheck | default false -}}
+{{- $pvcSizeVal := .Values.server.persistence.size -}}
+{{- $pvcSize := include "crdb-redisio.sizecalc" $pvcSizeVal -}}
+{{- $cburReqSizeVal := (get .Values.cbur.resources.requests "ephemeral-storage") -}}
+{{- $cburLimSizeVal := (get .Values.cbur.resources.limits "ephemeral-storage") -}}
+{{- $cburReqSize := include "crdb-redisio.sizecalc" $cburReqSizeVal -}}
+{{- $cburLimSize := include "crdb-redisio.sizecalc" $cburLimSizeVal -}}
+
+{{- $msg := printf "Backup/Restore may be unable to function properly:\n" -}}
+{{- $msg = printf "\n\n!!! %s !!!\n===============\n%s" (ternary "WARNING" "ERROR" $disableCheck) $msg -}}
+{{- $reqMsg := "cbur.resources.requests.ephemeral-storage (%s) must be >= server.persistence.size (%s)" -}}
+{{- $reqMsg = printf (printf "%s%s\n" $msg $reqMsg) $cburReqSizeVal $pvcSizeVal -}}
+{{- $limMsg := "cbur.resources.limits.ephemeral-storage (%s) must be >= 2*server.persistence.size (%s)" -}}
+{{- $limMsg = printf (printf "%s%s\n" $msg $limMsg) $cburLimSizeVal $pvcSizeVal -}}
+
+{{- if lt (int64 $cburReqSize) (int64 $pvcSize) -}}
+    {{- if $disableCheck -}}
+        {{- printf "%s" $reqMsg -}}
+    {{- else -}}
+        {{- fail $reqMsg -}}
+    {{- end -}}
+{{- else if lt (int64 $cburLimSize) (int64 (mul $pvcSize 2)) -}}
+    {{- if $disableCheck -}}
+        {{- printf "%s" $limMsg -}}
+    {{- else -}}
+        {{- fail $limMsg -}}
+    {{- end -}}
+{{- end -}}
+
+{{- end -}}
+{{- end -}}

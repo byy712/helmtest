@@ -1,0 +1,7 @@
+apiVersion: v2
+appVersion: "1.0"
+description: Library helm chart, provides helper functions, which facilitate the fulfillment
+  of the Helm Best Practices requirements v3.0.0+.
+name: csf-common-lib
+type: library
+version: 1.15.0

@@ -1,0 +1,84 @@
+{{- if (and .Values.rbac.enabled (and (not .Values.global.serviceAccountName) (not .Values.global.deletionServiceAccountName))) }}
+apiVersion: v1
+kind: ServiceAccount
+automountServiceAccountToken: false
+metadata:
+  name: {{ template "ckey.fullName" . }}-delete-sa
+  namespace: "{{.Release.Namespace}}"
+  labels:
+    app: {{ template "ckey.fullName" . }}
+    heritage: {{ .Release.Service }}
+    release: {{ .Release.Name }}
+    {{- include "ckey.customLabels" (tuple .Values.global.labels ) | indent 4 }}
+    {{- include "ckey.commonLabels" . | indent 4 }}
+  annotations:
+    "helm.sh/hook": post-delete
+    "helm.sh/hook-weight": "-8"
+    "helm.sh/hook-delete-policy": {{ .Values.hookDeletePolicy }}
+    {{- include "ckey.customAnnotations" (tuple .Values.global.annotations) | indent 4 }}
+---
+kind: Role
+apiVersion: rbac.authorization.k8s.io/v1
+metadata:
+  namespace: "{{.Release.Namespace}}"
+  name: {{ template "ckey.fullName" . }}-delete-role
+  labels:
+    app: {{ template "ckey.fullName" . }}
+    release: {{ .Release.Name }}
+    {{- include "ckey.customLabels" (tuple .Values.global.labels ) | indent 4 }}
+    {{- include "ckey.commonLabels" . | indent 4 }}
+  annotations:
+    "helm.sh/hook": post-delete
+    "helm.sh/hook-weight": "-7"
+    "helm.sh/hook-delete-policy": {{ .Values.hookDeletePolicy }}
+    {{- include "ckey.customAnnotations" (tuple .Values.global.annotations) | indent 4 }}
+rules:
+- apiGroups: [""]
+  resources: ["persistentvolumeclaims"]
+  verbs: ["list","delete"]
+- apiGroups: [""]
+  resources: ["configmaps"]
+  verbs: ["list","delete"]
+- apiGroups: [""]
+  resources: ["secrets"]
+  verbs: ["list","delete"]
+- apiGroups: ["batch"]
+  resources: ["jobs"]
+  verbs: ["list","delete"]
+- apiGroups: [""]
+  resources: ["services"]
+  verbs: ["list","delete"]
+- apiGroups: [""]
+  resources: ["pods"]
+  verbs: ["delete"]
+- apiGroups: [ "" ]
+  resources: ["serviceaccounts"]
+  verbs: ["list","delete"]
+
+---
+kind: RoleBinding
+apiVersion: rbac.authorization.k8s.io/v1
+metadata:
+  name: {{ template "ckey.fullName" . }}-delete-rolebinding
+  namespace: "{{.Release.Namespace}}"
+  labels:
+    app: {{ template "ckey.fullName" . }}
+    release: {{ .Release.Name }}
+    {{- include "ckey.customLabels" (tuple .Values.global.labels ) | indent 4 }}
+    {{- include "ckey.commonLabels" . | indent 4 }}
+  annotations:
+    "helm.sh/hook": post-delete
+    "helm.sh/hook-weight": "-6"
+    "helm.sh/hook-delete-policy": {{ .Values.hookDeletePolicy }}
+    {{- include "ckey.customAnnotations" (tuple .Values.global.annotations) | indent 4 }}
+subjects:
+- kind: ServiceAccount
+  name: {{ template "ckey.fullName" . }}-delete-sa
+  namespace: "{{.Release.Namespace}}"
+  apiGroup: ""
+roleRef:
+  kind: Role
+  name: {{ template "ckey.fullName" . }}-delete-role
+  apiGroup: rbac.authorization.k8s.io
+---
+{{- end }}

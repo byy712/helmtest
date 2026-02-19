@@ -1,0 +1,122 @@
+{{- if .Values.cbur.enabled }}
+apiVersion: "cbur.csf.nokia.com/v1"
+kind: BrHook
+metadata:
+  name: {{ .Release.Name }}-kafka-post-restore-br-hook
+  labels:
+{{ include "ckaf-kafka.commonLabels" . | indent 4 }}
+{{- include "csf-common-lib.v1.customLabels" (tuple .Values.global.labels) | indent 4 }}
+  annotations:
+    seccomp.security.alpha.kubernetes.io/allowedProfileNames: {{ .Values.global.seccompAllowedProfileNames }}
+    seccomp.security.alpha.kubernetes.io/defaultProfileName: {{ .Values.global.seccompDefaultProfileName }}
+{{- include "csf-common-lib.v1.customAnnotations" (tuple .Values.global.annotations) | indent 4 }}
+spec:
+  properties:
+    targetType: "release"
+    targetName: {{ .Release.Name }}
+    hookPoint: postrestore
+    weight: 5
+    enable: true
+    timeout: {{ .Values.cbur.brhookTimeout | default 600 }}
+    deletePolicy: "hook-succeeded,before-hook-creation"
+  template:
+    spec:
+     template:
+       metadata:
+         labels:
+           app: {{ .Chart.Name }}
+         annotations:
+           sidecar.istio.io/inject: "false"
+       spec:
+         {{- if .Values.kafkaNodeSelector.enable }}
+         nodeSelector:
+{{ toYaml .Values.kafkaNodeSelector.nodeLabel | indent 11 }}
+         {{- end }}
+         {{- if .Values.global.rbac.enabled }}
+         serviceAccountName: {{ template "ckaf-kafka.serviceAccountName" . }}
+         {{- end }}
+         automountServiceAccountToken: true
+         {{- if eq .Values.security.enabled true }}
+         securityContext:
+           {{- if ( ne ( toString ( .Values.security.runAsUser )) "auto" ) }}
+           runAsUser: {{ .Values.security.runAsUser }}
+           {{- end }}       
+           runAsNonRoot: true
+           {{- if ( ne ( toString (.Values.security.fsGroup)) "auto" ) }}
+           fsGroup: {{ .Values.security.fsGroup }}
+           {{- end }}
+           {{- if eq (include "ckaf-kafka.renderSeccompProfile" .) "true" }}
+           seccompProfile:
+             type: {{ .Values.security.seccompProfile.type }}
+           {{- end }}
+         {{- end }}
+         {{- if  coalesce .Values.imagePullSecrets .Values.global.imagePullSecrets }}
+         imagePullSecrets:
+           - name: {{ coalesce .Values.imagePullSecrets .Values.global.imagePullSecrets }}
+         {{- end }}
+         restartPolicy: Never
+         containers:
+         - name: kafka-post-restore-br-hook
+           {{- if eq .Values.global.flatRegistry true }}
+           image: "{{ .Values.global.registry }}/{{ .Values.kubectlImageName }}:{{ .Values.kubectlTag }}"
+           {{- else }}
+           image: "{{ coalesce .Values.global.registry3 .Values.global.registry }}/{{ include "ckaf-kafka.kubectlImageRepo" . }}:{{ .Values.kubectlTag }}"
+           {{- end }}
+           imagePullPolicy: IfNotPresent
+           {{- if eq .Values.security.enabled true }}
+           securityContext:
+             runAsNonRoot: true
+             readOnlyRootFilesystem: {{ .Values.security.readOnlyRootFilesystem }}
+             {{- if ( ne ( toString ( .Values.security.runAsUser )) "auto" ) }}
+             runAsUser: {{ .Values.security.runAsUser }}
+             {{- end }}
+             {{- if .Values.security.runAsGroup }}
+             runAsGroup: {{ .Values.security.runAsGroup }}
+             {{- end }}
+             allowPrivilegeEscalation: false
+             {{- if eq (include "ckaf-kafka.renderSeccompProfile" .) "true" }}
+             seccompProfile:
+               type: {{ .Values.security.seccompProfile.type }}
+             {{- end }}
+             privileged: false
+             capabilities:
+               drop: ["ALL"]
+           {{- end }}
+           resources:
+{{- include "ckaf-kafka.getResources" (tuple . .Values.jobResources "1") | indent 14 }}
+           env:
+           - name: TZ
+             value: {{ template "ckaf-kafka.timeZoneEnv" . }}
+           command:
+           - sh
+           - -c
+           - |
+             sleep 5s
+             kubectl patch cm {{ .Release.Name }}-kf-cbur-conf --namespace {{ .Release.Namespace }} --type merge -p '{ "data":{ "is_restore": "false" }}'
+             echo deleting kf pods
+             kubectl delete pods --namespace {{ .Release.Namespace }} -l app={{ .Chart.Name }},release={{ .Release.Name }} --wait=true --timeout=5m
+             echo waiting for kf pods to comeup
+             sleep 10s
+             while true
+             do
+                 kf_pods=$(kubectl get sts --namespace {{ .Release.Namespace }} -l app={{ .Chart.Name }},release={{ .Release.Name }} --no-headers=true | awk '{ print$2 }')
+                 if [ $(echo $kf_pods | cut -d'/' -f2) == $(echo $kf_pods | cut -d'/' -f1) ]
+                 then
+                     echo All kafka pods are up
+                     break
+                 else
+                     echo  $(echo $kf_pods | cut -d'/' -f1) of $(echo $kf_pods | cut -d'/' -f2) pods are only up. Waiting for all kafka pods to come up
+                 fi
+                 sleep 10s
+             done
+
+             for pod_id in $(kubectl get pods --namespace {{ .Release.Namespace }} -l app={{ .Chart.Name }},release={{ .Release.Name }} --no-headers=true | grep Running |  awk '{ print$1 }')
+             do
+               echo "Executing Reassigning leader for partition command on pod  ${pod_id}"
+               kubectl exec ${pod_id} -c {{ template "ckaf-kafka.containerName" . }} --namespace {{ .Release.Namespace }} -- sh /etc/kafka/balance-partition-leadership.sh >> /dev/null
+               break
+             done
+
+             echo KF postrestore done
+{{- end }}
+

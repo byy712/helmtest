@@ -1,0 +1,23 @@
+{{- include "cpro.istio.cproInitIstio" . }}
+{{- if and ($.istio.enabled) (.Values.pushgateway.enabled) (eq $.istio.version "1.4") }}
+apiVersion: "authentication.istio.io/v1alpha1"
+kind: "Policy"
+metadata:
+  labels:
+    {{- include "cpro.app.labels.v3" ( dict "root" . "context" .Values.pushgateway ) | nindent 4 }}
+{{- include "cpro.labelsOrAnnotations" (tuple .Values.global.labels) | indent 4}}
+  name: {{ template "cpro.prometheus.pushgateway.fullname" . }}
+  namespace: "{{.Release.Namespace}}"
+  annotations:
+{{- include "cpro.labelsOrAnnotations" (tuple .Values.global.annotations) | indent 4}}
+spec:
+  targets:
+  - name: {{ template "cpro.prometheus.pushgateway.fullname" . }}
+  peers:
+  - mtls:
+{{- if and ($.istio.mtls.enabled) (not $.istio.permissive) }}
+      mode: STRICT
+{{- else }}
+      mode: PERMISSIVE
+{{- end }}
+{{- end }}

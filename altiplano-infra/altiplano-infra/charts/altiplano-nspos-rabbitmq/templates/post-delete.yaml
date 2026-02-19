@@ -1,0 +1,125 @@
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: {{ template "crmq.postDeleteJobName" . }}
+  labels:
+    app: {{ template "crmq.name" . }}-post-delete
+    chart: {{ template "crmq.chart" .  }}
+    release: "{{ .Release.Name }}"
+    heritage: "{{ .Release.Service }}"
+    {{- include "crmq.commonLabels" . | indent 4 }}
+    {{- include "csf-common-lib.v1.customLabels" (tuple .Values.global.labels) | indent 4 }}
+  annotations:
+    "helm.sh/hook": post-delete
+    "helm.sh/hook-weight": "0"
+    {{- if .Values.hooks.deletePolicy }}
+    "helm.sh/hook-delete-policy": {{ .Values.hooks.deletePolicy }}
+    {{- else }}
+    "helm.sh/hook-delete-policy": hook-succeeded, before-hook-creation
+    {{- end }}
+    {{- include "csf-common-lib.v1.customAnnotations" (tuple .Values.global.annotations) | indent 4 }}
+spec:
+  template:
+    metadata:
+      {{- if .Values.istio.enabled }}
+      annotations:
+        sidecar.istio.io/inject: "false"
+      {{- end }}
+        {{- include "csf-common-lib.v1.customAnnotations" (tuple .Values.global.annotations) | indent 8 }}
+      labels:
+        altiplano-role: {{ .Values.accessRoleLabel }}
+        app: {{ template "crmq.name" . }}-post-delete-job
+        chart: {{ template "crmq.chart" .  }}
+        release: "{{ .Release.Name }}"
+        heritage: "{{ .Release.Service }}"
+        {{- include "crmq.commonLabels" . | indent 8 }}
+        {{- include "csf-common-lib.v1.customLabels" (tuple .Values.global.labels) | indent 8 }}
+    spec:
+      restartPolicy: Never
+      {{- if .Values.rbac.enabled}}
+      serviceAccountName: {{ template "crmq.fullname" . }}-post-del
+      {{- else if not ( empty .Values.serviceAccountNamePostDel ) }}
+      serviceAccountName: "{{ .Values.serviceAccountNamePostDel }}"
+      {{- else }}
+      serviceAccountName: "{{ .Values.serviceAccountName }}"
+      {{- end }}
+      automountServiceAccountToken: true
+      {{- if eq .Values.antiAffinity "hard" }}
+      affinity:
+        podAntiAffinity:
+          requiredDuringSchedulingIgnoredDuringExecution:
+            - topologyKey: "kubernetes.io/hostname"
+              labelSelector:
+                matchLabels:
+                  app: {{ template "crmq.name" . }}
+                  release: {{ .Release.Name | quote }}
+      {{- else if eq .Values.antiAffinity "soft" }}
+      affinity:
+        podAntiAffinity:
+          preferredDuringSchedulingIgnoredDuringExecution:
+            - weight: 1
+              podAffinityTerm:
+                topologyKey: "kubernetes.io/hostname"
+                labelSelector:
+                  matchLabels:
+                    app: {{ template "crmq.name" . }}
+                    release: {{ .Release.Name | quote }}
+      {{- end }}
+      {{- if .Values.nodeSelector }}
+      nodeSelector:
+{{ toYaml .Values.nodeSelector | indent 8 }}
+      {{- end }}
+      {{- if .Values.tolerations }}
+      tolerations:
+{{ toYaml .Values.tolerations | indent 8 }}
+      {{- end }}
+      {{- if  coalesce .Values.image.pullSecrets .Values.global.imagePullSecrets }}
+      imagePullSecrets:
+        - name: {{ coalesce .Values.image.pullSecrets .Values.global.imagePullSecrets }}
+      {{- end }}
+      containers:
+      - name: {{ template "crmq.postDeleteContainerName" . }}
+        image: "{{ .Values.global.registry1 }}/{{ .Values.kubectlImage.repository }}:{{ .Values.kubectlImage.tag }}"
+        securityContext:
+          {{- if eq (include "crmq.renderSeccompProfile" .) "true" }}
+          seccompProfile:
+            type: {{ .Values.securityContext.seccompProfile.type }}
+          {{- end }}
+          capabilities:
+            drop: ["ALL"]
+          runAsNonRoot: true
+          {{- if .Values.securityContext.allowPrivilegeEscalation }}
+          allowPrivilegeEscalation: {{ .Values.securityContext.allowPrivilegeEscalation }}
+          {{- else }}
+          allowPrivilegeEscalation: false
+          {{- end }}
+          readOnlyRootFilesystem: {{ required "Value is required true/false." .Values.securityContext.readOnlyRootFilesystem }}
+          {{- if ( ne ( toString ( .Values.securityContext.runAsUser )) "auto" ) }}
+          runAsUser: {{ .Values.securityContext.runAsUser }}
+          {{- end }}
+        command:
+        - sh
+        - -ec
+        - |
+          {{- if and .Values.persistence.data.enabled (not .Values.persistence.reservePvc) }}
+          kubectl delete pvc --namespace {{ .Release.Namespace }} -l release={{ .Release.Name }},app={{ template "crmq.fullname" . }} --ignore-not-found
+          {{- end }}
+          kubectl delete secret --namespace {{ .Release.Namespace }} -l release={{ .Release.Name }},app={{ template "crmq.name" . }}
+          {{- if .Values.postDeleteForceClean.enabled }}
+
+          kubectl delete role --namespace {{ .Release.Namespace }} -l release={{ .Release.Name }},app={{ template "crmq.name" . }}
+          kubectl delete rolebinding --namespace {{ .Release.Namespace }} -l release={{ .Release.Name }},app={{ template "crmq.name" . }}
+          kubectl delete svc --namespace {{ .Release.Namespace }} -l release={{ .Release.Name }},app={{ template "crmq.name" . }}
+          kubectl delete ing --namespace {{ .Release.Namespace }} -l release={{ .Release.Name }},app={{ template "crmq.name" . }}
+          {{- end }}
+          
+          # clean up the secrets.
+          secrets=$(kubectl get secret --namespace {{ .Release.Namespace }} -l owner!=helm -o custom-columns=:metadata.name | grep "{{ .Chart.Name }}" | grep -v "post-del")
+          for secret in $secrets
+          do
+            kubectl delete secret --namespace {{ .Release.Namespace }} $secret
+          done
+        {{- if .Values.resources }}
+        resources:
+{{ toYaml .Values.resources | indent 10 }}
+        {{- end }}

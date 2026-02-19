@@ -1,0 +1,53 @@
+{{- if and .Values.server.enabled .Values.server.cbur.enabled }}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  labels:
+    {{- include "cpro.app.labels.v3" ( dict "root" . "context" .Values.server ) | nindent 4 }}
+{{- include "cpro.labelsOrAnnotations" (tuple .Values.global.labels) | indent 4}}
+  name:  {{ include "cpro.prometheus.server.cbur.configmapName" . }}
+  annotations:
+{{- include "cpro.labelsOrAnnotations" (tuple .Values.global.annotations) | indent 4}}
+data:
+  backup.sh: |
+    set -x
+    curl_opts=( );
+    protocol=http;
+    {{- if .Values.server.tls_auth_config.tls.enabled }}
+    curl_opts=(--insecure);
+    protocol=https;
+    {{- end }}
+    curl_command="curl ${curl_opts[@]} ${protocol}://localhost:{{ .Values.server.service.webPort }}{{ template "cpro.server.routePrefixURL" . }}/api/v1/admin/tsdb/snapshot -X POST |awk -F '\"' {'print \$10'}"
+    echo $curl_command
+    rm -rf /prometheus-backup/*; rm -rf /data/snapshots;
+    result=`eval $curl_command`
+    echo $result
+    backupTaken="false"
+    for loop in $(seq 1 5)
+    do
+        if [ $result = \"error\" ] ||  [ ! -d  /data/snapshots ]
+        then
+            sleep 10
+            result=`eval $curl_command`
+            echo $result
+        else
+            backupTaken="true"
+            break
+        fi
+    done
+    if [ "$backupTaken" = "false" ]
+    then
+        echo "Failed to take backup!!!!!"
+        exit 1
+    else
+        echo "successfully taken backup"
+        mv /data/snapshots/$result/* /prometheus-backup/
+        if [ $? -eq 0 ]; then
+            echo "successfully moved file to /prometheus-backup/"
+            exit 0
+        else
+            echo "Failed to move file to /prometheus-backup/ with error code $?!!!!"
+            exit 1
+        fi
+    fi
+{{- end -}}

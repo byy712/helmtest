@@ -1,0 +1,6 @@
+{{- $prevpvc := (lookup "v1" "PersistentVolumeClaim" .Release.Namespace (include "cpro-grafana.fullname" .)) }}
+{{- if $prevpvc }}
+{{- $prevstc := (lookup "v1" "PersistentVolumeClaim" .Release.Namespace (include "cpro-grafana.fullname" .)).spec.storageClassName }}
+{{- $prevstc }}
+{{- else }}
+{{- end -}}

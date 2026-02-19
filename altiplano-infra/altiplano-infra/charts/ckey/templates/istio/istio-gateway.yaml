@@ -1,0 +1,134 @@
+# Below CKEY gateway and Virtual Service assumes Shared gateway mode will always have value other than PASSTHROUGH
+{{- include "ckey.isTlsExternalCertViaCertManager" . -}}
+{{ if .Values.istio.enabled }}
+{{ $keycloakFullname := include "ckey.fullName" . }}
+{{ $chartName := .Chart.Name }}
+{{ $chartVer := .Chart.Version }}
+{{ $releaseName := .Release.Name }}
+{{ $releaseService := .Release.Service }}
+{{ $prefixReleaseNameForGatewayName := .Values.istio.prefixReleaseNameForGatewayName }}
+{{ $gloablLabels := .Values.global.labels }}
+{{ $gloablAnnotations := .Values.global.annotations }}
+{{ $world := . }}
+{{ $firstGateway := (first .Values.istio.gateways) }}
+{{ $isDedicatedGwInPassThrough := and (eq $firstGateway.tls.mode "PASSTHROUGH") ($firstGateway.enabled) }}
+{{ $isCredentialThroughCertManager := .Values.tls.certManager.isTlsExternalCertViaCertManager }}
+{{ include "ckey.istio.configurationCheck" . }}
+{{- range .Values.istio.gateways }}
+{{ if .enabled }}
+apiVersion: networking.istio.io/v1alpha3
+kind: Gateway
+metadata:
+{{ if $prefixReleaseNameForGatewayName }}
+  name: "{{ $releaseName }}-{{ .name }}"
+{{ else }}
+  name: "{{ .name }}"
+{{ end }}
+  labels:
+    app: {{ $keycloakFullname }}
+    chart: "{{ $chartName }}-{{ $chartVer }}"
+    release: "{{ $releaseName }}"
+    heritage: "{{ $releaseService }}"
+    {{- include "ckey.customLabels" (tuple $gloablLabels ) | indent 4 }}
+    {{ include "ckey.commonLabels" $world | indent 4 }}
+    {{ if .labels }}
+{{ toYaml .labels | indent 4 }}
+    {{ end }}
+  annotations:
+  {{ if .annotations }}
+{{ toYaml ( .annotations ) | indent 4 }}
+  {{ end }}
+    {{- include "ckey.customAnnotations" (tuple $gloablAnnotations) | indent 4 }}
+spec:
+  selector:
+    {{ if .ingressPodSelector }}
+{{ toYaml .ingressPodSelector | indent 4 }}
+    {{ else }}
+    istio: ingressgateway
+    {{ end }}
+  servers:
+  {{ $prtcl := .protocol | upper  }}
+  - port:
+      name: {{ .protocol | lower }}-{{ .port }}
+      number: {{ .port }}
+      protocol: {{ $prtcl }}
+    hosts:
+    {{ if .hosts }}
+{{ toYaml .hosts | indent 4 }}
+    {{ end }}
+    {{ if or ( eq $prtcl "HTTPS" ) (eq $prtcl "TLS" ) }}
+    tls:
+      {{ if .tls.custom }}
+{{ toYaml ( .tls.custom ) | indent 6 }}
+      {{ else }}
+      mode: {{ .tls.mode }}
+      {{- if and (.tls.credentialName) ( not $isCredentialThroughCertManager ) }}
+      credentialName: {{ .tls.credentialName }}
+      {{- else if ( $isCredentialThroughCertManager ) }}
+      credentialName: {{ $keycloakFullname  }}-server-cert-istio
+      {{ end }}
+      {{ end }}
+    {{ else if and ( eq $prtcl "HTTP" ) ( .tls.redirect ) }}
+    tls:
+      httpsRedirect: true
+    {{ end }}
+{{- end }}
+{{ end }}
+---
+apiVersion: networking.istio.io/v1alpha3
+kind: VirtualService
+metadata:
+  labels:
+    app: {{ template "ckey.fullName" . }}
+    chart: "{{ .Chart.Name }}-{{ .Chart.Version }}"
+    release: "{{ .Release.Name }}"
+    heritage: "{{ .Release.Service }}"
+  name: {{ template "ckey.fullName" . }}-vs
+spec:
+  hosts:
+{{ include "ckey.istio.vs.hosts" . | indent 2 }}
+  #exportTo:
+  #- .
+  gateways:
+  {{ if (include "ckey.istio.shared_istio_gateway" .) }}
+  - {{ include "ckey.istio.shared_istio_gateway" . }}
+  {{ else }}
+  {{ range .Values.istio.gateways }}
+  {{ if $prefixReleaseNameForGatewayName }}
+  - "{{ $releaseName }}-{{ .name }}"
+  {{ else }}
+  - "{{ .name }}"
+  {{ end }}
+  {{ end }}
+  {{ end }}
+# Virtual Service's TLS section applies only when dedicated gateway is in Pasthrough mode, because the TLS validation will happen in the virtual service so below check is in place to check Dedicated gateway mode to passthrough.
+# If Dedicated Gateway is in any-other modes than Passthrough then the http section applies.
+  {{ if and $isDedicatedGwInPassThrough (not .Values.istio.sharedHttpGateway.name) }}
+  tls:
+  - match:
+    {{ if $firstGateway.enabled }}
+    - port: {{ $firstGateway.port | default "443" }}
+    {{ end }}
+      sniHosts:
+{{ include "ckey.istio.vs.hosts" . | indent 6 }}
+    route:
+    - destination:
+        host: {{ template "ckey.fullName" . }}.{{ .Release.Namespace }}.svc.{{ .Values.clusterDomain }}
+        port:
+          number: {{ .Values.httpsPort }}
+  {{ else }}
+  http:
+  - match:
+    - uri:
+        prefix: {{ template "ckey.ingress.contextPath" . }}
+    route:
+    - destination:
+        host: {{ template "ckey.fullName" . }}.{{ .Release.Namespace }}.svc.{{ .Values.clusterDomain }}
+        port:
+          {{ if .Values.istio.isVirtualServiceRequiredForHTTPS }}
+          number: {{ .Values.httpsPort }}
+          {{ else if .Values.istio.isVirtualServiceRequiredForHTTP }}
+          number: {{ .Values.httpPort }}
+          {{ end }}
+  {{ end }}
+{{ end }}

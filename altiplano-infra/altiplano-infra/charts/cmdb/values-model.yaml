@@ -1,0 +1,604 @@
+---
+# Model of configuration.
+type: object
+properties:
+    rbac:
+        description: RBAC configuration
+        type: object
+        properties:
+            enabled:
+                title: RBAC Enabled
+                description: |
+                    Does your cluster have RBAC enabled?
+                type: boolean
+                default: true
+            serviceAccountName:
+                title: Service Account Name
+                description: |
+                    Pre-Created Service Account to use instead of creating.
+                    If set, also disables creation of other RBAC resources (Role, RoleBinding)
+                type: string
+
+    istio:
+        description: Istio configuration
+        type: object
+        properties:
+            enabled:
+                title: Istio Enabled
+                description: |
+                    Does your cluster/namespace have Istio enabled?
+                type: boolean
+                default: false
+            version:
+                title: Istio version installed
+                description: |
+                    What istio version is installed in the system (eg, 1.6)
+                type: string
+                default: "1.4"
+            cni:
+                description: Istio CNI configuration
+                type: object
+                properties:
+                    enabled:
+                        title: Istio CNI Enabled
+                        description: |
+                            Does your system have Istio CNI enabled?
+                        type: boolean
+                        default: false
+            gateway:
+                description: Istio Gateway configuration
+                type: object
+                properties:
+                    enabled:
+                        title: Istio Gateway Enabled
+                        description: |
+                            Does your system need an Istio Gateway?
+                        type: boolean
+                        default: false
+                    tls:
+                        description: Istio Gateway TLS configuration
+                        type: object
+                        properties:
+                            mode:
+                                title: Istio Gateway TLS Mode
+                                description: Gateway TLS mode.
+                                type: string
+                                default: "ISTIO_MUTUAL"
+                            credentialName:
+                                title: Istio Gateway TLS credential secret.
+                                description: Secret name containing TLS credentials.
+                                type: string
+                                default: ""
+
+    timezone:
+        description: Timezone configuration
+        type: object
+        properties:
+            name:
+                title: Timezone Name
+                description: |
+                    Set timezone name (eg, America/Chicago or GST-6)
+                type: string
+
+    name_prefix:
+        description: Pod and container name prefix definitions
+        type: object
+        properties:
+            pod:
+                title: Pod name prefix
+                description: |
+                    Prefix for all created pods
+                type: string
+                default: ""
+            container:
+                title: Container name prefix
+                description: |
+                    Prefix for all created containers
+                type: string
+                default: ""
+
+    cluster:
+        description: |
+            Cluster-level configuration of the database
+        type: object
+        properties:
+           name:
+               title: Cluster name
+               description: |
+                   Cluster name of cluster to be configured.
+               type: string
+           type:
+               title: Cluster type
+               description: |
+                   Defines the type of clustering to be configured.
+               type: string
+               default: master-slave
+               enum:
+               - master-slave
+               - master-master
+               - galera
+               - simplex
+           domain:
+                title: Kubernetes cluster domain
+                description: Kubernetes cluster domain to be configured.  Defaults to standard cluster.local.
+                type: string
+                default: cluster.local
+           imageRegistry:
+               title: CMDB Image Registry
+               description: The image registry for all CMDB containers
+               type: string
+               default: csf-docker-delivered.repo.cci.nokia.net
+           mariadbImageName:
+               title: CMDB mariadb container Image Name
+               description: The image name for the mariadb container
+               type: string
+               default: cmdb/cmdb-mariadb
+           maxscaleImageName:
+               title: CMDB maxscale container Image Name
+               description: The image name for the maxscale container
+               type: string
+               default: cmdb/cmdb-maxscale
+           adminImageName:
+               title: CMDB admin container Image Name
+               description: The image name for the admin container
+               type: string
+               default: cmdb/cmdb-admin
+           imageTag:
+               title: CMDB Image Tag
+               description: The image tag for all CMDB containers
+               type: string
+               default: 6.2-2.6533
+           imageFlavor:
+               title: CMDB Image Flavor
+               description: The image flavor (eg, rocky8/centos7) for all CMDB containers
+               type: string
+               default: rocky8
+               enum:
+               - centos7
+               - rocky8
+               - custom
+           node_wait:
+               title: Node startup wait time (minutes)
+               description: |
+                   Amount of time (minutes) nodes should wait for required nodes to be up.  May be tuned for environments that take a long time to download images and start containers.
+               type: integer
+               default: 15
+               minimum: 2
+               maximum: 60
+           quorum_wait:
+               title: Quarum node wait time (seconds)
+               description: |
+                   Amount of time (seconds) nodes should wait for additional nodes after a quorum is reached.
+               type: integer
+               default: 120
+               minimum: 0
+               maximum: 600
+           db_node_count:
+               title: DB Node Count
+               description: |
+                   The number of MariaDB database nodes that should exist in this cluster.
+               type: integer
+               default: 3
+               minimum: 1
+               maximum: 9
+           mxs_node_count:
+               title: MaxScale Node Count
+               description: |
+                   The number of MaxScale nodes (if any) that should exist in the cluster to be used as a proxy and local-cluster manager.  Must be >0 for Geo-Redundancy.
+               type: integer
+               default: 2
+               minimum: 0
+               maximum: 3
+           node_antiaffinity:
+               title: Strict Anti-Affinity
+               description: |
+                   Specifies if Anti-Affinity should be strictly enforced, preventing any pods from running on the same Node.  This applies across all pods - database and MaxScale (if equipped)
+               type: boolean
+               default: true
+           maxscale_node:
+               title: MaxScale deployment node type
+               description: |
+                   Specifies the node type that MaxScale pod(s) (if equipped) should be deployed to: edge (default) or worker nodes
+               type: string
+               default: edge
+               enum:
+               - edge
+               - worker
+           heuristic_recover:
+               title: Automatic Uncommitted Transaction Recovery
+               description: |
+                   Indicates if the database should perform an automatic heuristic recover attempt of uncommitted transactions on pod restarts when the database already exists.
+               type: string
+               default: rollback
+               enum:
+               - rollback
+               - commit
+               - none
+           tls_enabled:
+               title: Use TLS for external data in flight
+               description: |
+                   Use TLS encryption for data in flight.
+               type: boolean
+               default: false
+           audit_logging:
+               description: Server Audit Logging
+               type: object
+               properties:
+                   enabled:
+                       title: Audit Logging Enabled
+                       description: |
+                           Enable server audit logging?
+                       type: boolean
+                       default: true
+                   events:
+                       title: Audit Events to Log
+                       description: |
+                           Event(s) which should be logged
+                       type: string
+                       default: "CONNECT,QUERY_DCL,QUERY_DDL"
+
+           metrics:
+               description: Metrics Collection
+               type: object
+               properties:
+                   enabled:
+                       title: Metrics Collection Enabled
+                       description: |
+                           Enable metrics collection?
+                       type: boolean
+                       default: false
+                   dashboard:
+                       title: Grafana Dashboard Enabled
+                       description: |
+                           Enable Grafana dashboard?
+                       type: boolean
+                       default: false
+                   mariadbExporterImageName:
+                       title: MariaDB Metrics Image Name
+                       description: The container image name for the mariadb metrics sidecar
+                       type: string
+                       default: cmdb/cmdb-mysqld-exporter
+                   mariadbExporterImageTag:
+                       title: MariaDB Metrics Image Tag
+                       description: The container image tag for the mariadb metrics sidecar
+                       type: string
+                       default: 0.15.1-2.292
+                   maxscaleExporterImageName:
+                       title: MaxCtrl Metrics Image Name
+                       description: The container image name for the maxscale metrics sidecar
+                       type: string
+                       default: cmdb/cmdb-maxctrl-exporter
+                   maxscaleExporterImageTag:
+                       title: MaxCtrl Metrics Image Tag
+                       description: The container image tag for the maxscale metrics sidecar
+                       type: string
+                       default: 0.1.0-24.288
+
+    exposure:
+        description: |
+            Exposure of the database
+        type: object
+        properties:
+           allow_external:
+               title: Expose Database Externally
+               description: |
+                   Defines if the database should be exposed externally.  Must be true if external clients need to connect to the database. (Not supported in ComPaaS)
+               type: boolean
+               default: false
+           session_affinity:
+               title: Enable Session Affinity on mysql Service
+               description: |
+                   Defines if session affinity should be enabled on the mysql service.
+               type: boolean
+               default: false
+
+    admin:
+        description: |
+            MariaDB database administration
+        type: object
+        properties:
+            admin_user:
+                title: Admin User
+                description: |
+                    Admin DB User name.
+                type: string
+                default: root
+                readonly: true
+            admin_passwd:
+                title: Admin Password (must be base64 encoded)
+                description: |
+                    Admin DB User's password. Password must be base64 encoded
+                type: string
+                format: password
+            allow_admin_from_all:
+                title: Allow admin from all hosts
+                description: |
+                    Allows admin user to connect from any host
+                type: boolean
+                default: true
+            repl_user:
+                title: Replication User
+                description: |
+                    Replication User name.
+                type: string
+                default: repl@b.c
+            repl_passwd:
+                title: Replication Password (must be base64 encoded)
+                description: |
+                    Replication User's password. Password must be base64 encoded
+                type: string
+                format: password
+            mxs_user:
+                title: MaxScale User
+                description: |
+                    MaxScale User name.
+                type: string
+                default: maxscale
+            mxs_passwd:
+                title: MaxScale Password (must be base64 encoded)
+                description: |
+                    MaxScale User's password. Password must be base64 encoded
+                type: string
+                format: password
+            mysqld:
+                title: MySQL configuration
+                description: |
+                    MySQL server configuration. Refer:https://mariadb.com/kb/en/library/server-system-variables/
+                type: string
+                format: text-area
+            maxscale:
+                title: MaxScale configuration
+                description: |
+                    MaxScale configuration. Refer:https://mariadb.com/kb/en/mariadb-enterprise/mariadb-maxscale-22-mariadb-maxscale-configuration-usage-scenarios/
+                type: string
+                format: text-area
+            maxscale_master_listener:
+                title: Configure MaxScale master-only listener on port 3308.
+                description: |
+                    Configure MaxScale Master-Only Listener Service
+                type: boolean
+                default: false
+            logrotate:
+                description: |
+                    Logrotate configuration
+                type: object
+                properties:
+                    maxsize:
+                        title: Configure MaxScale log maximum size (in bytes)
+                        description: |
+                            Configure log maximum size (in bytes) for logrotate
+                        type: integer
+                        default: 2097152
+                    rotate:
+                        title: Configure number of logs to rotate
+                        description: |
+                            Configure number of logs to rotate
+                        type: integer
+                        default: 5
+                    compress:
+                        title: Configure log compress
+                        description: |
+                            Configure log compress for logrotate yes|no
+                        type: string
+                        default: no
+            database:
+                title: Database name
+                description: |
+                    Optional database to be created upon start
+                type: string
+#
+## Removed as arrays via lists not supported yet in ComPaaS
+#
+#            promote_sql:
+#                title: MaxScale Promotion SQL
+#                description: |
+#                    SQL command(s) to execute on Master promotion (w/ MaxScale only)
+#                type: array
+#                format: text-area
+#            demote_sql:
+#                title: MaxScale Demotion SQL
+#                description: |
+#                    SQL command(s) to execute on Master demotion (w/ MaxScale only)
+#                type: array
+#                format: text-area
+
+    geo_redundancy:
+        description: |
+            Geo-Redundancy (Not supported in ComPaaS)
+        type: object
+        properties:
+            site_count:
+                title: Geo-Redundancy Site count
+                description: |
+                    Total Number of sites (Set to 1 if no GR)
+                type: integer
+                default: 1
+                minimum: 1
+                maximum: 2
+            site_index:
+                title: Geo-Redundancy Site index
+                description: |
+                    Unique Index of this site within total (1-based, <= site_count)
+                type: integer
+                default: 1
+                minimum: 1
+                maximum: 2
+
+
+    resources:
+        description: |
+            Resource reservations, requests and limits
+        type: object
+        properties:
+            mariadb:
+                description: |
+                    Resources for MariaDB Nodes
+                type: object
+                properties:
+                    volume_size:
+                        title: Data Volume Size
+                        description: |
+                            Size of persistent volume used for the database on each MariaDB node
+                        type: string
+                        default: 5Gi
+                        pattern: '^([0-9]+(T|G|M)i?)$'
+                    volume_class:
+                        title: Storage Class
+                        description: |
+                            Storage Class for persistent volume
+                        type: string
+                        default: ""
+                    backup_volume_enabled:
+                        title: Enable backup volume
+                        description: |
+                            Use/create a separate persistent volume for backups
+                        type: boolean
+                        default: true
+                    backup_volume_size:
+                        title: Data Volume Size
+                        description: |
+                            Size of persistent volume used for the backup on each MariaDB node
+                        type: string
+                        default: 5Gi
+                        pattern: '^([0-9]+(T|G|M)i?)$'
+                    backup_volume_class:
+                        title: Storage Class
+                        description: |
+                            Storage Class for persistent volume used for the backup
+                        type: string
+                        default: ""
+                    memory:
+                        title: Memory
+                        description: |
+                             Memory size reserved for MariaDB
+                        type: string
+                        default: 256Mi
+                        pattern: '^([0-9]+(T|G|M)i?)$'
+                    cpu:
+                        title: CPU
+                        description: |
+                            CPU resources reserved for MariaDB
+                        type: string
+                        default: 250m
+                        pattern: '^([0-9]+m?)$'
+                    ephemeral:
+                        title: Ephemeral
+                        description: |
+                            Ephemeral storage resources reserved for MariaDB
+                        type: string
+                        default: 1Gi
+                        pattern: '^([0-9]+(T|G|M)i?)$'
+                    preserve_pvc:
+                        title: Preserve PVC
+                        description: |
+                            Preserve the persistent volume claim in helm delete event.
+                        type: boolean
+                        default: false
+            maxscale:
+                description: |
+                    Resources for MaxScale Node (if applicable)
+                type: object
+                properties:
+                    memory:
+                        title: Memory
+                        description: |
+                             Memory size reserved for MaxScale
+                        type: string
+                        default: 256Mi
+                        pattern: '^([0-9]+(T|G|M)i?)$'
+                    cpu:
+                        title: CPU
+                        description: |
+                            CPU resources reserved for MaxScale
+                        type: string
+                        default: 250m
+                        pattern: '^([0-9]+m?)$'
+                    ephemeral:
+                        title: Ephemeral
+                        description: |
+                            Ephemeral storage resources reserved for MaxScale
+                        type: string
+                        default: 1Gi
+                        pattern: '^([0-9]+(T|G|M)i?)$'
+
+            admin:
+                description: |
+                    Resources for Admin Node (if applicable)
+                type: object
+                properties:
+                    memory:
+                        title: Memory
+                        description: |
+                             Memory size reserved for Admin (DO NOT REDUCE)
+                        type: string
+                        default: 512Mi
+                        pattern: '^([0-9]+(T|G|M)i?)$'
+                    cpu:
+                        title: CPU
+                        description: |
+                            CPU resources reserved for Admin
+                        type: string
+                        default: 250m
+                        pattern: '^([0-9]+m?)$'
+                    ephemeral:
+                        title: Ephemeral
+                        description: |
+                            Ephemeral storage resources reserved for Admin
+                        type: string
+                        default: 1Gi
+                        pattern: '^([0-9]+(T|G|M)i?)$'
+
+    lcm:
+        description: |
+            Lifecycle administration
+        type: object
+        properties:
+            heal_recovery_tag:
+                title: Heal Recovery Tag
+                description: |
+                    Tag to use to initiate a Heal event.  Any change of this tag will result in a heal.
+                    If this ends in :node_num, will only heal specified node; otherwise all nodes
+                type: string
+                default: "none"
+                pattern: '^([0-9]*[a-z]*[A-Z]*(:[0-9]+)?)$'
+            config_annotation:
+                title: Add Configuration Annotations
+                description: |
+                    Set to true to add annotations to statefulsets for configuration changes.
+                    This will cause rolling pods restarts on update of configuration.
+                type: boolean
+                default: false
+            quick_install:
+                title: Quick install deployment
+                description: |
+                    Set to yes for quick installation.  Will not wait for SDC or any pods to start.
+                    Usage not recommended, but can set to yes to speed up deployment.
+                    If set to yes, pod startup failures will not be detected.
+                type: string
+                default: "no"
+            debug:
+                title: Set debug verbosity on Admin jobs
+                description: |
+                    Increase verbosity of the lifecycle admin jobs
+                type: boolean
+                default: false
+
+    cbur:
+        description: CBUR configuration
+        type: object
+        properties:
+            enabled:
+                title: CBUR Enabled
+                description: Use cbur for data backup and restore?
+                type: boolean
+                default: true
+            imageName:
+                title: CBUR Image Name
+                description: The container image name for the backup sidecar
+                type: string
+                default: cbur/cbur-agent
+            imageTag:
+                title: CBUR Image Tag
+                description: The container image tag for the backup sidecar
+                type: string
+                default: 1.2.0-alpine-580

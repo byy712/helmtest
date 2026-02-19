@@ -1,0 +1,323 @@
+# values-model.yaml
+type: object
+properties:
+    resources:
+        description: |
+            Resource Configuration for Zookeeper 
+        type: object
+        properties:
+            zookeeperServerRegistry:
+                description: |
+                    Location of docker image of Zookeeper server.
+                type: string
+                default: csf-docker-delivered.repo.cci.nokia.net
+            jmxExporterRegistry:
+                description: |
+                    Location of docker image of JMX exporter.
+                type: string
+                default: csf-docker-delivered.repo.cci.nokia.net
+            cburAgentRegistry:
+                description: |
+                    Location of docker image of CCBUR agent sidecar.
+                type: string
+                default: csf-docker-delivered.repo.cci.nokia.net
+            lcmHookRegistry:
+                description: |
+                    Location of docker image of kubectl used in all lcm hooks like pre/post of heal,scale,delete etc.
+                type: string
+                default: csf-docker-delivered.repo.cci.nokia.net
+            zookeeperServerCpu:
+                description: |
+                    CPU resources reserved for each Zookeeper Server.
+                type: string
+                default: 500m
+                pattern: '^[1-9][0-9]*m*$'
+            zookeeperServerCpuLimit:
+                description: |
+                    CPU limit size for each Zookeeper Server.
+                type: string
+                default: "1"
+                pattern: '^[1-9][0-9]*m*$'
+            zookeeperServerMemory:
+                description: |
+                     Memory size reserved for each Zookeeper Server.
+                type: string
+                default: 2Gi
+                pattern: '^[1-9][0-9]*(Gi|Mi)$'
+            zookeeperServerMemoryLimit:
+                description: |
+                    Memory limit size for each Zookeeper Server.
+                type: string
+                default: "4Gi"
+                pattern: '^[1-9][0-9]*(Gi|Mi)$'
+            zookeeperStorageSize_data:
+                description: |
+                    Size of persistent volume reserved per pod for data.
+                type: string
+                default: 8Gi
+                pattern: '^[1-9][0-9]*(Gi|Mi)$'
+            zookeeperStorageSize_log:
+                description: |
+                    Size of persistent volume reserved per pod for logs.
+                type: string
+                default: 8Gi
+                pattern: '^[1-9][0-9]*(Gi|Mi)$'
+            zookeeperNameOverride:
+                description: |
+                    This section allows to configure user defined nameOverride for zookeeper component resources. 
+                type: string
+                default: ""
+            zookeeperFullNameOverride:
+                description: |
+                    This section allows to configure user defined fullnameOverride for zookeeper component resources.
+                type: string
+                default: ""
+            jmxExporterCpu:
+                description: |
+                    CPU resources reserved for each JMX exporter container.
+                type: string
+                default: 100m
+                pattern: '^[1-9][0-9]*m*$'
+            jmxExporterCpuLimit:
+                description: |
+                    CPU limit size for each JMX exporter container.
+                type: string
+                default: "1"
+                pattern: '^[1-9][0-9]*m*$'
+            jmxExporterMemory:
+                description: |
+                    Memory size reserved for each JMX exporter container.
+                type: string
+                default: 1Gi
+                pattern: '^[1-9][0-9]*(Gi|Mi)$'
+            jmxExporterMemoryLimit:
+                description: |
+                    Memory limit size for each JMX exporter container.
+                type: string
+                default: "4Gi"
+                pattern: '^[1-9][0-9]*(Gi|Mi)$'
+    config:
+        description: |
+            Zookeeper tuning parameters
+        type: object
+        properties:
+            zookeeperClientPort:
+               description: |
+                   Zookeeper client Port
+               type: integer
+               default: 2181
+               pattern: '^[1-9][0-9]*$'
+            storageClass:
+               description: |
+                   StorageClass for Kafka cluster
+               type: string
+               default: ""
+               pattern: ".*"
+            clusterDomain:
+                description: |
+                    Domain name of kubernetes cluster
+                type: string
+                default: "cluster.local"
+                pattern: '.*'
+            enableRbac:
+               description: |
+                   Enable RBAC for zookeeper pods
+               type: boolean
+               default: true
+            numberOfZookeeperServers:
+                description: |
+                    Number of Zookeeper servers in a cluster.
+                type: integer
+                default: 3 
+                minimum: 1
+            antiAffinity:
+               description: |
+                   Anti affinity parameter. If set to hard, each Zookeeper server will be scheduled on different worker node.
+               type: string
+               default: "hard"
+               pattern: '^(hard|soft)$'
+            logLevel:
+               description: |
+                   Log levl for Zookeeper.
+               type: string
+               default: "INFO" 
+               pattern: '^(DEBUG|ERROR|FATAL|INFO)$'
+            maxFileSize:
+               description: |
+                   Maximum file size of zookeeper logs
+               type: string
+               default: "50MB"
+            maxBackupIndex:
+               description: |
+                   Maximum number of log files that should get created for the log rotation
+               type: integer
+               default: 10
+            autoPvEnabledZk:
+               description: |
+                   Percreated volumes present
+               type: boolean
+               default: false
+            autoPvEnabledLabelZk:
+               description: |
+                   Label matched for precreated volume
+               type: string
+               default: "zookeeper"
+            zookeeperHeapSize:
+               description: |
+                   Heap size for the Zookeeper server.
+               type: string
+               default: "2G"
+               pattern: '^[1-9][0-9]*G$'
+            preAllocSize:
+               description: |
+                   Pre allocated size for the zookeeper snapcount file
+               type: string
+               default: "64MB"
+               pattern: '([0-9]+(|.[0-9]+)(MB|GB|KB))'
+            snapshotTrustEmpty:
+               description: |
+                   This property controls whether or not ZooKeeper should treat missing snapshot files as a fatal state that can't be recovered from
+               type: boolean
+               default: false               
+    lcm:
+        description: |
+            Zookeeper life cycle(LCM) event parameters
+        type: object
+        properties:
+            enableNodeSelector:
+               description: |
+                   Enable k8s nodeSelector for zookeeper server. Provide the node labels in zookeeperNodeLabel.
+               type: boolean
+               default: false
+            zookeeperNodeLabel:
+               description: |
+                   If enableNodeSelector is enabled, then schedule the zookeeper pods only on nodes labeled with nodeType="zookeeperNodeLabel".
+               type: string
+               default: ""
+            enableCbur:
+               description: |
+                   Enable CCBUR support for backup and restore
+               type: boolean
+               default: true
+            cburCpu:
+               description: |
+                   CPU resources reserved for each CCBUR agent container for backup and restore.
+               type: string
+               default: 200m
+               pattern: '^[1-9][0-9]*m*$'
+            cburCpuLimit:
+                description: |
+                    CPU limit size for each CCBUR agent container for backup and restore.
+                type: string
+                default: "1"
+                pattern: '^[1-9][0-9]*m*$'
+            cburMemory:
+                description: |
+                    Memory size reserved for each CCBUR agent container for backup and restore.
+                type: string
+                default: 1Gi
+                pattern: '^[1-9][0-9]*(Gi|Mi)$'
+            cburMemoryLimit:
+                description: |
+                    Memory limit size for each CCBUR agent container for backup and restore.
+                type: string
+                default: "4Gi"
+                pattern: '^[1-9][0-9]*(Gi|Mi)$'
+            cburMaxBackupCopies:
+                description: |
+                     The number of maximum backup copies to be retained.
+                type: integer
+                default: 5
+                pattern: '^[1-9][0-9]*$'
+            cburBackendMode:
+                description: |
+                     Modes supported now: "local","NETBKUP","AVAMAR", case insensitive
+                type: string
+                default: "local"
+            cburCronJob:
+                description: |
+                     Format of cron job setting for backup. It is used for scheduled backup task. Empty string is allowed for no scheduled backup
+                type: string
+                default: "0 23 * * *"
+            lcmEventCpu:
+                description: |
+                    CPU resources reserved for each LCM event container like heal/scale/upgrade.
+                type: string
+                default: 200m
+                pattern: '^[1-9][0-9]*m*$'
+            lcmEventCpuLimit:
+                description: |
+                    CPU limit size for each LCM event container like heal/scale/upgrade.
+                type: string
+                default: "1"
+                pattern: '^[1-9][0-9]*m*$'
+            lcmEventMemory:
+                description: |
+                    Memory size reserved for each LCM event container like heal/scale/upgrade.
+                type: string
+                default: 1Gi
+                pattern: '^[1-9][0-9]*(Gi|Mi)$'
+            lcmEventMemoryLimit:
+                description: |
+                    Memory limit size for each LCM event container like heal/scale/upgrade.
+                type: string
+                default: "4Gi"
+                pattern: '^[1-9][0-9]*(Gi|Mi)$'
+            removePvc:
+                description: |
+                    Remove persistence volume(PV/PVC) after deletion of Zookeeper cluster
+                type: boolean
+                default: true
+            clogEnable:
+                description: |
+                    Logs will be written in CLOG format
+                type: boolean
+                default: true
+            serviceAccountName:
+                description: |
+                    User can configure the precreated SA specifically for this chart here.
+                    If not, with rbac.enabled=true,zookeeper chart will create it's default sa.
+                type: string
+                default: ""
+                pattern: ".*"
+               
+    kerberos:
+        description: |
+             Kerberos settings
+        type: object
+        properties:
+            enable:
+                title: Enable Kerberos
+                description: |
+                    If enabled external Kerberos should be available
+                type: boolean
+                default: false
+            krbSecretName:
+                title: KDC Secret Name
+                description: |
+                    Kubernetes secret name containing the KDC admin username and password
+                type: string
+                default: ""
+            krbPrincipalKey:
+                title: KDC Principal Key
+                description: |
+                    Key containing the KDC admin username
+                type: string
+                format: password
+                default: ""
+            krbKeytabKey:
+                title: KDC KeytabKey
+                description: |
+                    Key  containing the KDC KeytabKey
+                type: string
+                format: password
+                default: "" 
+            krbConf:
+                title: Provide base64 encoding of krb5.conf file
+                description: |
+                    Use below command to get base64 encoding of krb5.conf file
+                    base64 <filename>  | tr -d '\n'
+                type: string
+                format: password
+                default: ""    
+

@@ -3,8 +3,8 @@ kind: Kustomization
 
 helmCharts:
 - name: altiplano-infra
-  path: . # Points to the local chart files in the same directory
   releaseName: nokia-infra-anthos
+  repo: .
   namespace: altiplano
   # These files must exist in the same directory in your GitHub repo
   valuesFile: values.yaml 

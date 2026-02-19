@@ -1,0 +1,65 @@
+{{- if and (.Values.server.enabled) (.Values.server.cbur.enabled) (.Capabilities.APIVersions.Has "cbur.csf.nokia.com/v1")}}
+apiVersion: {{ template "cpro.apiVersion.brHookapiversion" . }}
+kind: BrHook
+metadata:
+  name: {{ template "cpro.prometheus.cbur.prebackup.job" . }}
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "cpro.app.labels.v3" ( dict "root" . "context" .Values.server ) | nindent 4 }}
+{{- include "cpro.labelsOrAnnotations" (tuple .Values.global.labels) | indent 4}}
+  annotations:
+{{- include "cpro.labelsOrAnnotations" (tuple .Values.global.annotations) | indent 4}}
+spec:
+{{$data_csc := dict "cSecCtx" .Values.server.containerSecurityContext "ctx" . }}
+  properties:
+    {{- $cburDict := .Values.server.cbur | default dict }}
+    targetType: {{ $cburDict.brhookType | default "brpolicy" }}
+    targetName:
+      {{- if .Values.ha.enabled }}
+      {{ template "cpro.prometheus.server.StsName" . }}
+      {{- else }}
+      {{ template "cpro.prometheus.server.DeploymentName" . }}
+      {{- end }}
+    hookPoint: prebackup
+    weight: {{ .Values.server.cbur.preBackupHookWeight }}
+    enable:  true
+    timeout: {{ .Values.server.cbur.preBackupJobTimeout }}
+    deletePolicy: "hook-succeeded,before-hook-creation"
+  template:
+    spec:
+      template:
+        metadata:
+          labels:
+            {{- include "cpro.app.labels.v3" ( dict "root" . "context" .Values.server ) | nindent 12 }}
+          annotations:
+            sidecar.istio.io/inject: "false"
+        spec:
+          restartPolicy: Never
+          serviceAccountName: {{ template "cpro.prometheus.serviceAccountName" . }}
+          automountServiceAccountToken: true
+          securityContext:
+          {{$data := dict "securitycontext" .Values.server.securityContext  "ctx" . }}
+          {{- include "cpro.securitycontext" $data |  nindent 14 }}
+{{ include "cpro-common-lib.imagePullSecrets" (dict "workloadName" .Values.server "root" .) | indent 10 }}          
+          containers:
+             - name: {{ template "cpro.prometheus.cbur.prebackup.container" . }}
+      
+{{- include "cpro.helm.delete.image"  (dict "root" .  "container" .Values.helmDeleteImage  ) | nindent 15 }}
+{{- include "cpro.terminationMessage" . | nindent 15 }}
+               resources:
+{{- include "cpro-common-lib.v1.resources" ( dict "root" . "workloadresources" .Values.server.cbur.resources "defaultcpulimit" "200m") | nindent 17 }}
+               securityContext:
+                 {{- include "cpro.containerSecurityContext" $data_csc | nindent 17 }}
+               command:
+               - sh
+               - -c
+               - |
+                 set -x
+                 cpro_pods=$(kubectl get pods -n {{ .Release.Namespace }} -l app.kubernetes.io/name={{ template "cpro.prometheus.name" . }},app.kubernetes.io/component={{ .Values.server.name }},app.kubernetes.io/instance={{ .Release.Name }} -o jsonpath="{.items[*].metadata.name}")
+                 echo $cpro_pods
+                 for podName in $cpro_pods
+                 do
+                    kubectl exec -i --namespace {{ .Release.Namespace }} $podName  -c {{ template "cpro.prometheus.server.cproUtilContainerName" . }} -- bash -c "sh /prometheus-cbur-scripts/backup.sh"
+                 done
+                 echo $?;
+{{- end }}

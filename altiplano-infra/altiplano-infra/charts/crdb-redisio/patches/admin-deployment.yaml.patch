@@ -1,0 +1,10 @@
+--- crdb-redisio-9.0.3-origin/templates/admin-deployment.yaml	2024-02-07 16:28:36.000000000 +0530
++++ crdb-redisio-9.0.3-nokia-patch-1/templates/admin-deployment.yaml	2024-03-05 16:38:51.004680554 +0530
+@@ -19,6 +19,7 @@
+       labels:
+         {{- include "crdb-redisio.admin.labels" (tuple . "admin" "pod") | nindent 8 }}
+         type: admin
++        altiplano-role: {{ .Values.admin.accessRoleLabel }}
+         admin-daemon: "yes"
+       annotations:
+         metrics/checksum: {{ include "crdb-redisio.metrics.config" . | sha256sum }}

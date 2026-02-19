@@ -1,0 +1,14 @@
+{{- include "cmdb.init" . -}}
+{{- if .Values.mariadb.dashboard.enabled }}
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ template "cmdb.fullname" . }}-dashboards
+  labels:
+    {{- include "cmdb-mariadb.labels" (tuple . "metrics" "configmap") | nindent 4 }}
+  annotations:
+    {{- include "cmdb-mariadb.annotations" (tuple . "metrics" "configmap") | nindent 4 }}
+data:
+{{- (.Files.Glob "dashboards/*").AsConfig | nindent 2 }}
+{{ end }}

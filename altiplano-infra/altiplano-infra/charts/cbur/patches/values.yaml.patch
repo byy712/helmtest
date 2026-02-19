@@ -1,0 +1,67 @@
+--- /home/zafeiri/cbur-charts/cbur-1.17.0/cbur/values.yaml	2024-03-28 20:26:14.000000000 +0530
++++ /home/zafeiri/cbur-charts/cbur-1.17.0-nokia-patch-1/cbur/values.yaml	2024-03-29 19:25:14.000000000 +0530
+@@ -21,6 +21,9 @@
+   disablePodNamePrefixRestrictions: false
+   containerNamePrefix: ""
+ 
++  init:
++    enabled: false
++
+   # Supported image flavors: "rocky8"
+   imageFlavor: "rocky8"
+   # Supported image flavor policies: "Strict", "BestMatch"
+@@ -96,6 +99,7 @@
+ # workload level scope
+ ipFamilyPolicy: ""
+ ipFamilies: []
++accessRoleLabel: internal-access
+ certManager:
+   enabled:
+   issuerRef:
+@@ -173,6 +177,10 @@
+     tag:
+     pullPolicy: IfNotPresent
+     imagePullSecrets: []
++  init:
++    name: fnms-init-container
++    tag: nokia-1.0.9
++    pullPolicy: IfNotPresent
+   logmanager:
+     path: cbur
+     name: cbur-logmanager
+@@ -527,6 +535,9 @@
+ storageBackupCluster: "20Gi"
+ storageClass: ""
+ keepPvc: false
++# in case cbur-celery pod fails in "CreateContainerConfigError" state, with Message "Error: stat /cluster01/cbur-repo: no such file or directory" in Rancher environment set "useSubPath" parameter to false
++# Default value of useSubPath: true
++useSubPath: true
+ 
+ directPvc:
+   enabled: false
+@@ -1240,6 +1251,25 @@
+ 
+ priorityClassName: ""
+ 
++#FNMS-39240 - TD / Gaps - 3rd party containers logging in kubernetes
++mycelery_fluentd_sidecar:
++  image:
++    name: "fnms-fluent"
++    tag: nokia-4.1.4
++    pullPolicy: IfNotPresent
++
++cbur_fluentd_sidecar:
++  image:
++    name: "fnms-fluent"
++    tag: nokia-4.1.4
++    pullPolicy: IfNotPresent
++    
++k8swatcher_fluentd_sidecar:
++  image:
++    name: "fnms-fluent"
++    tag: nokia-4.1.4
++    pullPolicy: IfNotPresent
++
+ # Indicates whether to enable the post hook to check pods are all ready for helm install, helm upgrade or helm rollback
+ startupCheck:
+   enabled: true

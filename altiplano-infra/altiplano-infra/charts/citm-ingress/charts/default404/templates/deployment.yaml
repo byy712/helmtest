@@ -1,0 +1,187 @@
+apiVersion: {{ template "default404.getDeploymentAPI" . }}
+kind: Deployment
+metadata:
+  labels:
+    app: {{ template "default404.name" . }}
+    chart: {{ .Chart.Name }}-{{ .Chart.Version }}
+    component: "{{ .Values.backend.name }}"
+    heritage: {{ .Release.Service }}
+    release: {{ .Release.Name }}
+    {{- include "default404.commonLabels" . | indent 4 }}
+  name: {{ include "csf-common-lib.v3.resourceName" (tuple . "Deployment" ) }}
+  namespace: {{ .Release.Namespace }}
+spec:
+  replicas: {{ .Values.replicaCount }}
+  selector:
+    matchLabels:
+      app: {{ template "default404.name" . }}
+  template:
+    metadata:
+      labels:
+        app: {{ template "default404.name" . }}
+        component: "{{ .Values.backend.name }}"
+        release: {{ .Release.Name }}
+        {{- if .Values.podLabels }}
+{{ toYaml .Values.podLabels | indent 8 }}
+        {{- end }}
+        {{- include "default404.commonLabels" . | indent 8 }}
+      annotations:
+        sidecar.istio.io/inject: "{{ .Values.istio.enabled }}"
+{{- if .Values.custom }}
+{{- if .Values.custom.deployment }}
+{{- if .Values.custom.deployment.annotations }}
+{{- include "default404.annotations" (tuple . .Values.custom.deployment.annotations) | indent 8 }}
+{{- end }}
+{{- end }}
+{{- end }}
+    spec:
+      securityContext:
+      {{- if not (eq (include "default404.securityContextfsGroup" .) "auto") }}
+          fsGroup: {{ include "default404.securityContextfsGroup" . }}
+      {{- end }}
+      {{- if not (eq (include "default404.securityContextrunAsUser" .) "auto") }}
+          runAsUser: {{ include "default404.securityContextrunAsUser" . }}
+      {{- end }}
+      {{- if not (eq (include "default404.securityContextrunAsGroup" .) "auto") }}
+          runAsGroup: {{ include "default404.securityContextrunAsGroup" . }}
+      {{- end }}
+{{- if .Values.priorityClassName }}
+      priorityClassName: {{ .Values.priorityClassName }}
+{{- else if .Values.global.priorityClassName }}
+      priorityClassName: {{ .Values.global.priorityClassName }}
+{{- end }}
+      {{- include "default404.imagePullSecrets" . | indent 6 }}
+      containers:
+        - name: {{ include "csf-common-lib.v1.containerName" (tuple . ( include "default404.containerNameSuffix" (tuple ( include "default404.name" .) .Values.backend.name ))) }}
+          image: "{{ include "default404.imageMapper" (tuple $ .Values .Values.internalCitmRegistry) }}"
+          imagePullPolicy: "{{ .Values.imagePullPolicy }}"
+          terminationMessagePath: "{{ .Values.terminationMessagePath }}"
+          terminationMessagePolicy: "{{ .Values.terminationMessagePolicy }}"
+          {{ if .Values.global.containerSecurityContext.enabled }}
+          securityContext:
+            allowPrivilegeEscalation: {{ .Values.global.containerSecurityContext.privilegeEscalation }}
+            runAsNonRoot: {{ .Values.global.containerSecurityContext.runAsNonRoot }}
+            {{- if eq (include "default404.addSeccompProfile" .) "true" }}
+            seccompProfile:
+              type: {{ .Values.global.containerSecurityContext.seccompProfile.type }}
+              {{- if eq .Values.global.containerSecurityContext.seccompProfile.type "Localhost" }}
+              localhostProfile: {{ .Values.global.containerSecurityContext.seccompProfile.path }}
+              {{- end }}
+            {{- end }}
+            capabilities:
+              drop:
+                - {{ .Values.global.containerSecurityContext.dropCapabilities }}
+            readOnlyRootFilesystem: {{ .Values.global.containerSecurityContext.readOnlyRootFS }}
+            {{- if .Values.global.containerSecurityContext.seLinuxOptions.enabled }}
+            seLinuxOptions:
+              level: {{ .Values.global.containerSecurityContext.seLinuxOptions.level }}
+              role: {{ .Values.global.containerSecurityContext.seLinuxOptions.role }}
+              type: {{ .Values.global.containerSecurityContext.seLinuxOptions.type }}
+              user: {{ .Values.global.containerSecurityContext.seLinuxOptions.user }}
+            {{- end }}
+          {{else if .Values.containerSecurityContext.enabled }}
+          securityContext:
+            allowPrivilegeEscalation: {{ .Values.containerSecurityContext.privilegeEscalation }}
+            runAsNonRoot: {{ .Values.containerSecurityContext.runAsNonRoot }}
+            {{- if eq (include "default404.addSeccompProfile" .) "true" }}
+            seccompProfile:
+              type: {{ .Values.containerSecurityContext.seccompProfile.type }}
+              {{- if eq .Values.containerSecurityContext.seccompProfile.type "Localhost" }}
+              localhostProfile: {{ .Values.containerSecurityContext.seccompProfile.path }}
+              {{- end }}
+            {{- end }}
+            capabilities:
+              drop:
+                - {{ .Values.containerSecurityContext.dropCapabilities }}
+            readOnlyRootFilesystem: {{ .Values.containerSecurityContext.readOnlyRootFS }}
+            {{- if .Values.containerSecurityContext.seLinuxOptions.enabled }}
+            seLinuxOptions:
+              level: {{ .Values.containerSecurityContext.seLinuxOptions.level }}
+              role: {{ .Values.containerSecurityContext.seLinuxOptions.role }}
+              type: {{ .Values.containerSecurityContext.seLinuxOptions.type }}
+              user: {{ .Values.containerSecurityContext.seLinuxOptions.user }}
+            {{- end }}
+          {{- end }}
+          env:
+            - name: DEFAULT_BACKEND_TITLE
+              value: "{{ .Values.backend.page.title }}"
+            - name: DEFAULT_BACKEND_BODY
+              value: "{{ .Values.backend.page.body }}"
+            - name: DEFAULT_BACKEND_COPYRIGHT
+              value: "{{ .Values.backend.page.copyright }}"
+            - name: DEFAULT_BACKEND_PRODUCT_FAMILY_NAME
+              value: "{{ tpl .Values.backend.page.productRelease . }}"
+            - name: DEFAULT_BACKEND_PRODUCT_NAME
+              value: "{{ .Values.backend.page.productName }}"
+            - name: DEFAULT_BACKEND_RELEASE
+              value: "{{ .Values.backend.page.productRelease }}"
+            - name: DEFAULT_BACKEND_TOOLBAR_TITLE
+              value: "{{ .Values.backend.page.toolbarTitle }}"
+            - name: DEFAULT_BACKEND_DEBUG
+              value: "{{ .Values.backend.debug }}"
+            - name: DEFAULT_BACKEND_PORT
+              value: "{{ .Values.backend.port }}"
+          {{- if .Values.probe.enabled }}
+          startupProbe:
+            httpGet:
+              path: {{ .Values.probe.startup.path }}
+              port: {{ .Values.backend.port }}
+              scheme: HTTP
+            initialDelaySeconds: {{ .Values.probe.startup.delay }}
+            timeoutSeconds: {{ .Values.probe.startup.timeout }}
+            periodSeconds: {{ .Values.probe.startup.period }}
+            failureThreshold: {{ .Values.probe.startup.maxfailure }}
+          livenessProbe:
+            httpGet:
+              path: {{ .Values.probe.liveness.path }}
+              port: {{ .Values.backend.port }}
+              scheme: HTTP
+            initialDelaySeconds: {{ .Values.probe.liveness.delay }}
+            timeoutSeconds: {{ .Values.probe.liveness.timeout }}
+            periodSeconds: {{ .Values.probe.liveness.period }}
+            failureThreshold: {{ .Values.probe.liveness.maxfailure }}
+          readinessProbe:
+            httpGet:
+              path: {{ .Values.probe.readiness.path }}
+              port: {{ .Values.backend.port }}
+              scheme: HTTP
+            initialDelaySeconds: {{ .Values.probe.readiness.delay }}
+            timeoutSeconds: {{ .Values.probe.readiness.timeout }}
+            periodSeconds: {{ .Values.probe.readiness.period }}
+            failureThreshold: {{ .Values.probe.readiness.maxfailure }}
+          {{- end }}
+          ports:
+            - containerPort: {{ .Values.backend.port }}
+              protocol: TCP
+          resources:
+{{- include "default404.resources" (tuple . .Values) | indent 12 }}
+{{ if and .Values.istio.enabled (eq .Values.istio.cni.enabled false) .Values.rbac.enabled }}
+      serviceAccountName: {{ template "default404.fullname" . }}
+{{ else }}
+      serviceAccountName: "{{ tpl .Values.rbac.serviceAccountName . }}"
+      automountServiceAccountToken: {{ .Values.rbac.automountServiceAccountToken }}
+{{ end }}
+      nodeSelector:
+{{- if .Values.runOnEdge }}
+        is_edge: 'true'
+{{- end }}
+    {{- if .Values.nodeSelector }}
+{{ toYaml .Values.nodeSelector | indent 8 }}
+    {{- end }}
+    {{- if .Values.tolerations }}
+      tolerations:
+{{ toYaml .Values.tolerations | indent 8 }}
+    {{- end }}
+      affinity:
+        {{- toYaml .Values.affinity | nindent 8 }}
+{{- if .Values.topologySpreadConstraints }}
+{{- if semverCompare ">=1.18.0-0" .Capabilities.KubeVersion.GitVersion }}
+      topologySpreadConstraints:
+{{- include "default404.spread-constraints" (tuple . ) | nindent 8 }}
+{{- else if and (or (semverCompare "=1.16.0-0" .Capabilities.KubeVersion.GitVersion) (semverCompare "=1.17.0-0" .Capabilities.KubeVersion.GitVersion) ) (.Values.evenPodSpreadEnabled ) -}}
+      topologySpreadConstraints:
+{{- include "default404.spread-constraints" (tuple . ) | nindent 8 }}
+{{- end -}}
+{{- end }}
+
+      terminationGracePeriodSeconds: 2

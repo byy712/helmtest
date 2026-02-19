@@ -1,0 +1,19 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  labels:
+    {{- include "cpro-grafana.app.labels-v3" . | nindent 4 }}
+    {{- include "cpro-grafana.labelsOrAnnotations" (tuple .Values.global.labels) | indent 4}}
+  name: {{ template "cpro-grafana.dashboardsConfigmapName" . }}
+  annotations:
+{{- include "cpro-grafana.labelsOrAnnotations" (tuple .Values.global.annotations) | indent 4}}
+data:
+{{- if (.Files.Glob "dashboards/*.json") }}
+{{ (.Files.Glob "dashboards/*.json").AsConfig | indent 2 }}
+{{- end }}
+{{- if .Values.customDashboardFiles | default false }}
+{{ (.Files.Glob "myfiles/*").AsConfig | indent 2 }}
+{{- end }}
+{{- if (.Files.Get "dashboards/dashboards.zip") }}
+  dashboards.zip: {{ (.Files.Get "dashboards/dashboards.zip") | b64enc }}
+{{- end }}

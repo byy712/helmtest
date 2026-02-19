@@ -1,0 +1,10 @@
+--- bssc-ifd-13.0.1/bssc-ifd/charts/bssc-indexsearch/templates/post-delete-job.yaml	2023-12-06 18:41:43.000000000 +0530
++++ bssc-ifd-patch/bssc-ifd/charts/bssc-indexsearch/templates/post-delete-job.yaml	2023-12-21 09:38:05.179020000 +0530
+@@ -102,6 +102,7 @@
+   template:
+     metadata:
+       labels:
++        altiplano-role: {{ .Values.accessRoleLabel }}
+ {{- include "bssc-indexsearch.commonLabels" (tuple .) | nindent 8 }}
+ {{- include "bssc-indexsearch.csf-toolkit-helm.labels" (tuple . .Values.custom.hookJobs.pod.labels) | indent 8 }}    
+       annotations:

@@ -1,0 +1,728 @@
+---
+##
+## Common, cluster-level values
+##
+
+## Image Registry
+global:
+  registry: {{ cluster.imageRegistry | default(model.properties.cluster.properties.imageRegistry.default) }}
+  registry2: "csf-docker-delivered.repo.cci.nokia.net"
+  postheal: 0
+  postrestore: 0
+  jobtimeout: 600
+  podNamePrefix: {{ (name_prefix | default("")).pod | default(model.properties.name_prefix.properties.pod.default) }}
+  containerNamePrefix: {{ (name_prefix | default("")).container | default(model.properties.name_prefix.properties.container.default) }}
+
+  istioVersion: {{ (istio | default("")).version | default(model.properties.istio.properties.version.default) }}
+  
+  {% if timeZoneEnv is defined %}
+    timeZoneEnv: {{ (timeZoneEnv | default("UTC") }}
+  {% endif %}
+
+
+lcm:
+  heal:
+    timeout: 300
+  scale:
+    timeout: 600
+
+## RBAC configuration
+{% if (rbac | default("")).enabled is defined %}
+rbac:
+  enabled: {{ rbac.enabled | default(model.properties.rbac.properties.enabled.default) }}
+serviceAccountName: {{ rbac.serviceAccountName | default("") }}
+{% endif %}
+
+## Istio enabled flag
+istio:
+  enabled: {{ (istio | default("")).enabled | default(model.properties.istio.properties.enabled.default) }}
+  {% if (istio | default("")).gateway is defined %}
+  gateway:
+    enabled: {{ istio.gateway.enabled | default(model.properties.istio.properties.gateway.properties.enabled.default) }}
+    {% if istio.gateway.tls is defined %}
+    tls:
+      mode: {{ istio.gateway.tls.mode | default(model.properties.istio.properties.gateway.properties.tls.properties.mode.default) }}
+      credentialName: {{ istio.gateway.tls.credentialName | default(model.properties.istio.properties.gateway.properties.tls.properties.credentialName.default) }}
+    {% endif %}
+  {% endif %}
+
+# Timezone
+{% if (timezone | default("")).name is defined %}
+timeZoneEnv: {{ timezone.name | default("") }}
+{% endif %}
+
+## If cluster_name not specified, the release name will be used
+{% if (cluster | default("")).name is defined and (cluster | default("")).name != "" %}
+cluster_name: {{ cluster.name }}
+{% endif %}
+
+## Cluster Type is one of master-slave, master-master, galera, standalone
+{% if (cluster | default("")).type is defined %}
+cluster_type: {{ cluster.type | default(model.properties.cluster.properties.type.default) }}
+{% endif %}
+
+## Cluster domain (tail end of the hostname) used in raw k8s installs
+# E.g. myrel-cmdb-mysql.default.svc.cluster.local)
+{% if (cluster | default("")).domain is defined %}
+clusterDomain: {{ cluster.domain | default(model.properties.cluster.properties.domain.default) }}
+{% endif %}
+
+## Times (in minutes) to wait for other pods to come up during pod restart:
+# Maximum time pod should wait for all other pods to become available
+{% if (cluster | default("")).node_wait is defined %}
+max_node_wait: {{ cluster.node_wait | default(model.properties.cluster.properties.node_wait.default) }}
+{% endif %}
+# Maximum time (in seconds) pod should wait for additional pods after quorum
+# reached.  To continue immediately after quorum reached, set to 0.
+{% if (cluster | default("")).quorum_wait is defined %}
+quorum_node_wait: {{ cluster.quorum_wait | default(model.properties.cluster.properties.quorum_wait.default) }}
+{% endif %}
+
+## Speficies the type of anti-affinity for scheduling pods to nodes.
+### If hard, pods cannot be scheduled together on nodes, if soft,
+### best-effort to avoid sharing nodes will be done
+{% if (cluster | default("")).node_antiaffinity is defined and cluster.node_antiaffinity %}
+nodeAntiAffinity: hard
+{% else %}
+nodeAntiAffinity: soft
+{% endif %}
+
+## Values on how to expose services
+services:
+  ##
+  ## MySQL service exposes the mysql database service
+  ##
+  mysql:
+    ## If not set, will be <release>-mysql
+    #name:
+    ## By default, set to ClusterIP to expose database only within cluster
+    ## Set as NodePort to expose database externally
+    {%- if (exposure | default("")).allow_external is defined and exposure.allow_external %}
+    type: NodePort
+    {%- else %}
+    type: ClusterIP
+    {%- endif %}
+    {%- if (exposure | default("")).session_affinity is defined and exposure.session_affinity %}
+    sessionAffinity:
+      enabled: true
+    {%- endif %}
+    ## mariadb-exporter metrics port (used if mariadb.metrics is enabled)
+    exporter:
+      #name:
+      port: 9104
+
+  ##
+  ## MariaDB Master exposes the pod that is master
+  ## (only if using MaxScale and geo_redundancy.enabled)
+  ##
+  mariadb_master:
+    ## If not set, will be <release>-mariadb-master
+    #name:
+    ## Set as NodePort to expose master externally for replication among
+    ## Datacenters
+    type: NodePort
+
+  ##
+  ## Maxscale exposes the administrative REST API interface of Maxscale
+  ## (only if using MaxScale)
+  ## Enabling geo-redundancy will automatically set type to "NodePort".
+  ##
+  maxscale:
+    ## If not set, will be <release>-maxscale
+    #name:
+    ## Set as NodePort to expose maxscale service externally
+    type: ClusterIP
+    port: 8989
+    ## maxscale-exporter metrics port (used if maxscale.metrics is enabled)
+    exporter:
+      #name:
+      port: 9195
+
+  ##
+  ## MariaDB Master exposes the pod that is master
+  ## (only if using MaxScale and geo_redundancy.enabled)
+  ##
+  mariadb_master:
+    ## name of service.  If not set, will be <release>-mariadb-master
+    #name:
+    ## Type of method to expose this service
+    type: NodePort
+    ## Service port
+    port: 3306
+
+  ##
+  ## Admin exposes the admin container DB (redis.io) interface to all
+  ## cluster pods.  (only if not Simplex)
+  ##
+  admin:
+    ## If not set, will be <release>-admin
+    #name:
+    type: ClusterIP
+
+##
+## Values specific to the MariaDB (server)
+##
+mariadb:
+  image:
+    name: {{ cluster.mariadbImageName | default(model.properties.cluster.properties.mariadbImageName.default) }}
+    tag: {{ cluster.imageTag | default(model.properties.cluster.properties.imageTag.default) }}
+    flavor: {{ cluster.imageFlavor | default(model.properties.cluster.properties.imageFlavor.default) }}
+    pullPolicy: IfNotPresent
+
+  ## The number of MariaDB pods to create
+  {%- if (cluster | default("")).db_node_count is defined %}
+  count: {{ cluster.db_node_count | default(model.properties.cluster.properties.db_node_count.default) }}
+  {%- endif %}
+
+  ## If automatic recover of the database should be performed on pod restarts
+  heuristic_recover: {{ cluster.heuristic_recover | default(model.properties.cluster.properties.heuristic_recover.default) }}
+
+  ## Interval (in seconds) when clean-logs should be performed on Master to
+  ## cleanup binlogs that have been replicated to all slaves
+  clean_log_interval: 3600
+
+  ## A customized mysqld.conf to import
+  mysqld_site_conf: |-
+  {%- if (admin | default("")).mysqld is defined and (admin | default("")).mysqld != "" %}
+    {{ admin.mysqld }}
+  {%- else %}
+
+    [mysqld]
+    userstat = on
+  {%- endif %}
+
+  ## If server audit logging should be enabled
+  {% if (cluster | default("")).audit_logging is defined %}
+  audit_logging:
+    enabled: {{ cluster.audit_logging.enabled | default(model.properties.cluster.properties.audit_logging.properties.enabled.default) }}
+    events: {{ cluster.audit_logging.events | default(model.properties.cluster.properties.audit_logging.properties.events.default) }}
+  {%- endif %}
+
+  ## If TLS should be used for data in flight and replication traffic
+  tls: 
+    enabled: {{ cluster.tls_enabled | default(model.properties.cluster.properties.tls_enabled.default) }}
+  ## Certificates not supported in ComPaaS currently
+  #certificates:
+  #  secret:
+
+  ## Resource QOS (per MariaDB container)
+  {%- if (resources | default("")).mariadb is defined %}
+  resources:
+    requests:
+      {%- if resources.mariadb.memory is defined %}
+      memory: {{ resources.mariadb.memory | default(model.properties.resources.properties.mariadb.properties.memory.default) }}
+      {%- endif %}
+      {%- if resources.mariadb.cpu is defined %}
+      cpu: {{ resources.mariadb.cpu | default(model.properties.resources.properties.mariadb.properties.cpu.default) }}
+      {%- endif %}
+      {%- if resources.mariadb.ephemeral is defined %}
+      ephemeral-storage: {{ resources.mariadb.ephemeral | default(model.properties.resources.properties.mariadb.properties.ephemeral.default) }}
+      {%- endif %}
+    limits:
+      {%- if resources.mariadb.memory is defined %}
+      memory: {{ resources.mariadb.memory | default(model.properties.resources.properties.mariadb.properties.memory.default) }}
+      {%- endif %}
+      {%- if resources.mariadb.ephemeral is defined %}
+      ephemeral-storage: {{ resources.mariadb.ephemeral | default(model.properties.resources.properties.mariadb.properties.ephemeral.default) }}
+      {%- endif %}
+  {%- endif %}
+
+  ## Node labels for mariadb pod assignment
+  ## Ref: https://kubernetes.io/docs/concepts/configuration/assign-pod-node/
+  nodeAffinity:
+    enabled: false
+    key: is_worker
+    value: true
+
+  ## Enable persistence using Persistent Volume Claims
+  ## ref: http://kubernetes.io/docs/user-guide/persistent-volumes/
+  ##
+  {%- if (resources | default("")).mariadb is defined %}
+  persistence:
+    accessMode: ReadWriteOnce
+    size: {{ resources.mariadb.volume_size | default(model.properties.resources.properties.mariadb.properties.volume_size.default) }}
+    {%- if resources.mariadb.volume_class != "" %}
+    storageClass: {{ resources.mariadb.volume_class | default(model.properties.resources.properties.mariadb.properties.volume_class.default) }}
+    {%- endif %}
+    resourcePolicy: delete
+    preserve_pvc: {{ resources.mariadb.preserve_pvc | default(model.properties.resources.properties.mariadb.properties.preserve_pvc.default) }}
+    backup:
+      enabled: {{ resources.mariadb.backup_volume_enabled | default(model.properties.resources.properties.mariadb.properties.backup_volume_enabled.default) }}
+      {%- if resources.mariadb.backup_volume_class != "" %}
+      storageClass: {{ resources.mariadb.backup_volume_class | default(model.properties.resources.properties.mariadb.properties.backup_volume_class.default) }}
+      {%- endif %}
+      accessMode: ReadWriteOnce
+      size: {{ resources.mariadb.backup_volume_size | default(model.properties.resources.properties.mariadb.properties.backup_volume_size.default) }}
+      dir: /mariadb/backup
+  {%- endif %}
+
+  ## List of databases to be created
+  {%- if (admin | default("")).database is defined and (admin | default("")).database != "" %}
+  databases:
+    - name: {{ admin.database }}
+  {%- endif %}
+  #databases:
+  #  - name: mydb
+  #    character_set: keybcs2
+  #    collate: keybcs2_bin
+  #  - name: anotherdb
+
+  ## List of users to be created
+  #users:
+  #  - name: test
+  #    # base64 encoded
+  #    password:  YWJjMTIz
+  #    host: "%"
+  #    privilege: ALL
+  #    object: "mydb.*"
+  #    # if use_tls set, require SSL/X509 or not
+  #    requires: "SSL"
+  #    with: "GRANT OPTION"
+
+  ## metrics
+  metrics:
+    {% if (cluster | default("")).metrics is defined %}
+    enabled: {{ cluster.metrics.enabled | default(model.properties.cluster.properties.metrics.properties.enabled.default) }}
+    {%- else %}
+    enabled: false
+    {%- endif %}
+
+    image:
+      {% if (cluster | default("")).metrics is defined %}
+      name: {{ cluster.metrics.mariadbExporterImageName | default(model.properties.cluster.properties.metrics.properties.mariadbExporterImageName.default) }}
+      tag: {{ cluster.metrics.mariadbExporterImageTag | default(model.properties.cluster.properties.metrics.properties.mariadbExporterImageTag.default) }}
+      flavor: {{ cluster.imageFlavor | default(model.properties.cluster.properties.imageFlavor.default) }}
+      {%- endif %}
+      pullPolicy: IfNotPresent
+
+    annotations:
+      prometheus.io/scrape: "true"
+
+    ## Resource QOS (per MariaDB-Metrics container)
+    resources:
+      requests:
+        memory: 256Mi
+        cpu: 250m
+        ephemeral-storage: 128Mi
+      limits:
+        memory: 256Mi
+        ephemeral-storage: 128Mi
+
+  ## Grafana dashboard
+  dashboard:
+    {% if (cluster | default("")).metrics is defined %}
+    enabled: {{ cluster.metrics.dashboard | default(model.properties.cluster.properties.metrics.properties.dashboard.default) }}
+    {%- else %}
+    enabled: false
+    {%- endif %}
+
+##
+## Values specific to the MaxScale (proxy)
+##
+maxscale:
+  image:
+    name: {{ cluster.maxscaleImageName | default(model.properties.cluster.properties.maxscaleImageName.default) }}
+    tag: {{ cluster.imageTag | default(model.properties.cluster.properties.imageTag.default) }}
+    flavor: {{ cluster.imageFlavor | default(model.properties.cluster.properties.imageFlavor.default) }}
+    pullPolicy: IfNotPresent
+
+  ## The number of MariaDB pods to create
+  {%- if (cluster | default("")).mxs_node_count is defined %}
+  count: {{ cluster.mxs_node_count | default(model.properties.cluster.properties.mxs_node_count.default) }}
+  {%- endif %}
+
+  ## Master Switchover timeout when Master pod is being deleted.
+  ## This is used on mariadb preStop hook (defaults to 30 seconds)
+  masterSwitchoverTimeout: 30
+
+  ## Resource QOS (per MaxScale container)
+  {%- if (resources | default("")).maxscale is defined %}
+  resources:
+    requests:
+      {%- if resources.maxscale.memory is defined %}
+      memory: {{ resources.maxscale.memory | default(model.properties.resources.properties.maxscale.properties.memory.default) }}
+      {%- endif %}
+      {%- if resources.maxscale.cpu is defined %}
+      cpu: {{ resources.maxscale.cpu | default(model.properties.resources.properties.maxscale.properties.cpu.default) }}
+      {%- endif %}
+      {%- if resources.maxscale.ephemeral is defined %}
+      ephemeral-storage: {{ resources.maxscale.ephemeral | default(model.properties.resources.properties.maxscale.properties.ephemeral.default) }}
+      {%- endif %}
+    limits:
+      {%- if resources.maxscale.memory is defined %}
+      memory: {{ resources.maxscale.memory | default(model.properties.resources.properties.maxscale.properties.memory.default) }}
+      {%- endif %}
+      {%- if resources.maxscale.ephemeral is defined %}
+      ephemeral-storage: {{ resources.maxscale.ephemeral | default(model.properties.resources.properties.maxscale.properties.ephemeral.default) }}
+      {%- endif %}
+  {%- endif %}
+
+  ## Node tolerations for server scheduling to nodes with taints
+  ## Ref: https://kubernetes.io/docs/concepts/configuration/assign-pod-node/
+  tolerations:
+    - key: 'is_edge'
+      operator: 'Equal'
+      value: 'true'
+      effect: 'NoExecute'
+
+  ## Node labels for maxscale pod assignment
+  ## Ref: https://kubernetes.io/docs/concepts/configuration/assign-pod-node/
+  nodeAffinity:
+    enabled: true
+    {%- if (cluster | default("")).maxscale_node is defined %}
+    key: is_{{ cluster.maxscale_node | default(model.properties.cluster.properties.maxscale_node.default) }}
+    {%- else %}
+    key: is_edge
+    {%- endif %}
+    value: true
+
+  ## Maxscale optional listeners/service ports to be configured
+  ## The default listener/service is the ReadWriteSplit listener:
+  ##   rwSplit    - writes to master, reads distributed to slaves (3306)
+  ## Additionally the following listener/services can be configured:
+  ##   readOnly   - read-only access load-balanced between all slaves (3307)
+  ##   masterOnly - read-write access directed only to current Master (3308)
+  ## The listener can be disabled by commenting out or setting port to '0'.
+  listeners:
+    rwSplit: 3306
+    readOnly: 3307
+    {%- if (admin | default("")).maxscale_master_listener is defined and admin.maxscale_master_listener %}
+    masterOnly: 3308
+    {%- endif %}
+
+  ## A customized maxscale configuration to import
+  maxscale_site_conf: |-
+  {%- if (admin | default("")).maxscale is defined and (admin | default("")).maxscale != "" %}
+
+    {{ admin.maxscale }}
+  {%- else %}
+
+    [maxscale]
+    threads = 2
+    query_retries = 2
+    query_retry_timeout = 10s
+  {%- endif %}
+
+  ## A customized maxscale logrotate configuration to import
+  {%- if (admin | default("")).logrotate is defined %}
+  logrotate_conf: |-
+    [maxscale]
+    maxsize = {{ admin.logrotate.maxsize | default(model.properties.admin.properties.logrotate.properties.maxsize.default) }}
+    rotate = {{ admin.logrotate.rotate | default(model.properties.admin.properties.logrotate.properties.rotate.default) }}
+    compress = {{ admin.logrotate.compress | default(model.properties.admin.properties.logrotate.properties.compress.default) }}
+  {%- endif %}
+
+  ##
+  ## Lists of SQL to inject at certain MaxScale events
+  ##
+## Not supported in ComPaaS yet
+##
+#  sql:
+#
+#    {%- if (admin | default("")).promote_sql is defined %}
+#    ## Mariadb Node promoted to master
+#    promotion:
+#      {{ admin.promote_sql }}
+#    {%- endif %}
+#
+#    {%- if (admin | default("")).demote_sql is defined %}
+#    ## Mariadb Node demoted to slave
+#    demotion:
+#      {{ admin.demote_sql }}
+#    {%- endif %}
+
+  ## metrics
+  metrics:
+    {% if (cluster | default("")).metrics is defined %}
+    enabled: {{ cluster.metrics.enabled | default(model.properties.cluster.properties.metrics.properties.enabled.default) }}
+    {%- else %}
+    enabled: false
+    {%- endif %}
+
+    image:
+      {% if (cluster | default("")).metrics is defined %}
+      name: {{ cluster.metrics.maxscaleExporterImageName | default(model.properties.cluster.properties.metrics.properties.maxscaleExporterImageName.default) }}
+      tag: {{ cluster.metrics.maxscaleExporterImageTag | default(model.properties.cluster.properties.metrics.properties.maxscaleExporterImageTag.default) }}
+      flavor: {{ cluster.imageFlavor | default(model.properties.cluster.properties.imageFlavor.default) }}
+      {%- endif %}
+      pullPolicy: IfNotPresent
+
+    annotations:
+      prometheus.io/scrape: "true"
+
+    ## Resource QOS (per MaxScale-Metrics container)
+    resources:
+      requests:
+        memory: 256Mi
+        cpu: 250m
+        ephemeral-storage: 128Mi
+      limits:
+        memory: 256Mi
+        ephemeral-storage: 128Mi
+
+##
+## Built-in User configuration
+## Define the built-in user credentials to be used by mariadb/maxscale and
+## metrics.  Includes usernames and base64 encoded passwords.
+##
+users:
+  root:
+    ## If not provided a random password will be generated.
+    {%- if (admin | default("")).admin_passwd is defined and (admin | default("")).admin_passwd != "" %}
+    password: {{ admin.admin_passwd | default(model.properties.admin.properties.admin_passwd.default) }}
+    {%- endif %}
+    ## If root user should be allowed from all hosts
+    {%- if (admin | default("")).allow_admin_from_all is defined %}
+    allowExternal: {{ admin.allow_admin_from_all | default(model.properties.admin.properties.allow_admin_from_all.default) }}
+    {%- endif %}
+
+  replication:
+    ## Replication
+    ## The replication username to use in the database (default: repl@b.c)
+    {%- if (admin | default("")).repl_user is defined %}
+    username: {{ admin.repl_user | default(model.properties.admin.properties.repl_user.default) }}
+    {%- endif %}
+    ## A base64 encoded password for the replication user in the database
+    ## IMPORTANT: Multi-site config must use same repl user/password among sites
+    {%- if (admin | default("")).repl_passwd is defined and (admin | default("")).repl_passwd != "" %}
+    password: {{ admin.repl_passwd | default(model.properties.admin.properties.repl_passwd.default) }}
+    {%- endif %}
+
+  mariadbMetrics:
+    username: exporter
+
+  maxscale:
+    ## The maxscale username to use in the database (default: maxscale)
+    {%- if (admin | default("")).mxs_user is defined %}
+    username: {{ admin.mxs_user | default(model.properties.admin.properties.mxs_user.default) }}
+    {%- endif %}
+    ## A base64 encoded password for the maxscale user in the database
+    ## IMPORTANT: Multi-site config must use same repl user/password among sites
+    {%- if (admin | default("")).mxs_passwd is defined and (admin | default("")).mxs_passwd != "" %}
+    password: {{ admin.mxs_passwd | default(model.properties.admin.properties.mxs_passwd.default) }}
+    {%- endif %}
+
+  maxscaleMetrics:
+    username: max_exporter
+
+##
+## Geo-redundancy replication values
+## (Requires MaxScale, e.g. maxscale.count > 0)
+##
+{% if geo_redundancy is defined %}
+geo_redundancy:
+  ## Only enable geo_redundancy for multiple datacenters
+  {%- if geo_redundancy.site_count is defined and geo_redundancy.site_count > 1 %}
+  enabled: true
+  {%- else %}
+  enabled: false
+  {%- endif %}
+
+  ## Multi-site - Values used to setup replication among sites
+  ## The number of sites (currently only 1 or 2 supported)
+  ## The (1-based) index of this site - each site must have unique index
+  site_index: {{ (geo_redundancy | default("")).site_index | default(model.properties.geo_redundancy.properties.site_index.default) }}
+
+  ## Threshold (seconds) at which to alarm on lag between datacenters
+  #lag_threshold:
+
+  ## Interval (minutes) at which to purge slave logs
+  #slave_purge_interval:
+
+  ##
+  ## Remote Datacenter definitions
+  ##
+  #remoteSites:
+  #  - name: remote
+  #    maxscale:
+  #      remoteService:
+  #    master:
+  #      remoteService:
+{% endif %}
+
+##
+## Values specific to the CMDB Administrative container
+## (used for lifecycle and administrative Jobs)
+##
+admin:
+  image:
+    name: {{ cluster.adminImageName | default(model.properties.cluster.properties.adminImageName.default) }}
+    tag: {{ cluster.imageTag | default(model.properties.cluster.properties.imageTag.default) }}
+    flavor: {{ cluster.imageFlavor | default(model.properties.cluster.properties.imageFlavor.default) }}
+    pullPolicy: IfNotPresent
+
+  ## Resource QOS (per Admin container)
+  {%- if (resources | default("")).admin is defined %}
+  resources:
+    requests:
+      {%- if resources.admin.memory is defined %}
+      memory: {{ resources.admin.memory | default(model.properties.resources.properties.admin.properties.memory.default) }}
+      {%- endif %}
+      {%- if resources.admin.cpu is defined %}
+      cpu: {{ resources.admin.cpu | default(model.properties.resources.properties.admin.properties.cpu.default) }}
+      {%- endif %}
+      {%- if resources.admin.ephemeral is defined %}
+      ephemeral-storage: {{ resources.admin.ephemeral | default(model.properties.resources.properties.admin.properties.ephemeral.default) }}
+      {%- endif %}
+    limits:
+      {%- if resources.admin.memory is defined %}
+      memory: {{ resources.admin.memory | default(model.properties.resources.properties.admin.properties.memory.default) }}
+      {%- endif %}
+      {%- if resources.admin.ephemeral is defined %}
+      ephemeral-storage: {{ resources.admin.ephemeral | default(model.properties.resources.properties.admin.properties.ephemeral.default) }}
+      {%- endif %}
+  {%- endif %}
+
+  ## Node labels for admin pod assignment
+  ## Ref: https://kubernetes.io/docs/concepts/configuration/assign-pod-node/
+  nodeAffinity:
+    enabled: false
+    key: is_worker
+    value: true
+
+  ## A recovery flag.  If changed, will trigger a heal of the database to occur
+  {% if (lcm | default("")).heal_recovery_tag is defined %}
+  recovery: {{ lcm.heal_recovery_tag | default(model.properties.lcm.properties.heal_recovery_tag.default) }}
+  {% else %}
+  recovery: "none"
+  {% endif %}
+
+  ## Set to true to change update config behavior to cause statefulset update
+  ## (resulting in rolling pod restarts) when mariadb and maxscale configuration  ## is changed.  Default behavior is to not affect statefulset and services
+  ## will be restarted within the pod.
+  {% if (lcm | default("")).config_annotation is defined %}
+  configAnnotation: {{ lcm.config_annotation | default(model.properties.lcm.properties.config_annotation.default) }}
+  {% else %}
+  configAnnotation: false
+  {% endif %}
+
+  ## Should auto-heal be enabled?
+  ## This will enable automated heal operations on cluster (Galera supported).
+  ## the pauseDelay is how long (seconds) to wait to re-enable auto-heal after
+  ## the cluster comes [back] up.
+  autoHeal:
+    enabled: true
+    pauseDelay: 900
+
+  ## Quick installation method
+  {% if (lcm | default("")).quick_install is defined %}
+  quickInstall: {{ lcm.quick_install | default(model.properties.lcm.properties.quick_install.default) }}
+  {% else %}
+  quickInstall: "no"
+  {% endif %}
+
+  ## If set, administrative jobs will be more verbose to stdout (kubectl logs)
+  debug: {{ lcm and lcm.debug | default(model.properties.lcm.properties.debug.default) }}
+
+  ## The activeDeadlineSeconds applies to the duration of the job, no matter
+  ## how many Pods are created.  Once a Job reaches activeDeadlineSeconds, the
+  ## Job and all of its Pods are terminated.  The result is that the job has a
+  ## status with reason: DeadlineExceeded.  It's used in pre-upgrade hook to
+  ## prevent too many failed pods being started in failure cases.
+  activeDeadlineSeconds: 120
+
+hooks:
+  ## Exposes the hook-delete-policy.  By default, this is set to delete the
+  ## hooks only upon success.  In helm v2.9+, this should be set to
+  ## before-hook-creation.  This can also be unset to avoid hook deletion
+  ## for troubleshooting and debugging purposes
+  deletePolicy: "hook-succeeded"
+
+  resources:
+    requests:
+      memory: 256Mi
+      cpu: 250m
+      ephemeral-storage: 128Mi
+    limits:
+      memory: 256Mi
+      ephemeral-storage: 128Mi
+
+  preInstallJob:
+    enabled: true
+    name: "pre-install"
+    containerName: "pre-install-admin"
+    timeout: 120
+  postInstallJob:
+    enabled: true
+    name: "post-install"
+    containerName: "post-install-admin"
+    timeout: 900
+  preUpgradeJob:
+    enabled: true
+    name: "pre-upgrade"
+    containerName: "pre-upgrade-admin"
+    timeout: 180
+  postUpgradeJob:
+    enabled: true
+    name: "post-upgrade"
+    containerName: "post-upgrade-admin"
+    timeout: 1800
+  preRollbackJob:
+    enabled: true
+    name: "pre-rollback"
+    containerName: "pre-rollback-admin"
+    timeout: 180
+  postRollbackJob:
+    enabled: true
+    name: "post-rollback"
+    containerName: "post-rollback-admin"
+    timeout: 300
+  preDeleteJob:
+    enabled: true
+    name: "pre-delete"
+    containerName: "pre-delete-admin"
+    timeout: 120
+  postDeleteJob:
+    enabled: true
+    name: "post-delete"
+    containerName: "post-delete-admin"
+    timeout: 180
+
+  ## If debug is true, you can add a termination delay to all of the pre/port
+  ## job hooks as follows (time in seconds).  To terminate early, create a
+  ## /tmp/exit file in the container [with exit value if want to override].
+  #jobDelay: 0
+
+###---------------------------
+### CBUR Parameters
+###---------------------------
+
+cbur:
+  enabled: {{ (cbur | default("")).enabled | default(model.properties.cbur.properties.enabled.default) }}
+  image:
+    name: "cbur/cbura"
+    tag: {{ (cbur | default("")).imageTag | default(model.properties.cbur.properties.imageTag.default) }}
+    pullPolicy: "IfNotPresent"
+
+  ## defines the backup storage options, i.e. local, NetBackup, S3, Avamar.
+  backendMode: local
+  ## specifies if the backup scheduling cron job should be auto-scheduled
+  autoEnableCron: true
+  ## allows user to schedule backups
+  cronSpec: "0 0 * * *"
+  ## should backups be encrypted? `
+  dataEncryption: true
+  ## defines how many backup copies should be saved
+  maxiCopy : 5
+
+  resources:
+    requests:
+      memory: 256Mi
+      cpu: 250m
+      ephemeral-storage: 128Mi
+    limits:
+      memory: 256Mi
+      ephemeral-storage: 128Mi
+
+  ## Exposes the BrHook parameters which may be used to control the execution
+  ## and sequencing of the hooks per CBUR logic.
+  brhookType: brpolicy
+  brhookWeight: 0
+  brhookEnable: true
+  brhookTimeout: 600
+
+  preBackupTimeout: 180
+  postBackupTimeout: 120
+  preRestoreTimeout: 120
+  postRestoreTimeout: 600
+

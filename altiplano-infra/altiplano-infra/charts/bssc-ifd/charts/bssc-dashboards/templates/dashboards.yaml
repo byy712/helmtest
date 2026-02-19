@@ -1,0 +1,536 @@
+---
+{{- include "bssc-dashboards.istio.initIstio" . }}
+{{- include "bssc-dashboards.syslogValues" . }}
+{{- include "bssc-dashboards.syslogTlsValues" . }}
+{{- include "bssc-dashboards.unifiedLogging" . }}
+# This condition is to ensure sensitiveInfoInSecret flag is enabled when security is enabled.
+{{- include "bssc-dashboards.securityPrereqCheck" . }}
+{{- include "bssc-dashboards.clientCertAuthEnabledPreReqCheck" . }}
+{{- include "bssc-dashboards.isCertManagerEnable" . }}
+{{- include "bssc-dashboards.clientCertAuthEnabled" . }}
+{{- include "bssc-dashboards.supportedImageFlavor" . }}
+# This condition is to limit rendering the template during heal because of restriction that two resources with same name cannot be created in the same namespace.
+{{ if and ( eq (int .Values.global.preheal ) 0 ) ( eq (int .Values.global.postheal ) 0 ) }}
+apiVersion: v1
+kind: Service
+metadata:
+  {{- if .Values.service.name }}
+  name: {{ .Values.service.name }}
+  {{- else }}
+  name: {{ template "bssc-dashboards.fullname" . }}
+  {{- end }}
+  labels:
+{{- include "bssc-dashboards.commonLabels" (tuple .  "dashboards" ) | indent 4 }}
+    addonmanager.kubernetes.io/mode: Reconcile
+{{- include "bssc-dashboards.csf-toolkit-helm.labels" (tuple .) | indent 4 }}
+  annotations:
+{{- include "bssc-dashboards.csf-toolkit-helm.annotations" (tuple . .Values.service.annotations) | indent 4 }}
+spec:
+  type: {{ .Values.service.type }}
+  selector:
+{{- include "bssc-dashboards.selectorLabels" (tuple .  "dashboards" ) | indent 4 }}
+    role: dashboards-gui
+  ports:
+    - name: tcp-ui
+      port: {{.Values.dashboards.port}}
+      protocol: TCP
+      {{- if .Values.security.enable }}
+        {{- range .Values.dashboards.env }}
+          {{- if eq .name ( "SERVER_SSL_ENABLED" ) }}
+            {{- if and (not $.istio.enabled) (eq .value "true") }}
+      appProtocol: https
+            {{- else }}
+      appProtocol: http
+            {{- end }}
+          {{- end }}
+        {{- end }}
+      {{- else }}
+      appProtocol: http
+      {{- end }}
+      targetPort: tcp-ui
+      {{- if (and (eq .Values.service.type "NodePort") (not (empty .Values.dashboards.node_port))) }}
+      nodePort: {{.Values.dashboards.node_port}}
+      {{- end }}
+{{ include "bssc-dashboards.dualStack.config" . | indent 2 }}
+{{ end }}
+---
+apiVersion: {{ template "bssc-dashboards.apiVersionExtensionsV1Beta1orAppsV1" . }}
+kind: Deployment
+metadata:
+  name: {{ template "bssc-dashboards.deployment.name" . }}
+  labels:
+{{- include "bssc-dashboards.commonLabels" (tuple .  "dashboards" ) | indent 4 }}
+    role: dashboards-gui
+    addonmanager.kubernetes.io/mode: Reconcile
+{{- include "bssc-dashboards.csf-toolkit-helm.labels" (tuple . .Values.dashboards.custom.deployment.labels) | indent 4}}
+  annotations:
+    seccomp.security.alpha.kubernetes.io/allowedProfileNames: {{ .Values.global.seccompAllowedProfileNames }}
+    seccomp.security.alpha.kubernetes.io/defaultProfileName: {{ .Values.global.seccompDefaultProfileName }}
+{{ include "bssc-dashboards.stakaterReloaderAnnotation" . | indent 4 }}
+{{- include "bssc-dashboards.csf-toolkit-helm.annotations" (tuple . .Values.dashboards.custom.deployment.annotations) | indent 4}}
+spec:
+  {{- if not .Values.dashboards.replicasManagedByHpa }}
+  replicas: {{.Values.dashboards.replicas}}
+  strategy:
+{{ toYaml .Values.dashboards.updateStrategy | indent 4 }}
+  {{- end }}
+  selector:
+    matchLabels:
+{{- include "bssc-dashboards.selectorLabels" (tuple .  "dashboards" ) | indent 6 }}
+      role: dashboards-gui
+  template:
+    metadata:
+      labels:
+{{- include "bssc-dashboards.commonLabels" (tuple .  "dashboards" ) | nindent 8 }}
+        role: dashboards-gui
+        altiplano-role: {{ .Values.accessRoleLabel }}
+        source: opensearch
+{{- include "bssc-dashboards.csf-toolkit-helm.labels" (tuple . .Values.dashboards.custom.pod.labels) | indent 8}}
+      annotations:
+        {{- if not .Values.security.sensitiveInfoInSecret.enabled }}
+        checksum/secret: {{ include (print $.Template.BasePath "/dashboards-secret.yaml") . | sha256sum }}
+        {{- end }}
+        checksum/config: {{ include (print $.Template.BasePath "/dashboards-configmap.yaml") . | sha256sum }}
+        {{- if eq $.loggingEnabled "true" }}
+        checksum/loggingconfig: {{ include (print $.Template.BasePath "/unifiedlogging_cm.yaml") . | sha256sum }}
+        {{- end }}
+        # In init container kubectl commands are used, since there is no istio-proxy sidecar when init container is running, k8s svc is not reachable from init container. Hence excluded k8s svc port from istio communication.
+        {{- if $.istio.enabled }}
+        traffic.sidecar.istio.io/excludeOutboundPorts: "{{ .Values.dashboards.k8sSvcPort }}"
+        {{- end }}
+        sidecar.istio.io/inject: "{{ $.istio.enabled }}"
+        sidecar.istio.io/rewriteAppHTTPProbers: "true"
+{{- include "bssc-dashboards.csf-toolkit-helm.annotations" (tuple . .Values.dashboards.custom.pod.annotations) | indent 8}}
+    spec:
+      securityContext:
+{{ include "bssc-dashboards.pod.securityContext" . | indent 8 }}
+      serviceAccountName: {{ template "bssc-dashboards.serviceAccount.name" . }}
+      automountServiceAccountToken: true
+      {{- if .Values.dashboards.priorityClassName }}
+      priorityClassName: {{ .Values.dashboards.priorityClassName | quote }}
+      {{- else if .Values.global.priorityClassName }}
+      priorityClassName: {{ .Values.global.priorityClassName | quote }}
+      {{- end }}
+      {{- if .Values.dashboards.topologySpreadConstraints }}
+      topologySpreadConstraints: {{- include "bssc-dashboards.topologySpreadConstraints" (tuple . .Values.dashboards ) | nindent 8 }}
+      {{- end }}
+      {{- if .Values.dashboards.affinity }}
+      affinity:
+{{ toYaml .Values.dashboards.affinity | indent 8 }}
+      {{- end }}
+      {{- if .Values.dashboards.nodeSelector }}
+      nodeSelector:
+{{ toYaml .Values.dashboards.nodeSelector | indent 8 }}
+      {{- end }}
+      {{- if .Values.dashboards.tolerations }}
+      tolerations:
+{{ toYaml .Values.dashboards.tolerations | indent 8 }}
+      {{- end }}
+    {{- if (or (and (.Values.security.enable) (.Values.security.keycloak_auth) ($.istio.enabled) (eq  .Values.security.istio.extCkeyLocation "MESH_INTERNAL")) (.Values.dashboards.hostAliases)) }}
+      ## Adding host alias for ckey external hostname to a dummy IP for serviceentry when ckey location is MESH_INTERNAL
+      hostAliases:
+      {{- if and (.Values.security.enable) (.Values.security.keycloak_auth) ($.istio.enabled) (eq .Values.security.istio.extCkeyLocation "MESH_INTERNAL" ) }}
+      - hostnames:
+        - {{ .Values.security.istio.extCkeyHostname }}
+        ip: 1.2.3.4
+      {{- end }}
+      {{- if .Values.dashboards.hostAliases }}
+{{ toYaml .Values.dashboards.hostAliases | indent 6 }}
+      {{- end }}
+    {{- end }}
+      {{- with or .Values.dashboards.imagePullSecrets .Values.imagePullSecrets .Values.global.imagePullSecrets }}
+      imagePullSecrets:
+{{- toYaml . | nindent 8 }}
+      {{- end }}
+      initContainers:
+      {{- if eq (tpl (.Values.security.sensitiveInfoInSecret.enabled | toString ) .) "true" }}
+      - name: init-{{ .Chart.Name }}
+        image: {{ .Values.global.registry }}/{{ .Values.init.image.name }}:{{ .Values.init.image.tag }}
+        imagePullPolicy: "{{ .Values.init.image.imagePullPolicy }}"
+        command: ["sh", "-c", "until [ $ALTIPLANO_GEO_ACTIVE_SITE == true ]; do echo waiting for ALTIPLANO_GEO_ACTIVE_SITE to be true; sleep 10; done; if [ $SECURITY_ENABLE == true ];
+            then until [[ `curl -s -k --connect-timeout {{.Values.dashboards.connectTimeout}} {{ tpl (toYaml .Values.dashboards.keycloakCheck) . | default "" | indent 2 }}`  &&  `curl -s -k --connect-timeout {{.Values.dashboards.connectTimeout}} {{ tpl (toYaml .Values.dashboards.indexSearchCheck) . | default "" | indent 2 }}` ]]; do echo waiting for keycloak service and indexsearch; sleep 10; done;
+          fi;"]
+        env:
+        - name: ALTIPLANO_GEO_ACTIVE_SITE
+          value: {{ .Values.global.ALTIPLANO_GEO_ACTIVE_SITE | quote }}
+        - name: SECURITY_ENABLE
+          value: {{ .Values.security.enable | quote }}
+      - name : {{ template "bssc-dashboards.initContainer.name" . }}
+        image: {{ include "bssc-dashboards.registry" (tuple .Values .Values.internalInitRegistry) }}/{{ .Values.initContainer.repo }}:{{ .Values.initContainer.tag }}
+        imagePullPolicy: {{.Values.dashboards.ImagePullPolicy}}
+        command: [ "/bin/sh", "-c" ]
+        args:
+          - |
+            cp /etc/initContainerMount/certificates/dboServerCrt /etc/initContainerMount/secrets/dboServerCrt
+            cp /etc/initContainerMount/certificates/dboServerKey /etc/initContainerMount/secrets/dboServerKey
+            cp /etc/initContainerMount/certificates/IsRootCaPem /etc/initContainerMount/secrets/IsRootCaPem && [ -s /etc/initContainerMount/secrets/IsRootCaPem ] && [ "$(tail -c 1 /etc/initContainerMount/secrets/IsRootCaPem)" != "" ] && echo "" >> /etc/initContainerMount/secrets/IsRootCaPem
+            cp /etc/initContainerMount/certificates/keycloakRootCaPem /etc/initContainerMount/secrets/keycloakRootCaPem && [ -s /etc/initContainerMount/secrets/keycloakRootCaPem ] && [ "$(tail -c 1 /etc/initContainerMount/secrets/keycloakRootCaPem)" != "" ] && echo "" >> /etc/initContainerMount/secrets/keycloakRootCaPem
+            cp /etc/initContainerMount/certificates/IngressRootCaPem /etc/initContainerMount/secrets/IngressRootCaPem && [ -s /etc/initContainerMount/secrets/IngressRootCaPem ] && [ "$(tail -c 1 /etc/initContainerMount/secrets/IngressRootCaPem)" != "" ] && echo "" >> /etc/initContainerMount/secrets/IngressRootCaPem
+            cat /etc/initContainerMount/secrets/IngressRootCaPem >> /etc/initContainerMount/secrets/keycloakRootCaPem
+            cat /etc/initContainerMount/secrets/IsRootCaPem >> /etc/initContainerMount/secrets/keycloakRootCaPem
+            cat /etc/initContainerMount/secrets/keycloakRootCaPem >> /etc/initContainerMount/secrets/IsRootCaPem
+            /etc/initContainerMount/encrypt.sh
+        securityContext:
+{{ include "bssc-dashboards.container.securityContext" . | indent 10 }}
+        resources:
+{{ include "bssc-dashboards.resources" (tuple . .Values.initContainer.resources "100m") | indent 10 }}
+        volumeMounts:
+        - name: shared-volume
+          mountPath: "/etc/sharedMount/"
+        - name: dashboards-passwordsecret
+          mountPath: "/etc/initContainerMount/passwords"
+        - name: dashboards-certsecret
+          mountPath: "/etc/initContainerMount/certificates"
+        - name: certificates-secrets
+          mountPath: "/etc/initContainerMount/secrets"
+        {{- if and (eq $.isCertManagerEnabled "true") ( not $.istio.enabled) (or (and (eq .Values.security.tls.secretRef.name "") (not .Values.security.sensitiveInfoInSecret.dboServerCrt)) (eq $.clientCertAuth "true"))  }}
+        - name: cert-manager-secret
+          mountPath: "/etc/initContainerMount/certManagerSecret"
+        {{- end }}
+        - name: dashboards-config
+          mountPath: "/etc/initContainerMount/config"
+      {{- end }}
+      - name : {{ template "bssc-dashboards.dbo-plugins-init-container.name" . }}
+        image: {{ include "bssc-dashboards.registry" (tuple .Values .Values.internalAppRegistry) }}/{{ .Values.dboPluginsInit.repo }}:{{ include "bssc-dashboards.imageTag" (tuple .Values.dboPluginsInit.tag $.dboPluginsSupportedImageFlavor .Values .Values.dashboards .Values.dboPluginsInit) }}
+        imagePullPolicy: {{.Values.dashboards.ImagePullPolicy}}
+        securityContext:
+{{ include "bssc-dashboards.container.securityContext" . | indent 10 }}
+        resources:
+{{ include "bssc-dashboards.resources" (tuple . .Values.dboPluginsInit.resources "50m") | indent 10 }}
+        volumeMounts:
+        - name: dbo-plugins-volume
+          mountPath: "/opt/opensearch-dashboards/plugins"
+      containers:
+      - name: {{ template "bssc-dashboards.container.name" . }}
+        image: {{ include "bssc-dashboards.registry" (tuple .Values .Values.internalAppRegistry) }}/{{.Values.dashboards.image.repo}}:{{.Values.dashboards.image.tag}}
+        imagePullPolicy: {{.Values.dashboards.ImagePullPolicy}}
+        securityContext:
+{{ include "bssc-dashboards.container.securityContext" . | indent 10 }}
+        resources:
+{{ include "bssc-dashboards.resources" (tuple . .Values.dashboards.resources "1000m") | indent 10 }}
+        livenessProbe:
+        {{- if .Values.dashboards.livenessProbe.probecheck }}
+{{ tpl (toYaml .Values.dashboards.livenessProbe.probecheck) . | indent 10 }}
+        {{- else }}
+          tcpSocket:
+            port: {{ .Values.dashboards.port }}
+       {{- end }}
+          initialDelaySeconds: {{.Values.dashboards.livenessProbe.initialDelaySeconds }}
+          periodSeconds: {{.Values.dashboards.livenessProbe.periodSeconds }}
+          timeoutSeconds: {{.Values.dashboards.livenessProbe.timeoutSeconds }}
+          successThreshold: {{.Values.dashboards.livenessProbe.successThreshold }}
+          failureThreshold: {{.Values.dashboards.livenessProbe.failureThreshold }}
+        readinessProbe:
+        {{- if .Values.dashboards.readinessProbe.probecheck }}
+{{ tpl (toYaml .Values.dashboards.readinessProbe.probecheck) . | indent 10 }}
+        {{- else }}
+          tcpSocket:
+            port: {{ .Values.dashboards.port }}
+        {{- end }}
+          initialDelaySeconds: {{.Values.dashboards.readinessProbe.initialDelaySeconds }}
+          periodSeconds: {{.Values.dashboards.readinessProbe.periodSeconds }}
+          timeoutSeconds: {{.Values.dashboards.readinessProbe.timeoutSeconds }}
+          successThreshold: {{.Values.dashboards.readinessProbe.successThreshold }}
+          failureThreshold: {{.Values.dashboards.readinessProbe.failureThreshold }}
+        env:
+          {{- if eq $.loggingEnabled "true" }}
+          - name: LOGGING_DEST
+            value: "/tmp/mainContainerLogs/dashboards.log"
+          - name: LOGGING_ROTATE_ENABLED
+            value: "true"
+          {{- end }}
+          {{- if .Values.security.enable }}
+          - name: DISABLE_SECURITY_DASHBOARDS_PLUGIN
+            value: "false"
+          - name: CLIENT_CERT_AUTH
+            value: "{{ $.clientCertAuth }}"
+          {{- else }}
+          - name: DISABLE_SECURITY_DASHBOARDS_PLUGIN
+            value: "true"
+          {{- end  }}
+          - name: "LOGGING_ENABLED"
+            value: "{{ $.loggingEnabled }}"
+          - name: NSS_SDB_USE_CACHE
+            value: "no"
+          - name: KEYCLOAK_AUTH
+            value: "{{ .Values.security.keycloak_auth }}"
+          - name: ISTIO_ENABLED
+            value: "{{ $.istio.enabled }}"
+          - name: "SENSITIVE_INFO_IN_SECRETS"
+            value: {{ (tpl (.Values.security.sensitiveInfoInSecret.enabled | toString ) .) | quote }}
+          - name: SEC_ENABLED
+            value: "{{ .Values.security.enable }}"
+          - name: SERVER_PORT
+            value: "{{ .Values.dashboards.port }}"
+          - name: TZ
+            value: {{ or .Values.timezone.timeZoneEnv .Values.global.timeZoneEnv "UTC" | quote }}
+          - name: LOGGING_TIMEZONE
+            value: {{ or .Values.timezone.timeZoneEnv .Values.global.timeZoneEnv "UTC" | quote }}
+          - name: CERT_MANAGER
+            value: {{ $.isCertManagerEnabled | quote }}
+          - name: CSAN_ENABLED
+          {{- if and .Values.sane .Values.security.keycloak_auth }}
+            value: "true"
+          {{- else }}
+            value: "false"
+          {{- end }}
+          # Setting env when istio is enabled
+          {{- if $.istio.enabled }}
+          - name: "ISTIO_HEALTHCHK_PORT"
+            value: {{ .Values.istio.envoy.healthCheckPort | quote }}
+          - name: "ISTIO_ENVOY_PROXY_WAIT_TIMEOUT"
+            value: {{ .Values.istio.envoy.waitTimeout | quote }}
+            {{- if ne .Values.dbobaseurl.url "/" }}
+          - name: "SERVER_REWRITEBASEPATH"
+            value: "true"
+            {{- end }}
+            {{- if (and (.Values.security.enable) (.Values.security.keycloak_auth)) }}
+            ## If istio & keylcoak_auth are enabled, disabling ssl certificate validation
+          - name: NODE_TLS_REJECT_UNAUTHORIZED
+            value: "0"
+            {{- end }}
+{{ include "bssc-dashboards.istio.createlistOfGateway.nonTls" . | indent 10 }}
+          {{- end }}
+          {{- if .Values.security.enable }}
+          - name: "OPENSEARCH_SSL_VERIFICATIONMODE"
+            value: {{.Values.security.dashboards.is_ssl_verification_mode}}
+          {{- end }}
+        {{- if ne .Values.dbobaseurl.url "/" }}
+          - name: "SERVER_BASEPATH"
+            value: "{{.Values.dbobaseurl.url}}"
+          {{- if not $.istio.enabled }}
+          - name: "SERVER_REWRITEBASEPATH"
+            value: "false"
+          {{- end }}
+        {{- end }}
+          {{- if .Values.dashboards.env}}
+{{ tpl (toYaml .Values.dashboards.env) . | indent 10 }}
+          {{- end }}
+
+        ports:
+        - containerPort: {{.Values.dashboards.port}}
+          name: tcp-ui
+          protocol: TCP
+
+        volumeMounts:
+        - name: dbo-plugins-volume
+          mountPath: "/usr/share/opensearch-dashboards/plugins"
+        - name: dashboards-data
+          mountPath: "/usr/share/opensearch-dashboards/data"
+        - mountPath: "/usr/share/opensearch-dashboards/config"
+        {{- if and (.Values.security.enable) (eq (tpl (.Values.security.sensitiveInfoInSecret.enabled | toString ) .) "true") }}
+          name: dashboards-emptydirconf
+        {{- else }}
+          name: dashboards-config
+          readOnly: true
+        {{- end }}
+        {{- if eq $.loggingEnabled "true" }}
+        - name: "dashboards-logs"
+          mountPath: "/tmp"
+        {{- end }}
+        {{- if and (.Values.security.enable) (eq (tpl (.Values.security.sensitiveInfoInSecret.enabled | toString ) .) "true") }}
+        - name: shared-volume
+          mountPath: "/etc/sharedMount/"
+        {{- end }}
+      {{- if eq $.loggingEnabled "true" }}
+      - name: {{ template "bssc-dashboards.unifiedLoggingContainer.name" . }}
+        image: {{ include "bssc-dashboards.registry" (tuple .Values .Values.internalFluentdSidecarRegistry) }}/{{$.logging.imageRepo}}:{{ include "bssc-dashboards.imageTag" (tuple $.logging.imageTag $.commonSupportedImageFlavor .Values .Values.dashboards $.logging) }}
+        imagePullPolicy: {{ $.logging.imagePullPolicy }}
+        resources:
+{{ include "bssc-dashboards.resources" (tuple . $.logging.resources "50m") | indent 10 }}
+        command: ['bash', '-c', "/opt/scripts/fluentd-sidecar-entrypoint.sh"]
+        securityContext:
+{{ include "bssc-dashboards.container.securityContext" . | indent 10 }}
+        env:
+          - name: ISTIO_ENABLED
+            value: "{{ $.istio.enabled }}"
+          - name: EXTENSION_FIELDS
+            value: {{ or .Values.dashboards.unifiedLogging.extension .Values.global.unifiedLogging.extension | toJson | quote }}
+          - name: NAMESPACE
+            valueFrom:
+              fieldRef:
+                fieldPath: metadata.namespace
+          - name: TZ
+            value: {{ or .Values.timezone.timeZoneEnv .Values.global.timeZoneEnv "UTC" | quote }}
+          - name: TMPDIR
+            value: /tmp/fluentd-tmp-sidecar
+          {{- if $.logging.env}}
+{{ toYaml $.logging.env | indent 10 }}
+          {{- end }}
+          - name: "MAIN_CONTAINER_NAME"
+            value: {{ template "bssc-dashboards.container.name" . }}
+          - name: "CONTAINER_NAME"
+            value: {{ template "bssc-dashboards.unifiedLoggingContainer.name" . }}
+        volumeMounts:
+        - name: "dashboards-logs"
+          mountPath: "/tmp"
+        - name: "logging-conf"
+          mountPath: "/etc/fluent/"
+          {{- if $.syslogEnabled }}
+            {{- if and (default "" $.syslogSecretName) (default "" $.syslogSecretKey) }}
+        - name: syslog-secret
+          mountPath: "/etc/fluent/certs"
+            {{- end }}
+          {{- end }}
+      {{- end }}
+      volumes:
+      - name: dbo-plugins-volume
+        emptyDir:
+          sizeLimit: {{ default "1Gi"  .Values.emptyDirSizeLimit.dboPluginsVolume }}
+      - name: certificates-secrets
+        emptyDir:
+          sizeLimit: {{ default "1Gi"  .Values.emptyDirSizeLimit.dboPluginsVolume }}
+      # Dashboards-data is mounted as a emptyDir where dashboards tries to writes its UUID
+      - name: dashboards-data
+        emptyDir:
+          sizeLimit: {{ default "10Mi"  .Values.emptyDirSizeLimit.dashboardsData }}
+      {{- if eq $.loggingEnabled "true" }}
+      - name: logging-conf
+        configMap:
+          name: {{ template "bssc-dashboards.fullname" . }}-logging-conf
+      # Dashboards-logs mounted as a emptyDir for dashboards to write and store its logs
+      - name: dashboards-logs
+        emptyDir:
+          sizeLimit: {{ default "200Mi"  .Values.emptyDirSizeLimit.dashboardsLogs }}
+        {{- if $.syslogEnabled }}
+          {{- if and (default "" $.syslogSecretName) (default "" $.syslogSecretKey) }}
+      - name: syslog-secret
+        secret:
+          secretName: {{ $.syslogSecretName }}
+          items:
+          - key: {{ $.syslogSecretKey }}
+            path: syslogRootCaPem
+          {{- end }}
+        {{- end }}
+      {{- end }}
+      - name: dashboards-config
+        configMap:
+          name: {{ template "bssc-dashboards.fullname" . }}
+          items:
+          - key: opensearch_dashboards.yml
+            path: opensearch_dashboards.yml
+      {{- if (.Values.security.enable) }}
+      {{- if eq (tpl (.Values.security.sensitiveInfoInSecret.enabled | toString ) .) "true" }}
+      # Dashboards-emptydirconf mounted as a emptyDir to perform encryption and decrytion when senstiveInfo is enabled
+      - name: dashboards-emptydirconf
+        emptyDir:
+          sizeLimit: {{ default "10Mi"  .Values.emptyDirSizeLimit.dashboardsEmptydirconf }}
+      - name: shared-volume
+        emptyDir:
+          sizeLimit: {{ default "10Mi"  .Values.emptyDirSizeLimit.sharedVolume }}
+      - name: dashboards-passwordsecret
+        projected:
+          sources:
+          - secret:
+              name: {{ .Values.security.sensitiveInfoInSecret.credentialNamePassword }}
+              items:
+                - key: {{ .Values.security.sensitiveInfoInSecret.dboIsPassword }}
+                  path: .dboIsPassword
+                {{- if not $.istio.enabled }}
+                {{- if (.Values.dashboards.sslsecretvolume) }}
+                  {{- range $key, $val := .Values.dashboards.sslsecretvolume }}
+              - key: {{  $val }}
+                path: {{ $val }}
+                      {{- end }}
+                  {{- end }}
+                {{- end }}
+                {{- if .Values.security.keycloak_auth }}
+                - key: {{ .Values.security.sensitiveInfoInSecret.keycloakClientId }}
+                  path: .keycloakClientId
+                - key: {{ .Values.security.sensitiveInfoInSecret.keycloakClientSecret }}
+                  path: .keycloakClientSecret
+                {{- end }}
+                {{- if and .Values.sane .Values.security.keycloak_auth }}
+                - key: {{ .Values.security.sensitiveInfoInSecret.sane.keycloak_admin_user_name }}
+                  path: .keycloak_admin_username
+                - key: {{ .Values.security.sensitiveInfoInSecret.sane.keycloak_admin_password }}
+                  path: .keycloak_admin_password
+                - key: {{ .Values.security.sensitiveInfoInSecret.sane.keycloak_sane_user_password }}
+                  path: .sane_user_password
+                {{- end }}
+      - name: dashboards-certsecret
+        secret:
+          secretName: {{ .Values.security.sensitiveInfoInSecret.credentialNameCert }}
+          items:
+          {{- if .Values.security.keycloak_auth }}
+              {{- if not $.istio.enabled }}
+                  {{- if .Values.security.sensitiveInfoInSecret.keycloakRootCaPem }}
+          - key: {{ .Values.security.sensitiveInfoInSecret.keycloakRootCaPem }}
+            path: keycloakRootCaPem
+                  {{- end }}
+              {{- end }}
+          {{- end }}
+          {{- if not $.istio.enabled }}
+          - key: {{ .Values.security.sensitiveInfoInSecret.dboServerCrt }}
+            path: dboServerCrt
+          - key: {{ .Values.security.sensitiveInfoInSecret.dboServerKey }}
+            path: dboServerKey
+          - key: {{ .Values.security.sensitiveInfoInSecret.IsRootCaPem }}
+            path: IsRootCaPem
+          - key: {{ .Values.security.sensitiveInfoInSecret.IngressRootCaPem }}
+            path: IngressRootCaPem
+          {{- end }}
+              {{- if and (eq $.isCertManagerEnabled "true") ( not $.istio.enabled) (or (and (eq .Values.security.tls.secretRef.name "") (not .Values.security.sensitiveInfoInSecret.dboServerCrt)) (eq $.clientCertAuth "true"))  }}
+      - name: cert-manager-secret
+        projected:
+          sources:
+              {{- if and (eq .Values.security.tls.secretRef.name "") (not .Values.security.sensitiveInfoInSecret.dboServerCrt)  }}
+                {{- if .Values.dashboards.certificate.enabled }}
+          - secret:
+              name: {{ .Values.dashboards.certificate.secretName | default (printf "%s-certmgr" (include "bssc-dashboards.fullname" .)) }}
+              items:
+                - key: tls.crt
+                  path: dboServerCrt
+                - key: tls.key
+                  path: dboServerKey
+                - key: ca.crt
+                  path: IsRootCaPem
+                  {{- if .Values.security.keycloak_auth }}
+                    {{- if not .Values.security.sensitiveInfoInSecret.keycloakRootCaPem }}
+                - key: ca.crt
+                  path: keycloakRootCaPem
+                    {{- end }}
+                  {{- end }}
+                {{- end }}
+              {{- end }}
+              {{- if eq $.clientCertAuth "true" }}
+                     {{- $exists := true }}
+                 {{- if not (.Values.dashboards.sslsecretvolume) }}
+                     {{- $exists = false }}
+                 {{- else }}
+                   {{- if and (.Values.dashboards.sslsecretvolume) (not .Values.dashboards.sslsecretvolume.osClientCrt) (not .Values.dashboards.sslsecretvolume.osClientKey) }}
+                     {{- $exists = false }}
+                   {{- end }}
+                 {{- end }}
+                 {{- if (not $exists) }}
+          - secret:
+              name: {{ tpl (.Values.dashboards.indexsearch.credentialName.name) . }}
+              items:
+                - key: tls.crt
+                  path: osClientCrt
+                - key: tls.key
+                  path: osClientKey
+                 {{- end }}
+              {{- end }}
+          {{- end }}
+      {{- end }}
+      {{- end }}
+---
+{{- if .Values.dashboards.pdb.enabled }}
+apiVersion: {{ template "bssc-dashboards.apiVersionPolicyV1Beta1orV1" . }}
+kind: PodDisruptionBudget
+metadata:
+  labels:
+{{- include "bssc-dashboards.commonLabels" (tuple .  "dashboards" ) | nindent 4 }}
+{{- include "bssc-dashboards.csf-toolkit-helm.labels" (tuple .) | indent 4 }}
+  annotations:
+{{- include "bssc-dashboards.csf-toolkit-helm.annotations" (tuple .) | indent 4 }}
+  name: {{ template "bssc-dashboards.fullname" . }}
+  namespace: {{ .Release.Namespace }}
+spec:
+  {{- include "bssc-dashboards.PodDisruptionBudgetPolicy" . | indent 2 }}
+  selector:
+    matchLabels:
+{{- include "bssc-dashboards.selectorLabels" (tuple .  "dashboards" ) | indent 6 }}
+      role: dashboards-gui
+{{- end }}

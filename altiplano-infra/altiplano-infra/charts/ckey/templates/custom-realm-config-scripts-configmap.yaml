@@ -1,0 +1,298 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ template "ckey.fullName" . }}-custom-realm-config-scripts
+  annotations:
+    {{- include "ckey.customAnnotations" (tuple .Values.global.annotations) | indent 4 }}
+  labels:
+    app: {{ template "ckey.fullName" . }}
+    release: "{{ .Release.Name }}"
+    heritage: "{{ .Release.Service }}"
+    {{- include "ckey.customLabels" (tuple .Values.global.labels ) | indent 4 }}
+    {{- include "ckey.commonLabels" . | indent 4 }}
+data:
+  configure-realm.sh: |
+    #!/bin/bash
+    # Configure Master Realm
+
+    KEYCLOAK_PATH=${KC_HTTP_RELATIVE_PATH:-"/"}
+    FUNC="$1"
+    USER="$2"
+    PASSWORD="$3"
+    UPDATE_REALM="$4"
+    EXTRA_PARAM1="$5"
+
+    echo "FUNC: $FUNC"
+    echo "UPDATE_REALM: $UPDATE_REALM"
+
+    USE_CA=$(echo "$USE_CACERT" | awk '{print tolower($0)}')
+    if [ ! -f /opt/keycloak/tls/ca.crt ] || [ "$USE_CA" = "false" ] || [ "$URL_PROTOCOL" = "http" ]; then
+      echo "Using --insecure for curl"
+      CURL_CERT="--insecure"
+    else
+      echo "ca.crt found. Using --cacert for curl"
+      CURL_CERT="--cacert /opt/keycloak/tls/ca.crt"
+    fi
+
+    if [ "$FUNC" == "set-password" ];
+    then
+            TKN=$(curl ${CURL_CERT} -g -X POST "${URL_PROTOCOL}://${SERVICE_IP}:${KC_HTTPS_PORT}${KEYCLOAK_PATH}/realms/master/protocol/openid-connect/token" \
+            -H "Content-Type: application/x-www-form-urlencoded" \
+            --data-urlencode 'username='"$USER"'' \
+            --data-urlencode 'password='"$PASSWORD"'' \
+            -d 'grant_type=password' \
+            -d 'client_id=admin-cli' | jq -r '.access_token')
+
+            echo $TKN
+            echo $SERVICE_IP
+            echo $KC_HTTPS_PORT
+            echo $KEYCLOAK_PATH
+
+            if [ -z "$TKN" ];
+            then
+                    echo "Access Token for user $USER is null. Application is not running properly or invalid user credentials used"
+                    exit 1
+            else
+                    USERID=$(curl -w "%{http_code}" --silent ${CURL_CERT} -g "${URL_PROTOCOL}://${SERVICE_IP}:${KC_HTTPS_PORT}${KEYCLOAK_PATH}/admin/realms/master/users/" -H "Authorization: Bearer ${TKN}" | jq -r '.[0].id')
+                    UPDATE_PASSWORD=$(curl -w "%{http_code}" --silent ${CURL_CERT} -g -X PUT "${URL_PROTOCOL}://${SERVICE_IP}:${KC_HTTPS_PORT}${KEYCLOAK_PATH}/admin/realms/master/users/${USERID}/reset-password" -H "Authorization: Bearer ${TKN}" -H "Content-Type: application/json" -d '''{"type":"password","temporary":false,"value":"'"$PASSWORD"'"}''')
+                    if [ "$UPDATE_PASSWORD" != "204" ];
+                    then
+                            echo "Error configuring Master Realm: Could not set password."
+                            echo "Set password failed with error code $UPDATE_PASSWORD."
+                            exit 1
+                    fi
+            fi
+    fi
+
+    if [ "$FUNC" == "update-realm" ];
+    then
+            ACCESS_TOKEN=$(curl ${CURL_CERT} -g -X POST "${URL_PROTOCOL}://${SERVICE_IP}:${KC_HTTPS_PORT}${KEYCLOAK_PATH}/realms/master/protocol/openid-connect/token" \
+            -H "Content-Type: application/x-www-form-urlencoded" \
+            --data-urlencode 'username='"$USER"'' \
+            --data-urlencode 'password='"$PASSWORD"'' \
+            -d 'grant_type=password' \
+            -d 'client_id=admin-cli')
+            if [ -z "$ACCESS_TOKEN" ];
+            then
+                echo "Access Token for user $USER is null. Application is not running properly or invalid user credentials used"
+                exit 1
+            fi
+
+            echo $TKN
+            echo $SERVICE_IP
+            echo $KC_HTTPS_PORT
+            echo $KEYCLOAK_PATH
+
+            # Workaround for ISU rollback. Master realm job starting in ISU rollback to revision 1 when not suppose to (helm issue)
+            # and token call returns forbidden. Finish Master realm job without error if we get forbidden response in this point.
+            if [[ "$ACCESS_TOKEN" == *"403 - Forbidden"* ]];
+            then
+                echo "WARNING: 403 - Forbidden response from token call. Finishing the job. It is OK if happens on rollback to revision 1."
+                echo "ACCESS_TOKEN: $ACCESS_TOKEN"
+                DISPLAY_NAME_UPDATED="true"
+                return 0
+            fi
+
+            TKN=$(echo $ACCESS_TOKEN | jq -r '.access_token')
+
+            if [ -z "$TKN" ];
+            then
+                echo "Access Token for user $USER is null. Application is not running properly or invalid user credentials used"
+                exit 1
+            fi
+
+            if [ "$UPDATE_REALM" == "resetPasswordAllowed" ];
+            then
+                    RESET_PW=$(curl -w "%{http_code}" --silent ${CURL_CERT} -g -X PUT "${URL_PROTOCOL}://${SERVICE_IP}:${KC_HTTPS_PORT}${KEYCLOAK_PATH}/admin/realms/master/" -H "Authorization: Bearer ${TKN}" -H "Content-Type: application/json" -d '{"resetPasswordAllowed":true}')
+                    if [ "$RESET_PW" != "204" ];
+                    then
+                            echo "Error configuring Master Realm: Could not update realm."
+                            echo "Update realm for resetPasswordAllowed failed with error code $RESET_PW"
+                            exit 1
+                    fi
+
+            elif [ "$UPDATE_REALM" == "bruteForceProtection" ];
+            then
+                    BFP=$(curl -w "%{http_code}" --silent ${CURL_CERT} -g -X PUT "${URL_PROTOCOL}://${SERVICE_IP}:${KC_HTTPS_PORT}${KEYCLOAK_PATH}/admin/realms/master/" -H "Authorization: Bearer ${TKN}" -H "Content-Type: application/json" -d '{"bruteForceProtected":true}')
+                    if [ "$BFP" != "204" ];
+                    then
+                            echo "Error configuring Master Realm: Could not update realm."
+                            echo "Update realm for bruteForceProtection failed with error code $BFP"
+                            exit 1
+                    fi
+            elif [ "$UPDATE_REALM" == "displayName" ];
+            then
+                    DISPLAY_NAME=$(curl -w "%{http_code}" --silent ${CURL_CERT} -g -X PUT "${URL_PROTOCOL}://${SERVICE_IP}:${KC_HTTPS_PORT}${KEYCLOAK_PATH}/admin/realms/master/" -H "Authorization: Bearer ${TKN}" -H "Content-Type: application/json" -d '{"displayName":"User and Role Management", "displayNameHtml": "<div class=\"kc-logo-text\"><span>User and Role Management</span></div>"}')
+                    if [ "$DISPLAY_NAME" != "204" ];
+                    then
+                            echo "Error configuring Master Realm: Could not update realm."
+                            echo "Update realm for displayName failed with error code $DISPLAY_NAME"
+                            exit 1
+                    fi
+
+            elif [ "$UPDATE_REALM" == "passwordPolicy" ];
+            then
+                    PASS_POLICY=$(curl -w "%{http_code}" --silent ${CURL_CERT} -g -X PUT "${URL_PROTOCOL}://${SERVICE_IP}:${KC_HTTPS_PORT}${KEYCLOAK_PATH}/admin/realms/master/" -H "Authorization: Bearer ${TKN}" -H "Content-Type: application/json" -d '{"passwordPolicy":"forceExpiredPasswordChange(90) and length(10) and specialChars(1) and upperCase(1) and lowerCase(1) and passwordHistory(3) and passwordBlacklist(linux.words) and notUsername(undefined)"}')
+                    if [ "$PASS_POLICY" != "204" ];
+                    then
+                            echo "Error configuring Master Realm: Could not update realm."
+                            echo "Update realm for passwordPolicy failed with error code $PASS_POLICY"
+                            exit 1
+                    fi
+
+            elif [ "$UPDATE_REALM" == "adminEventsEnabled" ];
+            then
+                    echo "Enabling Admin events"
+                    ADMIN_EVENTS=$(curl -w "%{http_code}" --silent ${CURL_CERT} -g -X PUT "${URL_PROTOCOL}://${SERVICE_IP}:${KC_HTTPS_PORT}${KEYCLOAK_PATH}/admin/realms/master/events/config" -H "Authorization: Bearer ${TKN}" -H "Content-Type: application/json" -d '{ "eventsListeners":["Audit Logging","jboss-logging"],"adminEventsEnabled":true, "adminEventsDetailsEnabled": true}')
+                    if [ "$ADMIN_EVENTS" != "204" ];
+                    then
+                            echo "Error configuring Master Realm: Could not update realm."
+                            echo "Update realm for AdminEventsEnabled failed with error code $ADMIN_EVENTS"
+                            exit 1
+                    fi
+
+                    if [ ! -z $EXTRA_PARAM1 ];
+                    then
+                           echo "Setting admin events expiration to $EXTRA_PARAM1 min"
+                           let EXPIRATION_SEC=$EXTRA_PARAM1*60
+                           ADMIN_EVENTS_EXPIRATION=$(curl -w "%{http_code}" --silent ${CURL_CERT} -g -X PUT "${URL_PROTOCOL}://${SERVICE_IP}:${KC_HTTPS_PORT}${KEYCLOAK_PATH}/admin/realms/master/" -H "Authorization: Bearer ${TKN}" -H "Content-Type: application/json" -d "{"\""attributes"\"":{"\""adminEventsExpiration"\"":$EXPIRATION_SEC}"})
+                           if [ "$ADMIN_EVENTS_EXPIRATION" != "204" ];
+                           then
+                                   echo "Error configuring Master Realm: Could not update realm."
+                                   echo "Update realm for adminEventsExpiration failed with error code $ADMIN_EVENTS_EXPIRATION"
+                                   exit 1
+                           fi
+                    fi
+
+            elif [ "$UPDATE_REALM" == "eventsEnabled" ];
+            then
+                    echo "Enabling Login events"
+                    EVENTS=$(curl -w "%{http_code}" --silent ${CURL_CERT} -g -X PUT "${URL_PROTOCOL}://${SERVICE_IP}:${KC_HTTPS_PORT}${KEYCLOAK_PATH}/admin/realms/master/events/config" -H "Authorization: Bearer ${TKN}" -H "Content-Type: application/json" -d '{"eventsEnabled":true,"eventsListeners":["Audit Logging","jboss-logging"],"enabledEventTypes":["SEND_RESET_PASSWORD","UPDATE_CONSENT_ERROR","GRANT_CONSENT","VERIFY_PROFILE_ERROR","REMOVE_TOTP","REVOKE_GRANT","UPDATE_TOTP","LOGIN_ERROR","CLIENT_LOGIN","RESET_PASSWORD_ERROR","IMPERSONATE_ERROR","CODE_TO_TOKEN_ERROR","CUSTOM_REQUIRED_ACTION","OAUTH2_DEVICE_CODE_TO_TOKEN_ERROR","RESTART_AUTHENTICATION","IMPERSONATE","UPDATE_PROFILE_ERROR","LOGIN","OAUTH2_DEVICE_VERIFY_USER_CODE","UPDATE_PASSWORD_ERROR","CLIENT_INITIATED_ACCOUNT_LINKING","TOKEN_EXCHANGE","AUTHREQID_TO_TOKEN","LOGOUT","REGISTER","DELETE_ACCOUNT_ERROR","CLIENT_REGISTER","IDENTITY_PROVIDER_LINK_ACCOUNT","DELETE_ACCOUNT","UPDATE_PASSWORD","CLIENT_DELETE","FEDERATED_IDENTITY_LINK_ERROR","IDENTITY_PROVIDER_FIRST_LOGIN","CLIENT_DELETE_ERROR","VERIFY_EMAIL","CLIENT_LOGIN_ERROR","RESTART_AUTHENTICATION_ERROR","EXECUTE_ACTIONS","REMOVE_FEDERATED_IDENTITY_ERROR","TOKEN_EXCHANGE_ERROR","PERMISSION_TOKEN","SEND_IDENTITY_PROVIDER_LINK_ERROR","EXECUTE_ACTION_TOKEN_ERROR","SEND_VERIFY_EMAIL","OAUTH2_DEVICE_AUTH","EXECUTE_ACTIONS_ERROR","REMOVE_FEDERATED_IDENTITY","OAUTH2_DEVICE_CODE_TO_TOKEN","IDENTITY_PROVIDER_POST_LOGIN","IDENTITY_PROVIDER_LINK_ACCOUNT_ERROR","OAUTH2_DEVICE_VERIFY_USER_CODE_ERROR","UPDATE_EMAIL","REGISTER_ERROR","REVOKE_GRANT_ERROR","EXECUTE_ACTION_TOKEN","LOGOUT_ERROR","UPDATE_EMAIL_ERROR","CLIENT_UPDATE_ERROR","AUTHREQID_TO_TOKEN_ERROR","UPDATE_PROFILE","CLIENT_REGISTER_ERROR","FEDERATED_IDENTITY_LINK","SEND_IDENTITY_PROVIDER_LINK","SEND_VERIFY_EMAIL_ERROR","RESET_PASSWORD","CLIENT_INITIATED_ACCOUNT_LINKING_ERROR","OAUTH2_DEVICE_AUTH_ERROR","UPDATE_CONSENT","REMOVE_TOTP_ERROR","VERIFY_EMAIL_ERROR","SEND_RESET_PASSWORD_ERROR","CLIENT_UPDATE","CUSTOM_REQUIRED_ACTION_ERROR","IDENTITY_PROVIDER_POST_LOGIN_ERROR","UPDATE_TOTP_ERROR","CODE_TO_TOKEN","VERIFY_PROFILE","GRANT_CONSENT_ERROR","IDENTITY_PROVIDER_FIRST_LOGIN_ERROR"],"eventsExpiration":null}')
+                    if [ "$EVENTS" != "204" ];
+                    then
+                          echo "Error configuring Master Realm: Could not update realm."
+                          echo "Update realm for EventsEnabled failed with error code $EVENTS"
+                          exit 1
+                    fi
+
+                    if [ ! -z $EXTRA_PARAM1 ];
+                    then
+                           echo "Setting login events expiration to $EXTRA_PARAM1 min"
+                           let EXPIRATION_SEC=$EXTRA_PARAM1*60
+                           LOGIN_EVENTS_EXPIRATION=$(curl -w "%{http_code}" --silent ${CURL_CERT} -g -X PUT "${URL_PROTOCOL}://${SERVICE_IP}:${KC_HTTPS_PORT}${KEYCLOAK_PATH}/admin/realms/master/" -H "Authorization: Bearer ${TKN}" -H "Content-Type: application/json" -d "{ "\""eventsExpiration"\"":$EXPIRATION_SEC}")
+                           if [ "$LOGIN_EVENTS_EXPIRATION" != "204" ];
+                           then
+                                   echo "Error configuring Master Realm: Could not update realm."
+                                   echo "Update realm for eventsExpiration failed with error code $LOGIN_EVENTS_EXPIRATION"
+                                   exit 1
+                           fi
+                    fi
+
+            elif [ "$UPDATE_REALM" == "sslRequired" ];
+            then
+                    SSL=$(curl -w "%{http_code}" --silent ${CURL_CERT} -g -X PUT "${URL_PROTOCOL}://${SERVICE_IP}:${KC_HTTPS_PORT}${KEYCLOAK_PATH}/admin/realms/master/" -H "Authorization: Bearer ${TKN}" -H "Content-Type: application/json" -d '{"sslRequired":"all"}')
+                    if [ "$SSL" != "204" ];
+                    then
+                            echo "Error configuring Master Realm: Could not update realm."
+                            echo "Update realm for sslRequired failed with error code $SSL"
+                            exit 1
+                    fi
+
+            elif [ "$UPDATE_REALM" == "loginTheme" ];
+            then
+                    THEME=$(curl -w "%{http_code}" --silent ${CURL_CERT} -g -X PUT "${URL_PROTOCOL}://${SERVICE_IP}:${KC_HTTPS_PORT}${KEYCLOAK_PATH}/admin/realms/master/" -H "Authorization: Bearer ${TKN}" -H "Content-Type: application/json" -d '{"loginTheme":"nokia-csf"}')
+                    if [ "$THEME" != "204" ];
+                    then
+                           echo "Error configuring Master Realm: Could not update realm."
+                           echo "Update realm for loginTheme failed with error code $THEME"
+                           exit 1
+                    fi
+
+            elif [ "$UPDATE_REALM" == "getDisplayName" ];
+            then
+                    DISPLAY_NAME_UPDATED="false"
+                    echo "configure-realm.sh: getDisplayName"
+                    DISPLAY_NAME=$(curl ${CURL_CERT} -g -X GET "${URL_PROTOCOL}://${SERVICE_IP}:${KC_HTTPS_PORT}${KEYCLOAK_PATH}/admin/realms/master/" -H "Authorization: Bearer ${TKN}" | jq -r '.displayName')
+                    echo "configure-realm.sh. getDisplayName: $DISPLAY_NAME"
+                    if [ "$DISPLAY_NAME" == "User and Role Management" ];
+                    then
+                            echo "configure-realm.sh. CKEY display name found. Exiting configuration script."
+                            DISPLAY_NAME_UPDATED="true"
+                    fi
+                    return 0
+            else
+                    echo "Realm configuration not found. Exiting..."
+                    exit 1
+            fi
+            exit 0
+    fi
+  configure-realm-settings.sh: |
+    #!/usr/bin/env bash
+    # debug
+    # set -x
+    # exit on failure
+    set -e
+    # exit on failed parameter expansion
+    # set -u
+    echo "Waiting 10 seconds for the Keycloak service"
+    sleep 10
+
+    echo "Configuring Keycloak's Master realm"
+
+    #As readOnlyRootFilesystem flag is set to true. For execution of custom master realm configuration script (configure-realm-settings.sh), directory with write access is required.
+    #An emptyDir volume is created and mounted in the /tmp path. This ensures that the /tmp directory has write access.
+    #The default working directory is "/opt/keycloak". The current working directory is set to /tmp so that the files are written within the /tmp directory which has write access.
+    cd /tmp/
+    # Initialize needed variables:
+    KEYCLOAK_PASSWORD=$(sed "s/'/'\\\''/g" <<< "$KEYCLOAK_PASSWORD")
+
+    {{- if .Values.masterRealmConfigurationJob.overwritePasswordTimestamp }}
+    # This step is used to overwrite the password timestamp for the admin user. If this step doesn't take place, the admin will be required to update his password when he attempts to log in for the first time if the forceExpiredPasswordChange policy is set.
+
+    echo "Check if custom realm config script already been applied"
+    source /ckey/custom-scripts/configure-realm.sh update-realm "${KEYCLOAK_USER}" "${KEYCLOAK_PASSWORD}" getDisplayName
+    if [ "$DISPLAY_NAME_UPDATED" == "true" ];
+    then
+        echo "Custom realm config script was already applied. Exiting."
+        exit 0
+    fi
+    echo "Custom realm config script was not applied. Continue."
+
+    bash -c "/ckey/custom-scripts/configure-realm.sh set-password '${KEYCLOAK_USER}' '${KEYCLOAK_PASSWORD}'"
+    {{- end }}
+    {{- if .Values.masterRealmConfigurationJob.enableForgotPassword }}
+    bash -c "/ckey/custom-scripts/configure-realm.sh update-realm '${KEYCLOAK_USER}' '${KEYCLOAK_PASSWORD}' resetPasswordAllowed"
+    {{- end }}
+
+    {{- if .Values.masterRealmConfigurationJob.overwritePasswordPolicies }}
+    bash -c "/ckey/custom-scripts/configure-realm.sh update-realm '${KEYCLOAK_USER}' '${KEYCLOAK_PASSWORD}' passwordPolicy"
+    {{- end }}
+
+    {{- if .Values.masterRealmConfigurationJob.enableAdminEvents }}
+    bash -c "/ckey/custom-scripts/configure-realm.sh update-realm '${KEYCLOAK_USER}' '${KEYCLOAK_PASSWORD}' adminEventsEnabled {{ .Values.masterRealmConfigurationJob.adminEventsExpiration | quote }}"
+    {{- end }}
+
+    {{- if .Values.masterRealmConfigurationJob.enableLoginEvents }}
+    bash -c "/ckey/custom-scripts/configure-realm.sh update-realm '${KEYCLOAK_USER}' '${KEYCLOAK_PASSWORD}' eventsEnabled {{ .Values.masterRealmConfigurationJob.loginEventsExpiration | quote }}"
+    {{- end }}
+
+    {{- if .Values.masterRealmConfigurationJob.enableSSLRequireForAll }}
+    bash -c "/ckey/custom-scripts/configure-realm.sh update-realm '${KEYCLOAK_USER}' '${KEYCLOAK_PASSWORD}' sslRequired"
+    {{- end }}
+
+    {{- if .Values.masterRealmConfigurationJob.enableBruteForceProtection }}
+    bash -c "/ckey/custom-scripts/configure-realm.sh update-realm '${KEYCLOAK_USER}' '${KEYCLOAK_PASSWORD}' bruteForceProtection"
+    {{- end }}
+
+    {{- if .Values.masterRealmConfigurationJob.setNokiaLoginTheme }}
+    bash -c "/ckey/custom-scripts/configure-realm.sh update-realm '${KEYCLOAK_USER}' '${KEYCLOAK_PASSWORD}' loginTheme"
+    {{- end }}
+
+    bash -c "/ckey/custom-scripts/configure-realm.sh update-realm '${KEYCLOAK_USER}' '${KEYCLOAK_PASSWORD}' displayName"
+
+    #Reverting back the working directory to /opt/keycloak
+    cd ..
+    echo "Done configuring master realm"
+    echo "Waiting 5 seconds before job cleanup"
+    sleep 5
+    exit 0

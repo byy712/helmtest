@@ -1,0 +1,78 @@
+{{- include "cpro.istio.cproInitIstio" . }}
+{{- if .Values.kubeStateMetrics.enabled -}}
+apiVersion: v1
+kind: Service
+metadata:
+  annotations:
+    prometheus.io/port: "{{ .Values.kubeStateMetrics.service.metricsPort }}"
+    prometheus.io/scheme: {{ template "cpro.prometheus.ksm.scheme" . }}
+{{- include "cpro.labelsOrAnnotations" (tuple .Values.kubeStateMetrics.service.annotationsForScrape .Values.kubeStateMetrics.service.annotations .Values.global.annotations) | indent 4}}
+  labels:
+    {{- include "cpro.app.labels.v3" ( dict "root" . "context" .Values.kubeStateMetrics ) | nindent 4 }}
+{{- include "cpro.labelsOrAnnotations" (tuple .Values.kubeStateMetrics.service.labels .Values.global.labels) | indent 4}}
+  name: {{ template "cpro.prometheus.kubeStateMetrics.fullname" . }}
+spec:
+{{- if .Values.kubeStateMetrics.service.clusterIP }}
+  clusterIP: {{ .Values.kubeStateMetrics.service.clusterIP | quote }}
+{{- end }}
+{{- if .Values.kubeStateMetrics.service.externalIPs }}
+  externalIPs:
+{{ toYaml .Values.kubeStateMetrics.service.externalIPs | indent 4 }}
+{{- end }}
+{{- if .Values.kubeStateMetrics.service.loadBalancerIP }}
+  loadBalancerIP: {{ .Values.kubeStateMetrics.service.loadBalancerIP }}
+{{- end }}
+{{- if .Values.kubeStateMetrics.service.loadBalancerSourceRanges }}
+  loadBalancerSourceRanges:
+  {{- range $cidr := .Values.kubeStateMetrics.service.loadBalancerSourceRanges }}
+    - {{ $cidr }}
+  {{- end }}
+{{- end }}
+  ports:
+    - name: tcp-http
+      port: {{ .Values.kubeStateMetrics.service.servicePort }}
+      protocol: TCP
+      targetPort: tcp-metrics
+      #appProtocol: {{ template "cpro.prometheus.ksm.scheme" . }}
+  {{- include "cpro.dualStack.ipFamilyPolicy.config" ( dict "root" . "context" .Values.kubeStateMetrics )  | indent 2 }}
+  {{- include "cpro.dualStack.ipFamilies.config" ( dict "root" . "context" .Values.kubeStateMetrics )| indent 2 }}  
+  selector:
+    app: {{ template "cpro.prometheus.name" . }}
+    component: "{{ .Values.kubeStateMetrics.name }}"
+    release: {{ .Release.Name }}
+  type: "{{ .Values.kubeStateMetrics.service.type }}"
+{{- end }}
+
+---
+
+{{- if .Values.kubeStateMetrics.enabled -}}
+{{- if or ($.istio.enabled) (.Values.includeWorkloadInIstioMesh) }}
+apiVersion: v1
+kind: Service
+metadata:
+  annotations:
+    prometheus.io/port: "{{ .Values.kubeStateMetrics.service.metricsPort }}"
+    prometheus.io/scheme: {{ template "cpro.prometheus.ksm.scheme" . }}
+{{ toYaml .Values.kubeStateMetrics.service.annotationsForScrape | indent 4 }}
+{{- include "cpro.labelsOrAnnotations" (tuple .Values.kubeStateMetrics.service.annotations .Values.global.annotations) | indent 4}}
+  labels:
+    {{- include "cpro.app.labels.v3" ( dict "root" . "context" .Values.kubeStateMetrics ) | nindent 4 }}
+{{- include "cpro.labelsOrAnnotations" (tuple .Values.kubeStateMetrics.service.labels .Values.global.labels) | indent 4}}
+  name: {{ template "cpro.prometheus.kubeStateMetrics.fullname" . }}-scr
+spec:
+  clusterIP: None
+  ports:
+    - name: tcp-http
+      port: {{ .Values.kubeStateMetrics.service.metricsPort }}
+      protocol: TCP
+      targetPort: tcp-metrics
+      #appProtocol: {{ template "cpro.prometheus.ksm.scheme" }}
+  {{- include "cpro.dualStack.ipFamilyPolicy.config" ( dict "root" . "context" .Values.kubeStateMetrics )  | indent 2 }}
+  {{- include "cpro.dualStack.ipFamilies.config" ( dict "root" . "context" .Values.kubeStateMetrics )| indent 2 }}
+  selector:
+    app: {{ template "cpro.prometheus.name" . }}
+    component: "{{ .Values.kubeStateMetrics.name }}"
+    release: {{ .Release.Name }}
+  type: ClusterIP
+{{- end }}
+{{- end }}

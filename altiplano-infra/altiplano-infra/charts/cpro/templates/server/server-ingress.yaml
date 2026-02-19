@@ -1,0 +1,53 @@
+{{- if and .Values.server.enabled .Values.server.ingress.enabled -}}
+{{- $releaseName := .Release.Name -}}
+{{- $serviceName := include "cpro.prometheus.server.fullname" . }}
+{{- $servicePort := .Values.server.service.servicePort -}}
+{{- $kubeVersion := .Capabilities.KubeVersion.GitVersion -}}
+apiVersion: {{ template "cpro.apiVersion.ingress" . }}
+kind: Ingress
+metadata:
+  annotations:
+{{- include "cpro.labelsOrAnnotations" (tuple .Values.server.ingress.annotations .Values.global.annotations) | indent 4}}
+  labels:
+    {{- include "cpro.app.labels.v3" ( dict "root" . "context" .Values.server ) | nindent 4 }}
+{{- include "cpro.labelsOrAnnotations" (tuple .Values.global.labels) | indent 4}}
+{{- include "cpro.extraLabels" (tuple .Values.server.ingress.extraLabels) | indent 4}}
+  name: {{ template "cpro.prometheus.server.fullname" . }}
+spec:
+  rules:
+  {{- range .Values.server.ingress.hosts }}
+    {{- $url := splitList "/" . }}
+    - host: {{ first $url }}
+      http:
+        paths:
+          - path: /{{ rest $url | join "/" }}
+            {{- if semverCompare "<= 1.19.0-0" $kubeVersion }}
+            backend:
+              {{- if $.Values.ha.enabled }}
+              serviceName: {{ $serviceName }}-ext
+              {{- else }}
+              serviceName: {{ $serviceName }}
+              {{- end }}
+              servicePort: {{ $servicePort }}
+            {{- else }}
+            {{- if eq $.Values.server.ingress.pathType "" }}
+            {{- required "This parameter needs to be provided. Possible Values are Prefix, ImplementationSpecific,Exact" ""}}
+            {{- else }}
+            pathType: {{ $.Values.server.ingress.pathType }}
+            {{- end }}
+            backend:
+              service:
+              {{- if $.Values.ha.enabled }}
+                name: {{ $serviceName }}-ext
+              {{- else }}
+                name: {{ $serviceName }}
+              {{- end }}
+                port:
+                  number: {{ $servicePort }}
+            {{- end }}
+  {{- end -}}
+{{- if .Values.server.ingress.tls }}
+  tls:
+{{ toYaml .Values.server.ingress.tls | indent 4 }}
+  {{- end -}}
+{{- end -}}

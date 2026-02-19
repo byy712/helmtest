@@ -1,0 +1,43 @@
+{{- include "cmdb.init" . -}}
+{{ if and .Values.istio.enabled .Values.istio.serviceEntry.create (eq (include "cmdb.has_maxscale" .) "true") .Values.geo_redundancy.enabled }}
+#
+#  Create mariadb-master ServiceEntry for each remote datacenter site
+#
+{{- $g := . -}}
+{{- range $index, $item := .Values.geo_redundancy.remoteSites }}
+{{ $master := $item.master }}
+{{ $parts := splitList ":" (default ":" $master.remoteService) }}
+{{ $remote_ip := initial $parts | join ":" | trimAll "[]" }}
+{{ $remote_port := last $parts }}
+{{ if $master.remoteService }}
+  ## Validate remote host and port and trigger error as needed
+  {{- $ip := (required "A valid geo_redundancy.remoteSites.master must be 'host:port'" $remote_ip) }}
+  {{- $port := (required "A valid geo_redundancy.remoteSites.master must be 'host:port'" $remote_port) }}
+{{ end }}
+{{ $service_name := $master.serviceName | default (printf "%s-master-%s" (include "cmdb.fullname" $g) $item.name) }}
+---
+kind: ServiceEntry
+apiVersion: networking.istio.io/v1alpha3
+metadata:
+  name: {{ $service_name }}
+  labels:
+    {{- include "cmdb-mariadb.labels" (tuple $g "serviceentry") | nindent 4 }}
+  annotations:
+    {{- include "cmdb-mariadb.annotations" (tuple $g "serviceentry") | nindent 4 }}
+spec:
+  exportTo:
+  - .
+  hosts:
+  - {{ $service_name }}
+  addresses:
+  - {{ $remote_ip }}/32
+  ports:
+  - name: "tcp-mariadb-master"
+    number: {{ $remote_port }}
+    protocol: TCP
+  endpoints:
+  - address: {{ $remote_ip }}
+  location: MESH_EXTERNAL
+  resolution: STATIC
+{{- end }}
+{{- end }}

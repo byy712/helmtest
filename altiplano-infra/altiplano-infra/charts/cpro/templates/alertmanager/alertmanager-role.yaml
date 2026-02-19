@@ -1,0 +1,26 @@
+{{- include "cpro.istio.cproInitIstio" . }}
+{{- if and .Values.rbac.enabled .Values.alertmanager.enabled }}
+{{- if and ($.istio.enabled) (not $.istio.cni.enabled) }}
+apiVersion: {{ template "cpro.apiVersion.roleApiversion" . }}
+kind: Role
+metadata:
+  labels:
+    {{- include "cpro.app.labels.v3" ( dict "root" . "context" .Values.alertmanager ) | nindent 4 }}
+{{- include "cpro.labelsOrAnnotations" (tuple .Values.global.labels) | indent 4}}
+  name: {{ template "cpro.prometheus.alertmanager.role" . }}
+  namespace: "{{ .Release.Namespace }}"
+  annotations:
+{{- include "cpro.labelsOrAnnotations" (tuple .Values.global.annotations) | indent 4}}
+rules:
+  - apiGroups:
+      - {{ template "cpro.prometheus.apiGroupVersionExtensionsorPolicy" . }}
+    {{- if (.Values.rbac.psp.create) }}
+    resourceNames:
+      - {{ template "cpro.prometheus.alertmanager.psp" . }}
+    {{- end }}
+    resources:
+      - podsecuritypolicies
+    verbs:
+      - use
+{{- end }}
+{{- end }}

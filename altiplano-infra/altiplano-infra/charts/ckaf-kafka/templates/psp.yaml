@@ -1,0 +1,3 @@
+{{- if eq (include "ckaf-kafka.PspCreation" .) "true" }}
+{{ include "ckaf-kafka.istio.psp" . }}
+{{- end }}

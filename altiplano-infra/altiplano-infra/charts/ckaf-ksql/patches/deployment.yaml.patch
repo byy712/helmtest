@@ -1,0 +1,255 @@
+--- ckaf-ksql-8.1.0/ckaf-ksql/templates/deployment.yaml	2024-03-28 23:41:09.000000000 +0530
++++ charts/ckaf-ksql/templates/deployment.yaml	2024-04-25 16:16:08.509482720 +0530
+@@ -31,6 +31,7 @@
+   template:
+     metadata:
+       labels:
++        altiplano-role: {{ .Values.accessRoleLabel }}
+ {{- include "csf-common-lib.v1.customLabels" (tuple .Values.ksqlPodLevel.labels .Values.custom.ksqlPodLevel.labels .Values.global.labels) | indent 8 }}
+ {{ include "ckaf-ksql.commonlabels" . | indent 8 }}
+         app: {{ .Chart.Name }}
+@@ -91,6 +92,82 @@
+       topologySpreadConstraints: {{- include "csf-common-lib.v2.topologySpreadConstraints" (tuple . .Values ) | nindent 8 }}
+       {{- end }}
+       initContainers:
++      - name: fnms-init-container
++        image: {{ .Values.global.registry }}/{{ .Values.initContainer.image.name }}:{{ .Values.initContainer.image.tag }}
++        securityContext:
++          runAsNonRoot: true
++          runAsUser: {{ .Values.defaultSecurity.runAsUser }}
++          runAsGroup: {{ .Values.defaultSecurity.runAsUser }}
++        env:
++        - name: keystore_jks_pass
++          valueFrom:
++            secretKeyRef:
++              name: {{ .Values.certificates.secrets.altiplano_keystore_secrets }}
++              key: {{ .Values.certificates.fileNames.altiplano_keystore_password }}
++        - name: keyfile
++          value: /etc/altiplano/certificates/secrets/{{ .Values.certificates.fileNames.kafka_server_key_pem }}
++        - name: keyfilepass
++          value: /etc/altiplano/certificates/secrets/{{ .Values.certificates.fileNames.kafka_server_key_pass }}
++        - name: certfile
++          value: /etc/altiplano/certificates/secrets/{{ .Values.certificates.fileNames.kafka_server_cert_pem }}
++        - name: keystore_jks
++          value: /etc/ksql/ssl/kafka/..data/{{ .Values.certificates.fileNames.kafka_server_keystore_jks }}
++        - name: truststore
++          value: /etc/altiplano/certificates/secrets/{{ .Values.certificates.fileNames.kafka_server_trustchain_cert_pem }}
++        - name: truststore_jks
++          value: /etc/ksql/ssl/kafka/..data/{{ .Values.certificates.fileNames.kafka_server_truststore_jks }}
++        command: [ "/bin/sh", "-c" ]
++        args:
++          - |
++            /opt/init-container/pem-to-keystore.sh $keyfile $keyfilepass $certfile $keystore_jks_pass $keystore_jks $truststore $keystore_jks_pass $truststore_jks
++            cp /etc/ksql/ssl/kafka/..data/{{ .Values.certificates.fileNames.kafka_server_keystore_jks }} /etc/ksql/ssl/kafka/..data/restKeystore
++            cp /etc/ksql/ssl/kafka/..data/{{ .Values.certificates.fileNames.kafka_server_truststore_jks }} /etc/ksql/ssl/kafka/..data/restTruststore
++            cp /etc/altiplano/certificates/storepass/{{ .Values.certificates.fileNames.altiplano_keystore_password }} /etc/ksql/ssl/kafka/..data/.restKeyStoreCred
++            cp /etc/altiplano/certificates/storepass/{{ .Values.certificates.fileNames.altiplano_keystore_password }} /etc/ksql/ssl/kafka/..data/.restKeyCred
++            cp /etc/altiplano/certificates/storepass/{{ .Values.certificates.fileNames.altiplano_keystore_password }} /etc/ksql/ssl/kafka/..data/.restTrustStoreCred
++            cp /etc/ksql/ssl/kafka/..data/restKeystore /etc/ksql/ssl/kafka/restKeystore
++            cp /etc/ksql/ssl/kafka/..data/restTruststore /etc/ksql/ssl/kafka/restTruststore
++            cp /etc/ksql/ssl/kafka/..data/.restKeyStoreCred /etc/ksql/ssl/kafka/.restKeyStoreCred
++            cp /etc/ksql/ssl/kafka/..data/.restKeyCred /etc/ksql/ssl/kafka/.restKeyCred
++            cp /etc/ksql/ssl/kafka/..data/.restTrustStoreCred /etc/ksql/ssl/kafka/.restTrustStoreCred
++
++        volumeMounts:
++          - name: ssl-data
++            mountPath: /etc/ksql/ssl/kafka/..data/
++          - name: altiplano-kafka-certs
++            mountPath: /etc/altiplano/certificates/secrets/
++          - name: altiplano-keystore-password
++            mountPath: /etc/altiplano/certificates/storepass/
++          - name: kafkarestssl
++            mountPath: {{ .Values.KafkaKsql.ssl.kafkarestssl.sslBasePath }}
++            #/etc/ksql/ssl/kafka
++      - name: init-ckaf-ksql-connection-check
++        image: "{{ .Values.global.registry }}/{{ .Values.init.imageRepo }}:{{ .Values.init.imageTag }}"
++        {{- if eq .Values.security.enabled true }}
++        securityContext:
++          runAsNonRoot: true          
++          readOnlyRootFilesystem: {{ .Values.security.readOnlyRootFilesystem }}
++        {{- if ( ne ( toString ( .Values.security.runAsUser )) "auto" ) }}
++          runAsUser: {{ .Values.security.runAsUser }}
++        {{- end }}
++        {{- if ( ne ( toString ( .Values.security.runAsGroup )) "auto" ) }}
++          runAsGroup: {{ .Values.security.runAsGroup }}
++        {{- end }}
++          allowPrivilegeEscalation: false
++        {{- if eq (include "ckaf-ksql.renderSeccompProfile" .) "true" }}
++          seccompProfile:
++            type: {{ .Values.security.seccompProfile.type }}
++        {{- end }}
++          privileged: false
++          capabilities:
++             drop: ["ALL"]
++        {{- end }}
++        command: ["sh","-c","until timeout 3 sh -c '2>/dev/null </dev/tcp/altiplano-kafka-headless/9092'; do echo 'Waiting for Kafka at altiplano-kafka-headless:9092'; sleep 3; done"]
++        resources:
++{{ toYaml .Values.initContainerResources | indent 10 }}
++        env:
++        - name: TZ
++          value: {{ template "ckaf-ksql.timeZoneEnv" . }} 
+       {{- if eq .Values.loadPluginsFromInitContainer true }}
+       - name: ckaf-ksql-plugins-loader
+         image: "{{  coalesce .Values.global.registry4 .Values.global.registry }}/{{.Values.pluginsInitContainerImageName }}:{{ .Values.pluginsInitContainerImageTag }}"
+@@ -134,6 +211,9 @@
+         {{- if ( ne ( toString ( .Values.security.runAsUser )) "auto" ) }}
+           runAsUser: {{ .Values.security.runAsUser }}
+         {{- end }}
++        {{- if ( ne ( toString ( .Values.security.runAsGroup )) "auto" ) }}
++          runAsGroup: {{ .Values.security.runAsGroup }}
++        {{- end }}
+           allowPrivilegeEscalation: false
+         {{- if eq (include "ckaf-ksql.renderSeccompProfile" .) "true" }}
+           seccompProfile:
+@@ -147,6 +227,12 @@
+         resources:
+ {{- include "ckaf-ksql.getResources" (tuple . .Values.initContainerResources "200m") | indent 10 }}
+         volumeMounts:
++        - name: ssl-data
++          mountPath: /etc/ksql/ssl/kafka/..data/
++        - name: altiplano-kafka-certs
++          mountPath: /etc/altiplano/certificates/secrets/
++        - name: altiplano-keystore-password
++          mountPath: /etc/altiplano/certificates/storepass/
+         {{- if or (eq (include "ckaf-ksql.tls.enabled" (tuple $kafka_wl)) "true") (and (eq (include "ckaf-ksql.tls.enabled" (tuple $rest_wl)) "true")  (not .Values.ksql.headless)) }}
+         - name: kafkarestssl
+           mountPath: {{ (include "ckaf-ksql.tls.basePath" (tuple $kafkarest_wl1 $kafkarest_wl2)) }}
+@@ -182,6 +268,9 @@
+           {{- if ( ne ( toString ( .Values.security.runAsUser )) "auto" ) }}
+             runAsUser: {{ .Values.security.runAsUser }}
+           {{- end }}
++          {{- if ( ne ( toString ( .Values.security.runAsGroup )) "auto" ) }}
++            runAsGroup: {{ .Values.security.runAsGroup }}
++          {{- end }}
+             allowPrivilegeEscalation: false
+           {{- if eq (include "ckaf-ksql.renderSeccompProfile" .) "true" }}
+             seccompProfile:
+@@ -212,6 +301,9 @@
+           {{- if ( ne ( toString ( .Values.security.runAsUser )) "auto" ) }}
+             runAsUser: {{ .Values.security.runAsUser }}
+           {{- end }}
++          {{- if ( ne ( toString ( .Values.security.runAsGroup )) "auto" ) }}
++            runAsGroup: {{ .Values.security.runAsGroup }}
++          {{- end }}
+             allowPrivilegeEscalation: false
+           {{- if eq (include "ckaf-ksql.renderSeccompProfile" .) "true" }}
+             seccompProfile:
+@@ -385,9 +477,11 @@
+           {{- end }}
+           {{- if or (eq (include "ckaf-ksql.tls.enabled" (tuple $kafka_wl)) "true") (and (eq (include "ckaf-ksql.tls.enabled" (tuple $rest_wl)) "true")  (not .Values.ksql.headless)) }}
+           - name: KSQL_SSL_TRUSTSTORE_FILENAME
+-            value: {{ (include "ckaf-ksql.tls.basePath" (tuple $kafkarest_wl1 $kafkarest_wl2)) }}/kafkaClientTruststore
++            value: /etc/kafka/shared/restTruststore
+           - name: KSQL_SSL_KEYSTORE_FILENAME
+-            value: {{ (include "ckaf-ksql.tls.basePath" (tuple $kafkarest_wl1 $kafkarest_wl2)) }}/kafkaClientKeystore
++            value: /etc/kafka/shared/restKeystore
++          - name: KSQL_SSL_ENDPOINT_IDENTIFICATION_ALGORITHM
++            value: ""
+           {{- end }}
+           {{- if eq $schema_wl2.basicAuth.saslInheritAuthentication true }}
+           - name: SCHEMA_BASIC_AUTH_SASL_INHERIT
+@@ -459,7 +553,7 @@
+               command:
+                 - bash
+                 - -c
+-                - ps aux|grep "[k]sql"
++                - 2>/dev/null </dev/tcp/altiplano-kafka-headless/9092 && ps aux|grep "[k]sql"
+             initialDelaySeconds: {{ .Values.livenessProbe.initialDelaySeconds }}
+             periodSeconds: {{ .Values.livenessProbe.periodSeconds }}
+           readinessProbe:
+@@ -467,7 +561,7 @@
+               command:
+                 - bash
+                 - -c
+-                - ps aux|grep "[k]sql"
++                - 2>/dev/null </dev/tcp/altiplano-kafka-headless/9092 && ps aux|grep "[k]sql"
+             initialDelaySeconds: {{ .Values.readinessProbe.initialDelaySeconds }}
+             periodSeconds: {{ .Values.readinessProbe.periodSeconds }}
+           {{- else }}
+@@ -476,7 +570,7 @@
+               command:
+                 - bash
+                 - -c
+-                - ss -lntu | grep {{ .Values.servicePort }} | grep -q LISTEN
++                - 2>/dev/null </dev/tcp/altiplano-kafka-headless/9092 && ss -lntu | grep {{ .Values.servicePort }} | grep -q LISTEN
+             initialDelaySeconds: {{ .Values.livenessProbe.initialDelaySeconds }}
+             periodSeconds: {{ .Values.livenessProbe.periodSeconds }}
+           readinessProbe:
+@@ -484,11 +578,19 @@
+               command:
+                 - bash
+                 - -c
+-                - ss -lntu | grep {{ .Values.servicePort }} | grep -q LISTEN
++                - 2>/dev/null </dev/tcp/altiplano-kafka-headless/9092 && ss -lntu | grep {{ .Values.servicePort }} | grep -q LISTEN
+             initialDelaySeconds: {{ .Values.readinessProbe.initialDelaySeconds }}
+             periodSeconds: {{ .Values.readinessProbe.periodSeconds }}
+           {{- end }} 
+       volumes:
++      - name: ssl-data
++        emptyDir: {}
++      - name: altiplano-kafka-certs
++        secret:
++          secretName: altiplano-kafka-certificate-secrets
++      - name: altiplano-keystore-password
++        secret:
++          secretName: {{ .Values.certificates.secrets.altiplano_keystore_secrets }}
+       {{- if .Values.JmxExporter.enabled }}
+       - name: ksqlserver-jmx-config-volume
+         configMap:
+@@ -508,45 +610,23 @@
+       {{- if or (eq (include "ckaf-ksql.tls.enabled" (tuple $kafka_wl)) "true") (and (eq (include "ckaf-ksql.tls.enabled" (tuple $rest_wl)) "true")  (not .Values.ksql.headless)) }}
+       {{ $workload := coalesce $kafkarest_wl1 $kafkarest_wl2 }}
+       - name: kafkarestssl
+-        projected:
+-          sources:
+-            - secret:
+-                name: {{ include "ckaf-ksql.ssl.secretName" (tuple . $workload .Values.KafkaKsql ) }}
+-                items:
+-                  - key: {{ include "ckaf-ksql.ssl.keystore" (tuple . $workload .Values.KafkaKsql.certificate ) }}
+-                    path: "restKeystore"
+-                  - key:  {{ include "ckaf-ksql.ssl.trustore" (tuple . $workload .Values.KafkaKsql.certificate ) }}
+-                    path: "restTruststore"
+-            - secret:
+-                name: {{ include "ckaf-ksql.ssl.store.secretName" (tuple . $workload .Values.KafkaKsql.certificate ) }}
+-                items:
+-                  - key: {{ include "ckaf-ksql.ssl.keystore.password" (tuple . $workload .Values.KafkaKsql.certificate ) }}
+-                    path: ".restKeyStoreCred"
+-                  - key: {{ include "ckaf-ksql.ssl.truststore.password" (tuple . $workload .Values.KafkaKsql.certificate )}}
+-                    path: ".restTrustStoreCred"
+-                  - key: {{ include "ckaf-ksql.ssl.key.password" (tuple . $workload .Values.KafkaKsql.certificate )}}
+-                    path: ".restKeyCred"
++        emptyDir: {}
+       {{- end }}
+       {{- if eq (include "ckaf-ksql.tls.enabled" (tuple $schema_wl2)) "true" }}
+       {{ $workload := coalesce $schema_wl1 $schema_wl2 }}
+       - name: sslschema
+-        projected:
+-          sources:        
+-            - secret:
+-                name: {{ include "ckaf-ksql.ssl.secretName" (tuple . $workload .Values.KafkaKsql ) }}
+-                items:
+-                  - key: {{ include "ckaf-ksql.ssl.keystore" (tuple . $workload .Values.KafkaKsql.certificate ) }}
+-                    path: "schemaClientKeystore"
+-                  - key: {{ include "ckaf-ksql.ssl.trustore" (tuple . $workload .Values.KafkaKsql.certificate ) }}
+-                    path: "schemaClientTruststore"
+-            - secret:
+-                name: {{ include "ckaf-ksql.ssl.store.secretName" (tuple . $workload .Values.KafkaKsql.certificate ) }}
++        secret:
++          secretName: {{ .Values.KafkaKsql.ssl.schema.sslSecretName }}
+                 items:
+-                  - key: {{ include "ckaf-ksql.ssl.keystore.password" (tuple . $workload .Values.KafkaKsql.certificate ) }}
++          - key: {{ .Values.KafkaKsql.ssl.schema.sslKeyStoreLocationKey }}
++            path: schemaClientKeystore
++          - key: {{ .Values.KafkaKsql.ssl.schema.sslTrustStoreLocationKey }}
++            path: schemaClientTruststore
++          - key: {{ .Values.KafkaKsql.ssl.schema.sslKeyStorePassKey }}
+                     path: ".schemaClientKeyStoreCred"
+-                  - key: {{ include "ckaf-ksql.ssl.truststore.password" (tuple . $workload .Values.KafkaKsql.certificate )}}
++          - key: {{ .Values.KafkaKsql.ssl.schema.sslTrustStorePassKey }}
+                     path: ".schemaClientTrustStoreCred"
+-                  - key: {{ include "ckaf-ksql.ssl.key.password" (tuple . $workload .Values.KafkaKsql.certificate )}}
++          - key: {{ .Values.KafkaKsql.ssl.schema.sslKeyPassKey }}
+                     path: ".schemaClientKeyCred"
+       {{- end }}
+       {{- if (and (eq $kafka_wl.sasl.enabled true)  (eq $kafka_wl.sasl.mechanism "GSSAPI")) }}
+

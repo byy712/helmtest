@@ -1,0 +1,345 @@
+{{- include "cbur.unifiedLoggingMerge" (tuple . "cburm") }}
+{{- include "cbur.unifiedLoggingMerge" (tuple . "celery") }}
+{{- include "cbur.unifiedLoggingMerge" (tuple . "k8swatcher") }}
+{{- include "cbur.unifiedLoggingMerge" (tuple . "avamar") }}
+{{- include "cbur.unifiedLogging" (tuple . "cburm") }}
+{{- include "cbur.unifiedLogging" (tuple . "celery") }}
+{{- include "cbur.unifiedLogging" (tuple . "k8swatcher") }}
+{{- include "cbur.unifiedLogging" (tuple . "avamar") }}
+{{- $workloads := list }}
+{{- if .Values.cburm.unifiedLogging.syslog.enabled }}
+{{- $workloads = append $workloads "cburm" }}
+{{- end }}
+{{- if and .Values.direct_redis.enabled .Values.celery.unifiedLogging.syslog.enabled }}
+{{- $workloads = append $workloads "celery" }}
+{{- end }}
+{{- if and .Values.k8swatcher.enabled .Values.k8swatcher.unifiedLogging.syslog.enabled }}
+{{- $workloads = append $workloads "k8swatcher" }}
+{{- end }}
+{{- if and .Values.avamar.enabled .Values.avamar.unifiedLogging.syslog.enabled }}
+{{- $workloads = append $workloads "avamar" }}
+{{- end }}
+{{- range $workload := $workloads }}
+{{- if or (and (index $.Values $workload).unifiedLogging.syslog (index $.Values $workload).unifiedLogging.syslog.enabled) (and $.Values.global.unifiedLogging.syslog $.Values.global.unifiedLogging.syslog.enabled) }}
+{{- $dot :=  index $.Values $workload }}
+{{- $logLevel := $dot.unifiedLogging.logLevel | default $.Values.global.unifiedLogging.logLevel }}
+{{- $syslogLevel := include "cbur.syslog.logLevel" $logLevel }}
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ template "cbur.fullname" $ }}-syslog-confmap-{{ $workload }}
+  labels:
+    {{- include "cbur.proxy.commonLabels" (tuple $) | indent 4 }}
+    {{- include "cbur.customLabels" (tuple $.Values.global.labels) | indent 4 }}
+  annotations:
+    {{- include "cbur.customAnnotations" (tuple $.Values.global.annotations) | indent 4 }}
+data:
+  output.conf: |+
+    {{- if not $.Values.unifiedLogging.useLegacyFormat }}
+    template(name="extractAvagent" type="string" string="%msg:F,32:4:uppercase%")
+
+    set $.file!sourceproc = field(field($!metadata!filename, 47, 4), 46, 1);
+
+    # Check if log is in JSON format
+    action(type="mmjsonparse" cookie="" container="$.logging")
+    # If parse is success, all fields are taken from the log message, otherwise set fields from the environment
+    if $parsesuccess == "FAIL" then {
+      set $.logging!version = "1.0";
+      set $.logging!type = "log";
+      if $.file!sourceproc == "avagent" then {
+        set $.logging!level = exec_template("extractAvagent");
+        if $.logging!level != "INFO" and $.logging!level != "ERROR" and $.logging!level != "WARNING" then {
+          set $.logging!level = "INFO";
+        }
+      } else {
+        set $.logging!level = "INFO";
+      }
+      set $.logging!log!message = $rawmsg;
+      set $.logging!system = getenv('SYSTEM');
+      set $.logging!systemid = getenv('SYSTEMID');
+      set $.logging!timezone = getenv('TIMEZONE');
+      set $.logging!host = getenv('POD_NAME') & "." & getenv('CBUR_NAMESPACE');
+    }
+    {{- if or $.Values.global.unifiedLogging.extension $dot.unifiedLogging.extension }}
+    set $.logging!extensions = getenv('CLOG_EXTENSION');
+    {{- end }}
+    {{- else }}
+    set $.logging!level = "INFO";
+    {{- end }}
+    if not exists($.logging!version) then {
+      set $.logging!version = "1.0";
+    }
+    if exists($.logging!facility) then {
+      set $.logging!facilityid = $.logging!facility;
+    } else {
+      set $.logging!facilityid = getenv('FACILITY_ID');
+    }
+    if exists($.logging!alarm) then {
+      set $.logging!output = $.logging!alarm;
+      set $.logging!output_name = "alarm";
+    } else {
+      set $.logging!output = $.logging!log;
+      set $.logging!output_name = "log";
+    }
+    {{- if $dot.unifiedLogging.syslog.rfc.enabled }}
+    set $.rfc!appname = getenv('APPNAME');
+    set $.rfc!procid = getenv('PROCID');
+    set $.rfc!msgid = getenv('MSGID');
+    set $.rfc!version = getenv('VERSION');
+    set $.rfc!hostname = getenv('POD_NAME');
+    {{- end }}
+    if $.logging!level == "DEBUG" then {
+      set $.logging!loglevelNumber = 7;
+    } else if $.logging!level == "INFO" then {
+      set $.logging!loglevelNumber = 6;
+    } else if ($.logging!level == "WARNING") or ($.logging!level == "WARN") then {
+      set $.logging!loglevelNumber = 4;
+    } else if ($.logging!level == "ERROR") or ($.logging!level == "ERR") then {
+      set $.logging!loglevelNumber = 3;
+    } else if ($.logging!level == "CRITICAL") or ($.logging!level == "CRIT") then {
+      set $.logging!loglevelNumber = 2;
+    } else if $.logging!level == "ALERT" then {
+      set $.logging!loglevelNumber = 1;
+    } else {
+      set $.logging!loglevelNumber = 6;
+    }
+    set $.logging!pri = $.logging!loglevelNumber + $.logging!facilityid * 8;
+
+    {{- if $dot.unifiedLogging.syslog.rfc.enabled }}
+      {{- if not $.Values.unifiedLogging.useLegacyFormat }}
+    template(name="UnifiedLoggingFormatSyslog" type="list") {
+        constant(value="<")
+        property(name=".logging!pri")
+        constant(value=">")
+        property(name=".rfc!version")
+        constant(value=" ")
+        property(name="timegenerated" dateformat="rfc3339" position.to="23")
+        constant(value="Z")
+        constant(value=" ")
+        property(name=".rfc!hostname")
+        constant(value=" ")
+        property(name=".rfc!appname")
+        constant(value=" ")
+        property(name=".rfc!procid")
+        constant(value=" ")
+        property(name=".rfc!msgid")
+        constant(value=" ")
+        constant(value="-")
+        constant(value=" ")
+        property(name="$bom")
+        constant(value="{")
+        constant(value="\"version\": \"")
+        property(name=".logging!version")
+        constant(value="\", \"type\": \"")
+        property(name=".logging!type")
+        constant(value="\", \"facility\": \"")
+        property(name=".logging!facilityid")
+        constant(value="\", \"host\": \"")
+        property(name=".logging!host")
+        constant(value="\", \"system\": \"")
+        property(name=".logging!system")
+        constant(value="\", \"systemid\": \"")
+        property(name=".logging!systemid")
+        constant(value="\", \"process\": \"")
+        property(name=".file!sourceproc")
+        constant(value="\", \"timezone\": \"")
+        property(name=".logging!timezone")
+        {{- if or $.Values.global.unifiedLogging.extension $dot.unifiedLogging.extension }}
+        constant(value="\", \"extension\": ")
+        property(name=".logging!extensions")
+        {{- else }}
+        constant(value="\"")
+        {{- end }}
+        constant(value=", \"")
+        property(name=".logging!output_name")
+        constant(value="\": ")
+        property(name=".logging!output" droplastlf="on")
+        constant(value=", \"level\": \"")
+        property(name=".logging!level" caseconversion="upper")
+        constant(value="\", \"time\": \"")
+        property(name="timegenerated" dateformat="rfc3339" position.to="23")
+        constant(value="Z\"}")
+    }
+      {{- else }}
+    template(name="ForwardFormatZTSSyslog" type="list") {
+        constant(value="<")
+        property(name=".logging!pri")
+        constant(value=">")
+        property(name=".rfc!version")
+        constant(value=" ")
+        property(name="timegenerated" dateformat="rfc3339" position.to="23")
+        constant(value="Z")
+        constant(value=" ")
+        property(name=".rfc!hostname")
+        constant(value=" ")
+        property(name=".rfc!appname")
+        constant(value=" ")
+        property(name=".rfc!procid")
+        constant(value=" ")
+        property(name=".rfc!msgid")
+        constant(value=" ")
+        constant(value="-")
+        constant(value=" ")
+        property(name="$bom")
+        property(name="msg" droplastlf="on")
+        constant(value="\n")
+    }
+      {{- end }}
+    {{- end }}
+    {{- if not $.Values.unifiedLogging.useLegacyFormat }}
+    template(name="UnifiedLoggingFormat" type="list") {
+        constant(value="<")
+        property(name=".logging!pri")
+        constant(value=">")
+        constant(value="{")
+        constant(value="\"version\": \"")
+        property(name=".logging!version")
+        constant(value="\", \"type\": \"")
+        property(name=".logging!type")
+        constant(value="\", \"facility\": \"")
+        property(name=".logging!facilityid")
+        constant(value="\", \"host\": \"")
+        property(name=".logging!host")
+        constant(value="\", \"system\": \"")
+        property(name=".logging!system")
+        constant(value="\", \"systemid\": \"")
+        property(name=".logging!systemid")
+        constant(value="\", \"process\": \"")
+        property(name=".file!sourceproc")
+        constant(value="\", \"timezone\": \"")
+        property(name=".logging!timezone")
+        {{- if or $.Values.global.unifiedLogging.extension $dot.unifiedLogging.extension }}
+        constant(value="\", \"extension\": ")
+        property(name=".logging!extensions")
+        {{- else }}
+        constant(value="\"")
+        {{- end }}
+        constant(value=", \"")
+        property(name=".logging!output_name")
+        constant(value="\": ")
+        property(name=".logging!output" droplastlf="on")
+        constant(value=", \"level\": \"")
+        property(name=".logging!level" caseconversion="upper")
+        constant(value="\", \"time\": \"")
+        property(name="timegenerated" dateformat="rfc3339" position.to="23")
+        constant(value="Z\"}")
+    }
+      {{- if $.Values.unifiedLogging.syslog.console.enabled }}
+    template(name="UnifiedLoggingFormatLocal" type="list") {
+        constant(value="{")
+        constant(value="\"version\": \"")
+        property(name=".logging!version")
+        constant(value="\", \"type\": \"")
+        property(name=".logging!type")
+        constant(value="\", \"facility\": \"")
+        property(name=".logging!facilityid")
+        constant(value="\", \"host\": \"")
+        property(name=".logging!host")
+        constant(value="\", \"system\": \"")
+        property(name=".logging!system")
+        constant(value="\", \"systemid\": \"")
+        property(name=".logging!systemid")
+        constant(value="\", \"process\": \"")
+        property(name=".file!sourceproc")
+        constant(value="\", \"timezone\": \"")
+        property(name=".logging!timezone")
+        {{- if or $.Values.global.unifiedLogging.extension $dot.unifiedLogging.extension }}
+        constant(value="\", \"extension\": ")
+        property(name=".logging!extensions")
+        {{- else }}
+        constant(value="\"")
+        {{- end }}
+        constant(value=", \"")
+        property(name=".logging!output_name")
+        constant(value="\": ")
+        property(name=".logging!output" droplastlf="on")
+        constant(value=", \"level\": \"")
+        property(name=".logging!level" caseconversion="upper")
+        constant(value="\", \"time\": \"")
+        property(name="timegenerated" dateformat="rfc3339" position.to="23")
+        constant(value="Z\"}")
+    }
+      {{- end }}
+    {{- else }}
+    template(name="ForwardFormatZTS" type="list") {
+        constant(value="<")
+        property(name=".logging!pri")
+        constant(value=">")
+        property(name="msg" droplastlf="on")
+    }
+      {{- if $.Values.unifiedLogging.syslog.console.enabled }}
+    template(name="ForwardFormatZTSLocal" type="list") {
+        property(name="msg" droplastlf="on")
+    }
+      {{- end }}
+    {{- end }}
+
+    {{- if ne (lower $logLevel) "off" }}
+    if ($.logging!loglevelNumber <= {{ $syslogLevel }}) then {
+        action(type="omfwd"
+           {{- if $dot.unifiedLogging.syslog.rfc.enabled }}
+             {{- if not $.Values.unifiedLogging.useLegacyFormat }}
+           template="UnifiedLoggingFormatSyslog"
+             {{- else }}
+           template="ForwardFormatZTSSyslog"
+             {{- end }}
+           {{- else }}
+             {{- if not $.Values.unifiedLogging.useLegacyFormat }}
+           template="UnifiedLoggingFormat"
+             {{- else }}
+           template="ForwardFormatZTS"
+             {{- end }}
+           {{- end }}
+           target="{{ $dot.unifiedLogging.syslog.host}}"
+           port="{{ default "514" $dot.unifiedLogging.syslog.port }}"
+           protocol="{{ default "tcp" $dot.unifiedLogging.syslog.protocol }}"
+           {{- if or ( and ( and $dot.unifiedLogging.syslog.keyStore.secretName $dot.unifiedLogging.syslog.keyStore.key ) ( and $dot.unifiedLogging.syslog.trustStore.secretName $dot.unifiedLogging.syslog.trustStore.key ) ) $dot.unifiedLogging.syslog.tls.secretRef.name }}
+           StreamDriver="gtls"
+           {{- end }}
+{{- if $.Values.unifiedLogging.syslog.omfwdoption }}
+           {{- range $key, $value := $.Values.unifiedLogging.syslog.omfwdoption }}
+{{- if $value }}
+           {{ $key }}={{ $value | quote }}
+{{- end }}
+           {{- end }}
+{{- end }}
+        )
+    }
+    {{- end }}
+    {{- if $.Values.unifiedLogging.syslog.console.enabled }}
+    action(type="omstdout"
+           {{- if not $.Values.unifiedLogging.useLegacyFormat }}
+           template="UnifiedLoggingFormatLocal"
+           {{- else }}
+           template="ForwardFormatZTSLocal"
+           {{- end }}
+        )
+    {{- end }}
+    {{- if or ( and ( and $dot.unifiedLogging.syslog.keyStore.secretName $dot.unifiedLogging.syslog.keyStore.key ) ( and $dot.unifiedLogging.syslog.trustStore.secretName $dot.unifiedLogging.syslog.trustStore.key ) ) $dot.unifiedLogging.syslog.tls.secretRef.name }}
+    global(
+        {{- if and $dot.unifiedLogging.syslog.keyStore.secretName $dot.unifiedLogging.syslog.keyStore.key }}
+        DefaultNetstreamDriverCertFile="/tmp/keystore/tls.crt"
+        DefaultNetstreamDriverKeyFile="/tmp/keystore/tls.crt"
+        {{- else if $dot.unifiedLogging.syslog.tls.secretRef.name }}
+        DefaultNetstreamDriverCertFile="/cert/tls.crt"
+        DefaultNetstreamDriverKeyFile="/cert/tls.key"
+        {{- end }}
+        {{- if and $dot.unifiedLogging.syslog.trustStore.secretName $dot.unifiedLogging.syslog.trustStore.key }}
+        DefaultNetstreamDriverCAFile="/tmp/truststore/ca.crt"
+        {{- else if $dot.unifiedLogging.syslog.tls.secretRef.name }}
+        DefaultNetstreamDriverCAFile="/cert/ca.crt"
+        {{- end }}
+        )
+    {{- end }}
+  {{- if and (eq $workload "avamar") $.Values.avamar.enabled }}
+  input.conf: |+
+    input(type="imfile" File="/tmp/container-log4avamar/avagent.log"
+    Tag="process1"
+    PersistStateInterval="5"
+    Severity="info"
+    addMetadata="on"
+    Facility=`echo $FACILITY`)
+  {{- end }}
+{{- end}}
+{{- end }}

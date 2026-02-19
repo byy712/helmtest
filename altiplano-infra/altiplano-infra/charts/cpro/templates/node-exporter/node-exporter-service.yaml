@@ -1,0 +1,75 @@
+{{- if .Values.nodeExporter.enabled -}}
+apiVersion: v1
+kind: Service
+metadata:
+  annotations:
+    prometheus.io/scheme: {{ template "cpro.prometheus.nodeExporter.scheme" . }}
+{{- include "cpro.labelsOrAnnotations" (tuple .Values.nodeExporter.service.annotations .Values.global.annotations) | indent 4}}
+  labels:
+    {{- include "cpro.app.labels.v3" ( dict "root" . "context" .Values.nodeExporter ) | nindent 4 }}
+{{- include "cpro.labelsOrAnnotations" (tuple .Values.nodeExporter.service.labels .Values.global.labels) | indent 4}}
+  name: {{ template "cpro.prometheus.nodeExporter.fullname" . }}
+spec:
+{{- if .Values.nodeExporter.service.clusterIP }}
+  clusterIP: {{ .Values.nodeExporter.service.clusterIP | quote }}
+{{- end }}
+{{- if .Values.nodeExporter.service.externalIPs }}
+  externalIPs:
+{{ toYaml .Values.nodeExporter.service.externalIPs | indent 4 }}
+{{- end }}
+{{- if .Values.nodeExporter.service.loadBalancerIP }}
+  loadBalancerIP: {{ .Values.nodeExporter.service.loadBalancerIP }}
+{{- end }}
+{{- if .Values.nodeExporter.service.loadBalancerSourceRanges }}
+  loadBalancerSourceRanges:
+  {{- range $cidr := .Values.nodeExporter.service.loadBalancerSourceRanges }}
+    - {{ $cidr }}
+  {{- end }}
+{{- end }}
+  ports:
+    - name: tcp-metrics
+      port: {{ .Values.nodeExporter.service.servicePort }}
+      protocol: TCP
+      targetPort: tcp-metrics
+      #appProtocol: {{ template "cpro.prometheus.nodeExporter.scheme" . }}
+  {{- include "cpro.dualStack.ipFamilyPolicy.config" ( dict "root" . "context" .Values.nodeExporter )  | indent 2 }}
+  {{- include "cpro.dualStack.ipFamilies.config" ( dict "root" . "context" .Values.nodeExporter )| indent 2 }}
+  selector:
+    app: {{ template "cpro.prometheus.name" . }}
+    component: "{{ .Values.nodeExporter.name }}"
+    release: {{ .Release.Name }}
+  type: "{{ .Values.nodeExporter.service.type }}"
+{{- end }}
+
+---
+
+{{- if .Values.nodeExporter.enabled -}}
+{{- if or ($.istio.enabled) (.Values.includeWorkloadInIstioMesh) }}
+apiVersion: v1
+kind: Service
+metadata:
+  annotations:
+    prometheus.io/scheme: {{ template "cpro.prometheus.nodeExporter.scheme" . }}
+{{- include "cpro.labelsOrAnnotations" (tuple .Values.nodeExporter.service.annotations .Values.global.annotations) | indent 4}}
+  labels:
+    {{- include "cpro.app.labels.v3" ( dict "root" . "context" .Values.nodeExporter ) | nindent 4 }}
+{{- include "cpro.labelsOrAnnotations" (tuple .Values.nodeExporter.service.labels .Values.global.labels) | indent 4}}
+  name: {{ template "cpro.prometheus.nodeExporter.fullnameHeadless" . }}
+spec:
+  clusterIP: None
+  ports:
+    - name: tcp-http
+      port: {{ .Values.nodeExporter.service.podContainerPort }}
+      protocol: TCP
+      targetPort: tcp-metrics
+      #appProtocol: {{ template "cpro.prometheus.nodeExporter.scheme" . }}
+  {{- include "cpro.dualStack.ipFamilyPolicy.config" ( dict "root" . "context" .Values.nodeExporter )  | indent 2 }}
+  {{- include "cpro.dualStack.ipFamilies.config" ( dict "root" . "context" .Values.nodeExporter )| indent 2 }}
+  selector:
+    app: {{ template "cpro.prometheus.name" . }}
+    component: "{{ .Values.nodeExporter.name }}"
+    release: {{ .Release.Name }}
+  type: ClusterIP
+{{- end }}
+{{- end }}
+

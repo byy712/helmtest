@@ -1,0 +1,12 @@
+apiVersion: v2
+appVersion: 2.11.0
+description: Flexible and powerful open source, distributed real-time search and analytics
+  engine.
+maintainers:
+- email: CSF-BELK@groups.nokia.com
+  name: BSSC Team
+name: bssc-indexsearch
+sources:
+- https://www.opensearch.org/downloads.html
+- https://github.com/opensearch-project/OpenSearch
+version: 13.0.1

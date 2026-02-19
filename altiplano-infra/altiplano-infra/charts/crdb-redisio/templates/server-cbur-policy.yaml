@@ -1,0 +1,156 @@
+{{- include "crdb-redisio.init" . -}}
+{{- if .Values.cbur.enabled }}
+{{- $api := .Values.cbur.apiVersion -}}
+{{- $brPolicyApi := .Values.cbur.brPolicy.apiVersion | default $api -}}
+{{- if or (.Capabilities.APIVersions.Has (printf "%s/BrPolicy" $brPolicyApi)) (.Values._forceBrPolicy) }}
+---
+apiVersion: {{ $brPolicyApi | quote }}
+kind: BrPolicy
+metadata:
+  name: {{ include "csf-common-lib.v3.resourceName" (tuple . "brpolicy" .Values.server.nameSuffix) }}
+  labels:
+    {{- include "crdb-redisio.labels" (tuple . "cbur" "brpolicy") | nindent 4 }}
+  annotations:
+    {{- include "crdb-redisio.annotations" (tuple . "cbur" "brpolicy") | nindent 4 }}
+spec:
+  selector:
+    matchLabels:
+      app: {{ template "crdb-redisio.fullname" . }}
+      release: {{ .Release.Name | quote }}
+      csf-subcomponent: redisio
+      type: server
+  volumes:
+  - datadir
+  k8sobjects:
+{{- if not .Values.server.dataOnlyBackupRestore }}
+  - object-type: Secrets
+    match-criteria: name
+    match-string: {{ include "csf-common-lib.v3.resourceName" (tuple . "secret" "redis-secrets") }}
+{{- $top := . -}}
+{{- range $username, $def := .Values.acl -}}
+{{- if hasKey $def "enabled" | ternary $def.enabled true -}}
+{{- if empty (include "crdb-redisio.usercreds.secretexternal" (tuple $top $username)) }}
+  - object-type: Secrets
+    match-criteria: name
+    match-string: {{ include "crdb-redisio.usercreds.secretname" (tuple $top $username) }}
+{{- end -}}
+{{- end -}}
+{{- end }}
+{{- end -}}
+{{- if and .redis_cluster (not .Values.server.persistence.enabled) }}
+  - object-type: ConfigMap
+    match-criteria: name
+    match-string: {{ include "csf-common-lib.v3.resourceName" (tuple . "configmap" "server-cluster-nodes-conf") }}
+{{- end }}
+  k8sType: statefulset
+  # 1 - backup any one Pod and restore it to all Pods
+  # 2 - backup all Pods and restore them one by one based on index
+  # (for Cluster, must backup each pod independently)
+  brOption: {{ .redis_cluster | ternary 2 1 }}
+  hooks:
+  - name: {{ include "csf-common-lib.v1.containerName" (tuple . "server") }}
+    commands:
+      preBackupCmd: ["sh", "-c", "redisio-manage --pre-backup"]
+      postBackupCmd: ["sh", "-c", "redisio-manage --post-backup"]
+      # Moved to an admin-based hook job
+      #preRestoreCmd: ["sh", "-c", "redisio-manage --pre-restore"]
+      #postRestoreCmd: ["sh", "-c", "redisio-manage --post-restore"]
+      {{- if .redis_cluster }}
+      postRestoreCmd: ["sh", "-c", "redisio-manage --post-restore"]
+      preBackupCmdOnAll: true
+      postBackupCmdOnAll: true
+      postRestoreCmdOnAll: true
+      {{- end }}
+  # Additional spec options passed-thru from Values
+  {{- omit .Values.cbur.brPolicy "selector" "volumes" "k8sobjects" "k8sType" "brOption" "hooks" "apiVersion" | toYaml | nindent 2 }}
+{{- end }}
+
+{{- if and (or (.Capabilities.APIVersions.Has (printf "%s/BrHook" $api)) .Values._forceBrHook) (not .Values.cbur.legacyHooks) }}
+{{- $g := . -}}
+{{- range tuple "pre-restore" "post-restore" "pre-backup" "post-backup" }}
+{{- $job_type := . -}}
+{{- $job_type_camel := $job_type | replace "-" "_" | camelcase -}}
+{{- $prepost := $job_type | splitList "-" | first -}}
+{{- $br := $job_type | splitList "-" | last -}}
+{{- $jValues := index $g.Values (printf "%sJob" $job_type_camel) -}}
+{{- $job_name := include "csf-common-lib.v3.resourceName" (tuple $g "job" (default $job_type $jValues.name)) }}
+---
+apiVersion: {{ $api | quote }}
+kind: BrHook
+metadata:
+  name: {{ $job_name }}
+  labels:
+    {{- include "crdb-redisio.labels" (tuple $g "cbur" "brhook") | nindent 4 }}
+  annotations:
+    {{- include "crdb-redisio.annotations" (tuple $g "cbur" "brhook") | nindent 4 }}
+spec:
+  properties:
+    targetType: {{ $g.Values.cbur.brhookType | default "brpolicy" }}
+    targetName: {{ $g.Values.cbur.brhookTargetName | default (include "csf-common-lib.v3.resourceName" (tuple $g "brpolicy" $g.Values.server.nameSuffix)) }}
+    hookPoint: {{ $prepost }}{{ $br }}
+    weight: {{ $g.Values.cbur.brhookWeight | default 0 }}
+    enable: {{ $g.Values.cbur.brhookEnable | default true }}
+    timeout: {{ $g.Values.cbur.brhookTimeout | default 600 }}
+    deletePolicy: {{ $g.Values.hooks.deletePolicy | nospace | quote }}
+  template:
+    spec:
+      template:
+        metadata:
+          labels:
+            {{- include "crdb-redisio.labels" (tuple $g "cbur" "pod") | nindent 12 }}
+          annotations:
+            {{- include "crdb-redisio.annotations" (tuple $g "cbur" "pod") | nindent 12 }}
+            {{- include "crdb-redisio.istio-annotation" $g | nindent 12 }}
+        spec:
+          restartPolicy: Never
+          terminationGracePeriodSeconds: 30
+          {{- include "crdb-redisio.get_image_pull_secrets" (tuple $g "admin") | nindent 10 }}
+          {{- include "crdb-redisio.get_security_context" (tuple $g "pod" "admin") | nindent 10 }}
+          {{- include "crdb-redisio.sa" (tuple $g) | nindent 10 }}
+          automountServiceAccountToken: true
+          {{- include "crdb-redisio.priority-class-name" (tuple $g "admin") | nindent 10 }}
+          containers:
+          - name: {{ include "csf-common-lib.v1.containerName" (tuple $g (printf "%s-admin" $job_type)) }}
+            {{- include "crdb-redisio.admin.image" $g | nindent 12 }}
+            args: [ {{ $br | quote }} ]
+            {{- include "crdb-redisio.get_security_context" (tuple $g "container" "admin") | nindent 12 }}
+            env:
+            - name: HOOK_TYPE
+              value: {{ $prepost | quote }}
+            {{- include "crdb-redisio.tz.env" $g | nindent 12 }}
+            {{- if gt (int (index $g.Values.admin (printf "%s%sTimeout" $prepost (title $br)))) 0 }}
+            - name: HOOK_TIMEOUT
+              value: "{{ index $g.Values.admin (printf "%s%sTimeout" $prepost (title $br)) }}"
+            {{- end }}
+            {{- if and $g.Values.admin.debug (gt (int $g.Values.admin.jobDelay) 0) }}
+            - name: HOOK_DELAY
+              value: "{{ $g.Values.admin.jobDelay }}"
+            - name: DEBUG
+              value: {{ $g.Values.admin.debug | default "" | quote }}
+            {{- end }}
+            {{- include "crdb-redisio.admin.env" $g | nindent 12 }}
+            {{- include "crdb-redisio.admin-access.env" $g | nindent 12 }}
+            resources:
+            {{- toYaml $g.Values.admin.resources | nindent 14 }}
+            volumeMounts:
+            {{- include "crdb-redisio.fs.vm" $g | nindent 12 }}
+            - name: cluster-cm
+              mountPath: /chart
+            {{- include "crdb-redisio.logging.vm" $g | nindent 12 }}
+            {{- include "crdb-redisio.tls.vm.cacerts" $g | nindent 12 }}
+            {{- include "crdb-redisio.tls.vm.client" $g | nindent 12 }}
+          volumes:
+          {{- include "crdb-redisio.fs.vol" $g | nindent 10 }}
+          - name: cluster-cm
+            configMap:
+              name: {{ include "csf-common-lib.v3.resourceName" (tuple $g "configmap" "cluster-config") }}
+          {{- include "crdb-redisio.logging.vol" (tuple $g "job") | nindent 10 }}
+          {{- include "crdb-redisio.tls.vol" (tuple $g "job") | nindent 10 }}
+          {{- if $g.Values.admin.tolerations }}
+          tolerations: {{- toYaml $g.Values.admin.tolerations | nindent 12 }}
+          {{- end }}
+          {{- include "crdb-redisio.node-selector" (tuple $g "admin") | nindent 10 -}}
+{{- end }}
+{{- end }}
+
+{{- end }}

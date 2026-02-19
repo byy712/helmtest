@@ -1,0 +1,22 @@
+{{- if .Values.metricsExporter.enabled }}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ template "altiplano-opentsdb.fullname" . }}-exporter
+  labels:
+    app: {{ template "altiplano-opentsdb.name" . }}
+    release: {{ .Release.Name }}
+  annotations:
+{{ toYaml .Values.metricsExporter.annotations | indent 4 }}
+    "prometheus.io/port": {{ .Values.metricsExporter.port | quote }}
+spec:
+  type: ClusterIP
+  ports:
+  - name: tcp-tsd-metrics
+    port: {{ .Values.metricsExporter.port }}
+    targetPort: tcp-tsd-metrics
+  selector:
+    app: {{ template "altiplano-opentsdb.name" . }}
+    release: {{ .Release.Name }}
+{{- end }}

@@ -1,0 +1,15 @@
+dependencies:
+- name: bssc-fluentd
+  repository: https://repo.cci.nokia.net/csf-helm-stable/
+  version: 10.0.1
+- name: bssc-indexsearch
+  repository: https://repo.cci.nokia.net/csf-helm-stable/
+  version: 13.0.1
+- name: bssc-dashboards
+  repository: https://repo.cci.nokia.net/csf-helm-stable/
+  version: 13.0.1
+- name: bssc-indexmgr
+  repository: https://repo.cci.nokia.net/csf-helm-stable/
+  version: 10.0.1
+digest: sha256:6f93f77e5eddc3fc5391ba9a3a928cc3d52d7fb25982ed2af8498e6728a4be65
+generated: "2023-12-06T13:11:39.761020886Z"

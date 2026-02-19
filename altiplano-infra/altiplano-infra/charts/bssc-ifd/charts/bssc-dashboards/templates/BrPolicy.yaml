@@ -1,0 +1,30 @@
+{{- if .Values.cbur.enabled }}
+apiVersion: {{ template "bssc-dashboards.apiVersionBrPolicy" . }}
+kind: BrPolicy
+metadata:
+  name: {{ template "bssc-dashboards.deployment.name" . }}
+  labels:
+{{- include "bssc-dashboards.commonLabels" (tuple .  "dashboards" ) | indent 4 }}
+{{- include "bssc-dashboards.csf-toolkit-helm.labels" (tuple .) | nindent 4 }}
+  annotations:
+{{- include "bssc-dashboards.csf-toolkit-helm.annotations" (tuple .) | nindent 4 }}
+spec:
+  k8sobjects:
+  - object-type: configmaps
+    match-criteria: name
+    match-string: {{ template "bssc-dashboards.fullname" . }}
+  backend:
+    mode: "{{ .Values.cbur.backendMode }}"
+  cronSpec: "{{ .Values.cbur.cronJob }}"
+  autoEnableCron: {{ .Values.cbur.autoEnableCron }}
+  autoUpdateCron: {{ .Values.cbur.autoUpdateCron }}
+  maxiCopy: {{ .Values.cbur.maxCopy }}
+  k8sType: deployment
+  hooks:
+  - name: dashboards
+    commands:
+      preBackupCmd: []
+      postBackupCmd: []
+      preRestoreCmd: []
+      postRestoreCmd: []
+{{- end}}

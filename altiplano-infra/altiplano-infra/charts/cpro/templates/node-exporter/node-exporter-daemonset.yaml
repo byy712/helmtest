@@ -1,0 +1,289 @@
+{{- if .Values.nodeExporter.enabled -}}
+{{- $syslogEnabled := eq (include "csf-common-lib.v1.coalesceBoolean" (tuple .Values.nodeExporter.unifiedLogging.syslog.enabled .Values.global.unifiedLogging.syslog.enabled false )) "true"  }}
+{{- $tlsEnabled := eq (include "csf-common-lib.v1.coalesceBoolean" (tuple .Values.nodeExporter.tls.enabled .Values.tls.enabled .Values.global.tls.enabled .Values.nodeExporter.tls_auth_config.tls.enabled false)) "true" }}
+{{- include "cpro-common-lib.v1.syslog" ( dict "root" . "context" .Values.nodeExporter) }}
+apiVersion: {{ template "cpro.apiVersion.DaemonSetAPI" . }}
+kind: DaemonSet
+metadata:
+  labels:
+    {{- include "cpro.labelsOrAnnotations" (tuple .Values.nodeExporter.labels .Values.custom.nodeExporterDaemonSet.labels .Values.global.labels) | indent 4}}
+    {{- include "cpro.app.labels.v3" ( dict "root" . "context" .Values.nodeExporter ) | nindent 4 }}
+  name: {{ template "cpro.prometheus.nodeExporter.daemonSetName" . }}
+  annotations:
+{{- include "cpro.labelsOrAnnotations" (tuple .Values.nodeExporter.annotations .Values.custom.nodeExporterDaemonSet.annotations .Values.global.annotations) | indent 4}}
+{{- if or $syslogEnabled .Values.nodeExporter.unifiedLogging.extension .Values.global.unifiedLogging.extension }}
+    configmap.reloader.stakater.com/reload: "{{ template "cpro-common-lib-v1.ConfigmapName" (dict "name" "nodefluentdcm" "root" .) }},{{ template "cpro-common-lib-v1.ConfigmapName" (dict "name" "nodelogrotatecm" "root" .) }}"
+{{- if and $syslogEnabled (tpl (default "" $.syslog.tls.secretRef.name) .) (tpl (default "" $.syslog.tls.secretRef.keyNames.caCrt) .) }}
+    secret.reloader.stakater.com/reload: "{{ tpl $.syslog.tls.secretRef.name . }}" 
+{{- end }}
+{{- end }}
+spec:
+{{$data_csc := dict "cSecCtx" .Values.nodeExporter.containerSecurityContext "ctx" . }}
+  {{- if .Values.nodeExporter.updateStrategy }}
+  updateStrategy:
+{{ toYaml .Values.nodeExporter.updateStrategy | indent 4 }}
+  {{- end }}
+  {{- if semverCompare ">=1.16.0-0" .Capabilities.KubeVersion.GitVersion }}
+  selector:
+   matchLabels:
+    app: {{ template "cpro.prometheus.name" . }}
+    component: "{{ .Values.nodeExporter.name }}"
+    release: {{ .Release.Name }}
+  {{- end }}
+  template:
+    metadata:
+      annotations:
+        sidecar.istio.io/inject: "false"
+{{- include "cpro.labelsOrAnnotations" (tuple .Values.nodeExporter.annotations .Values.nodeExporter.podAnnotations .Values.custom.pod.annotations .Values.global.annotations) | indent 8}}
+{{- if .Values.rbac.pspUseAppArmor }}
+{{- include "cpro.labelsOrAnnotations" (tuple .Values.custom.pod.apparmorAnnotations) | indent 8}}
+{{- end }}
+      labels:
+        {{- include "cpro.app.labels.v3" ( dict "root" . "context" .Values.nodeExporter ) | nindent 8 }}
+        app: {{ template "cpro.prometheus.name" . }}
+        component: "{{ .Values.nodeExporter.name }}"
+        release: {{ .Release.Name }}
+        {{- include "cpro.labelsOrAnnotations" (tuple .Values.nodeExporter.labels .Values.nodeExporter.pod.labels .Values.custom.pod.labels .Values.global.labels) | indent 8}}
+    spec:
+      serviceAccountName: {{ template "cpro.prometheus.node.serviceAccountName" . }}
+      automountServiceAccountToken: true
+      securityContext:
+      {{$data := dict "securitycontext" .Values.nodeExporter.podSecurityContext "ctx" . }}
+      {{- include "cpro.securitycontext" $data | nindent 8 }}
+{{- if .Values.seLinuxOptions.enabled }}
+        seLinuxOptions:
+          level: {{ .Values.seLinuxOptions.level }}
+          role: {{ .Values.seLinuxOptions.role }}
+          type: {{ .Values.seLinuxOptions.type }}
+          user: {{ .Values.seLinuxOptions.user }}
+{{- end }}
+{{ include "cpro-common-lib.imagePullSecrets" (dict "workloadName" .Values.nodeExporter  "root" .) | indent 6 }}
+      initContainers:
+{{- if and $tlsEnabled (eq (include "csf-common-lib.v1.isEmptyValue" .Values.nodeExporter.tls.secretRef.name) "true") (.Values.certManagerConfig.wait4Certs2BeConsumed.enabled) (eq .Values.nodeExporter.tls_auth_config.tls.externalSecret "") }}
+{{ $certs := dict "nodeexporter-tls" "/var/lib/certs" }}
+{{ $_ := set . "certMountPaths" $certs }}
+      
+{{ include "cpro.wait4Certs2BeConsumed.template" (dict "root" . "workload" .Values.nodeExporter ) | indent 6 }}
+{{- end }}
+      - name: init-{{ .Chart.Name }}
+        image: "{{ .Values.global.registry}}/{{ .Values.init.image.name}}:{{ .Values.init.image.tag}}"
+        imagePullPolicy: {{ .Values.init.image.pullPolicy }}
+        command: [ "/bin/sh", "-c" ]
+        args:
+          - |
+            cp /etc/altiplano/certificates/secrets/pts-server-trustchain-cert.pem /etc/ssl/certs/ca.crt
+            cp /etc/altiplano/certificates/secrets/pts-server-key.pem  /etc/ssl/certs/server.key
+            cp /etc/altiplano/certificates/secrets/pts-server-cert.pem /etc/ssl/certs/server.crt
+
+        volumeMounts:
+          - name: pts-certificates
+            mountPath: /etc/ssl/certs
+          - name: altiplano-pts-certs
+            mountPath: /etc/altiplano/certificates/secrets/  
+      containers:
+            {{- if or $syslogEnabled .Values.nodeExporter.unifiedLogging.extension .Values.global.unifiedLogging.extension }}
+        {{- include "cpro-common-lib.fluentd-v2" ( dict "root" . "context" .Values.fluentd "workload" .Values.nodeExporter "registry" .Values.intFluentdReg ) | nindent 8 }}
+          volumeMounts:
+            - name: logs
+              mountPath: /var/log/nodeexporter
+            - name: harmonized-logging-conf
+              mountPath: /etc/fluent/
+            - mountPath: /tmp
+              name: tempfolder
+             {{- if and $syslogEnabled (tpl (default "" $.syslog.tls.secretRef.name) .) (tpl (default "" $.syslog.tls.secretRef.keyNames.caCrt) .) }}
+            - mountPath: /etc/fluent/certs/
+              name: fluentd-tls
+             {{- end}}
+      {{- include "cpro-common-lib.logrotate" ( dict "root" . "context" .Values.logrotate "registry" .Values.intLogrotateReg ) | nindent 8 }}
+          volumeMounts:
+            - name: logs
+              mountPath: /var/log/nodeexporter
+            - name: logrotate-cronie-file
+              mountPath: /logRotate
+       {{- end }}
+        - name: {{ template "cpro.prometheus.nodeExporter.ContainerName" . }}
+{{- include "cpro.prometheus.distro.image" (dict "root" . "workload" .Values.nodeExporter  ) | nindent 10}}             
+       {{- if or $syslogEnabled .Values.nodeExporter.unifiedLogging.extension .Values.global.unifiedLogging.extension }}
+          command: [ "/bin/klogrun" ]
+       {{- else }}
+          command: [ "/bin/node_exporter" ]
+       {{- end }}
+{{- include "cpro.terminationMessage" . | nindent 10 }}
+          env:
+            {{- include "cpro.timeZoneEnvName" . | nindent 12 }}
+{{- if $.istio.enabled }}
+            - name: "ISTIO_ENABLED"
+              value: "true"
+{{- end }}  
+{{- if  and (not $.istio.enabled) ($syslogEnabled) (eq (tpl (default "" $.syslog.tls.secretRef.name) .) "") }}
+            - name: "RSYSLOG_SERVER_ALERT"
+              value: "true"
+{{- end }}  
+            - name: K8S
+              value: "true"
+          securityContext:
+          {{- include "cpro.containerSecurityContext" $data_csc | nindent 12 }}
+          args:
+            {{- if or $syslogEnabled .Values.nodeExporter.unifiedLogging.extension .Values.global.unifiedLogging.extension }}
+            - -log-file=/var/log/nodeexporter/nodeexporter.log
+            - -also-stdout=true
+            - /bin/node_exporter
+            - --log.format=json
+            {{- end }}
+         {{- if or ( .Values.nodeExporter.tls_auth_config.basic_auth.enabled ) ($tlsEnabled) }}
+            - --web.config.file=/etc/config/web.yml
+         {{- end }}
+            - --path.procfs=/host/proc
+            - --path.sysfs=/host/sys
+            - --path.rootfs=/host/root
+          {{- range $key, $value := .Values.nodeExporter.extraArgs }}
+          {{- if $value }}
+            - --{{ $key }}={{ $value }}
+          {{- else }}
+            - --{{ $key }}
+          {{- end }}
+          {{- end }}
+          ports:
+            - name: tcp-metrics
+              containerPort: {{ .Values.nodeExporter.service.podContainerPort }}
+              hostPort: {{ .Values.nodeExporter.service.podHostPort }}
+{{- include "cpro.prometheus.nodeExporter.probe" . | indent 10 }}
+          resources:
+{{- include "cpro-common-lib.v1.resources" ( dict "root" . "workloadresources" .Values.nodeExporter.resources "defaultcpulimit" "500m") | nindent 12 }}
+          volumeMounts:
+          {{- if .Values.externalCredentials }}
+          {{- include "cpro-common-lib.v1-includeExternalCredentialMounts" (dict "creds" .Values.externalCredentials "root" . ) | indent 12 }}
+          {{- end }}
+          {{- if ne .Values.nodeExporter.auth.credentialName "" }}
+          {{- include "cpro-common-lib.v1-includeCredentialMount" (dict "cred" .Values.nodeExporter.auth "root" . "volumeName" "nxp-auth") | indent 12 }}
+          {{- end }}
+       {{- if or $syslogEnabled .Values.nodeExporter.unifiedLogging.extension .Values.global.unifiedLogging.extension }}
+            - name: logs
+              mountPath: /var/log/nodeexporter
+       {{- end }}
+         {{- if $tlsEnabled }}
+            - name: nodeexporter-tls
+              mountPath: /var/lib/certs
+         {{- end }}
+         {{- if or ( .Values.nodeExporter.tls_auth_config.basic_auth.enabled )  ($tlsEnabled)}}
+            - name: config-volume
+              mountPath: /etc/config
+         {{- end }}
+            - name: proc
+              mountPath: /host/proc
+              readOnly:  true
+              mountPropagation: HostToContainer
+            - name: sys
+              mountPath: /host/sys
+              readOnly: true
+              mountPropagation: HostToContainer
+            - name: root
+              mountPath: /host/root
+              readOnly: true
+              mountPropagation: HostToContainer
+          {{- range .Values.nodeExporter.extraHostPathMounts }}
+            - name: {{ .name }}
+              mountPath: {{ .mountPath }}
+              readOnly: {{ .readOnly }}
+          {{- end }}
+          {{- range .Values.nodeExporter.extraConfigmapMounts }}
+            - name: {{ .name }}
+              mountPath: {{ .mountPath }}
+              readOnly: {{ .readOnly }}
+          {{- end }}
+            - name: altiplano-pts-certs
+              mountPath: /etc/altiplano/certificates/secrets
+      hostNetwork: true
+     
+     {{- if .Values.nodeExporter.dnsPolicy }}
+      dnsPolicy: {{ .Values.nodeExporter.dnsPolicy }}
+     {{- end }}
+     {{- if $syslogEnabled }}
+     {{- if .Values.nodeExporter.dnsConfig }}
+      dnsConfig:
+     {{ toYaml .Values.nodeExporter.dnsConfig | nindent 8 }}
+     {{- end }}
+     {{- end }}
+      hostPID: true
+{{$data := dict "component_pc" .Values.nodeExporter  "ctx" . }}
+{{- include "cpro.pod.priority.classname" $data | nindent 6 }}
+    {{- if .Values.nodeExporter.tolerations }}
+      tolerations:
+{{ toYaml .Values.nodeExporter.tolerations | indent 8 }}
+    {{- end }}
+    {{- if .Values.nodeExporter.nodeSelector }}
+      nodeSelector:
+{{ toYaml .Values.nodeExporter.nodeSelector | indent 8 }}
+    {{- end }}
+      volumes:
+      {{- if .Values.externalCredentials  }}
+      {{- include "cpro-common-lib.v1-includeExternalCredentials" (dict "creds" .Values.externalCredentials ) | indent 8 }}
+      {{- end }}
+      {{- if ne .Values.nodeExporter.auth.credentialName "" }}
+      {{- include "cpro-common-lib.v1-includeCredential" (dict "creds" .Values.nodeExporter.auth "volumeName" "nxp-auth") | indent 8 -}} 
+      {{- end }}
+        {{- if or $syslogEnabled .Values.nodeExporter.unifiedLogging.extension .Values.global.unifiedLogging.extension }}
+        - name: logs
+          emptyDir: {}
+        - name: tempfolder
+          emptyDir: {}
+        - name: harmonized-logging-conf
+          configMap:
+            name: {{ template "cpro-common-lib-v1.ConfigmapName" (dict "name" "nodefluentdcm" "root" .) }} 
+        - name: logrotate-cronie-file
+          configMap:
+            defaultMode: 0640
+            items:
+              - key: logrotate.conf
+                path: logrotate.conf
+              - key: rotate.sh
+                path: rotate.sh
+            name: {{ template "cpro-common-lib-v1.ConfigmapName" (dict "name" "nodelogrotatecm" "root" .) }} 
+              {{- if and $syslogEnabled (tpl (default "" $.syslog.tls.secretRef.name) .) (tpl (default "" $.syslog.tls.secretRef.keyNames.caCrt) .) }}
+        - name: fluentd-tls
+          secret:
+            secretName: {{ tpl $.syslog.tls.secretRef.name . }}
+            items:
+              - key: {{ tpl $.syslog.tls.secretRef.keyNames.caCrt . }}
+                path: syslogRootCaPem
+        {{- end }}
+        {{- end }}
+        {{- if $tlsEnabled }} 
+        - name: nodeexporter-tls
+          secret:
+            secretName: {{ template "cpro.nodeexporter.server.secret" . }}
+            defaultMode: 0440
+        {{- end }}
+        {{- if or ( .Values.nodeExporter.tls_auth_config.basic_auth.enabled ) ($tlsEnabled)}}
+        - name: config-volume
+          secret:
+            secretName: {{ .Values.nodeExporter.tls_auth_config.secretForWebConfig }}
+            defaultMode: 0440
+        {{- end }}
+        - name: proc
+          hostPath:
+            path: /proc
+        - name: sys
+          hostPath:
+            path: /sys
+        - name: root
+          hostPath:
+            path: /
+      {{- range .Values.nodeExporter.extraHostPathMounts }}
+        - name: {{ .name }}
+          hostPath:
+            path: {{ .hostPath }}
+      {{- end }}
+      {{- range .Values.nodeExporter.extraConfigmapMounts }}
+        - name: {{ .name }}
+          configMap:
+            name: {{ .configMap }}
+      {{- end }}
+        - name: pts-certificates
+          emptyDir: {}
+        - name: altiplano-pts-certs
+          secret:
+            secretName: altiplano-pts-certificate-secrets
+
+{{- end -}}
+

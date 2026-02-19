@@ -1,0 +1,24 @@
+--- bssc-ifd-13.0.1/bssc-ifd/charts/bssc-fluentd/templates/_helpers.tpl	2023-12-06 18:41:43.000000000 +0530
++++ bssc-ifd-patch/bssc-ifd/charts/bssc-fluentd/templates/_helpers.tpl	2024-01-08 15:37:54.481675000 +0530
+@@ -215,6 +215,7 @@
+ 
+ {{- define "bssc-fluentd.selectorLabels" -}}
+ {{- $root := index . 0 }}
++release: {{ $root.Release.Name }}
+ {{- $workloadName := index . 1 }}
+ app.kubernetes.io/name: {{ default $root.Chart.Name $root.Values.nameOverride }}
+ app.kubernetes.io/instance: {{ $root.Release.Name }}
+@@ -599,10 +600,12 @@
+ {{- include "bssc-fluentd.isCertManagerEnable" . }}
+ {{- $secretList := list }}
+ {{- if .Values.fluentd.sensitiveInfoInSecret.enabled }}
+-    {{- $secretList = append $secretList (.Values.fluentd.sensitiveInfoInSecret.credentialName) }}
++    {{- $secretList = append $secretList (.Values.fluentd.sensitiveInfoInSecret.credentialNamePassword) }}
+     {{- if eq $.isCertManagerEnabled "true" }}
+       {{- $secretName := printf "%s-%s" (include "bssc-fluentd.fullname" .) "certmgr" }}
+       {{- $secretList = append $secretList $secretName -}}
++    {{- else -}}
++      {{- $secretList = append $secretList (.Values.fluentd.sensitiveInfoInSecret.credentialNameCert) }}
+     {{- end }}
+ {{- end }}
+ {{- if $.syslogEnabled }}

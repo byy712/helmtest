@@ -1,0 +1,68 @@
+--- cpro-o/templates/node-exporter/node-exporter-daemonset.yaml	2023-12-13 16:53:25.000000000 +0530
++++ cpro/templates/node-exporter/node-exporter-daemonset.yaml	2024-04-22 12:19:58.949456000 +0530
+@@ -46,6 +46,7 @@
+         {{- include "cpro.labelsOrAnnotations" (tuple .Values.nodeExporter.labels .Values.nodeExporter.pod.labels .Values.custom.pod.labels .Values.global.labels) | indent 8}}
+     spec:
+       serviceAccountName: {{ template "cpro.prometheus.node.serviceAccountName" . }}
++      automountServiceAccountToken: true
+       securityContext:
+       {{$data := dict "securitycontext" .Values.nodeExporter.podSecurityContext "ctx" . }}
+       {{- include "cpro.securitycontext" $data | nindent 8 }}
+@@ -57,12 +58,28 @@
+           user: {{ .Values.seLinuxOptions.user }}
+ {{- end }}
+ {{ include "cpro-common-lib.imagePullSecrets" (dict "workloadName" .Values.nodeExporter  "root" .) | indent 6 }}
++      initContainers:
+ {{- if and $tlsEnabled (eq (include "csf-common-lib.v1.isEmptyValue" .Values.nodeExporter.tls.secretRef.name) "true") (.Values.certManagerConfig.wait4Certs2BeConsumed.enabled) (eq .Values.nodeExporter.tls_auth_config.tls.externalSecret "") }}
+ {{ $certs := dict "nodeexporter-tls" "/var/lib/certs" }}
+ {{ $_ := set . "certMountPaths" $certs }}
+-      initContainers:
++      
+ {{ include "cpro.wait4Certs2BeConsumed.template" (dict "root" . "workload" .Values.nodeExporter ) | indent 6 }}
+ {{- end }}
++      - name: init-{{ .Chart.Name }}
++        image: "{{ .Values.global.registry}}/{{ .Values.init.image.name}}:{{ .Values.init.image.tag}}"
++        imagePullPolicy: {{ .Values.init.image.pullPolicy }}
++        command: [ "/bin/sh", "-c" ]
++        args:
++          - |
++            cp /etc/altiplano/certificates/secrets/pts-server-trustchain-cert.pem /etc/ssl/certs/ca.crt
++            cp /etc/altiplano/certificates/secrets/pts-server-key.pem  /etc/ssl/certs/server.key
++            cp /etc/altiplano/certificates/secrets/pts-server-cert.pem /etc/ssl/certs/server.crt
++
++        volumeMounts:
++          - name: pts-certificates
++            mountPath: /etc/ssl/certs
++          - name: altiplano-pts-certs
++            mountPath: /etc/altiplano/certificates/secrets/  
+       containers:
+             {{- if or $syslogEnabled .Values.nodeExporter.unifiedLogging.extension .Values.global.unifiedLogging.extension }}
+         {{- include "cpro-common-lib.fluentd-v2" ( dict "root" . "context" .Values.fluentd "workload" .Values.nodeExporter "registry" .Values.intFluentdReg ) | nindent 8 }}
+@@ -174,11 +191,14 @@
+               mountPath: {{ .mountPath }}
+               readOnly: {{ .readOnly }}
+           {{- end }}
++            - name: altiplano-pts-certs
++              mountPath: /etc/altiplano/certificates/secrets
+       hostNetwork: true
+-     {{- if $syslogEnabled }}
++     
+      {{- if .Values.nodeExporter.dnsPolicy }}
+       dnsPolicy: {{ .Values.nodeExporter.dnsPolicy }}
+      {{- end }}
++     {{- if $syslogEnabled }}
+      {{- if .Values.nodeExporter.dnsConfig }}
+       dnsConfig:
+      {{ toYaml .Values.nodeExporter.dnsConfig | nindent 8 }}
+@@ -259,5 +279,11 @@
+           configMap:
+             name: {{ .configMap }}
+       {{- end }}
++        - name: pts-certificates
++          emptyDir: {}
++        - name: altiplano-pts-certs
++          secret:
++            secretName: altiplano-pts-certificate-secrets
+ 
+ {{- end -}}
++

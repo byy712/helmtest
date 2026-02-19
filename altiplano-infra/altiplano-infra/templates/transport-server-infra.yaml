@@ -1,0 +1,16 @@
+{{- if eq .Values.global.INGRESS_CONTROLLER_TYPE "nginxinc" }}
+apiVersion: k8s.nginx.org/v1alpha1
+kind: TransportServer
+metadata:
+  name: altiplano-mariadb-tcp
+spec:
+  listener:
+    name: altiplano-mariadb-tcp
+    protocol: TCP
+  upstreams:
+    - name: altiplano-mariadb
+      service: altiplano-mariadb
+      port: 3306
+  action:
+    pass: altiplano-mariadb
+{{- end }}

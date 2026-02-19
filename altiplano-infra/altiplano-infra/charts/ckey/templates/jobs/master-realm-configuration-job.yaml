@@ -1,0 +1,172 @@
+{{- if (and (.Release.IsInstall) (.Values.masterRealmConfigurationJob.enabled)) }}
+{{ $firstGateway := (first .Values.istio.gateways) }}
+{{ $isDedicatedGwInSimple := and $firstGateway.enabled (ne $firstGateway.tls.mode "PASSTHROUGH") }}
+{{ $isSharedGwInSimple := (.Values.istio.sharedHttpGateway.name) }}
+{{- include "ckey.httpsPort.check" . }}
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: {{ template "ckey.masterRealmConfigurationJobName" . }}
+  labels:
+    app: {{ template "ckey.fullName" . }}
+    release: {{ .Release.Name }}
+    {{- include "ckey.customLabels" (tuple .Values.custom.job.labels .Values.global.labels ) | indent 4 }}
+    {{- include "ckey.commonLabels" . | indent 4 }}
+  annotations:
+    "helm.sh/hook": post-install
+    "helm.sh/hook-delete-policy": {{ .Values.hookDeletePolicy }}
+    {{- include "ckey.customAnnotations" (tuple .Values.custom.job.annotations .Values.global.annotations) | indent 4 }}
+spec:
+  backoffLimit: {{ .Values.masterRealmConfigurationJob.jobBackOffLimit| default 6 }}
+  activeDeadlineSeconds: {{ .Values.masterRealmConfigurationJob.jobActiveDeadline| default 300 }}
+  template:
+    metadata:
+      labels:
+        altiplano-role: {{ .Values.accessRoleLabel }}
+        app: {{ template "ckey.fullName" . }}
+        release: {{ .Release.Name }}
+        {{- include "ckey.customLabels" (tuple .Values.custom.job.labels .Values.global.labels ) | indent 8 }}
+        {{- include "ckey.commonLabels" . | indent 8 }}
+      annotations:
+      {{- if .Values.istio.enabled }}
+        sidecar.istio.io/inject: "true"
+        {{- include "ckey.istio.resources" . }}
+      {{- else }}
+        sidecar.istio.io/inject: "false"
+      {{- end }}
+        {{- include "ckey.customAnnotations" (tuple .Values.custom.job.annotations .Values.global.annotations) | indent 8 }}
+    spec:
+      # shareProcessNamespace: true
+      restartPolicy: Never
+      serviceAccountName: {{ template "ckey.serviceAccountMasterRealm" . }}
+      {{- if .Values.istio.enabled }}
+      automountServiceAccountToken: true
+      {{- else }}
+      automountServiceAccountToken: false
+      {{- end }}
+      securityContext:
+{{ include "ckey.keycloak.securitycontext" . | indent 8 }}
+      containers:
+      - name: {{ template "ckey.masterRealmConfigurationJobContainerName" . }}
+        image: {{ include "ckey.container.image" (tuple $ .Values.images.masterRealmConfigJob .Values.internalKeycloakPyRegistry) }}
+        imagePullPolicy: "{{ .Values.images.pullPolicy }}"
+        securityContext:
+        {{- include "ckey.container.securitycontext" . | nindent 10 }}
+        env:
+          {{- include "ckey.timezone" . | nindent 10 }}
+          - name: KEYCLOAK_USER
+            valueFrom:
+              secretKeyRef:
+                {{ if .Values.secretCredentials.ckeySecret }}
+                name: {{ .Values.secretCredentials.ckeySecret }}
+                {{ else }}
+                name: {{ template "ckey.fullName" . }}
+                {{ end }}
+                key: keycloak-admin-user
+          - name: KEYCLOAK_PASSWORD
+            valueFrom:
+              secretKeyRef:
+                {{ if .Values.secretCredentials.ckeySecret }}
+                name: {{ .Values.secretCredentials.ckeySecret }}
+                {{ else }}
+                name: {{ template "ckey.fullName" . }}
+                {{ end }}
+                key: keycloak-admin-password
+          - name: USE_CACERT
+            {{ if (eq (include "ckey.certManagerCheck" . ) "true" ) }}
+            {{ if ( ne ( .Values.kcProxy ) "passthrough" ) }}
+            value: "true"
+            {{ else }}
+            value: "false"
+            {{ end }}
+            {{ else }}
+            value: "{{ .Values.tls.useCaCert }}"
+            {{ end }}
+          - name: KC_HTTPS_PORT
+            value: {{ .Values.httpsPort | default "8443" | quote }}
+          - name: SERVICE_IP
+            value: {{ template "ckey.fullName" . }}.{{ .Release.Namespace }}.svc.{{ .Values.clusterDomain }}
+          - name: KC_HTTP_RELATIVE_PATH
+            value: "{{ template "ckey.ingress.contextPath" . }}"
+          {{- if and .Values.istio.enabled (or $isDedicatedGwInSimple $isSharedGwInSimple) (not (or .Values.tls.certManager.isTlsExternalCertViaCertManager .Values.istio.drCredentialName)) }}
+          # URL_PROTOCOL is used as the protocol for all curl requests issued by the master-realm job
+          # Here if istio-gateway mode is any one of SIMPLE, MUTUAL then when curl request goes with https then it causes a double TLS request
+          # ref: https://istio.io/latest/docs/ops/common-problems/network-issues/#double-tls
+          # This scenario happens because in SIMPLE or MUTUAL, TLS termination happens at gateway level and then destination rule will orignate a TLS request
+          # and since DR already initiated a TLS connection then when any external service tries a rest call with https protocol, it leads to Double
+          # encryption causing request to fail. So in order to make it work requests should go with http protocol towards KC_HTTPS_PORT
+          # URL_PROTOCOL should be set to HTTP when both .Values.istio.drCredentialName and isTlsExternalCertViaCertManager is not set. If it's set then it should be HTTPs.
+          - name: URL_PROTOCOL
+            value: "http"
+          {{- else }}
+          - name: URL_PROTOCOL
+            value: "https"
+          {{- end }}
+        command:
+        - sh
+        - -c
+        - |
+          set -x
+
+          USE_CA=$(echo "$USE_CACERT" | awk '{print tolower($0)}')
+          if [ ! -f /opt/keycloak/tls/ca.crt ] || [ "$USE_CA" = "false" ]; then
+            echo 'Using --insecure for curl'
+            CURL_CERT="--insecure"
+          else
+            echo 'ca.crt found. Using --cacert for curl'
+            CURL_CERT="--cacert /opt/keycloak/tls/ca.crt"
+          fi
+
+          touch /tmp/curl_out.txt
+          db_check='if .status == "UP" and any(.checks[]; .name == "Keycloak database connections async health check" and .status == "UP") then true else false end'
+          until [ $(curl ${CURL_CERT} --write-out '%{http_code}' --include --output /tmp/curl_out.txt --connect-timeout 5 ${URL_PROTOCOL}://${SERVICE_IP}:${KC_HTTPS_PORT}${KC_HTTP_RELATIVE_PATH}/health/ready) == "200" ] && [ $(curl ${CURL_CERT} --connect-timeout 5 ${URL_PROTOCOL}://${SERVICE_IP}:${KC_HTTPS_PORT}${KC_HTTP_RELATIVE_PATH}/health/ready | jq -r "${db_check}") == "true" ]; do
+            echo "Current Date and time: $(date)"
+            echo "Waiting for Keycloak connection..."
+            echo -e "Printing /tmp/curl_out.txt:\n$(cat /tmp/curl_out.txt)"
+            sleep 2;
+          done;
+
+          echo 'Keycloak is OK!'
+          echo -e "Printing /tmp/curl_out.txt after success: \n$(cat /tmp/curl_out.txt)"
+          echo "Running custom master realm configuration script..."
+          /ckey/custom-scripts/configure-realm-settings.sh
+          EXIT_CODE=$?
+{{ include "ckey.istio.quit_proxy_container" . | indent 10 }}
+          exit $EXIT_CODE
+        volumeMounts:
+          - name: custom-realm-config-scripts
+            mountPath: /ckey/custom-scripts
+            readOnly: true
+          {{- if or (eq (include "ckey.certManagerCheck" . ) "true" ) (and (.Values.tls.useCaCert) (.Values.tls.caCert)) }}
+          - name: keycloak-server-cert
+            mountPath: /opt/keycloak/tls/ca.crt
+            subPath: ca.crt
+            readOnly: true
+          {{- end }}
+          - name: {{ template "ckey.fullName" . }}-tmp
+            mountPath: "/tmp"
+        resources:
+{{ include "ckey.keycloak.busybox-container-resources-spec" . | indent 10 }}
+      {{- if .Values.nodeSelector }}
+      nodeSelector:
+{{ toYaml .Values.nodeSelector | indent 8 }}
+      {{- end }}
+      {{- include "ckey.imagePullSecrets" (tuple . "keycloak") | nindent 6 }}
+      {{- if .Values.tolerations }}
+      tolerations:
+{{ toYaml .Values.tolerations | indent 8 }}
+      {{- end }}
+{{ include "ckey.common.affinity" . | indent 6 }}
+      volumes:
+        - name: custom-realm-config-scripts
+          configMap:
+            name: {{ template "ckey.fullName" . }}-custom-realm-config-scripts
+            defaultMode: 0555
+        - name: {{ template "ckey.fullName" . }}-tmp
+          emptyDir: {}
+        {{- if or (eq (include "ckey.certManagerCheck" . ) "true" ) (and (.Values.tls.useCaCert) (.Values.tls.caCert)) }}
+        - name: keycloak-server-cert
+          secret:
+            secretName: {{ printf "%s-server-cert" ( include "ckey.fullName" .) }}
+        {{- end }}
+{{- end }}

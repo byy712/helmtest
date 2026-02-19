@@ -1,0 +1,33 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ template "ckaf-kafka.name" . }}-headless
+  labels:
+{{ include "ckaf-kafka.commonLabels" . | indent 4 }}
+{{- include "csf-common-lib.v1.customLabels" (tuple .Values.global.labels) | indent 4 }}
+    app: {{ .Chart.Name }}
+    release: {{ .Release.Name | quote }}
+    heritage: {{ .Release.Service | quote }}
+  annotations:
+    {{- if eq .Values.global.jmx.enabled true }}
+    prometheus.io/port: "{{ .Values.JmxExporter.port }}"
+    prometheus.io/scrape: "true"
+    prometheus.io/scheme: http
+    {{- end }} 
+    service.alpha.kubernetes.io/tolerate-unready-endpoints: "true"
+{{- include "csf-common-lib.v1.customAnnotations" (tuple .Values.global.annotations) | indent 4 }}
+spec:
+  ports:
+  - name: tcp-kafka
+    port: {{ .Values.KafkaPort }}
+    targetPort: tcp-kafka
+  {{- if eq .Values.global.jmx.enabled true }}
+  - port: {{ .Values.JmxExporter.port }}
+    name: tcp-metrics
+    targetPort: tcp-metrics
+  {{- end }}
+  {{ include "ckaf-kafka.dualStackConfig" . | indent 2 }}
+  clusterIP: None
+  selector:
+    app: {{ .Chart.Name }}
+    release: {{ .Release.Name | quote }}

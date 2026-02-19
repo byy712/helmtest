@@ -1,0 +1,138 @@
+{{ $firstGateway := (first .Values.istio.gateways) }}
+{{ $isDedicatedGwInSimple := and $firstGateway.enabled (ne $firstGateway.tls.mode "PASSTHROUGH") }}
+{{ $isSharedGwInSimple := (.Values.istio.sharedHttpGateway.name) }}
+apiVersion: v1
+kind: Pod
+metadata:
+  name: {{ template "ckey.testPodName" . }}
+  labels:
+    app: {{ template "ckey.fullName" . }}
+    release: {{ .Release.Name }}
+    {{- include "ckey.customLabels" (tuple .Values.custom.job.labels .Values.global.labels ) | indent 4 }}
+    {{- include "ckey.commonLabels" . | indent 4 }}
+  annotations:
+    "helm.sh/hook": test-success
+    "helm.sh/hook-delete-policy": hook-succeeded, before-hook-creation
+    {{ if .Values.istio.enabled }}
+    sidecar.istio.io/inject: "true"
+    {{ else }}
+    sidecar.istio.io/inject: "false"
+    {{ end }}
+    {{- include "ckey.customAnnotations" (tuple .Values.custom.job.annotations .Values.global.annotations) | indent 4 }}
+spec:
+  restartPolicy: Never
+  {{- if .Values.rbac.enabled }}
+  serviceAccountName: {{ template "ckey.serviceAccountStateful" . }}
+  {{- end }}
+  {{- if .Values.istio.enabled }}
+  automountServiceAccountToken: true
+  {{- else }}
+  automountServiceAccountToken: false
+  {{- end }}
+  securityContext:
+{{ include "ckey.keycloak.securitycontext" . | indent 4 }}
+  containers:
+    - name: {{ template "ckey.testContainerName" . }}
+      image: {{ include "ckey.container.image" (tuple $ .Values.images.keycloak .Values.internalKeycloakRegistry) }}
+      imagePullPolicy: "{{ .Values.images.pullPolicy }}"
+      securityContext:
+      {{- include "ckey.container.securitycontext" . | nindent 8 }}
+      env:
+        {{- include "ckey.timezone" . | nindent 8 }}
+        - name: KC_HTTPS_PORT
+          value: {{ .Values.httpsPort | default "8443" | quote }}
+        - name: SERVICE_IP
+          value: {{ template "ckey.fullName" . }}.{{ .Release.Namespace }}.svc.{{ .Values.clusterDomain }}
+        - name: KC_HTTP_RELATIVE_PATH
+          value: {{ template "ckey.ingress.contextPath" . }}
+        {{- if and .Values.istio.enabled (or $isDedicatedGwInSimple $isSharedGwInSimple) (not (or .Values.tls.certManager.isTlsExternalCertViaCertManager .Values.istio.drCredentialName)) }}
+        - name: URL_PROTOCOL
+          value: "http"
+        {{- else }}
+        - name: URL_PROTOCOL
+          value: "https"
+        {{- end }}
+        {{ if .Values.httpPort }}
+        - name: KC_HTTP_PORT
+          value: {{ .Values.httpPort | quote }}
+        {{ end }}
+      command:
+      - sh
+      - -c
+      - |
+        echo 'Test for release: {{ .Release.Name }}'
+        check(){
+          port=$1
+          protocol=$2
+          for i in {1..10}
+          do
+
+            echo "Call $i"
+
+            curl_out=$(curl --write-out '%{http_code}' --silent --output /dev/null -k --connect-timeout 20 $protocol://{{ template "ckey.fullName" . }}.{{ .Release.Namespace }}.svc.{{ .Values.clusterDomain }}:$port${KC_HTTP_RELATIVE_PATH}/)
+            ret_code=$?
+
+            if [ $ret_code -ne 0 ]
+            then
+              echo "Error. Curl command exit with code: $ret_code"
+{{ include "ckey.istio.quit_proxy_container" . | indent 10 }}
+              exit 1
+            fi
+
+            curl_status_out=$(curl --silent -k --connect-timeout 20 $protocol://{{ template "ckey.fullName" . }}.{{ .Release.Namespace }}.svc.{{ .Values.clusterDomain }}:$port${KC_HTTP_RELATIVE_PATH}/health/ready | jq -r .status)
+
+            echo "curl_out: $curl_out"
+            echo "curl_status_out: $curl_status_out"
+
+            if (($curl_out == 200 && $curl_status_out == "UP")); then
+              echo "http code: $curl_out"
+              echo "Ckey health endpoint is ready. Ckey is ok"
+              break
+            else
+              echo "Error. http code: $curl_out. Expected code is 200"
+{{ include "ckey.istio.quit_proxy_container" . | indent 10 }}
+              exit 1
+            fi
+
+            sleep 1
+
+          done
+        }
+
+        {{- if .Values.istio.enabled }}
+        SIDECAR_READY=0
+        for i in {1..6}
+        do
+          echo "Waiting for istio proxy to be up ..."
+          curl --fail http://localhost:15020/healthz/ready >/dev/null 2>&1
+          if [ $? -eq 0 ]
+          then
+            SIDECAR_READY=1
+            break
+          fi
+          sleep 10
+        done;
+        if [ $SIDECAR_READY -eq 0 ]
+        then
+          echo "Istio proxy readiness probe timed out"
+          curl --fail --connect-timeout 5 http://127.0.0.1:15020/quitquitquit -X POST >/dev/null 2>&1
+          exit 1
+        fi
+        sleep 3
+        {{- end }}
+        check {{ .Values.httpsPort }} ${URL_PROTOCOL}
+        {{ if .Values.httpPort }}
+        check {{ .Values.httpPort }} "http"
+        {{- end }}
+
+        echo 'Test finished successfully'
+{{ include "ckey.istio.quit_proxy_container" . | indent 8 }}
+        exit 0
+      resources:
+{{ include "ckey.keycloak.busybox-container-resources-spec" . | indent 8 }}
+  {{- if .Values.nodeSelector }}
+  nodeSelector:
+{{ toYaml .Values.nodeSelector | indent 4 }}
+  {{- end }}
+  {{- include "ckey.imagePullSecrets" (tuple . "keycloak") | nindent 2 }}
+{{ include "ckey.common.affinity" . | indent 2 }}

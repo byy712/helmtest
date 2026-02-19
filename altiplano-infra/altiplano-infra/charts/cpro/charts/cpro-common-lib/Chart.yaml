@@ -1,0 +1,6 @@
+apiVersion: v2
+appVersion: "1.0"
+description: cpro common Library helm chart, provides helper functions.
+name: cpro-common-lib
+type: library
+version: 2.0.0

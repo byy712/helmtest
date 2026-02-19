@@ -1,0 +1,361 @@
+---
+#------------------------------------------------------------------------------
+# Kafka:
+#------------------------------------------------------------------------------
+global:
+  # This registry is used for zookeeper-server container image
+  registry: {{ (resources | default("")).kafkaBrokerRegistry | default(model.properties.resources.properties.kafkaBrokerRegistry.default) }}
+  # This registry is used for jmx-exporter container image
+  registry1: {{ (resources | default("")).jmxExporterRegistry | default(model.properties.resources.properties.jmxExporterRegistry.default) }}
+  # This registry is used for cbur-agent container image
+  registry2: {{ (resources | default("")).cburAgentRegistry | default(model.properties.resources.properties.cburAgentRegistry.default) }}
+  # This registry is used for pre/post hook container image
+  registry3: {{ (resources | default("")).lcmHookRegistry | default(model.properties.resources.properties.lcmHookRegistry.default) }}
+  # Not used. Reserved for future
+  registry4:
+  # Not used. Reserved for future
+  registry5:
+  seccompAllowedProfileNames: runtime/default
+  seccompDefaultProfileName: runtime/default
+  storageClass: {{ (config | default("")).storageClass | default(model.properties.config.properties.storageClass.default) }}
+  rbac:
+   enabled: {{ (config | default("")).enableRbac | default(model.properties.config.properties.enableRbac.default) }}
+  cbur:
+   enabled: {{ (lcm | default("")).enableBackupRestoreSupport | default(model.properties.lcm.properties.enableBackupRestoreSupport.default) }}
+  # Enable this flag to forcefully upgrade kafka
+  forceUpgrade: true
+  # Enable this flag to prepare kafka for rollback
+  prepareRollback: {{ (lcm | default("")).prepareRollback | default(model.properties.lcm.properties.prepareRollback.default) }}
+  preheal: 0
+  postheal: 0
+  clog:
+   enabled: {{ (lcm | default(false)).clogEnable | default(model.properties.lcm.properties.clogEnable.default) }}
+Replicas: {{ (config | default(1)).numberOfKafkaBroker | default(model.properties.config.properties.numberOfKafkaBroker.default) }}
+serviceAccountName: {{ (lcm | default("")).serviceAccountName | default(model.properties.lcm.properties.serviceAccountName.default) }}
+clusterDomain: {{ (config | default("")).clusterDomain | default(model.properties.config.properties.clusterDomain.default) }}
+imagePullPolicy: "IfNotPresent"
+antiAffinity: "hard"
+# Add user defined label under nodeLabel as key value pair.
+# Always quote the value part. Example nodeType: "zk-enable"
+kafkaNodeSelector:
+  enable: {{ (lcm | default("")).enableKafkaNodeSelector | default(model.properties.lcm.properties.enableKafkaNodeSelector.default) }}
+  nodeLabel:
+    nodeType: {{ (lcm | default("")).kafkaNodeLabel | default(model.properties.lcm.properties.kafkaNodeLabel.default) }}
+resources:
+  requests:
+    cpu: {{ (resources | default("")).kafkaCpuRequest | default(model.properties.resources.properties.kafkaCpuRequest.default) }}
+    memory: {{ (resources | default("")).kafkaMemoryRequest | default(model.properties.resources.properties.kafkaMemoryRequest.default) }}
+  limits:
+    cpu: {{ (resources | default("")).kafkaCpuLimit | default(model.properties.resources.properties.kafkaCpuLimit.default) }}
+    memory: {{ (resources | default("")).kafkaMemoryLimit | default(model.properties.resources.properties.kafkaMemoryLimit.default) }}
+DataStorage: {{ (resources | default("")).kafkaDataStorageSize | default(model.properties.resources.properties.kafkaDataStorageSize.default) }}
+LogStorage: {{ (resources | default("")).kafkaLogStorageSize | default(model.properties.resources.properties.kafkaLogStorageSize.default) }}
+#This section allows to configure user defined name for component resources
+# Options include:
+# 1) nameOverride use this to have 'ckaf-kf'-'user-defined' naming convention.
+# 2) fullnameOverride use this to have custom name for all the resources.
+# 3) default (below parameters commented) 'kf'-'release-name' naming convention.
+# If specified both fullnameOverride would take the precedence.
+nameOverride: {{ (resources | default("")).kafkaNameOverride | default(model.properties.resources.properties.kafkaNameOverride.default) }}
+fullnameOverride: {{ (resources | default("")).kafkaFullNameOverride | default(model.properties.resources.properties.kafkaFullNameOverride.default) }}
+security:
+   enabled: true
+   runAsUser: 999
+   fsGroup: 998
+
+JmxExporter:
+   imagePullPolicy: "IfNotPresent"
+   port: 7071
+   jmxResources:
+     resources:
+       requests:
+         cpu: {{ (resources | default("")).jmxExporterCpuRequest | default(model.properties.resources.properties.jmxExporterCpuRequest.default) }}
+         memory: {{ (resources | default("")).jmxExporterMemoryRequest | default(model.properties.resources.properties.jmxExporterMemoryRequest.default) }}
+     limits:
+       cpu: {{ (resources | default("")).jmxExporterCpuLimit | default(model.properties.resources.properties.jmxExporterCpuLimit.default) }}
+       memory: {{ (resources | default("")).jmxExporterMemoryLimit | default(model.properties.resources.properties.jmxExporterMemoryLimit.default) }}
+jobResources:
+  requests:
+    cpu: {{ (lcm | default("")).lcmEventCpuRequest | default(model.properties.lcm.properties.lcmEventCpuRequest.default) }}
+    memory: {{ (lcm | default("")).lcmEventMemoryRequest | default(model.properties.lcm.properties.lcmEventMemoryRequest.default) }}
+  limits:
+    cpu: {{ (lcm | default("")).lcmEventCpuLimit | default(model.properties.lcm.properties.lcmEventCpuLimit.default) }}
+    memory: {{ (lcm | default("")).lcmEventMemoryLimit | default(model.properties.lcm.properties.lcmEventMemoryLimit.default) }}
+KafkaPort: {{ (config | default("")).KafkaPort | default(model.properties.config.properties.KafkaPort.default) }}
+UncleanLeaderElectionEnable: "false"
+AutoCreateTopicsEnable: {{ (config | default("")).autoCreateTopicsEnable | default(model.properties.config.properties.autoCreateTopicsEnable.default) }}
+DefaultReplicationFactor: {{ (config | default("")).defaultReplicationFactor | default(model.properties.config.properties.defaultReplicationFactor.default) }}
+GroupInitialRebalanceDelayMs: "0"
+NumRecoveryThreadsPerDataDir: "1"
+TransactionStateLogReplicationFactor: "1"
+TransactionStateLogMinIsr: "1"
+BackgroundThreads: "10"
+MessageMaxBytes: "1000012"
+NumIoThreads: "8"
+NumNetworkThreads: "3"
+QueuedMaxRequests: "500"
+SocketSendBufferBytes: "102400"
+SocketReceiveBufferBytes: "102400"
+SocketRequestMaxBytes: "104857600"
+NumReplicaFetchers: "1"
+ReplicaFetchMaxBytes: "1048576"
+ReplicaFetchWaitMaxMs: "500"
+ReplicaHighWatermarkCheckpointIntervalMs: "5000"
+ReplicaSocketTimeoutMs: "30000"
+ReplicaSocketReceiveBufferBytes: "65536"
+ReplicaLagTimeMaxMs: "30000"
+ControllerSocketTimeoutMs: "30000"
+NumPartitions: {{ (config | default("")).numPartitions | default(model.properties.config.properties.numPartitions.default) }}
+OffsetsTopicReplicationFactor: "3"
+CompressionType: "producer"
+LogIndexIntervalBytes: "4096"
+LogIndexSizeMaxBytes: "10485760"
+LogRetentionHours: {{ (config | default("")).logRetentionHours | default(model.properties.config.properties.logRetentionHours.default) }}
+LogRetentionBytes: "-1"
+LogFlushIntervalMs: "1000"
+LogFlushIntervalMessages: "10000"
+LogFlushSchedulerIntervalMs: "9223372036854775807"
+LogRollHours: "168"
+LogRetentionCheckIntervalMs: "300000"
+LogSegmentBytes: "1073741824"
+LogCleanerBackoffMs: "15000"
+LogCleanerThreads: "1"
+LogCleanerEnable: "true"
+LogCleanupPolicy: "delete"
+LogLevel: {{ (config | default("")).logLevel | default(model.properties.config.properties.logLevel.default) }}
+MaxFileSize: {{ (config | default("")).maxFileSize | default(model.properties.config.properties.maxFileSize.default) }}
+MaxBackupIndex: {{ (config | default("")).maxBackupIndex | default(model.properties.config.properties.maxBackupIndex.default) }}
+AutoPvEnabledKafka: {{ (config | default("")).autoPvEnabledKafka | default(model.properties.config.properties.autoPvEnabledKafka.default) }}
+AutoPvEnabledLabelKafka: {{ (config | default("")).autoPvEnabledLabelKafka | default(model.properties.config.properties.autoPvEnabledLabelKafka.default) }}
+KafkaHeapOpts: {{ (config | default("")).kafkaHeapOpts | default(model.properties.config.properties.kafkaHeapOpts.default) }}
+ZookeeperConnectionTimeoutMs: {{ (config | default("")).zookeeperConnectionTimeoutMs | default(model.properties.config.properties.zookeeperConnectionTimeoutMs.default) }}
+ZookeeperSyncTimeMs: "2000"
+FetchPurgatoryPurgeIntervalRequests: "1000"
+ProducerPurgatoryPurgeIntervalRequests: "1000"
+ZookeeperSessionTimeoutMs: {{ (config | default("")).zookeeperSessionTimeoutMs | default(model.properties.config.properties.zookeeperSessionTimeoutMs.default) }}
+ZookeeperSetAcl: {{ (config | default(false)).zookeeperSetAcl | default(model.properties.config.properties.zookeeperSetAcl.default) }}
+DeleteTopicEnable: "true"
+AutoLeaderRebalanceEnable: "true"
+LeaderImbalanceCheckIntervalSeconds: "300"
+QuotaConsumerDefault: "9223372036854775807"
+QuotaProducerDefault: "9223372036854775807"
+MinInsyncReplicas: {{ (config | default(1)).minInsyncReplicas | default(model.properties.config.properties.minInsyncReplicas.default) }}
+# if zookeeper is not installed as part of this chart
+# you will have to provide zkConnect string
+# example: zkConnect: "ckaf-zookeeper-ckaf-zookeeper.default:2181/"
+zkConnect: ""
+listenerSecurityMode:
+  internalSecurityMode: {{ (sasl | default("")).internalSecurityMode | default(model.properties.sasl.properties.internalSecurityMode.default) }}
+  externalSecurityMode: ""
+sasl:
+  enable: {{ (sasl | default("")).enable | default(model.properties.sasl.properties.enable.default) }}
+  {%- if (sasl | default("")).enable | default(model.properties.sasl.properties.enable.default) %}
+  mechanism: {{ (sasl | default("")).mechanism }}
+  basePath: "/etc/kafka"
+  {% if mechanism == "GSSAPI" %}
+  krb:
+    krbConf: {{ (sasl | default("")).krbConf  }}
+    krbRealm: {{ (sasl | default("")).krbRealm }}
+  {% if (keytabs is defined) and keytabs %}
+  keytabs:
+  {% for item in keytabs %}
+    {{ item.hostname }}: {{ item.keytab }}
+  {% endfor %}
+  {%- endif %}
+  {% elif mechanism == "PLAIN" %}  
+  plain:
+    secretName: {{ (sasl | default("")).secretName }}
+    usernameKey: userkey
+    passwordKey: passkey
+    superUsers: {{ (sasl | default("")).superUsers | default(model.properties.sasl.properties.ckeyconfig.properties.superUsers.default) }}
+    keyCloakConfig:
+      secretName: plain-keycloak-config-files
+      enableOAuth2AclAuthorizer: {{ (sasl | default("")).enableOAuth2AclAuthorizer | default(model.properties.sasl.properties.ckeyconfig.properties.enableOAuth2AclAuthorizer.default) }}
+  {%- endif %}
+  {%- else %}
+  mechanism: ""
+  basePath: ""
+  krb:
+    krbConf: ""
+    krbRealm: ""
+    keytabs:
+  plain:
+    secretName: ""
+    usernameKey: ""
+    passwordKey: ""
+    superUsers: ""
+    keyCloakConfig:
+      secretName: ""
+      enableOAuth2AclAuthorizer: false
+  {%- endif %}
+  
+ssl:
+  enabled: {{ (ssl | default("")).enabled | default(model.properties.ssl.properties.enabled.default) }}
+  {%- if (ssl | default("")).enable | default(model.properties.ssl.properties.enabled.default) %}
+  secret_name: {{ (ssl | default("")).secret_name}}
+  keystore_key: keyStore
+  truststore_key: trustStore
+  truststore_passwd_key: trustStorePass
+  keystore_passwd_key: keyPass
+  keystore_key_passwd_key: keyStorePass
+  enabledProtocols: TLSv1.2,TLSv1.1
+  keyStoreType: JKS
+  trustStoreType: JKS
+  SecurityInterBrokerProtocol: {{ (ssl | default("")).securityInterBrokerProtocol | default(model.properties.ssl.properties.securityInterBrokerProtocol.default) }}
+  secureRamdomImpl: SHA1PRNG
+  clientAuth: required
+  {%- else %}
+  secret_name:
+  keystore_key:
+  truststore_key:
+  truststore_passwd_key:
+  keystore_passwd_key:
+  keystore_key_passwd_key:
+  enabledProtocols: 
+  keyStoreType: 
+  trustStoreType: 
+  SecurityInterBrokerProtocol:
+  secureRamdomImpl:
+  clientAuth:
+  {%- endif %}
+ 
+
+deleteKafkaJob:
+  auto_remove_kf_pvc: {{ (lcm | default("")).rem_pvc | default(model.properties.lcm.properties.rem_pvc.default) }}
+  auto_remove_kf_secret: {{ (lcm | default("")).rem_secret | default(model.properties.lcm.properties.rem_secret.default) }}
+
+jobtimeout: 60
+prescalein: 0
+postscalein: 0
+prescaleout: 0
+postscaleout: 0
+lcm:
+  scale_hooks: all
+  scale_timeout: 600 
+throttle: {{ (lcm | default("")).partitionReassignThrottle | default(model.properties.lcm.properties.partitionReassignThrottle.default) }}
+
+enable_upgrade_hook: false
+upgrade:
+  CURRENT_KAFKA_VERSION: 1.0.0
+
+# Rollback config
+enableRollback: false
+
+cbur:
+  {%- if (lcm | default("")).enableBackupRestoreSupport is defined and lcm.enableBackupRestoreSupport %}
+  name: cbura-sidecar
+  imagePullPolicy: IfNotPresent
+  resources:
+    requests:
+      cpu: {{ (lcm | default("")).cburCpuRequest | default(model.properties.lcm.properties.cburCpuRequest.default) }}
+      memory: {{ (lcm | default("")).cburMemoryRequest | default(model.properties.lcm.properties.cburMemoryRequest.default) }}
+    limits:
+      cpu: {{ (lcm | default("")).cburCpuLimit | default(model.properties.lcm.properties.cburCpuLimit.default) }}
+      memory: {{ (lcm | default("")).cburMemoryLimit | default(model.properties.lcm.properties.cburMemoryLimit.default) }}
+  maxCopy: {{ (lcm | default("")).cburMaxBackupCopies | default(model.properties.lcm.properties.cburMaxBackupCopies.default) }}
+  backendMode: {{ (lcm | default("")).cburBackendMode | default(model.properties.lcm.properties.cburBackendMode.default) }}
+  cronJob: {{ (lcm | default("")).cburCronJob | default(model.properties.lcm.properties.cburCronJob.default) }}
+  backupTopics: {{ (lcm | default("")).cburTopicsToBackup | default(model.properties.lcm.properties.cburTopicsToBackup.default)  }}
+  {%- endif %}
+
+
+#------------------------------------------------------------------------------
+# Zookeeper:
+#------------------------------------------------------------------------------
+ckaf-zookeeper:
+  enabled: true
+  servers: {{ (config | default("")).numberOfZookeeperServer | default(model.properties.config.properties.numberOfZookeeperServer.default) }}
+  serviceAccountName: {{ (lcm | default("")).serviceAccountName | default(model.properties.lcm.properties.serviceAccountName.default) }} 
+  antiAffinity: "hard"
+  zookeeperNodeSelector:
+    enable: {{ (lcm | default("")).enableZookeeperNodeSelector | default(model.properties.lcm.properties.enableZookeeperNodeSelector.default) }}
+    nodeLabel: {}
+  resources:
+    requests:
+      cpu: {{ (resources | default("")).zookeeperCpuRequest | default(model.properties.resources.properties.zookeeperCpuRequest.default) }}
+      memory: {{ (resources | default("")).zookeeperMemoryRequest | default(model.properties.resources.properties.zookeeperMemoryRequest.default) }}
+    limits:
+      cpu: {{ (resources | default("")).zookeeperCpuLimit | default(model.properties.resources.properties.zookeeperCpuLimit.default) }}
+      memory: {{ (resources | default("")).zookeeperMemoryLimit | default(model.properties.resources.properties.zookeeperMemoryLimit.default) }}
+  heapConfig: "-Xmx512M -Xms512M"
+  dataStorage: {{ (resources | default("")).zookeeperDataStorageSize | default(model.properties.resources.properties.zookeeperDataStorageSize.default) }}
+  logStorage: {{ (resources | default("")).zookeeperLogStorageSize | default(model.properties.resources.properties.zookeeperLogStorageSize.default) }}
+  # This section allows to configure user defined name for component resources
+  # Options include:
+  # 1) nameOverride use this to have 'ckaf-zk'-'user-defined' naming convention.
+  # 2) fullnameOverride use this to have custom name for all the resources.
+  # 3) default (below parameters commented) 'zk'-'release-name' naming convention.
+  # If specified both fullnameOverride would take the precedence.
+  nameOverride: {{ (resources | default("")).zookeeperNameOverride | default(model.properties.resources.properties.zookeeperNameOverride.default) }}
+  fullnameOverride: {{ (resources | default("")).zookeeperFullNameOverride | default(model.properties.resources.properties.zookeeperFullNameOverride.default) }}
+  # Property ensemble is determined, this parameter here is not taken into account.
+  ensemble: ""
+  serverPort: 2888
+  leaderElectionPort: 3888
+  zookeeperClientPort: {{ (config | default("")).zookeeperClientPort | default(model.properties.config.properties.zookeeperClientPort.default) }}
+  imagePullPolicy: "IfNotPresent"
+  tickTimeMs: 2000
+  initTicks: 10
+  syncTicks: 5
+  clientCnxns: 60
+  snapRetain: 3
+  purgeHours: 1
+  probeInitialDelaySeconds: 15
+  probeTimeoutSeconds: 5
+  logLevel: {{ (config | default("")).logLevel | default(model.properties.config.properties.logLevel.default) }}
+  maxFileSize: {{ (config | default("")).maxFileSize | default(model.properties.config.properties.maxFileSize.default) }}
+  maxBackupIndex: {{ (config | default("")).maxBackupIndex | default(model.properties.config.properties.maxBackupIndex.default) }}
+  autoPvEnabledZk: {{ (config | default("")).autoPvEnabledZk | default(model.properties.config.properties.autoPvEnabledZk.default) }}
+  autoPvEnabledLabelZk: {{ (config | default("")).autoPvEnabledLabelZk | default(model.properties.config.properties.autoPvEnabledLabelZk.default) }}
+  security:
+    enabled: true
+    runAsUser: 999
+    fsGroup: 998
+  jmxResources:
+    resources:
+      requests:
+        cpu: {{ (resources | default("")).jmxExporterCpuRequest | default(model.properties.resources.properties.jmxExporterCpuRequest.default) }}
+        memory: {{ (resources | default("")).jmxExporterMemoryRequest | default(model.properties.resources.properties.jmxExporterMemoryRequest.default) }}
+      limits:
+        cpu: {{ (resources | default("")).jmxExporterCpuLimit | default(model.properties.resources.properties.jmxExporterCpuLimit.default) }}
+        memory: {{ (resources | default("")).jmxExporterMemoryLimit | default(model.properties.resources.properties.jmxExporterMemoryLimit.default) }}
+  jobResources:
+    requests:
+      cpu: {{ (lcm | default("")).lcmEventCpuRequest | default(model.properties.lcm.properties.lcmEventCpuRequest.default) }}
+      memory: {{ (lcm | default("")).lcmEventMemoryRequest | default(model.properties.lcm.properties.lcmEventMemoryRequest.default) }}
+    limits:
+      cpu: {{ (lcm | default("")).lcmEventCpuLimit | default(model.properties.lcm.properties.lcmEventCpuLimit.default) }}
+      memory: {{ (lcm | default("")).lcmEventMemoryLimit | default(model.properties.lcm.properties.lcmEventMemoryLimit.default) }}
+  krb:
+    enable: {{ (kerberos | default("")).enable }}
+    {%- if (kerberos | default("")).enable %}
+    krbConf: {{ (kerberos | default("")).krbConf }}
+    krbSecretName: {{ (kerberos | default("")).krbSecretName }}
+    krbPrincipalKey: {{ (kerberos | default("")).krbPrincipalKey }}
+    krbKeytabKey: {{ (kerberos | default("")).krbKeytabKey }}
+    {%- else %}
+    krbConf: ""
+    krbSecretName: ""
+    krbPrincipalKey: ""
+    krbKeytabKey: ""
+    {%- endif %}
+
+  deleteKafkaJob:
+    auto_remove_zk_pvc: {{ (lcm | default("")).rem_pvc | default(model.properties.lcm.properties.rem_pvc.default) }}
+
+  cbur:
+  {%- if (lcm | default("")).enableBackupRestoreSupport is defined and lcm.enableBackupRestoreSupport %}
+    name: cbura-sidecar
+    imagePullPolicy: IfNotPresent
+    resources:
+      requests:
+        cpu: {{ (lcm | default("")).cburCpuRequest | default(model.properties.lcm.properties.cburCpuRequest.default) }}
+        memory: {{ (lcm | default("")).cburMemoryRequest | default(model.properties.lcm.properties.cburMemoryRequest.default) }}
+      limits:
+        cpu: {{ (lcm | default("")).cburCpuLimit | default(model.properties.lcm.properties.cburCpuLimit.default) }}
+        memory: {{ (lcm | default("")).cburMemoryLimit | default(model.properties.lcm.properties.cburMemoryLimit.default) }}
+    maxCopy: {{ (lcm | default("")).cburMaxBackupCopies | default(model.properties.lcm.properties.cburMaxBackupCopies.default) }}
+    backendMode: {{ (lcm | default("")).cburBackendMode | default(model.properties.lcm.properties.cburBackendMode.default) }}
+    cronJob: {{ (lcm | default("")).cburCronJob | default(model.properties.lcm.properties.cburCronJob.default) }}
+  {%- endif %}
+

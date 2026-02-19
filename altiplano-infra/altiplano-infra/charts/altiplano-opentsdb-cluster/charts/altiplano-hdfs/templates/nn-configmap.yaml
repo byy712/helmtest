@@ -1,0 +1,29 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ .Release.Name }}-altiplano-jnode-status
+data:
+  jnode-status.sh: |+
+    #!/bin/bash
+    for((i=0; i < $JOURNALNODE_REPLICAS; i++));
+    do
+      until curl --silent --output /dev/null http://{{ .Release.Name }}-altiplano-hdfs-journalnode-$i.{{ .Release.Name }}-altiplano-hdfs-journalnode.{{ .Release.Namespace  }}.svc.cluster.local:8480; do echo `date` waiting for {{ .Release.Name }}-altiplano-hdfs-journalnode-$i; sleep 5; done;
+    done
+    for((i=0; i < $ZKNODE_REPLICAS; i++));
+    do
+      until [[ $(curl altiplano-zookeeper-$i.altiplano-zookeeper-headless.{{ .Release.Namespace  }}.svc.cluster.local:$ZKNODE_PORT --connect-timeout 5 2>&1) == *'Empty reply from server'* ]]; do echo `date` waiting for altiplano-zookeeper-$i; sleep 5; done;
+    done
+    sleep 20    
+---
+
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ template "hdfs.name" . }}-namenode-fluentd-config
+  
+data:
+  fluentd.conf: |-
+{{- if .Values.nameNode.fluentd_sidecar.fluent_conf }}
+{{ tpl .Values.nameNode.fluentd_sidecar.fluent_conf . | indent 4 }}
+{{- end }}
+---

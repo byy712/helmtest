@@ -1,0 +1,248 @@
+# Default values for altiplano-long-retention-opentsdb.
+# This is a YAML-formatted file.
+# Declare variables to be passed into your templates.
+
+global:
+  #FLUENTD_LOG_DIRECT_URL: altiplano-fluentd:24224
+  timeZoneEnv: ""
+  registry: artifactory.net.nokia.com
+  persistence: false
+  vault:
+    enabled: false
+  clustered_opentsdb: true
+  #if you are deploying open source ingress controller of Nginxinc , need to change this value to nginxinc
+  INGRESS_CONTROLLER_TYPE: kubernetes #valid values are kubernetes / nginxinc
+  #ipFamilyPolicy:  SingleStack | PreferDualStack | RequireDualStack
+  #ipFamilies: ["IPv4"] | ["IPv6"] | ["IPv4","IPv6"] | ["IPv6","IPv4"]
+#ipFamilyPolicy:  SingleStack | PreferDualStack | RequireDualStack
+#ipFamilies: ["IPv4"] | ["IPv6"] | ["IPv4","IPv6"] | ["IPv6","IPv4"]
+replicaCount: 1
+accessRoleLabel: internal-access
+image:
+  #This value will override the value set by global.registry
+  #Set this to "-" if we need to just remove the value set by the global.registry
+  registry: #artifactory.net.nokia.com
+  repository: fnms-opentsdb
+  tag: nokia-4.0.2
+  pullPolicy: IfNotPresent
+
+init:
+  image:
+    name: fnms-init-container
+    tag: nokia-2.0.1
+    pullPolicy: IfNotPresent
+
+securityContext:
+  runAsUser: 201
+  runAsGroup: 114
+
+startupProbe:
+  initialDelaySeconds: 10
+  periodSeconds: 20
+  timeoutSeconds: 10
+  failureThreshold: 15
+livenessProbe:
+  initialDelaySeconds:
+    k8sversiongt118: 20
+    k8sversionlt118: 120
+  periodSeconds: 20
+  timeoutSeconds: 10
+  failureThreshold: 6
+readinessProbe:
+  initialDelaySeconds: 20
+  periodSeconds: 20
+  timeoutSeconds: 10
+  failureThreshold: 6
+service:
+  type: ClusterIP
+  ports:
+    opentsdbPort: 4242
+    opentsdbNodePort: 30044 # 30042 is taken by syslogport of fluentd
+env:
+  timeZoneEnv: ""
+  API_MAX_PARAM: 1000
+  #HBASE_CB_TIMEOUT_SECOND: "1"
+  #FLUENTD_LOG_DIRECT_URL: altiplano-fluentd:24224
+  #INGRESS_LIMIT_RPS: "1000"
+  #INGRESS_LIMIT_BURST_MULTIPLIER: "5"
+  init:
+    # BLOOMFILTER: 'ROW'
+    META_TABLE: 'tsdb-meta-lrdb'
+    TREE_TABLE: 'tsdb-tree-lrdb'
+    TSDB_TABLE: 'tsdb-lrdb'
+    UID_TABLE: 'tsdb-uid-lrdb'
+    COMPRESSION: "GZ"  # Use one of LZO ZSTD GZ LZ4 NONE Algorithm BZIP2 SNAPPY
+    #  TTL default value is 2592000 seconds => 30Days
+    TSDB_TTL: '2592000'
+    # DATA_BLOCK_ENCODING: 'DIFF'
+    HBASE_IMAGE: fnms-gradiant-hbase
+    HBASE_IMAGE_TAG: nokia-4.0.2
+    ENCODER_PATTERN: "%date{ISO8601} [%logger.%M] %msg%n"
+    LOGGER: "WARN"
+  open:
+    JVMARGS: "-XX:+UseG1GC --add-opens java.base/java.nio=ALL-UNNAMED --add-opens java.security.jgss/sun.security.krb5=ALL-UNNAMED"
+    #LOG_LEVEL: DEBUG #valid values are ERROR, WARN, INFO, DEBUG, TRACE
+    # Example of job definition:
+    # .---------------- minute (0 - 59)
+    # |  .------------- hour (0 - 23)
+    # |  |  .---------- day of month (1 - 31)
+    # |  |  |  .------- month (1 - 12) OR jan,feb,mar,apr ...
+    # |  |  |  |  .---- day of week (0 - 6) (Sunday=0 or 7) OR sun,mon,tue,wed,thu,fri,sat
+    # |  |  |  |  |
+    # *  *  *  *  *
+    #HBASE_OPTS_GC_SETTING: -XX:+UseG1GC -XX:MaxGCPauseMillis=100 -Xms1g -Xmx1g
+init_hbase_script: |
+  create '$UID_TABLE',
+  {NAME => 'id', COMPRESSION => '$COMPRESSION', BLOOMFILTER => '$BLOOMFILTER'},
+  {NAME => 'name', COMPRESSION => '$COMPRESSION', BLOOMFILTER => '$BLOOMFILTER'}
+  create '$TSDB_TABLE',
+  {NAME => 't', VERSIONS => 1, COMPRESSION => '$COMPRESSION', BLOOMFILTER => '$BLOOMFILTER', TTL => $TSDB_TTL}
+  create '$TREE_TABLE',
+  {NAME => 't', VERSIONS => 1, COMPRESSION => '$COMPRESSION', BLOOMFILTER => '$BLOOMFILTER', TTL => '100'}
+  create '$META_TABLE',
+  {NAME => 'name', COMPRESSION => '$COMPRESSION', BLOOMFILTER => '$BLOOMFILTER'}
+
+long_retention_opentsdb_backup:
+    TSDB_TABLE: 'tsdb-lrdb'
+    UID_TABLE: 'tsdb-uid-lrdb'
+    META_TABLE: 'tsdb-meta-lrdb'
+    TREE_TABLE: 'tsdb-tree-lrdb'
+
+persistence:
+  ## If true, use a Persistent Volume Claim, If false, use emptyDir
+  ## NOTE if enabled, a pvc named "opentsdb-pvclaim" is required
+  enabled: true
+  ## Persistent Volume Storage Class
+  ## If defined, storageClassName: <storageClass>
+  ## If set to "-", storageClassName: "", which disables dynamic provisioning
+  ## If undefined (the default) or set to null, no storageClassName spec is
+  ##   set, choosing the default provisioner.  (gp2 on AWS, standard on
+  ##   GKE, AWS & OpenStack)
+  ##
+  # storageClass: "-"
+  ## Persistent Volume Claim annotations
+  ##
+  annotations:
+  ## Persistent Volume Access Mode
+  ##
+  accessModes:
+    - ReadWriteOnce
+  ## Persistent Volume size
+  ##
+  size: 1Gi
+  ##
+
+
+#Make enabled: true and uncomment following lines to start a cronjob.
+cronjob:
+  enabled: false
+  #schedule: "0 1 * * *"
+  #concurrencyPolicy: "Forbid"
+  #failedJobsHistoryLimit: "0"
+  #successfulJobsHistoryLimit: "0"
+  #suspend: "False"
+
+ingress:
+  enabled: true
+  annotations:
+    kubernetes.io/ingress.class: nginx
+    nginx.ingress.kubernetes.io/proxy-pass-suffix: $uri
+    nginx.ingress.kubernetes.io/ssl-passthrough: "true"
+    nginx.ingress.kubernetes.io/force-ssl-redirect: "true"
+    #kubernetes.io/tls-acme: "true"
+  #path: /altiplano-long-retention-opentsdb
+  #hosts:
+  #- "*"
+  tls: []
+  #  - secretName: chart-example-tls
+  #    hosts:
+  #      - chart-example.local
+  authUrl:
+nginxIncIngress:
+  annotations:
+    kubernetes.io/ingress.class: nginx
+    nginx.org/mergeable-ingress-type: minion
+resources: {}
+  # We usually recommend not to specify default resources and to leave this as a conscious
+  # choice for the user. This also increases chances charts run on environments with little
+  # resources, such as Minikube. If you do want to specify resources, uncomment the following
+  # lines, adjust them as necessary, and remove the curly braces after 'resources:'.
+  # limits:
+  #  cpu: 100m
+  #  memory: 128Mi
+  # requests:
+  #  cpu: 100m
+  #  memory: 128Mi
+
+# OpenTSDB Metrics exposed via Prometheus OpenTSDB Exporter
+metricsExporter:
+  enabled: true
+  image:
+    name: "fnms-prometheus-opentsdb-exporter"
+    repository: fnms-prometheus-opentsdb-exporter
+    tag: nokia-3.0.0
+    pullPolicy: IfNotPresent
+  port: 9030
+  ## Note that prometheus.io/port is specified in metrics-exporter-service
+  annotations:
+    prometheus.io/scrape: "true"
+  resources: {}
+    # requests:
+    #  cpu: 100m
+    #  memory: 1Gi
+    # limits:
+    #  cpu: 1
+    #  memory: 4Gi
+
+nodeSelector: {}
+
+tolerations: []
+
+cbur:
+  enabled: true
+  apiVersion: "cbur.csf.nokia.com/v1"
+  #an integer. This value only applies to statefulset. The value can be 0,1 or 2.
+  #Recommended value of brOption for BELK is 0.
+  brOption: 0
+  #the maximum copy you want to saved.
+  maxiCopy: 5
+  #Modes supported now: "local","NETBKUP","AVAMAR","CEPHS3","AWSS3", case insensitive
+  backendMode: local
+  #It is used for scheduled backup task
+  cronSpec: "*/30 * * * *"
+  #Set below parameters to true for auto enabling cron job
+  autoEnableCron: true
+  #Set below parameter to true in case you want cronjob to be automatically deleted/updated based on autoEnableCron or cronJob parameters
+  autoUpdateCron: true
+  ## should backups be encrypted?
+  dataEncryption: false
+  persistence:
+    cburtmp:
+      enabled: true
+      size: 3Gi
+      storageClass: ""
+      accessModes:
+        - ReadWriteOnce
+      dir: /tmp
+  cbura:
+    imageRepo: cbur/cbura
+    imageTag: 1.0.3-5650
+    imagePullPolicy: IfNotPresent
+    resources:
+      limits:
+        cpu: "1"
+        memory: "2Gi"
+      requests:
+        cpu: "500m"
+        memory: "1Gi"
+        
+affinity: {}
+
+fluentd_sidecar:
+  image:
+    name: "fnms-fluent"
+    tag: "nokia-4.1.8"
+    pullPolicy: IfNotPresent
+  securityContext:
+    runAsUser: 1000
+    runAsGroup: 114

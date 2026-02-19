@@ -1,0 +1,11 @@
+--- base_ksql/ckaf-ksql-8.1.0/ckaf-ksql/templates/_helpers.tpl	2024-03-28 23:41:09.000000000 +0530
++++ charts/ckaf-ksql/templates/_helpers.tpl	2024-04-17 12:45:45.063051954 +0530
+@@ -314,7 +314,7 @@
+ {{- end }}
+ 
+ {{- define "ckaf-ksql.kubectlImageRepo" }}
+-{{- coalesce .Values.kubectlImage .Values.kubectlImageRepo | default "" }}
++{{- coalesce .Values.kubectlImageRepo .Values.kubectlImage | default "" }}
+ {{- end }}
+ 
+ {{/* render kubernetes resources */}}

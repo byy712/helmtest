@@ -1,0 +1,9 @@
+dependencies:
+- name: ckaf-zookeeper
+  repository: https://repo.cci.nokia.net/csf-helm-stable/
+  version: 8.0.2
+- name: csf-common-lib
+  repository: https://repo.cci.nokia.net/csf-helm-stable/
+  version: 1.8.0
+digest: sha256:adb2f0bd9f1db3c6959580209fe4a677c61f564ea9308aaa5a63b184b35655ce
+generated: "2024-02-20T10:17:09.858626587Z"

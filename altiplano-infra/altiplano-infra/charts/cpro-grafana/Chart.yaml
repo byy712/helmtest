@@ -1,0 +1,19 @@
+apiVersion: v2
+appVersion: 10.2.1
+dependencies:
+- name: csf-common-lib
+  repository: https://repo.cci.nokia.net/csf-helm-stable/
+  version: 1.10.0
+- name: cpro-common-lib
+  repository: https://repo.cci.nokia.net/csf-helm-stable/
+  version: 2.0.0
+description: The leading tool for querying and visualizing time series and metrics.
+home: https://grafana.net
+icon: https://raw.githubusercontent.com/grafana/grafana/master/public/img/logo_transparent_400x.png
+maintainers:
+- email: I_CSF_CPRO@groups.nokia.com
+  name: CSF_CPRO
+name: cpro-grafana
+sources:
+- https://github.com/grafana/grafana
+version: 7.0.4-nokia-patch-4

@@ -1,0 +1,214 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ template "altiplano-webdav.fullname" . }}
+  labels:
+    app: {{ template "altiplano-webdav.name" . }}
+    chart: {{ template "altiplano-webdav.chart" . }}
+    release: {{ .Release.Name }}
+    heritage: {{ .Release.Service }}
+spec:
+  replicas: {{ .Values.replicaCount }}
+  strategy:
+{{ toYaml .Values.updateStrategy | indent 4 }}
+  selector:
+    matchLabels:
+      app: {{ template "altiplano-webdav.name" . }}
+      release: {{ .Release.Name }}
+  template:
+    metadata:
+      annotations:
+        kubectl.kubernetes.io/default-container: {{ .Chart.Name }}
+        kubectl.kubernetes.io/default-logs-container: {{ .Chart.Name }}
+      labels:
+        altiplano-role: {{ .Values.accessRoleLabel }}
+        app: {{ template "altiplano-webdav.name" . }}
+        release: {{ .Release.Name }}
+    spec:
+      securityContext:
+        runAsNonRoot: {{ .Values.securityContext.runAsNonRoot | default true }}
+        runAsUser: {{ .Values.securityContext.runAsUser | default 1000 }}
+        runAsGroup: {{ .Values.securityContext.runAsGroup | default 1000 }}
+        fsGroup: {{ .Values.securityContext.fsGroup | default 1000 }}
+      initContainers:
+        - name: init
+          image: {{ .Values.global.registry}}/{{ .Values.init.repository}}:{{ .Values.init.tag}}
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          command: [ "/bin/sh", "-c" ]
+          args:
+            - |
+              ln -s /etc/altiplano/certificates/secrets/webdav-server-cert.pem /etc/altiplano/certificates/server.crt
+              ln -s /etc/altiplano/certificates/secrets/webdav-server-key.pem /etc/altiplano/certificates/server.key
+          volumeMounts:
+            - mountPath: /etc/altiplano/certificates/secrets/
+              name: altiplano-webdav-certs
+            - mountPath: /etc/altiplano/certificates
+              name: webdav-certificate
+        - name: init-optimize-webdav-storage
+          image: {{ .Values.global.registry}}/{{ .Values.init.repository}}:{{ .Values.init.tag}}
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          command: [ "/bin/sh", "-c" ]
+          args:
+            - |
+              # Check if the environment variable OPTIMIZED_DEVICE_SW_FILE_STORAGE_DIRECTORY_ON_WEBDAV is set
+              if [ -z "$OPTIMIZED_DEVICE_SW_FILE_STORAGE_DIRECTORY_ON_WEBDAV" ]; then
+                echo "OPTIMIZED_DEVICE_SW_FILE_STORAGE_DIRECTORY_ON_WEBDAV not set. Exiting..."
+                exit 0
+              fi
+
+              # Find all folders ending with "altiplano-av"
+              NEW_DIRECTORY="/var/webdav/$OPTIMIZED_DEVICE_SW_FILE_STORAGE_DIRECTORY_ON_WEBDAV/sharedfs/device_software_base/"
+
+              # Check if the new directory exists
+              if [ -d "$NEW_DIRECTORY" ]; then
+                echo "The shared directory is existing on the WebDAV server for device software. Exiting..."
+                exit 0
+              else 
+                MATCHING_DIR=$(find /var/webdav/ -type d -name '*altiplano-av*')
+                FIRST_MATCHING_DIR=$(echo "$MATCHING_DIR" | head -n 1)
+                EXISTING_DIR="$FIRST_MATCHING_DIR/sharedfs/device_software_base/"
+                
+                # Create a new directory
+                mkdir -p "$NEW_DIRECTORY"
+                
+                # Check if any matching folder is not empty
+                if [ -n "$(ls -A "$EXISTING_DIR")" ]; then
+                    # Move the contents from the existing directory to the new directory
+                    mv "$EXISTING_DIR"* "$NEW_DIRECTORY"
+              
+                    if [ $? -eq 0 ]; then
+                        echo "Completed moving the existing software files in $EXISTING_DIR on the WebDAV server into the new common directory."
+                        # Delete the existing directories
+                        echo "$MATCHING_DIR" | while IFS= read -r dir; do
+                            echo "Processing directory: $dir"
+                            rm -r "$dir/sharedfs/device_software_base"
+                        done
+                        echo "Completed removing the existing software files on the WebDAV server."           
+                    fi 
+                else 
+                    echo "No such device software files or directories are found. Created a new shared directory $NEW_DIRECTORY."
+                fi
+              fi
+          volumeMounts:
+            - mountPath: /var/webdav
+              name: webdav-storage    
+          env:
+            - name: OPTIMIZED_DEVICE_SW_FILE_STORAGE_DIRECTORY_ON_WEBDAV
+              value: {{ .Values.env.OPTIMIZED_DEVICE_SW_FILE_STORAGE_DIRECTORY_ON_WEBDAV | quote}}
+      containers:
+        - name: {{ .Chart.Name }}
+          image: {{ template "image.fullname" . }}
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          ports:
+            - name: webdavport
+              containerPort: 8080
+              protocol: TCP
+            - name: https
+              containerPort: 8443
+              protocol: TCP
+          env:
+            - name: TZ
+              {{- if .Values.env.timeZoneEnv}}
+              value: {{ .Values.env.timeZoneEnv }}
+              {{- else if .Values.global.timeZoneEnv }}
+              value: {{ .Values.global.timeZoneEnv }}
+              {{- else }}
+              value: "UTC"
+              {{- end }}
+{{- range $name, $value := .Values.env.open }}
+            - name: {{ $name | quote }}
+              value: {{ $value | quote }}
+{{- end }}
+{{- $secret_name := include "altiplano-webdav.fullname" . }}
+{{- range $name, $value := .Values.env.secrets }}
+{{- if not ( empty $value) }}
+            - name: {{ $name | quote }}
+              valueFrom:
+                secretKeyRef:
+                  name: {{ $secret_name }}
+                  key: {{ $name | quote }}
+{{- end }}
+{{- end }}
+          volumeMounts:
+{{- if (or .Values.persistence.enabled .Values.global.persistence) }}
+            - name: webdav-storage
+              mountPath: /var/webdav
+{{- end }}
+            - mountPath: /etc/altiplano/certificates
+              name: webdav-certificate
+            - mountPath: /etc/altiplano/certificates/secrets/
+              name: altiplano-webdav-certs
+          livenessProbe:
+            exec:
+              command:
+                - "bash"
+                - "-c"
+                - "if [[ -z $(ls -la /var/webdav) ]]; then exit 1; else curl -s -k http://localhost:8080/; fi"
+            initialDelaySeconds: 30
+            periodSeconds: 20
+            timeoutSeconds: 10
+          readinessProbe:
+            exec:
+              command:
+                - "bash"
+                - "-c"
+                - "if [[ -z $(ls -la /var/webdav) ]]; then exit 1; else curl -s -k http://localhost:8080/; fi"
+            initialDelaySeconds: 15
+            periodSeconds: 5
+            timeoutSeconds: 10
+          resources:
+{{ toYaml .Values.resources | indent 12 }}
+        {{- if .Values.cbur.enabled }}
+        # NOTE: CBUR requires hard-coded sidecar container name
+        - name: cbura-sidecar  #<---predefined sidecar name, hardcoded. If any another name used, cbur will not treat it as a valid predefined sidecar
+          image: {{ template "cbura.image.fullname" . }}
+          imagePullPolicy: {{ .Values.cbur.cbura.imagePullPolicy }}
+          resources:
+{{ toYaml .Values.cbur.cbura.resources | indent 12 }}
+          securityContext:
+            runAsUser: {{ .Values.securityContext.runAsUser | default 48 }}
+            runAsGroup: {{ .Values.securityContext.runAsGroup | default 1000 }}
+          volumeMounts:
+{{- if (or .Values.persistence.enabled .Values.global.persistence) }}
+          - mountPath: /webdav-storage
+            name: webdav-storage
+{{- end }}
+          {{- if .Values.cbur.persistence.cburtmp.enabled }}
+          - name: cburtmp
+            mountPath: {{ default "/tmp" .Values.cbur.persistence.cburtmp.dir }}
+          {{- end }}
+        {{- end }}  #cbur.enabled
+    {{- with .Values.nodeSelector }}
+      nodeSelector:
+{{ toYaml . | indent 8 }}
+    {{- end }}
+    {{- with .Values.affinity }}
+      affinity:
+{{ toYaml . | indent 8 }}
+    {{- end }}
+    {{- with .Values.tolerations }}
+      tolerations:
+{{ toYaml . | indent 8 }}
+    {{- end }}
+      volumes:
+        - name: altiplano-webdav-certs
+          secret:
+            secretName: altiplano-webdav-certificate-secrets
+        - name: webdav-certificate
+          emptyDir:
+            medium: Memory
+        - name: webdav-storage
+{{- if not (or .Values.persistence.enabled .Values.global.persistence) }}
+          emptyDir: {}
+{{- else }}
+          persistentVolumeClaim:
+            claimName: webdav-pvclaim
+{{- end }}
+        
+        - name: cburtmp
+{{- if not (.Values.cbur.enabled) }}
+          emptyDir: {}
+{{- else }}
+          persistentVolumeClaim:
+            claimName: webdav-cburtmp-pvclaim
+{{- end }}

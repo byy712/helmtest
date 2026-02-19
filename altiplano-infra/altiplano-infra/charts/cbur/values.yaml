@@ -1,0 +1,1324 @@
+# Default values for cbur.
+# This is a YAML-formatted file.
+# Declare variables to be passed into your templates.
+
+# CBUR only supports one replica currently, please do not change it to other value.
+replicas: 1
+
+global:
+  # Delivered repo: csf-docker-delivered.repo.cci.nokia.net
+  # Candidates repo: csf-docker-candidates.repo.cci.nokia.net
+  # Inprogress repo: csf-docker-inprogress.repo.cci.nokia.net
+  registry:
+  # If flatRegistry is set to true, the repository path in all container images will be skipped
+  flatRegistry: false
+
+  ## Reference to one or more secrets to be used when pulling images
+  ## ref: https://kubernetes.io/docs/tasks/configure-pod-container/pull-image-private-registry/
+  imagePullSecrets: []
+
+  podNamePrefix: ""
+  disablePodNamePrefixRestrictions: false
+  containerNamePrefix: ""
+
+  init:
+    enabled: false
+
+  # Supported image flavors: "rocky8"
+  imageFlavor: "rocky8"
+  # Supported image flavor policies: "Strict", "BestMatch"
+  imageFlavorPolicy:
+
+  # Set to true to enable cpu.limits
+  enableDefaultCpuLimits: false
+
+  annotations: {}
+  labels: {}
+
+  timeZoneEnv: "UTC"
+
+  priorityClassName: ""
+  certManager:
+    enabled: true
+    issuerRef:
+      # if name not provided, will generate automatically
+      name:
+      kind: "Issuer"
+      group: "cert-manager.io"
+
+  # when syslog is enabled here, there is still need to configure other fields in below part, e.g. global.unifiedLogging.tls.secretRef.name etc.
+  unifiedLogging:
+    extension: {}
+    logLevel: "INFO"
+    syslog:
+      enabled: false
+      facility:
+      host:
+      port: 514
+      protocol: tcp
+      rfc:
+        enabled:
+        appName:
+        procId:
+        msgId:
+        version:
+      tls:
+        secretRef:
+          name:
+          keyNames:
+            caCrt: "ca.crt"
+            tlsKey: "tls.key"
+            tlsCrt: "tls.crt"
+      #For keyStore, keyStorePassword, trustStore and trustStorePassword,
+      #location should point to file defined in the 'key' in the Secret named 'secretName'.
+      #Secret named 'secretName' should be mounted in a container.
+      keyStore:
+        secretName:
+        key:
+      keyStorePassword:
+        secretName:
+        key:
+      trustStore:
+        secretName:
+        key:
+      trustStorePassword:
+        secretName:
+        key:
+
+  tls:
+    enabled: false
+
+  # CSFLCM-8503: CBUR supports daul-stack
+  # ipFamilyPolicy:  SingleStack | PreferDualStack | RequireDualStack
+  ipFamilyPolicy: ""
+  # ipFamilies: ["IPv4"] | ["IPv6"] | ["IPv4","IPv6"] | ["IPv6","IPv4"]
+  ipFamilies: []
+# - IPv4
+# - IPv6
+
+# workload level scope
+ipFamilyPolicy: ""
+ipFamilies: []
+accessRoleLabel: internal-access
+certManager:
+  enabled:
+  issuerRef:
+    name:
+    kind:
+    group:
+
+# Set to true to enable cpu.limits
+enableDefaultCpuLimits:
+
+disablePodNamePrefixRestrictions:
+
+custom:
+  pod:
+    annotations: {}
+    #  sidecar.istio.io/proxyCPU: 10m
+    #  sidecar.istio.io/proxyMemory: "16Mi"
+  job:
+    annotations: {}
+
+# Delivered repo: csf-docker-delivered.repo.cci.nokia.net
+# Candidates repo: csf-docker-candidates.repo.cci.nokia.net
+# Inprogress repo: csf-docker-inprogress.repo.cci.nokia.net
+internalCBURMasterRegistry: csf-docker-delivered.repo.cci.nokia.net
+internalCBURSidecarRegistry: csf-docker-delivered.repo.cci.nokia.net
+internalCBURCliRegistry: csf-docker-delivered.repo.cci.nokia.net
+internalCBURAvamarRegistry: csf-docker-delivered.repo.cci.nokia.net
+internalCBURLogManagerRegistry: csf-docker-delivered.repo.cci.nokia.net
+internalCRDBRedisioRegistry: csf-docker-delivered.repo.cci.nokia.net
+
+image:
+  master:
+    path: cbur
+    name: cbur-main
+    _imageFlavorMapping:
+      - flavor: "rocky8"
+        tag: "1.12.0-rocky8-python3-586"
+    imageFlavor:
+    imageFlavorPolicy:
+    tag:
+    pullPolicy: IfNotPresent
+    imagePullSecrets: []
+  agent:
+    path: cbur
+    name: cbur-agent
+    _imageFlavorMapping:
+      - flavor: "distroless"
+        tag: "1.2.0-alpine-580"
+    imageFlavor:
+    imageFlavorPolicy:
+    tag:
+    pullPolicy: IfNotPresent
+    imagePullSecrets: []
+  croncli:
+    path: cbur
+    name: cbur-cli
+    _imageFlavorMapping:
+      - flavor: "distroless"
+        tag: "1.2.0-alpine-580"
+    imageFlavor:
+    imageFlavorPolicy:
+    tag:
+    pullPolicy: IfNotPresent
+    imagePullSecrets: []
+  avamar:
+    path: cbur
+    name: cbur-avamar
+    _imageFlavorMapping:
+      - flavor: "rocky8-avamar19.8"
+        tag: "1.2.0-rocky8-avamar19.8-580"
+      - flavor: "rocky8-avamar19.3"
+        tag: "1.2.0-rocky8-avamar19.3-580"
+    imageFlavor:
+    imageFlavorPolicy:
+    tag:
+    pullPolicy: IfNotPresent
+    imagePullSecrets: []
+  init:
+    name: fnms-init-container
+    tag: nokia-1.0.9
+    pullPolicy: IfNotPresent
+  logmanager:
+    path: cbur
+    name: cbur-logmanager
+    _imageFlavorMapping:
+      - flavor: "rocky8"
+        tag: "1.0.0-rocky8-python3-580"
+    imageFlavor:
+    imageFlavorPolicy:
+    tag:
+    pullPolicy: IfNotPresent
+  redis:
+    path: crdb
+    name: crdb-redisio
+    _imageFlavorMapping:
+      - flavor: "rocky8"
+        tag: "6.1-1.4604-rocky8"
+    imageFlavor:
+    imageFlavorPolicy:
+    tag:
+    pullPolicy: IfNotPresent
+
+#Supported image flavors: "rocky8"
+imageFlavor:
+imageFlavorPolicy:
+
+component: master
+
+partOf: "cbur"
+
+fullnameOverride:
+nameOverride:
+
+cburm:
+  name: "cburm"
+  labels: {}
+  annotations: {}
+  #  sidecar.istio.io/proxyCPU: 10m
+  #  sidecar.istio.io/proxyMemory: "16Mi"
+  ## podAntiAffinity constrains which nodes the pods can be scheduled based on
+  ## the labels of the pods already running on that node.
+  ## Refer https://kubernetes.io/docs/reference/generated/kubernetes-api/v1.25/#podantiaffinity-v1-core
+  podAntiAffinity:
+    zone:
+      ## Possible options: soft/hard/none
+      type:
+      topologyKey: "topology.kubernetes.io/zone"
+    node:
+      ## Possible options: soft/hard/none
+      ## Default is same as "nodeAffinity" to be backward compatible.
+      type:
+      topologyKey: "kubernetes.io/hostname"
+    customRules:
+    ##  type: soft/hard (by default soft)
+    ##  topologyKey:
+    ##  weight: 100 (by default 100)
+    ##  autoGenerateLabelSelector: true
+    ##  labelSelector: <pod labels> (none by default)
+    ##  namespaceSelector: <namespace labels> (none by default)
+    ##  namespaces:
+
+  # Pod scheduling preferences
+  # ref: https://kubernetes.io/docs/concepts/configuration/assign-pod-node/#affinity-and-anti-affinity
+  # This parameter allows overriding the entire affinity block
+  affinity: {}
+
+  unifiedLogging:
+    logLevel:
+    syslog:
+      enabled:
+      facility:
+      host:
+      port:
+      protocol:
+      rfc:
+        enabled:
+        appName:
+        procId:
+        msgId:
+        version:
+      keyStore:
+        secretName:
+        key:
+      keyStorePassword:
+        secretName:
+        key:
+      trustStore:
+        secretName:
+        key:
+      trustStorePassword:
+        secretName:
+        key:
+      # Replacement for keyStore/keyStorePassword/trustStore/trustStorePassword
+      # If needed by clog lib, it can be converted in a helm hook to keyStore/trustStore
+      tls:
+        secretRef:
+          # Secret name, pointing to a Secret object
+          name:
+          # Secret key names mapping
+          # If the provided Secret is of type `kubernetes.io/tls', then key names do not need to be changed.
+          keyNames:
+            # Name of Secret key, which contains CA certificate
+            caCrt: "ca.crt"
+            # Name of Secret key, which contains TLS key
+            tlsKey: "tls.key"
+            # Name of Secret key, which contains TLS certificate
+            tlsCrt: "tls.crt"
+    extension: {}
+
+cronjob:
+  labels: {}
+  annotations: {}
+  resources:
+    limits:
+      # Per HBP 3.4.0, the default value for cpu limit should not be set
+      # Please set it accordingly if you need it.
+      # cpu: 100m
+      ephemeral-storage: 50Mi
+      memory: 50Mi
+    requests:
+      cpu: 100m
+      ephemeral-storage: 10Mi
+      memory: 50Mi
+job:
+  labels: {}
+  annotations: {}
+
+# cburScope valid values are "Cluster|Namespaced", default is "Cluster"
+# "Cluster" means CBUR's functions are open to all namespaces in a cluster
+# "Namespaced" means CBUR will be installed per namespace and its
+# functions will be limited in its namespace, such as k8swatcher/role/backup/restore, etc
+cburScope: "Cluster"
+# includeNamespaces only takes effect when cburScope is Namespaced, which is used to
+# configure other supported namespaces besides the default CBURM_NAMESPACE, the format is as follows:
+# includeNamespaces:
+#   - default
+#   - csdc
+includeNamespaces:
+
+serverPort: 80
+#resources for cburm pod
+resources:
+  limits:
+    # Per HBP 3.4.0, the default value for cpu limit should not be set
+    # Please set it accordingly it if you need it.
+    # cpu: 3
+    memory: 1Gi
+    ephemeral-storage: 1Gi
+  requests:
+    cpu: 300m
+    memory: 350Mi
+    ephemeral-storage: 512Mi
+
+rbac:
+  enabled: true
+  # If rbac.enabled=false, CBUR will use the configured "serviceAccountName".
+  serviceAccountName: ""
+  # If rbac.enabled=true, CBUR will create ServiceAccount, (Cluster)Role, (Cluster)RoleBinding as the following:
+  # 1) CBUR always binds to the (Cluster)Role defined in basic_role.yaml.
+  # 2) When "accessAllResources: true", CBUR will also add access ("get", "list", "create", "update", "patch") to all Kubernetes resources.
+  accessAllResources: true
+  # 3) "adminRole" only takes effect when "accessAllResources" is set to "false". It will enable CBUR to also bind to ClusterRole "admin".
+  adminRole: true
+  #
+  # The following section is for CBUR basic role.
+  # set to false to exclude the permission for DaemonSets in CBUR basic role.
+  daemonSetAccess: true
+  # additional rules to be added to CBUR basic role
+  ## @param rbac.rules [array] Custom RBAC rules to set
+  ## Example:
+  ## rules:
+  ##   - apiGroups:
+  ##       - ""
+  ##     resources:
+  ##       - pods
+  ##     verbs:
+  ##       - get
+  ##       - list
+  ##
+  rules: []
+
+  # limitBrApiGroupPermission instructs whether to remove "create", "update", "patch" permission of "cbur.csf.nokia.com" apiGroups in basic_role.yaml
+  # "rbac.accessAllResources: false" is the precondition for setting limitBrApiGroupPermission to true.
+  # If set limitBrApiGroupPermission to true, that means to remove the capabilities to create/update/patch brpolicies/brhooks for cbur;
+  # Please note, if rbac.adminRole=true, the admin role may have create/update/patch permission of br Api, that means if you want limitBrApiGroupPermission=true to take
+  # effect, need to make sure admin role doesn't have those permissions or set rbac.adminRole to false.
+  limitBrApiGroupPermission: false
+
+  # This helm chart do not create SCC because the restricted SCC is
+  # sufficient to run this chart in openshift.
+  #scc:
+  #  create: false
+  #
+  # PSP will automatically be created by CBUR when rbac.accessAllResources=false and any of below five scenarios in kubernetes version <1.25 is met:
+  #   1. k8swatcher.clusterBrEnabled=true
+  #   2. avamar.enabled=true and hostNetwork.avamar=true
+  #   3. istio.enabled=true and istio.cni.enabled=false
+  #   4. volumeType.glusterfs=true
+  #   5. (global.tls.enabled=true or tls.enabled=true) and tls.certsPath
+  # Otherwise, psp will not be created.
+  psp:
+    create: true
+    annotations:
+      "seccomp.security.alpha.kubernetes.io/allowedProfileNames": "*"
+
+#psp will be officially removed from kubernetes 1.25. Add below control in case users set pss label in kubernetes version < 1.25.
+pss:
+  enabled: false
+
+# Be default, CBUR Pods will run as root user to support all functions
+# However, if you want to use limited functions without requiring root,
+# then non-root UID/GID 1000 can be assigned to CBUR Pods.
+# Also, to support OpenShift, CBUR can support running as an arbitrary uid.
+# And users need to set "auto" as value of securityContext.runAsUser
+# WARNING: non-root represents that CBUR only can provide limited functions.
+securityContext:
+  enabled: true
+  readOnlyRootFilesystem: true
+  # If k8swatcher.clusterBrEnabled or volumeType.glusterfs set to true, then securityContext.runAsUser and securityContext.runAsGroup should be set to "auto" or 0
+  runAsUser: "auto"
+  runAsGroup: "auto"
+  fsGroup: "auto"
+  ##"type","user" and "role" options are supported for seLinuxOptions.
+  seLinuxOptions: {}
+  seccompProfile:
+    type: "RuntimeDefault"
+    ##localhostProfile is only applicable when type is "Localhost"
+    localhostProfile: ""
+
+tls:
+# run cbur with tls, there're 3 diff methods. priority: 1 > 2 > 3
+# 1.secretName: The Kubernetes Secret that has User supplied certificates
+# 2.certsPath: Put all needed certs file under the path
+# 3.If no secretName or certsPath provided, then automatically generated secret with certificate will be used when (global.)certManger.enabled=true.
+  enabled:
+  port: 443
+  certsPath: ""
+  # this is to enable backwards compatibility and use short svc name (<service name>.<namespace>.svc) for secure connections for k8s cronjob and watcher
+  # in coming releases this will be disabled by default and long svc name (<service name>.<namespace>.svc.<cluster domain>) will be used as per HBP recommendations
+  # certificates used for https connections should contain long svc name
+  legacyShortSvcName: true
+
+  # Option to provide server certificate via secret
+  serverSecretRef:
+    # Name of the Secret with credentials
+    credentialName: ""
+    keyNames:
+      # Name of Secret key, which contains CA certificate
+      caCrt: "ca.crt"
+      # Name of Secret key, which contains TLS key
+      tlsKey: "tls.key"
+      # Name of Secret key, which contains TLS certificate
+      tlsCrt: "tls.crt"
+
+  # Option to provide client certificate via secret
+  clientSecretRef:
+    # Name of the Secret with the credentials
+    credentialName: ""
+    keyNames:
+      # Name of Secret key, which contains CA certificate
+      caCrt: "ca.crt"
+      # Name of Secret key, which contains TLS key
+      tlsKey: "tls.key"
+      # Name of Secret key, which contains TLS certificate
+      tlsCrt: "tls.crt"
+
+certificate:
+  issuerRef:
+    name:
+    kind:
+    group:
+  duration: 8760h # 1 year
+  renewBefore: 360h # 15 days
+  # Not needed in internal communication
+  subject:
+  # It has been deprecated since 2000 and is discouraged from being used. `dnsNames` are used instead.
+  commonName:
+  # If `usages` is not specified, the following will be used:
+  # - server auth
+  usages:
+  # Following internal names will always be added to dnsNames:
+  # - localhost
+  # - <service name>.<namespace>
+  # - <service name>.<namespace>.svc
+  # - <service name>.<namespace>.svc.<cluster domain>
+  # If ssl passthrough is used on the Ingress object,
+  # then dnsNames should be set to external DNS names.
+  dnsNames:
+  uris:
+  # If ipAddresses not specified then the following internal local IPs will be used:
+  # - "127.0.0.1"
+  # - "::1"
+  ipAddresses:
+  privateKey:
+    algorithm:
+    encoding:
+    size:
+    rotationPolicy: Always
+
+clientCertificate:
+  issuerRef:
+    name:
+    kind:
+    group:
+  duration: 8760h # 1 year
+  renewBefore: 360h # 15 days
+  # Not needed in internal communication
+  subject:
+  # It has been deprecated since 2000 and is discouraged from being used. `dnsNames` are used instead.
+  commonName: "internal-client"
+  # If `usages` is not specified, the following will be used:
+  # - client auth
+  usages:
+  # Following internal names will always be added to dnsNames:
+  # - localhost
+  # - <service name>.<namespace>
+  # - <service name>.<namespace>.svc
+  # - <service name>.<namespace>.svc.<cluster domain>
+  # If ssl passthrough is used on the Ingress object,
+  # then dnsNames should be set to external DNS names.
+  dnsNames:
+  uris:
+  # If ipAddresses not specified then the following internal local IPs will be used:
+  # - "127.0.0.1"
+  # - "::1"
+  ipAddresses:
+  privateKey:
+    algorithm:
+    encoding:
+    size:
+    rotationPolicy: Always
+
+# Security_Hardening_checklist
+nginx:
+  reqLimitRate: 20
+  reqLimitBurst: 40
+# CSFLCM-8653: CSFID-3946 Add configurable item in the helm chart for nginx listen IP protocol
+  listenIPv4Only: false
+  listenIPv6Only: false
+
+volumeType:
+  glusterfs: false
+  backupEndpoints: "glusterfs-cluster"
+  backupPath: "cbur-glusterfs-backup"
+  repoEndpoints: "glusterfs-cluster"
+  repoPath: "cbur-glusterfs-repo"
+  backupClusterEndpoints: "glusterfs-cluster"
+  backupClusterPath: "cbur-glusterfs-backup-cluster"
+
+isPvRwx: false
+storageBackup: "2Gi"
+storageRepo: "8Gi"
+storageBackupCluster: "20Gi"
+storageClass: ""
+keepPvc: false
+# in case cbur-celery pod fails in "CreateContainerConfigError" state, with Message "Error: stat /cluster01/cbur-repo: no such file or directory" in Rancher environment set "useSubPath" parameter to false
+# Default value of useSubPath: true
+useSubPath: true
+
+directPvc:
+  enabled: false
+  backupPvcName: ""
+  repoPvcName: ""
+  backupClusterPvcName: ""
+
+storageMonitor:
+  enabled: true
+  backup_low_threshold: "75%"
+  repo_low_threshold: "75%"
+  cluster_backup_low_threshold: "75%"
+  backup_high_threshold: "85%"
+  repo_high_threshold: "85%"
+  cluster_backup_high_threshold: "85%"
+
+dataCompression:
+  method: gzip
+  pigzThreads:
+
+cburaVolume:
+  enabled: false
+  storage: "500Mi"
+
+GLOBAL_BACKEND: ""
+
+CEPHS3:
+  credentialName: ""
+  endpoint: ""
+  bucket_prefix: ""
+  # access_key: ""
+  # secret_key: ""
+  # uid: ""
+  # # "ca_crt" contains the SSL certificates for https endpoint.
+  # # If it's not defined, will not verify SSL certificates.
+  # # Enter the base64 encoded string of SSL CA cert: cat ca.crt | base64 -w 0
+  # ca_crt: ""
+
+AWSS3:
+  credentialName: ""
+  bucket_prefix: ""
+  access_logging: false
+  # The avaliable value for encryption is sse-s3, sse-kms, the default value is sse-s3 if doesn't set the value
+  encryption: "sse-s3"
+  # Indicate whether the uploaded object uses an S3 Bucket Key for sse-kms encryption
+  bucketKeyEnabled: true
+  # access_key: ""
+  # secret_key: ""
+  # access_token: ""
+  # region: ""
+  # uid: ""
+  # http_proxy: ""
+  # # If there is existing predefined bucket, will use it instead of create new bucket.
+  # predefined_bucket: ""
+
+swiftS3:
+  credentialName: ""
+  bucketPrefix: ""
+  # endpointUrl: ""
+  # accessKeyId: ""
+  # secretAccessKey: ""
+  # region: ""
+  # uid: ""
+  # # "caCrt" contains the SSL certificates for https endpoint.
+  # # If it's not defined, will not verify SSL certificates.
+  # # Enter the base64 encoded string of SSL CA cert: cat ca.crt | base64 -w 0
+  # caCrt: ""
+
+# Settings for Google Cloud Storage
+GCS:
+  credentialName: ""
+  bucketPrefix: ""
+
+SSH:
+  credentialName: ""
+  # mode: "sftp"
+  # username: ""
+  # host: ""
+  # port: 22
+  # path: ""
+  # strictHostKeyChecking: !!str "no"   # only supports "yes", "no", "autoadd"
+  # hostKey: ""
+
+#there is helm bug before version 3.2, that nodeSelector can not
+#be unset to null or other value(s) via --set.
+#Add below parameter to override the default values for workaround
+nodeSelectorOverride: {}
+nodeSelector: {}
+
+tolerations:
+- effect: NoExecute
+  key: is_control
+  operator: Equal
+  value: "true"
+- effect: NoExecute
+  key: is_edge
+  operator: Equal
+  value: "true"
+- effect: NoExecute
+  key: is_storage
+  operator: Equal
+  value: "true"
+
+# expects input structure as per specification https://kubernetes.io/docs/reference/generated/kubernetes-api/v1.24/#topologyspreadconstraint-v1-core
+# for example:
+#   topologySpreadConstraints:
+#   - maxSkew: 2
+#     topologyKey: topology.kubernetes.io/zone
+#     whenUnsatisfiable: ScheduleAnyway
+#     labelSelector:
+#       matchLabels:
+#         app.kubernetes.io/instance: cbur-master
+#         app.kubernetes.io/component: "LifecycleAndConfiguration"
+topologySpreadConstraints: []
+
+control_node_ip_list: ""
+hostNetwork:
+  avamar: true
+
+avamar:
+  name: "avamar"
+  enabled: false
+  server: "10.75.53.234"
+  domain: "ARC"
+  clientName: ""
+  dnsPolicy: ClusterFirstWithHostNet
+  hostAliases: []
+  resources:
+    limits:
+      # Per HBP 3.4.0, the default value for cpu limit should not be set
+      # Please set it accordingly it if you need it.
+      # cpu: 1
+      memory: 500Mi
+      ephemeral-storage: 1Gi
+    requests:
+      cpu: 300m
+      memory: 70Mi
+      ephemeral-storage: 512Mi
+  preScriptTimeoutSeconds: 10800
+  postScriptTimeoutSeconds: 10800
+  labels: {}
+  annotations: {}
+  ## podAntiAffinity constrains which nodes the pods can be scheduled based on
+  ## the labels of the pods already running on that node.
+  ## Refer https://kubernetes.io/docs/reference/generated/kubernetes-api/v1.25/#podantiaffinity-v1-core
+  podAntiAffinity:
+    zone:
+      ## Possible options: soft/hard/none
+      type:
+      topologyKey: "topology.kubernetes.io/zone"
+    node:
+      ## Possible options: soft/hard/none
+      ## Default is same as "nodeAffinity" to be backward compatible.
+      type:
+      topologyKey: "kubernetes.io/hostname"
+    customRules:
+    ##  type: soft/hard (by default soft)
+    ##  topologyKey:
+    ##  weight: 100 (by default 100)
+    ##  autoGenerateLabelSelector: true
+    ##  labelSelector: <pod labels> (none by default)
+    ##  namespaceSelector: <namespace labels> (none by default)
+    ##  namespaces:
+
+  # Pod scheduling preferences
+  # ref: https://kubernetes.io/docs/concepts/configuration/assign-pod-node/#affinity-and-anti-affinity
+  # This parameter allows overriding the entire affinity block
+  affinity: {}
+
+  unifiedLogging:
+    logLevel:
+    syslog:
+      enabled:
+      facility:
+      host:
+      port:
+      protocol:
+      rfc:
+        enabled:
+        appName:
+        procId:
+        msgId:
+        version:
+      keyStore:
+        secretName:
+        key:
+      keyStorePassword:
+        secretName:
+        key:
+      trustStore:
+        secretName:
+        key:
+      trustStorePassword:
+        secretName:
+        key:
+      # Replacement for keyStore/keyStorePassword/trustStore/trustStorePassword
+      # If needed by clog lib, it can be converted in a helm hook to keyStore/trustStore
+      tls:
+        secretRef:
+          # Secret name, pointing to a Secret object
+          name:
+          # Secret key names mapping
+          # If the provided Secret is of type `kubernetes.io/tls', then key names do not need to be changed.
+          keyNames:
+            # Name of Secret key, which contains CA certificate
+            caCrt: "ca.crt"
+            # Name of Secret key, which contains TLS key
+            tlsKey: "tls.key"
+            # Name of Secret key, which contains TLS certificate
+            tlsCrt: "tls.crt"
+    extension: {}
+
+#netbkup:
+#  enabled: false
+#  server_ip: "10.76.178.125"
+#  server_name: "netbackup"
+#  client_name: ""
+#  dnsPolicy: ClusterFirstWithHostNet
+#  resources:
+#    limits:
+#      cpu: 2
+#      memory: 500Mi
+#    requests:
+#      cpu: 300m
+#      memory: 30Mi
+##crdb is removed for cbur celery async task. To keep backward compatibility,
+##for ISU when crdb is enabled in old version, will automatically convert to enable direct_redis
+direct_redis:
+  enabled: false
+  # If enabled, celery will use localhost to connect to redis instead of k8s service endpoint
+  useLocalhost: true
+  redis_port: 6379
+  resources:
+    limits:
+      # Per HBP 3.4.0, the default value for cpu limit should not be set
+      # Please set it accordingly it if you need it.
+      # cpu: 500m
+      memory: 500Mi
+      ephemeral-storage: 512Mi
+    requests:
+      cpu: 50m
+      memory: 50Mi
+      ephemeral-storage: 512Mi
+
+celery:
+  name: "celery"
+  workerConcurrency: 10
+  resources:
+    limits:
+      # Per HBP 3.4.0, the default value for cpu limit should not be set
+      # Please set it accordingly it if you need it.
+      # cpu: 10
+      ephemeral-storage: 512Mi
+      memory: 3Gi
+    requests:
+      cpu: 1
+      ephemeral-storage: 512Mi
+      memory: 2Gi
+  labels: {}
+  annotations: {}
+  ## podAntiAffinity constrains which nodes the pods can be scheduled based on
+  ## the labels of the pods already running on that node.
+  ## Refer https://kubernetes.io/docs/reference/generated/kubernetes-api/v1.25/#podantiaffinity-v1-core
+  podAntiAffinity:
+    zone:
+      ## Possible options: soft/hard/none
+      type:
+      topologyKey: "topology.kubernetes.io/zone"
+    node:
+      ## Possible options: soft/hard/none
+      ## Default is same as "nodeAffinity" to be backward compatible.
+      type:
+      topologyKey: "kubernetes.io/hostname"
+    customRules:
+    ##  type: soft/hard (by default soft)
+    ##  topologyKey:
+    ##  weight: 100 (by default 100)
+    ##  autoGenerateLabelSelector: true
+    ##  labelSelector: <pod labels> (none by default)
+    ##  namespaceSelector: <namespace labels> (none by default)
+    ##  namespaces:
+
+  # Pod scheduling preferences
+  # ref: https://kubernetes.io/docs/concepts/configuration/assign-pod-node/#affinity-and-anti-affinity
+  # This parameter allows overriding the entire affinity block
+  affinity: {}
+
+  unifiedLogging:
+    logLevel:
+    syslog:
+      enabled:
+      facility:
+      host:
+      port:
+      protocol:
+      rfc:
+        enabled:
+        appName:
+        procId:
+        msgId:
+        version:
+      keyStore:
+        secretName:
+        key:
+      keyStorePassword:
+        secretName:
+        key:
+      trustStore:
+        secretName:
+        key:
+      trustStorePassword:
+        secretName:
+        key:
+      # Replacement for keyStore/keyStorePassword/trustStore/trustStorePassword
+      # If needed by clog lib, it can be converted in a helm hook to keyStore/trustStore
+      tls:
+        secretRef:
+          # Secret name, pointing to a Secret object
+          name:
+          # Secret key names mapping
+          # If the provided Secret is of type `kubernetes.io/tls', then key names do not need to be changed.
+          keyNames:
+            # Name of Secret key, which contains CA certificate
+            caCrt: "ca.crt"
+            # Name of Secret key, which contains TLS key
+            tlsKey: "tls.key"
+            # Name of Secret key, which contains TLS certificate
+            tlsCrt: "tls.crt"
+    extension: {}
+
+# clusterBrEnabled can only be set to true when cburScope is "Cluster"
+# For openshift, please set clusterBrEnabled to false
+# since cluster BR is not supported in openshift
+k8swatcher:
+  name: "k8swatcher"
+  enabled: false
+  clusterBrEnabled: false
+  resources:
+    limits:
+      # Per HBP 3.4.0, the default value for cpu limit should not be set
+      # Please set it accordingly it if you need it.
+      # cpu: 500m
+      ephemeral-storage: 1Gi
+      memory: 500Mi
+    requests:
+      cpu: 200m
+      ephemeral-storage: 512Mi
+      memory: 80Mi
+  labels: {}
+  annotations: {}
+  ## podAntiAffinity constrains which nodes the pods can be scheduled based on
+  ## the labels of the pods already running on that node.
+  ## Refer https://kubernetes.io/docs/reference/generated/kubernetes-api/v1.25/#podantiaffinity-v1-core
+  podAntiAffinity:
+    zone:
+      ## Possible options: soft/hard/none
+      type:
+      topologyKey: "topology.kubernetes.io/zone"
+    node:
+      ## Possible options: soft/hard/none
+      ## Default is same as "nodeAffinity" to be backward compatible.
+      type:
+      topologyKey: "kubernetes.io/hostname"
+    customRules:
+    ##  type: soft/hard (by default soft)
+    ##  topologyKey:
+    ##  weight: 100 (by default 100)
+    ##  autoGenerateLabelSelector: true
+    ##  labelSelector: <pod labels> (none by default)
+    ##  namespaceSelector: <namespace labels> (none by default)
+    ##  namespaces:
+
+  # Pod scheduling preferences
+  # ref: https://kubernetes.io/docs/concepts/configuration/assign-pod-node/#affinity-and-anti-affinity
+  # This parameter allows overriding the entire affinity block
+  affinity: {}
+
+  unifiedLogging:
+    logLevel:
+    syslog:
+      enabled:
+      facility:
+      host:
+      port:
+      protocol:
+      rfc:
+        enabled:
+        appName:
+        procId:
+        msgId:
+        version:
+      keyStore:
+        secretName:
+        key:
+      keyStorePassword:
+        secretName:
+        key:
+      trustStore:
+        secretName:
+        key:
+      trustStorePassword:
+        secretName:
+        key:
+      # Replacement for keyStore/keyStorePassword/trustStore/trustStorePassword
+      # If needed by clog lib, it can be converted in a helm hook to keyStore/trustStore
+      tls:
+        secretRef:
+          # Secret name, pointing to a Secret object
+          name:
+          # Secret key names mapping
+          # If the provided Secret is of type `kubernetes.io/tls', then key names do not need to be changed.
+          keyNames:
+            # Name of Secret key, which contains CA certificate
+            caCrt: "ca.crt"
+            # Name of Secret key, which contains TLS key
+            tlsKey: "tls.key"
+            # Name of Secret key, which contains TLS certificate
+            tlsCrt: "tls.crt"
+    extension: {}
+
+#helmHome:
+#  glusterfs:
+#    enabled: false
+#    endpoints: glusterfs-cluster
+#    path: bcmt-helm-home
+#  hostPath: "/opt/bcmt/storage/helm_home"
+
+logging:
+  level:
+    file: "DEBUG"
+    console: "INFO"
+    kubernetes: "INFO"
+    s3transfer: "INFO"
+    botocore: "INFO"
+    paramiko: "INFO"
+    connexion: "ERROR"
+    openapi_spec_validator: "WARNING"
+  # kept for backward compatibility, these values will take precedence if set
+  file_logging_level:
+  console_logging_level:
+
+unifiedLogging:
+  # By default, CBUR will log messages in unified logging format.
+  # You can enable useLegacyFormat parameter in order to log messages in plain text (previous default behaviour).
+  useLegacyFormat: false
+  syslog:
+    # When syslog feature is enabled, all log output from the application containers (except avamar) can only be accessed from cbur-syslog container.
+    # console.enabled allows to enable/disable cbur-syslog log output to the container.
+    # If it's set to false, logs can only be accessed through remote syslog.
+    console:
+      enabled: true
+    omfwdoption:
+      # -- default is tls based, set to ptcp for none-tls based, which is for lab test only
+      # StreamDriver: gtls
+      # -- 1 only - TLS-protected operation
+      StreamDriverMode: "1"
+      # -- refer to https://rsyslog.readthedocs.io/en/latest/concepts/ns_gtls.html
+      StreamDriverAuthMode: "x509/certvalid"
+      # -- refer to https://www.rsyslog.com/doc/master/configuration/actions.html#general-action-parameters
+      action.resumeretrycount: "-1"
+      action.reportSuspensionContinuation: "on"
+      # -- refer to https://www.rsyslog.com/doc/master/rainerscript/queue_parameters.html
+      queue.type: "linkedList"
+      queue.size: 10000
+      queue.filename: "logmanager_fwd"
+      queue.saveOnShutdown: "on"
+      # -- for load balance
+      RebindInterval: "10000"
+    livenessProbe:
+      exec:
+        command:
+        - /logmanager/bin/health-check.sh
+      initialDelaySeconds: 10
+      periodSeconds: 60
+      timeoutSeconds: 15
+      successThreshold: 1
+      failureThreshold: 3
+    readinessProbe:
+      exec:
+        command:
+        - /logmanager/bin/health-check.sh
+      initialDelaySeconds: 10
+      periodSeconds: 60
+      timeoutSeconds: 15
+      successThreshold: 1
+      failureThreshold: 3
+    resources:
+      requests:
+        memory: 256Mi
+        cpu: 10m
+        ephemeral-storage: "10Mi"
+      limits:
+        memory: 1Gi
+        # Per HBP 3.4.0, the default value for cpu limit should not be set
+        # Please set it accordingly it if you need it.
+        # cpu: 100m
+        ephemeral-storage: "100Mi"
+
+integrityCheck:
+  local_enable: false
+  s3_enable: false
+  # The avaliable values are 'CRC32'|'SHA1'|'SHA256'|'MD5'
+  # If want to enable data integrity check encrypted with SSE-KMS or the data size > 5G, users could NOT use MD5
+  s3Algorithm: ""
+  # Support end-to-end integrity check before restore
+  # For application and namespace backup/restore, if define the appIntegritySecret, CBUR will use the key saved in appIntegritySecret to generate the signed digest
+  # For cluster backup/restore, if define the clusterIntegritySecret, CBUR will use the key saved in clusterIntegritySecret to generate the signed digest
+  e2e:
+    enabled: false
+    appIntegritySecret: ""
+    clusterIntegritySecret: ""
+
+backup_self:
+  enabled: false
+  backend_mode: "AWSS3"
+  cronSpec: "0 0 * * *"
+  maxiCopy: 5
+  volumes:
+  - cbur-repo
+
+preUpgradeJob:
+  backup:
+    enabled: false
+    timeoutInterval: 150
+  resources:
+    limits:
+      # Per HBP 3.4.0, the default value for cpu limit should not be set
+      # Please set it accordingly it if you need it.
+      # cpu: 200m
+      memory: 500Mi
+      ephemeral-storage: 10Mi
+    requests:
+      cpu: 100m
+      memory: 50Mi
+      ephemeral-storage: 10Mi
+
+postDeleteJob:
+  enabled: false
+  resources:
+    limits:
+      # Per HBP 3.4.0, the default value for cpu limit should not be set
+      # Please set it accordingly it if you need it.
+      # cpu: 200m
+      memory: 500Mi
+      ephemeral-storage: 10Mi
+    requests:
+      cpu: 100m
+      memory: 50Mi
+      ephemeral-storage: 10Mi
+
+hostPaths:
+  dirs:
+    bcmt-path: "/opt/bcmt/storage/"
+  files:
+    ncm-cli: "/usr/local/bin/ncm"
+
+auth:
+  enabled: false
+  # useNodePort is removed in cbur 1.13.0 and replaced by service.type
+  # useNodePort: false
+
+ingress:
+  enabled: true
+  ## The available ingress types include: nginx, gce, alb, agic
+  ## The nginx means using nginx ingress controller
+  ## The gce means using GKE built-in ingress controller, workable configuration for gce is: ingress.path="/*",ingress.pathType="ImplementationSpecific",ingress.annotations={}
+  ## The alb means using aws load balancer controller for Application load balancers(ALB), workable configuration for alb is:
+  ## ingress.path="/*",ingress.pathType="ImplementationSpecific", and also need to add some annotations, please refer to the detailed information commented in annotations part for EKS.
+  ingressType: nginx
+  className: ""
+  annotations:
+     ## When ingressType is set to gce, below nginx related annotations must be commented out.
+     nginx.ingress.kubernetes.io/rewrite-target: "/$1"
+     nginx.ingress.kubernetes.io/ssl-redirect: "false"
+
+     ## annotations when using certManager to generate tls secret. Please refer to https://cert-manager.io/docs/usage/ingress/#supported-annotations. The generated secret name will be the secretName set in ingress.tls field.
+     #cert-manager.io/cluster-issuer: ncms-ca-issuer
+     #cert-manager.io/duration: 8760h
+
+     ## In OpenShift, if using ingress to create route, please add below annotation
+     #haproxy.router.openshift.io/rewrite-target: /
+     ## In OpenShift, if create passthrouth route, please add below annotation and configure "pathType=ImplementationSpecific, path=''"
+     #route.openshift.io/termination: passthrough
+
+     ## In EKS, if using alb ingress controller, workable configuration is: ingress.path="/*",ingress.pathType="ImplementationSpecific"
+     ## and also need to add below annotations:
+     #alb.ingress.kubernetes.io/scheme: internal
+     #alb.ingress.kubernetes.io/target-type: ip
+     #alb.ingress.kubernetes.io/subnets: <>    ## the values are changed per cluster
+
+     ## This part means client certificate authentication
+     ## For client authentication, auth-tls-secret needs to be provided for server certificates.
+     ## Example: kubectl create secret generic <auth-tls-secret-name> --from-file=ca.crt=ca.crt --from-file=tls.crt=server.crt --from-file=tls.key=server.key
+     #nginx.ingress.kubernetes.io/auth-tls-verify-client: "on"
+     #nginx.ingress.kubernetes.io/auth-tls-secret: "<namespace>/<auth-tls-secret-name>"
+
+     ## This part means backend certificate authentication
+     ## For backend authentication, proxy-ssl-secret needs to be provided for client certificates.
+     ## Example: kubectl create secret generic <proxy-ssl-secret-name> --from-file=ca.crt=ca.crt --from-file=tls.crt=client.crt --from-file=tls.key=client.key
+     ## If $ROOT.tls.secretName is not provided and certManager is used to generate cbur tls credential, proxy-ssl-secret annotation will be added automaticially to Ingress resource and no need to configure it here.
+     #nginx.ingress.kubernetes.io/proxy-ssl-secret: "<namespace>/<proxy-ssl-secret-name>"
+     #nginx.ingress.kubernetes.io/proxy-ssl-verify: "on"
+
+  ## If configure hosts for openshift, the format should be <host name>.<openshift cluster domain name>
+  ## For example the Openshift Sandbox OKD411CB0912 domain name is apps.okd411cb0912.dyn.nesc.nokia.net,
+  ## the host could be configured as cbur-host-name.apps.okd411cb0912.dyn.nesc.nokia.net.
+  #hosts:
+  #  - domainname.example.com
+  ## Note: tls secret must be created mannually before cbur intallation
+  #tls:
+  #  - secretName: tls-secret
+  #    hosts:
+  #    - domainname.example.com
+  path: cbur
+
+  ## The field of pathType for ingress path is configurable with following types:
+  ## Prefix |ImplementationSpecific |Exact
+  pathType: Prefix
+
+## podDisruptionBudget setting. Since CBUR only supports one replica currently,
+## minAvailable can only be set to 1 now.
+pdb:
+  enabled: false
+  minAvailable: 1
+
+## HorizontalPodAutoscaler is not applicable to CBUR
+#hpa:
+    #enabled value left empty intentionally, default value is False
+    #enabled: false
+
+# enable standard out audit log stream
+auditLogStdout:
+  enabled: false
+
+# cluster name and cluster id
+# Make sure they are strings by --set-string or -f if pure numbers
+# Or else they will be parsed into integers
+# For Non-NCS env, one or both of clusterName and clusterId settings are mandatory
+# For NCS, if they are not set, CBUR will automatically get the info via sending request to bcmt-api.
+clusterName: ""
+clusterId: ""
+# For compatible with previous release, it is intentionally to not put "cluster.local" as default value of clusterDomain
+clusterDomain: ""
+onlyRestore: false
+enableBrSchemaValidation: true
+
+istio:
+  # version of istio available in the environment.
+  # quote is important, otherwise value is treated as a float value.
+  version: "1.5"
+  # Should istio be enabled for this deployment.
+  enabled: false
+  # Whether istio cni is enabled in the environment
+  cni:
+    enabled: true
+  # MTLS section of configuration.
+    # if mtls.enabled==true and permissive==true, will create peerauthentication with mtls mode PERMISSIVE
+    # if mtls.enabled==false and permissive==false, will not create peerauthentication
+  mtls:
+    #Is strict MTLS enabled in the environment.
+    enabled: true
+  # Should allow mutual TLS as well as clear text for your deployment.
+  permissive: true
+  # This optional flag should only be used when application was installed in istio-injection=enabled namespace, but was configured with istio.enabled=false, thus istio sidecar could not be injected into this application. Client then would need destinationRule for accessing this application
+  createDrForClient: false
+  virtualservice:
+    hosts: []
+  # Set it to control uri prefix match in istio VirtualService
+  matchUriPrefix:
+  # Optional sharedHttpGateway which should be used if you need to share a gateway.
+  sharedHttpGateway:
+    # This section instructs the chart to reuse an already existing gateway
+    # for http/https purposes. This is applicable if you already have a gateway
+    # on the same hostname listening on 80/443.
+    # Namespace where the existing gateway object exists.
+    namespace:
+    # Name of the gateway object.
+    name:
+
+  gateway:
+    # hosts will use virtualservice.hosts
+    # Should this be enabled or not.
+    enabled: false
+    # Optional labels to be added to gateway object.
+    labels: {}
+    # Any annotations to be added to the gateway object.
+    annotations: {}
+    # By default the chart will use label 'istio: ingressgateway' as selector,
+    # which is the default one deployed in istio-system namespace.
+    # This should be the label of the istio ingressgateway pod which you
+    # want your gateway to attach to.
+    ingressPodSelector:
+      istio: ingressgateway
+    # Port number where the gateway should attach to.
+    port: 80
+    # Protocol to be used for the port(TLS/TCP/HTTP/HTTPS).
+    # TLS/HTTPS will need the optional tls section to be filled.
+    protocol: HTTP
+    # TLS settings for your gateway. This section is mandatory if protocol is TLS/HTTPS.
+    tls:
+      # This optional flag is only applicable for an HTTP port to force a redirection to HTTPS.
+      # redirect: false
+      # Mode can be SIMPLE / MUTUAL / PASSTHROUGH/ ISTIO_MUTUAL and it is exactly as per ISTIO documentation.
+      mode: PASSTHROUGH
+      # The name of the kubernetes secret, in the namespace to be used for TLS traffic.
+      # credentialName:
+      # Istio TLS has many other attributes and configurations. If for some reason none of the above fits your
+      # needs , then use this section to configure as per istio docs. Anything under here will be directly moved
+      # under TLS section of gateway definition.
+      # custom: {}
+
+priorityClassName: ""
+
+#FNMS-39240 - TD / Gaps - 3rd party containers logging in kubernetes
+mycelery_fluentd_sidecar:
+  image:
+    name: "fnms-fluent"
+    tag: nokia-4.1.4
+    pullPolicy: IfNotPresent
+
+cbur_fluentd_sidecar:
+  image:
+    name: "fnms-fluent"
+    tag: nokia-4.1.4
+    pullPolicy: IfNotPresent
+    
+k8swatcher_fluentd_sidecar:
+  image:
+    name: "fnms-fluent"
+    tag: nokia-4.1.4
+    pullPolicy: IfNotPresent
+
+# Indicates whether to enable the post hook to check pods are all ready for helm install, helm upgrade or helm rollback
+startupCheck:
+  enabled: true
+  resources:
+    limits:
+      # Per HBP 3.4.0, the default value for cpu limit should not be set
+      # Please set it accordingly it if you need it.
+      # cpu: 200m
+      memory: 500Mi
+      ephemeral-storage: 10Mi
+    requests:
+      cpu: 100m
+      memory: 50Mi
+      ephemeral-storage: 10Mi
+
+service:
+  ## Supported: ClusterIP, NodePort, LoadBalancer
+  type: ClusterIP
+  ## In EKS, if using NLB load balancer, i.e, service.type=LoadBalancer, workable annotation configuration is below:
+  #annotations:
+    #service.beta.kubernetes.io/aws-load-balancer-nlb-target-type: ip
+    #service.beta.kubernetes.io/aws-load-balancer-scheme: internal
+    #service.beta.kubernetes.io/aws-load-balancer-type: external
+    #service.beta.kubernetes.io/aws-load-balancer-subnets: <>     ## the values are changed per cluster
+  annotations: {}
+
+# The method used to copy (backup) data from cbura-sidecar to cburm.
+#   cp: "kubectl cp" will be used
+#   cat: "kubectl exec <pod> -c <container> -n <namespace> -- sh -c 'cat <src_tarball>' > <dest_tarball>" will be used
+# This doesn’t apply when copying (restore) data from cburm to cbura-sidecar, which will always use "kubectl cp".
+copyFromCburaMethod: cp
+
+# The "--retries" in "kubectl cp". It's only available when the Kubernetes version >= v1.23.
+# If not defined, will not add "--retries" in "kubectl cp" command.
+# This applies for both copy to / from cbura-sidecar.
+cpRetries:
+
+multus:
+  enabled: false
+  # If networkAttachmentName is set, custom NetworkAttachmentDefinition has to be applied before CBUR installation.
+  # Leave the name empty to apply config through available values.
+  networkAttachmentName:
+  config:
+    cniVersion: 0.3.1
+    networkType:
+    workerDevice:
+    ipamType:
+    range:
+    rangeStart:
+    rangeEnd:
+    gateway:
+    routes:

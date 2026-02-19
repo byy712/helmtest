@@ -1,0 +1,76 @@
+{{- include "cmdb.init" . -}}
+{{- if eq (include "cmdb.has_maxscale" .) "true" }}
+{{ $svcSuffix := printf "%s.svc.%s" .Release.Namespace  .Values.clusterDomain }}
+{{ $direct := .Values.geo_redundancy.directConnect }}
+{{ $use_tls := eq (include "cmdb.tls_enabled" (tuple . "mariadb")) "true" }}
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ template "cmdb.fullname" . }}-datacenter
+  labels:
+    {{- include "cmdb-maxscale.labels" (tuple . "configmap") | nindent 4 }}
+  annotations:
+    {{- include "cmdb-maxscale.annotations" (tuple . "configmap") | nindent 4 }}
+data:
+{{- $ctx := . }}
+  datacenter.conf: |-
+{{- with .Values.admin.rebuildSlave }}
+  {{- if .enabled }}
+    [server-rebuild]
+    mode = {{ .mode }}
+    io_errors = {{ .onErrorsIO | quote | default "1236" }}
+    sql_errors = {{ .onErrorsSQL | quote | default "all" }}
+    preferred_donor = {{ .preferredDonor }}
+    allow_master_donor = {{ .allowMasterDonor }}
+    method = {{ .method }}
+    timeout = {{ .timeout }}
+    retries = {{ .retries }}
+    fail_retry_interval = {{ .failRetryInterval | quote }}
+    parallel = {{ .parallel }}
+    use_memory = {{ .useMemory }}
+    joiner_bind = {{ default "[::],pf=ip6" .joinerBind | quote }}
+  {{ end }}
+{{- end }}
+
+{{- with .Values.geo_redundancy }}
+    [datacenter]
+    lag_threshold = {{ .lag_threshold }}
+    slave_purge_interval = {{ .slave_purge_interval | quote }}
+  {{- if .enabled }}
+    {{- if .auto_increment_increment }}
+    site_position = {{ .site_index }}:{{ .auto_increment_increment }}
+    {{- else }}
+    site_position = {{ .site_index }}:{{  add1 (len .remoteSites) }}
+    {{- end }}
+    slave_skip_errors = {{ .slave_skip_errors | quote | default "1062" }}
+    auto_reconnect = {{ .autoSiteReconnect }}
+  {{- if $direct }}
+    preferred_ipFamily = {{ default "IPv6" .preferredIpFamily }}
+  {{- end }}
+
+    [remote-sites]
+    {{- range $index, $item := .remoteSites }}
+    {{ $item.name }}
+    {{- end }}
+
+    {{- range $index, $item := .remoteSites }}
+    {{ printf "[%s]" $item.name }}
+    {{- if $direct }}
+    maxscale = {{ $item.maxscale.remoteService }}
+    master = {{ $item.master.remoteService }}
+    {{- else }}
+    maxscale = {{ $item.maxscale.serviceName | default (printf "%s-maxscale-%s" (include "cmdb.fullname" $ctx) $item.name) }}.{{ $svcSuffix }}
+    master = {{ $item.master.serviceName | default (printf "%s-master-%s" (include "cmdb.fullname" $ctx) $item.name) }}.{{ $svcSuffix }}
+    {{- end }}
+    {{- if hasKey $item "replication" }}
+    {{- if hasKey $item.replication "ssl" }}
+    master_ssl = {{ $use_tls | ternary $item.replication.ssl false }}
+    {{- end }}
+    {{- end }}
+
+    {{- end }}
+  {{- end }}
+{{- end }}
+
+{{- end }}

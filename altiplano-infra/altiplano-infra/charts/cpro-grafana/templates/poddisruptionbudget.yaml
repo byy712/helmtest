@@ -1,0 +1,17 @@
+{{- if .Values.pdb.enabled }}
+apiVersion: {{ template "cpro-grafana.grafanaApiVersion.pdb" . }}
+kind: PodDisruptionBudget
+metadata:
+  name: {{ template "cpro-grafana.fullname" . }}
+  annotations:
+{{- include "cpro-grafana.labelsOrAnnotations" (tuple .Values.global.annotations) | indent 4}}
+  labels:
+    {{- include "cpro-grafana.app.labels-v3" . | nindent 4 }}
+    {{- include "cpro-grafana.labelsOrAnnotations" (tuple .Values.global.labels) | indent 4}}
+spec:
+  {{- include "cpro-grafana.pdb.values" . | indent 2}}
+  selector:
+    matchLabels:
+      app: {{ .Chart.Name }}
+      release: {{ .Release.Name | quote }}
+{{- end }}

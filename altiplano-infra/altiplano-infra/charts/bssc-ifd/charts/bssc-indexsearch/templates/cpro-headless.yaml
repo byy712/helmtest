@@ -1,0 +1,101 @@
+{{- if .Values.service.prometheus_metrics.enabled }}
+{{- include "bssc-indexsearch.istio.initIstio" . }}
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "bssc-indexsearch.fullname" . |trunc ((sub .Values.customResourceNames.resourceNameLimit 4)|int) }}-drh
+  annotations:
+   {{- if .Values.security.enable }}
+   {{ .Values.service.prometheus_metrics.pro_annotation_https_scrape }}: "true"
+   prometheus.io/scheme: "https"
+   {{- else }}
+   prometheus.io/scrape: "true"
+   prometheus.io/scheme: "http"
+   {{- end }}
+   prometheus.io/path: /_prometheus/metrics
+   prometheus.io/port: "{{.Values.service.client_port}}"
+{{- include "bssc-indexsearch.csf-toolkit-helm.annotations" (tuple .) | nindent 4 }}
+  labels:
+    source: opensearch
+{{- include "bssc-indexsearch.csf-toolkit-helm.labels" (tuple .) | nindent 4 }}
+{{- include "bssc-indexsearch.commonLabels" (tuple . .Values.data.name ) | indent 4 }}
+spec:
+  clusterIP : None
+  selector:
+{{- include "bssc-indexsearch.selectorLabels" (tuple . .Values.data.name ) | indent 4 }}
+  ports:
+    - name: tcp-rest
+      port: {{.Values.service.client_port}}
+      protocol: TCP
+      {{- if .Values.security.enable }}
+      appProtocol: https
+      {{- else }}
+      appProtocol: http
+      {{- end }}
+      targetPort: tcp-rest
+{{ include "bssc-indexsearch.dualStack.config" . | indent 2 }}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "bssc-indexsearch.fullname" . |trunc ((sub .Values.customResourceNames.resourceNameLimit 4)|int) }}-mrh
+  annotations:
+   {{- if .Values.security.enable }}
+   {{ .Values.service.prometheus_metrics.pro_annotation_https_scrape }}: "true"
+   prometheus.io/scheme: "https"
+   {{- else }}
+   prometheus.io/scrape: "true"
+   prometheus.io/scheme: "http"
+   {{- end }}
+   prometheus.io/path: /_prometheus/metrics
+   prometheus.io/port: "{{.Values.service.client_port}}"
+{{- include "bssc-indexsearch.csf-toolkit-helm.annotations" (tuple .) | nindent 4 }}
+  labels:
+    source: opensearch
+{{- include "bssc-indexsearch.csf-toolkit-helm.labels" (tuple .) | nindent 4 }}
+{{- include "bssc-indexsearch.commonLabels" (tuple . .Values.manager.name ) | indent 4 }}
+spec:
+  clusterIP : None
+  selector:
+{{- include "bssc-indexsearch.selectorLabels" (tuple . .Values.manager.name ) | indent 4 }}
+  ports:
+    - name: tcp-rest
+      port: {{.Values.service.client_port}}
+      protocol: TCP
+      {{- if .Values.security.enable }}
+      appProtocol: https
+      {{- else }}
+      appProtocol: http
+      {{- end }}
+      targetPort: tcp-rest
+{{ include "bssc-indexsearch.dualStack.config" . | indent 2 }}
+---
+{{- if $.istio.enabled }}
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "bssc-indexsearch.fullname" . |trunc ((sub .Values.customResourceNames.resourceNameLimit 4)|int) }}-crh
+  labels:
+    source: opensearch
+{{- include "bssc-indexsearch.commonLabels" (tuple . .Values.client.name ) | indent 4 }}
+{{- include "bssc-indexsearch.csf-toolkit-helm.labels" (tuple .) | nindent 4 }}
+  annotations:
+{{- include "bssc-indexsearch.csf-toolkit-helm.annotations" (tuple .) | nindent 4 }}
+spec:
+  clusterIP : None
+  selector:
+{{- include "bssc-indexsearch.commonLabels" (tuple . .Values.client.name ) | indent 4 }}
+  ports:
+    - name: tcp-rest
+      port: {{.Values.service.client_port}}
+      protocol: TCP
+      {{- if .Values.security.enable }}
+      appProtocol: https
+      {{- else }}
+      appProtocol: http
+      {{- end }}
+      targetPort: tcp-rest
+{{ include "bssc-indexsearch.dualStack.config" . | indent 2 }}
+{{- end }}
+{{- end }}
+

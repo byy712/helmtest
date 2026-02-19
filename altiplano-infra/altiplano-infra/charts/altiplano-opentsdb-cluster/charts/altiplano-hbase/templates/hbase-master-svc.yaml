@@ -1,0 +1,46 @@
+#Headless service
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "hbase.fullname" . }}-master
+  labels:
+    app.kubernetes.io/name: {{ include "hbase.name" . }}
+    app.kubernetes.io/component: master
+    {{- include "hbase.labels" . | nindent 4 }}
+spec:
+  clusterIP: None
+  publishNotReadyAddresses: true
+  ports:
+  - name: thrift
+    port: 9090
+    protocol: TCP
+  - name: thrift-ui
+    port: 9095
+    protocol: TCP
+  - name: hbase-master
+    port: 16000
+    protocol: TCP
+  - name: hbase-ui
+    port: 16010
+    protocol: TCP
+  selector:
+    app.kubernetes.io/name: {{ include "hbase.name" . }}
+    app.kubernetes.io/component: master
+    app.kubernetes.io/instance: {{ .Release.Name }}
+#dual stack config
+{{- if or ( .Values.ipFamilyPolicy ) ( .Values.ipFamilies ) }}
+  {{- if .Values.ipFamilyPolicy }}
+  ipFamilyPolicy: {{ .Values.ipFamilyPolicy }}
+  {{- end }}
+  {{- if .Values.ipFamilies }}
+  ipFamilies: {{ .Values.ipFamilies | toYaml | nindent 2 }}
+  {{- end }}
+{{- else if or ( .Values.global.ipFamilyPolicy ) ( .Values.global.ipFamilies ) }}
+  {{- if .Values.global.ipFamilyPolicy }}
+  ipFamilyPolicy: {{ .Values.global.ipFamilyPolicy }}
+  {{- end }}
+  {{- if .Values.global.ipFamilies }}
+  ipFamilies: {{ .Values.global.ipFamilies | toYaml | nindent 2 }}
+  {{- end }}
+{{- end }}
+

@@ -1,0 +1,15 @@
+dependencies:
+- name: altiplano-opentsdb
+  repository: http://127.0.0.1:30879
+  version: 24.6.1-REL-0256
+- name: altiplano-opentsdb
+  repository: http://127.0.0.1:30879
+  version: 24.6.1-REL-0256
+- name: altiplano-hdfs
+  repository: http://127.0.0.1:30879
+  version: 24.6.1-REL-0256
+- name: altiplano-hbase
+  repository: http://127.0.0.1:30879
+  version: 24.6.1-REL-0256
+digest: sha256:7dc2df123fc988e62724163cf58c46547fdfe28913acd4c0bffb110362ba3564
+generated: "2024-10-10T12:18:46.54749539+05:30"

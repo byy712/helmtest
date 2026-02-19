@@ -1,0 +1,19 @@
+--- bssc-ifd-13.0.1/bssc-ifd/charts/bssc-indexsearch/templates/ncms/heal/preheal.yaml	2023-12-06 18:41:43.000000000 +0530
++++ bssc-ifd-patch-9/charts/bssc-indexsearch/templates/ncms/heal/preheal.yaml	2024-03-14 13:57:47.113395000 +0530
+@@ -14,6 +14,7 @@
+   template:
+     metadata:
+       labels:
++        altiplano-role: {{ .Values.accessRoleLabel }}
+ {{- include "bssc-indexsearch.commonLabels" (tuple .) | nindent 8 }}
+ {{- include "bssc-indexsearch.csf-toolkit-helm.labels" (tuple . .Values.custom.hookJobs.pod.labels) | nindent 8 }}
+       annotations:
+@@ -47,7 +48,7 @@
+       {{- end }}
+       containers:
+       - name: {{ template "bssc-indexsearch.preHealContainer.name" . }}
+-        image: {{ include "bssc-indexsearch.registry" (tuple .Values .Values.internalAppRegistry) }}/{{.Values.manager.image.repo}}:{{ (include "bssc-indexsearch.imageTag" (tuple .Values.manager.image.tag $.commonSupportedImageFlavor .Values .Values.manager .Values.manager.image)) }}
++        image: {{ include "bssc-indexsearch.registry" (tuple .Values .Values.internalAppRegistry) }}/{{.Values.manager.image.repo}}:{{.Values.manager.image.tag}}
+         securityContext:
+ {{ include "bssc-indexsearch.container.securityContext" . | indent 10 }}
+         resources:

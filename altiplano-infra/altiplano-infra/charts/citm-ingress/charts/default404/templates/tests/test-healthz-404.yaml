@@ -1,0 +1,97 @@
+{{- if not .Values.test.skipTest }}
+apiVersion: v1
+kind: Pod
+metadata:
+  name: {{ include "csf-common-lib.v3.resourceName" (tuple . "Pod" "test-healthz-404" ) }}
+  annotations:
+    "helm.sh/hook": "test-success"
+    "helm.sh/hook-delete-policy": "{{ .Values.test.hookDeletePolicy }}"
+    sidecar.istio.io/inject: "false"
+spec:
+  restartPolicy: Never
+  {{- include "default404.imagePullSecrets" . | indent 2 }}
+  containers:
+  - name: {{ include "csf-common-lib.v1.containerName" (tuple . ( include "default404.containerNameSuffix" (tuple "default404" "test-healthz-404" ))) }}
+    image: "{{ include "default404.imageMapper" (tuple $ .Values.test .Values.internalToolsRegistry) }}"
+    imagePullPolicy: "{{ .Values.imagePullPolicy }}"
+    terminationMessagePath: "{{ .Values.terminationMessagePath }}"
+    terminationMessagePolicy: "{{ .Values.terminationMessagePolicy }}"
+    {{ if .Values.global.containerSecurityContext.enabled }}
+    securityContext:
+      allowPrivilegeEscalation: {{ .Values.global.containerSecurityContext.privilegeEscalation }}
+      runAsNonRoot: {{ .Values.global.containerSecurityContext.runAsNonRoot }}
+      {{- if eq (include "default404.addSeccompProfile" .) "true" }}
+      seccompProfile:
+        type: {{ .Values.global.containerSecurityContext.seccompProfile.type }}
+        {{- if eq .Values.global.containerSecurityContext.seccompProfile.type "Localhost" }}
+        localhostProfile: {{ .Values.global.containerSecurityContext.seccompProfile.path }}
+        {{- end }}
+      {{- end }}
+      capabilities:
+        drop:
+          - {{ .Values.global.containerSecurityContext.dropCapabilities }}
+      readOnlyRootFilesystem: {{ .Values.global.containerSecurityContext.readOnlyRootFS }}
+      {{- if .Values.global.containerSecurityContext.seLinuxOptions.enabled }}
+      seLinuxOptions:
+        level: {{ .Values.global.containerSecurityContext.seLinuxOptions.level }}
+        role: {{ .Values.global.containerSecurityContext.seLinuxOptions.role }}
+        type: {{ .Values.global.containerSecurityContext.seLinuxOptions.type }}
+        user: {{ .Values.global.containerSecurityContext.seLinuxOptions.user }}
+      {{- end }}
+    {{- else if .Values.containerSecurityContext.enabled }}
+    securityContext:
+      allowPrivilegeEscalation: {{ .Values.containerSecurityContext.privilegeEscalation }}
+      runAsNonRoot: {{ .Values.containerSecurityContext.runAsNonRoot }}
+      {{- if eq (include "default404.addSeccompProfile" .) "true" }}
+      seccompProfile:
+        type: {{ .Values.containerSecurityContext.seccompProfile.type }}
+        {{- if eq .Values.containerSecurityContext.seccompProfile.type "Localhost" }}
+        localhostProfile: {{ .Values.containerSecurityContext.seccompProfile.path }}
+        {{- end }}
+      {{- end }}
+      capabilities:
+        drop:
+          - {{ .Values.containerSecurityContext.dropCapabilities }}
+      readOnlyRootFilesystem: {{ .Values.containerSecurityContext.readOnlyRootFS }}
+      {{- if  .Values.containerSecurityContext.seLinuxOptions.enabled }}
+      seLinuxOptions:
+        level: {{ .Values.containerSecurityContext.seLinuxOptions.level }}
+        role: {{ .Values.containerSecurityContext.seLinuxOptions.role }}
+        type: {{ .Values.containerSecurityContext.seLinuxOptions.type }}
+        user: {{ .Values.containerSecurityContext.seLinuxOptions.user }}
+      {{- end }}
+    {{- end }}
+    env:
+      - name: DF404_HOST
+        value: {{ template "default404.fullname" . }}.{{ .Release.Namespace }}.svc.{{ .Values.clusterDomain }}
+      - name: DF404_PORT
+        value: "{{ .Values.service.servicePort }}"
+    command:
+      - bash
+      - "-c"
+      - |
+        RC=0
+        for URL in /healthz:200 /:404 /kiki34:404
+        do
+          P=$(echo $URL | cut -d ':' -f1)
+          C=$(echo $URL | cut -d ':' -f2)
+          RETRY_COUNT={{ .Values.test.numberOfRetry }};
+          RETRY_DELAY={{ .Values.test.delaySecondsBetweenRetry }};
+          CURL_OPTS="{{ .Values.test.curlExtraOpts }}";
+          echo "curl opts are : $CURL_OPTS";
+          for (( i = 0; i < $RETRY_COUNT; i++ ))
+          do
+              echo "Checking http://$DF404_HOST:$DF404_PORT$P. Should return $C"
+              curl $CURL_OPTS -w "DF_HTTP_CODE=%{http_code}" http://$DF404_HOST:$DF404_PORT$P | grep "DF_HTTP_CODE=$C"
+              RRC=$?
+              if [ $RRC -eq 0 ]; then
+                  break
+              fi
+              sleep $RETRY_DELAY;
+          done
+          RC=$((RC + $RRC))
+        done
+        exit $RC
+    resources:
+{{- include "default404.resources" (tuple . .Values) | indent 6 }}
+{{- end }}

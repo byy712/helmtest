@@ -1,0 +1,38 @@
+{{- include "bssc-indexsearch.isCertManagerEnable" . }}
+{{- if and (eq $.isCertManagerEnabled "true") ( not $.istio.enabled) }}
+{{- if eq (tpl (.Values.security.sensitiveInfoInSecret.enabled | toString ) .) "true" }}
+{{- if .Values.indexsearch.nodeCrt.certificate.enabled }}
+{{- if and (eq .Values.security.nodeCrt.tls.secretRef.name "") ( not (.Values.security.sensitiveInfoInSecret.keystoreJks)) }}
+apiVersion: {{ template "bssc-indexsearch.apiVersionCertManager" . }}
+kind: Certificate
+metadata:
+  name: {{ template "bssc-indexsearch.fullname" . }}-nodecert
+  namespace: {{ .Release.Namespace }}
+  labels:
+{{- include "bssc-indexsearch.csf-toolkit-helm.labels" (tuple .) | nindent 4 }}
+{{- include "bssc-indexsearch.commonLabels" (tuple .) | indent 4 }}
+  annotations:
+{{- include "bssc-indexsearch.csf-toolkit-helm.annotations" (tuple .) | nindent 4 }}
+spec:
+{{- include "bssc-indexsearch.certificateValues" (tuple . .Values.indexsearch .Values.indexsearch.nodeCrt.certificate "nodecert") | indent 2}}
+{{- end }}
+{{- end }}
+---
+{{- if .Values.indexsearch.adminCrt.certificate.enabled }}
+{{- if and (eq .Values.security.adminCrt.tls.secretRef.name "") ( not (.Values.security.sensitiveInfoInSecret.clientKeyPem)) }}
+apiVersion: {{ template "bssc-indexsearch.apiVersionCertManager" . }}
+kind: Certificate
+metadata:
+  name: {{ template "bssc-indexsearch.fullname" . }}-clientcert
+  namespace: {{ .Release.Namespace }}
+  labels:
+{{- include "bssc-indexsearch.csf-toolkit-helm.labels" (tuple .) | nindent 4 }}
+{{- include "bssc-indexsearch.commonLabels" (tuple .) | indent 4 }}
+  annotations:
+{{- include "bssc-indexsearch.csf-toolkit-helm.annotations" (tuple .) | nindent 4 }}
+spec:
+{{- include "bssc-indexsearch.certificateValues" (tuple . .Values.indexsearch .Values.indexsearch.adminCrt.certificate "clientcert") | indent 2}}
+  {{- end }}
+{{- end }}
+{{- end }}
+{{- end }}

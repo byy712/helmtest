@@ -1,0 +1,8 @@
+--- crdb-redisio-9.0.3-origin/Chart.yaml	2024-02-07 16:28:36.000000000 +0530
++++ crdb-redisio-9.0.3-nokia-patch-1/Chart.yaml	2024-03-05 16:42:52.268783528 +0530
+@@ -19,4 +19,4 @@
+ - 'X-COMPAAS: { "CATEGORY": "Databases", "SVC_NAME": "Redis (opensource)", "SVC_TYPE":
+   "CRDB", "SVC_SCOPE": [ "PRIVATE" ] }'
+ name: crdb-redisio
+-version: 9.0.3
++version: 9.0.3-nokia-patch-1

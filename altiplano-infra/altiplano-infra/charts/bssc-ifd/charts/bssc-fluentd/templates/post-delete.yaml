@@ -1,0 +1,204 @@
+{{- if .Values.rbac.enabled }}
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: {{ include "bssc-fluentd.fullname" . | trunc ((sub .Values.customResourceNames.resourceNameLimit 7)|int) }}-del-sa
+  namespace: "{{.Release.Namespace}}"
+  labels:
+{{- include "bssc-fluentd.commonLabels" (tuple . "fluentd" ) | nindent 4 }}
+{{- include "bssc-fluentd.csf-toolkit-helm.labels" (tuple .) | nindent 4 }}
+  annotations:
+    "helm.sh/hook": post-delete
+    "helm.sh/hook-weight": "-8"
+    "helm.sh/hook-delete-policy": before-hook-creation, hook-succeeded
+    seccomp.security.alpha.kubernetes.io/allowedProfileNames: {{ .Values.global.seccompAllowedProfileNames }}
+    seccomp.security.alpha.kubernetes.io/defaultProfileName: {{ .Values.global.seccompDefaultProfileName }}
+{{- include "bssc-fluentd.csf-toolkit-helm.annotations" (tuple .) | nindent 4 }}
+automountServiceAccountToken: false
+---
+kind: RoleBinding
+apiVersion: {{ template "bssc-fluentd.apiVersionRbacAuthorizatioK8sIoV1Beta1orV1" . }}
+metadata:
+  name: {{ template "bssc-fluentd.fullname" . }}-del-rb
+  namespace: "{{.Release.Namespace}}"
+  labels:
+{{- include "bssc-fluentd.commonLabels" (tuple . "fluentd" ) | nindent 4 }}
+{{- include "bssc-fluentd.csf-toolkit-helm.labels" (tuple .) | nindent 4 }}
+  annotations:
+{{- include "bssc-fluentd.csf-toolkit-helm.annotations" (tuple .) | nindent 4 }}
+    "helm.sh/hook": post-delete
+    "helm.sh/hook-weight": "-7"
+    "helm.sh/hook-delete-policy": before-hook-creation, hook-succeeded
+    seccomp.security.alpha.kubernetes.io/allowedProfileNames: {{ .Values.global.seccompAllowedProfileNames }}
+    seccomp.security.alpha.kubernetes.io/defaultProfileName: {{ .Values.global.seccompDefaultProfileName }}
+subjects:
+- kind: ServiceAccount
+  name: {{ include "bssc-fluentd.fullname" . | trunc ((sub .Values.customResourceNames.resourceNameLimit 7)|int) }}-del-sa
+  namespace: "{{.Release.Namespace}}"
+  apiGroup: ""
+roleRef:
+  kind: Role
+  name: {{ template "bssc-fluentd.fullname" . }}-del-role
+  apiGroup: ""
+
+---
+kind: Role
+apiVersion: {{ template "bssc-fluentd.apiVersionRbacAuthorizatioK8sIoV1Beta1orV1" . }}
+metadata:
+  namespace: "{{.Release.Namespace}}"
+  name: {{ template "bssc-fluentd.fullname" . }}-del-role
+  labels:
+{{- include "bssc-fluentd.commonLabels" (tuple . "fluentd" ) | nindent 4 }}
+{{- include "bssc-fluentd.csf-toolkit-helm.labels" (tuple .) | nindent 4 }}
+  annotations:
+{{- include "bssc-fluentd.csf-toolkit-helm.annotations" (tuple .) | nindent 4 }}
+    "helm.sh/hook": post-delete
+    "helm.sh/hook-weight": "-8"
+    "helm.sh/hook-delete-policy": before-hook-creation, hook-succeeded
+    seccomp.security.alpha.kubernetes.io/allowedProfileNames: {{ .Values.global.seccompAllowedProfileNames }}
+    seccomp.security.alpha.kubernetes.io/defaultProfileName: {{ .Values.global.seccompDefaultProfileName }}
+rules:
+- apiGroups:
+  - ""
+  resources:
+{{- if .Values.fluentd.persistence.pvc_auto_delete }}
+  - persistentvolumeclaims
+{{- end }}
+  - pods
+  - secrets
+  verbs:
+{{- if .Values.fluentd.persistence.pvc_auto_delete }}
+  - list
+  - get
+{{- end }}
+  - delete
+{{- end }}
+---
+{{- if .Values.fluentd.persistence.pvc_auto_delete }}
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: {{ template "bssc-fluentd.deletePvcJob.name" . }}
+  labels:
+{{- include "bssc-fluentd.csf-toolkit-helm.labels" (tuple . .Values.fluentd.custom.hookJobs.job.labels) | indent 4}}
+{{- include "bssc-fluentd.commonLabels" (tuple . "fluentd" ) | nindent 4 }}
+  annotations:
+    "helm.sh/hook-weight": "-6"
+    "helm.sh/hook": post-delete
+    "helm.sh/hook-delete-policy": hook-succeeded, before-hook-creation
+    seccomp.security.alpha.kubernetes.io/allowedProfileNames: {{ .Values.global.seccompAllowedProfileNames }}
+    seccomp.security.alpha.kubernetes.io/defaultProfileName: {{ .Values.global.seccompDefaultProfileName }}
+{{- include "bssc-fluentd.csf-toolkit-helm.annotations" (tuple . .Values.fluentd.custom.hookJobs.job.annotations) | indent 4}}
+spec:
+  template:
+    metadata:
+      labels:
+        altiplano-role: {{ .Values.accessRoleLabel }}
+{{- include "bssc-fluentd.csf-toolkit-helm.labels" (tuple . .Values.fluentd.custom.hookJobs.pod.labels) | indent 8}}
+{{- include "bssc-fluentd.commonLabels" (tuple . "fluentd" ) | nindent 8 }}      
+      annotations:
+        sidecar.istio.io/inject: "false"
+{{- include "bssc-fluentd.csf-toolkit-helm.annotations" (tuple . .Values.fluentd.custom.hookJobs.pod.annotations) | indent 8}}
+    spec:
+      serviceAccountName: {{ template "bssc-fluentd.delServiceAccount.name" . }}
+      automountServiceAccountToken: true
+      {{- if .Values.jobs.affinity }}
+      affinity:
+{{ toYaml .Values.jobs.affinity | indent 8 }}
+      {{- end }}
+      {{- if .Values.jobs.nodeSelector }}
+      nodeSelector:
+{{ toYaml .Values.jobs.nodeSelector | indent 8 }}
+      {{- end }}
+      {{- if .Values.jobs.tolerations }}
+      tolerations:
+{{ toYaml .Values.jobs.tolerations | indent 8 }}
+      {{- end }}
+      restartPolicy: Never
+      securityContext:
+{{ include "bssc-fluentd.pod.securityContext" . | indent 8 }}
+      {{- with or .Values.fluentd.imagePullSecrets .Values.imagePullSecrets .Values.global.imagePullSecrets }}
+      imagePullSecrets:
+{{- toYaml . | nindent 8 }}
+      {{- end }}
+      containers:
+      - name: {{ template "bssc-fluentd.deletePvcContainer.name" . }}
+        image: {{ include "bssc-fluentd.registry" (tuple .Values .Values.internalToolsRegistry) }}/{{ include "bssc-fluentd.imageRepositoryPath" (tuple .Values.global.flatRegistry .Values.kubectl.image.repo) }}:{{ (include "bssc-fluentd.imageTag" (tuple .Values.kubectl.image.tag .Values.kubectl.image.supportedImageFlavor .Values .Values.kubectl .Values.kubectl.image )) }}
+        imagePullPolicy: {{.Values.fluentd.ImagePullPolicy}}
+        env:
+        - name: TZ
+          value: {{ or .Values.timezone.timeZoneEnv .Values.global.timeZoneEnv "UTC" | quote }}
+        securityContext:
+{{ include "bssc-fluentd.container.securityContext" . | indent 10 }}
+        resources:
+{{ include "bssc-fluentd.resources" (tuple . .Values.jobs.hookJobs.resources "120m") | indent 10 }}
+        command:
+        - sh
+        - "-c"
+        - |
+          kubectl delete pvc --namespace {{ .Release.Namespace }} -l app.kubernetes.io/instance={{ .Release.Name }},app.kubernetes.io/name={{ default .Chart.Name .Values.nameOverride }},app.kubernetes.io/component=fluentd 
+{{- end }}
+---
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: {{ template "bssc-fluentd.deleteJob.name" . }}
+  labels:
+{{- include "bssc-fluentd.commonLabels" (tuple . "fluentd" ) | nindent 4 }}
+  annotations:
+    "helm.sh/hook-weight": "-6"
+    "helm.sh/hook": post-delete
+    "helm.sh/hook-delete-policy": hook-succeeded, before-hook-creation
+    seccomp.security.alpha.kubernetes.io/allowedProfileNames: {{ .Values.global.seccompAllowedProfileNames }}
+    seccomp.security.alpha.kubernetes.io/defaultProfileName: {{ .Values.global.seccompDefaultProfileName }}
+{{- include "bssc-fluentd.csf-toolkit-helm.annotations" (tuple . .Values.fluentd.custom.hookJobs.job.annotations) | indent 4}}
+spec:
+  template:
+    metadata:
+      labels:
+{{- include "bssc-fluentd.commonLabels" (tuple . "fluentd" ) | nindent 8 }}      
+      annotations:
+        sidecar.istio.io/inject: "false"
+{{- include "bssc-fluentd.csf-toolkit-helm.annotations" (tuple . .Values.fluentd.custom.hookJobs.pod.annotations) | indent 8}}
+    spec:
+      serviceAccountName: {{ template "bssc-fluentd.delServiceAccount.name" . }}
+      automountServiceAccountToken: true
+      {{- if .Values.jobs.affinity }}
+      affinity:
+{{ toYaml .Values.jobs.affinity | indent 8 }}
+      {{- end }}
+      {{- if .Values.jobs.nodeSelector }}
+      nodeSelector:
+{{ toYaml .Values.jobs.nodeSelector | indent 8 }}
+      {{- end }}
+      {{- if .Values.jobs.tolerations }}
+      tolerations:
+{{ toYaml .Values.jobs.tolerations | indent 8 }}
+      {{- end }}
+      restartPolicy: Never
+      securityContext:
+{{ include "bssc-fluentd.pod.securityContext" . | indent 8 }}
+      {{- with or .Values.fluentd.imagePullSecrets .Values.imagePullSecrets .Values.global.imagePullSecrets }}
+      imagePullSecrets:
+{{- toYaml . | nindent 8 }}
+      {{- end }} 
+      containers:
+      - name: {{ template "bssc-fluentd.deleteJob.container.name" . }}
+        image: {{ include "bssc-fluentd.registry" (tuple .Values .Values.internalToolsRegistry) }}/{{ include "bssc-fluentd.imageRepositoryPath" (tuple .Values.global.flatRegistry .Values.kubectl.image.repo) }}:{{ (include "bssc-fluentd.imageTag" (tuple .Values.kubectl.image.tag .Values.kubectl.image.supportedImageFlavor .Values .Values.kubectl .Values.kubectl.image )) }}
+        imagePullPolicy: {{.Values.fluentd.ImagePullPolicy}}
+        securityContext:
+{{ include "bssc-fluentd.container.securityContext" . | indent 10 }}
+        env:
+        - name: TZ
+          value: {{ or .Values.timezone.timeZoneEnv .Values.global.timeZoneEnv "UTC" | quote }}
+        resources:
+{{ include "bssc-fluentd.resources" (tuple . .Values.jobs.hookJobs.resources "120m") | indent 10 }}
+        command:
+        - sh
+        - "-c"
+        - |
+          kubectl delete pod {{ template "bssc-fluentd.helmTestPod.name" . }} --namespace {{ .Release.Namespace }} --ignore-not-found=true
+          kubectl delete secret {{ template "bssc-fluentd.fullname" . }}-certmgr --namespace {{ .Release.Namespace }} --ignore-not-found=true
+          {{- if and ( .Values.fluentd.certificate.enabled ) ( .Values.fluentd.certificate.secretName ) }}
+          kubectl delete secret {{ .Values.fluentd.certificate.secretName }} --namespace {{ .Release.Namespace }} --ignore-not-found=true
+          {{- end }}

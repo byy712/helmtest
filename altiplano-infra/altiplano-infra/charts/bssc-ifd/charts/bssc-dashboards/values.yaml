@@ -1,0 +1,874 @@
+## ref: Refer the HELM Application Deployment section in our confluence page.
+### global registry
+global:
+  # This registry is used for all container images
+  # Unsetting default value of registry until all images are moved to delivered repo
+  registry: csf-docker-delivered.repo.cci.nokia.net 
+  # Set flatRegistry to true to use images from registries with a flat structure. 
+  # If enabled, any subpaths in the image repository name (separated by /) would be skipped and only its last part would be used. Please ensure that all the images are available in the docker registry in the expected flat structure.
+  flatRegistry: false
+
+  # Set enableDefaultCpuLimits to true to enable pod CPU resources limit for all containers. Default is 'false'.
+  # If set to true, the cpuLimits ([*].resources.limit.cpu) must be defined for all containers.
+  # Value set here can be overriden at the workload level by setting enableDefaultCpuLimits value.
+  enableDefaultCpuLimits: false
+
+  seccompAllowedProfileNames: docker/default
+  seccompDefaultProfileName: docker/default
+
+  # This value has lower precedence over "timeZone.timeZoneEnv".
+  # Example: To test IST(India Standard Time) which is UTC +5:30, you need to use "Asia/Calcutta".
+  # Timezone full names can be found here: https://en.wikipedia.org/wiki/List_of_tz_database_time_zones
+  timeZoneEnv:
+
+  #you can add prefixes to pod and container names by providing values for below parameters
+  #Provide lowercase alphanumeric characters, '-' or '.'
+  #Consider suffixing the podNamePrefix and containerNamePrefix with either . or - for convenience
+  podNamePrefix:
+  containerNamePrefix:
+
+  #If enabled, then `podNamePrefix` would be added to the pod name without any restrictions. Default value is false.
+  disablePodNamePrefixRestrictions: 
+
+  #Sets priorityClass for dashboards pods at global level
+  priorityClassName: ""
+
+  #Sets imagePullsecret at global level for all dashboard pods .
+  imagePullSecrets: []
+  # - name: regcred
+
+  # Configure annotations and labels at global level respectively. These will be added at both pod level and deployment level for dashboards
+  annotations: {}
+  labels: {} 
+  # version of istio available in the environment defined at global level.
+  #quote is important, otherwise value is treated as a float value
+  istio:
+    version: "1.7"
+    # Whether istio cni is enabled in the environment.
+    cni:
+     enabled: true
+  
+  # Set requested image flavor at global level.
+  imageFlavor:
+  # Set requested image Flavor Policy at global level. Supports Strict or BestMatch. It is BestMatch by default.
+  imageFlavorPolicy:
+
+  # For IPv4 and IPv6 dual stack support at global scope.
+  # ipFamilyPolicy:  SingleStack | PreferDualStack | RequireDualStack
+  ipFamilyPolicy:
+  # ipFamilies: ["IPv4"] | ["IPv6"] | ["IPv4","IPv6"] | ["IPv6","IPv4"]
+  ipFamilies: []
+  # - IPv4
+  # - IPv6
+  
+  certManager:
+    #global.certManager is set to true by default.
+    enabled: true
+
+  hpa:
+    #enabled value left empty intentionally, default value is False
+    enabled:
+ 
+  unifiedLogging:
+   #Provide list of extended fields that component can use to enrich the log event by removing {} and configure like below example
+    extension: {}
+    #extension:
+       #VM_Name: abc
+       #VM_UUID: 123
+    syslog:
+      # Enable sending logs to syslog. Enabled value left empty intentionally, default value is False.
+      enabled:
+      facility:
+      host:
+      port:
+      protocol:
+      #Note - If SSL is enabled for syslog server, configure its root CA certificate in a precreated secret and configure the secret name and key containing the ca certificate under caCrt/tls section
+      ## syslog.caCrt section will be deprecated in future. It is still supported currently, however the new parameter syslog.tls.secretRef takes higher precedence over syslog.caCrt if both are configured.
+      caCrt:
+        secretName:
+        key:
+      ## Recommended to use below section to configure the secret name and key containing the ca certificate.  
+      tls:
+        secretRef:
+          # Secret name, pointing to a Secret object.
+          name: 
+          # Secret key names mapping.
+          # If the provided Secret is of type `kubernetes.io/tls', then key names do not need to be changed.
+          keyNames:
+            # Name of Secret key, which contains CA certificate.
+            caCrt: "ca.crt"
+
+#Internal registry used for dashboards image
+internalAppRegistry:
+#Internal registry used for fluentd sidecar image
+internalFluentdSidecarRegistry:
+#Internal registry used for init image
+internalInitRegistry:
+#Internal registry used for kubectl image
+internalToolsRegistry:
+
+#If enabled, then `podNamePrefix` would be added to the pod name without any restrictions. This has higher precedence than "global.disablePodNamePrefixRestrictions". Default value is false.
+disablePodNamePrefixRestrictions: 
+
+#When rbac.enabled is set to true, chart would create its own rbac related resources; If false, an external/pre-created service account as configured at serviceAccountName will be used.
+rbac:
+  enabled: true
+  #PSP/SCC is required only if istio cni is disabled. In other cases, they are not created as the 'restricted' PSP/SCC is sufficient to run this chart.
+  psp:
+    create: false
+    #Below annotation must be set, when 'containerSecurityContext.seccompProfile.type' is configured.
+    annotations:
+      seccomp.security.alpha.kubernetes.io/allowedProfileNames: '*'
+  scc:
+    create: false
+    #Set annotations for SCCs only if required    
+    annotations: {}
+#User can specify the precreated SA here.
+serviceAccountName: ""
+init:
+  image:
+    name: fnms-init-container
+    tag: nokia-1.0.2
+    pullPolicy: IfNotPresent
+
+accessRoleLabel: internal-access
+
+customResourceNames:
+  #Provide lowercase alphanumeric characters, '-' or '.'
+  resourceNameLimit: 63
+  dboPod:
+    #when dboContainerName is not provided,<containerprefix>-(fullname) would be used.
+    dboContainerName: ""
+    #when initContainerName is not provided,<containerprefix>dbo-init would be used.
+    initContainerName: ""
+    #when upgradeInitContainerName is not provided,<containerprefix>dbo-upg-init would be used.
+    upgradeInitContainerName: ""
+    #when unifiedLoggingContainerName is not provided,<containerprefix>unifiedlogging-sidecar would be used.Previously supported harmonizedLoggingContainerName can also be configured (for backward compatibility), in which case the name would be <containerprefix>harmonizedlogging-sidecar by default.
+    unifiedLoggingContainerName: ""
+    #when dboPluginsInitContainerName is not provided, <containerprefix>dbo-plugins-init would be used.
+    dboPluginsInitContainerName: ""
+  helmTestPod:
+    name: ""
+    helmTestContainerName: ""
+  deleteJob:
+    name: ""
+    deleteJobContainerName: ""
+  preUpgradeJob:
+    name: ""
+    preUpgradeContainerName: ""
+
+#This section allows to configure user defined name for pods and containers(For container this will take effect only when customResourceName is not provided for container)
+#Options include:
+#nameOverride: fullname would become ReleaseName + nameOverride
+#fullnameOverride: fullname would become fullnameOverride.
+##If specified both, fullnameOverride would take the precedence.
+nameOverride:
+fullnameOverride:
+
+# Set enableDefaultCpuLimits to true to enable pod CPU resources limit for all containers. Default is empty value.
+# Values set here will take precedence over the value set at global.enableDefaultCpuLimits.
+enableDefaultCpuLimits:
+        
+#Common lables for k8s objects. Set below to configure label app.kubernetes.io/part-of:
+partOf:
+
+timezone:
+# This value has precedence over "global.timeZoneEnv".
+# Example: To test IST(India Standard Time) which is UTC +5:30, you need to use "Asia/Calcutta".
+# Timezone full names can be found here: https://en.wikipedia.org/wiki/List_of_tz_database_time_zones
+  timeZoneEnv:
+
+kubectl:
+  image:
+    repo: tools/kubectl
+    tag: 1.26.11-20231124 # Desired image flavor must be configured at image.flavor. If the flavor is included in image.tag (for ex. 1.26.11-rocky8-nano-20231124), the complete tag would be read as-is, irrespective of configuration at image.flavor. It takes rocky8-nano as default flavor.
+    # Set image Flavor for kubectl. It has higher precedence then global.imageFlavor and .imageFlavor. Default value is rocky8-nano.
+    # If the flavor is configured at higher levels (workload, root or global) with a flavor not supported by kubectl image, set this imageFlavor explicitly to rocky8-nano.
+    flavor: 
+    # Set image Flavor Policy for kubectl. It takes higher precedence over imageFlavor configured at global/root levels. It supports Strict or BestMatch. It is BestMatch by default.
+    flavorPolicy:
+    supportedImageFlavor: ["rocky8-nano"]
+
+#Set affinity, nodeSelector, tolerations and resource modification to apply to jobs and helm test pod
+jobs:
+  affinity: {}
+  nodeSelector: {}
+  tolerations: []
+  hookJobs:
+    resources:
+      requests:
+        cpu: 100m
+        memory: 100Mi
+        ephemeral-storage: "50Mi"
+      limits:
+        #cpu: 120m
+        memory: 120Mi
+        ephemeral-storage: "50Mi"
+
+service:
+  type: "ClusterIP"
+  annotations: {}
+  # optional
+  # name: dashboards
+# Dual-stack config for services in dashboards chart. Chart level scope takes precedence over global level scope.
+#ipFamilyPolicy:  SingleStack | PreferDualStack | RequireDualStack
+ipFamilyPolicy:
+#ipFamilies: ["IPv4"] | ["IPv6"] | ["IPv4","IPv6"] | ["IPv6","IPv4"]
+ipFamilies: []
+# If dual-stack is configured for dashboards, an env SERVER_HOST: "::" must be added under dashboards.env section.
+
+#Sets imagePullsecret at root level for dashboard pods. This has higher precendece over imagePullsecrets configured at global level.
+imagePullSecrets: []
+# - name: regcred
+
+# Set requested image flavor at root level. It has higher precedence then global.imageFlavor.
+imageFlavor:
+# Set image flavor policy at root level. It supports Strict or BestMatch. It is BestMatch by default. It has higher precedence then global.imageFlavorPolicy.
+imageFlavorPolicy:
+
+dashboards:
+  replicas: 1
+  replicasManagedByHpa: False
+  hpa:
+    #enabled value left empty intentionally, default value is False
+    enabled:
+    minReplicas: 1
+    maxReplicas: 3
+    predefinedMetrics:
+      enabled: True
+      averageCPUThreshold: 85
+      averageMemoryThreshold: 85
+    behavior:
+    metrics:
+  # Set to the requested workload level image flavor. This applies to all containers in dashboards workload. It takes higher precedence over imageFlavor configured at global/root levels.
+  imageFlavor:
+  # Set image flavor policy at workload.  It takes higher precedence over imageFlavor configured at global/root levels. It supports Strict or BestMatch. It is BestMatch by default.
+  imageFlavorPolicy: 
+  image: 
+    repo: bssc-dashboards
+    tag: 2.11.0-2311.0.1 # Desired image flavor must be configured at image.flavor. If the flavor is included in image.tag (for ex. 2.11.0-rocky8-jre17-2311.0.1), the complete tag would be read as-is, irrespective of configuration at image.flavor.
+    # Set image flavor at container level for main container. It takes higher precedence over imageFlavor configured at global/root/workload levels. Supports rocky8-jre11 and rocky8-jre17. It picks rocky8-jre11 by default
+    flavor:
+    # Set image flavor policy at container level for main container. It takes higher precedence over imageFlavor configured at global/root/workload levels. It supports Strict or BestMatch. It is BestMatch by default.
+    flavorPolicy:
+  resources:
+    limits:
+      #cpu: "1000m"
+      memory: "2Gi"
+      ephemeral-storage: "1Gi"
+    requests:
+      cpu: "500m"
+      #When HPA is enabled it is recommended to set request same as limit because HPA considers requests for its calculation. If it is set to different value, HPA might unnecessarily scale up pods without using complete resources configured in requests.
+      memory: "1Gi"
+      ephemeral-storage: "200Mi"
+  # It should be the port used by kubernetes service.
+  k8sSvcPort: 443
+
+  #If labelSelector key is omitted and autoGenerateLabelSelector is set to true, then labelSelector is automatically generated otherwise labelSelector are taken from labelSelector key
+  topologySpreadConstraints:
+  #- maxSkew: 1
+  #  topologyKey: kubernetes.io/hostname
+  #  whenUnsatisfiable: DoNotSchedule/ScheduleAnyway
+  #  labelSelector:
+  #    matchLabels:
+  #      app: dashboards
+  #  autoGenerateLabelSelector: False
+
+  #Pods' SecurityContext can be defined below
+  securityContext:
+    enabled: true
+    # runAsUser is the uid with which the containers are run. If using random userids in openshift environment, set value as "auto".
+    runAsUser: 1000
+    # fsGroup is the gid that is assigned for the volumemounts mounted to the pod(fsGroup ID is used for block storage). If deploying in openshift environment, the value can be set "auto". 
+    fsGroup: 1000
+    # The supplementalGroups ID applies to shared storage volumes. Uncomment below line to set supplemetary group.
+    #supplementalGroups: [1000]
+    # Uncomment below lines to configure SELinux label to a container.
+    # For more refer to https://kubernetes.io/docs/tasks/configure-pod-container/security-context/
+    #seLinuxOptions:
+    #  level: "s1:c43,c250"
+
+  #Sets imagePullsecret at workload level for dashboard pods . This has higher precendece over imagePullsecrets configured at root and global levels.
+  imagePullSecrets: []
+  #- name: regcred
+  
+
+  #Containers' SecurityContext can be defined below
+  containerSecurityContext:
+    seccompProfile:
+      type: RuntimeDefault
+
+#When clientcert_auth_domain in indexsearch chart and cert manager is enabled, configure secret name same as configured in indexsearch chart's indexsearch.externalClientCertificates.dashboards.certificate.secretName      
+  indexsearch:
+    credentialName:
+      name: "{{ .Release.Name }}-bssc-ifd-cert-for-dashboards"
+
+  # To configure custom annotations and labels for dashboards, remove {} and configure desired annotations and labels respectively using 8 space indentation under respective section.
+  custom:
+    deployment:
+      # These will be added at dashboards deployment level (i.e. metadata.annotations)
+      annotations: {}
+      # These will be added at dashboards deployment level (i.e metadata.labels)
+      labels: {}
+    pod:
+      # These will be added at dashboards pod spec level (i.e. spec.template.metadata.labels)
+      annotations: {}
+      # These will be added at dashboards pod spec level (i.e. spec.template.metadata.labels)
+      labels: {}
+
+    ## Configure annotations specific to helm hook jobs & test pods using 10 space indentation.
+    ## Configure labels specific to helm hook jobs & test pods using 10 space indentation.
+    hookJobs:
+      job:
+        # These will be added at job level (i.e. metadata.annotations)
+        annotations: {}
+        # These will be added at job level (i.e. metadata.labels)
+        labels: {}
+      pod:
+        # These will be added at pod spec level (i.e. spec.template.metadata.annotations)
+        annotations: {}
+        # These will be added at pod spec level (i.e. spec.template.metadata.labels)
+        labels: {}
+
+  port: 5601
+  node_port: 30601
+  ImagePullPolicy: "IfNotPresent"
+  livenessProbe:
+    probecheck:
+      # Configuration of Liveness check. When configured it will override the default Liveness check values which are set internally.
+    initialDelaySeconds: 150
+    periodSeconds: 30
+    timeoutSeconds: 1
+    successThreshold: 1
+    # As dashboards entrypoint waits for IS to be healthy, it takes a bit longer for dbo pod to come up. failureThreshold for the probes is increased to 6 to avoid pod restarts during dashboard index creation
+    failureThreshold: 6
+  readinessProbe:
+    probecheck:
+      # Configuration of Readiness check. When configured it will override the default Readiness Check values which are set internally.
+    initialDelaySeconds: 150
+    periodSeconds: 15
+    timeoutSeconds: 1
+    successThreshold: 1
+    failureThreshold: 6
+  #PodDisruptionBudgets for dashboards
+  #This will ensure that configured number of pods are always up and try to prevent the evictions
+  #https://kubernetes.io/docs/tasks/run-application/configure-pdb/
+  #Note: Either minAvailable or maxUnavailable should be used. Both cannot be used at the same time
+  #Atleast 50% of the dashboards pods are recommended to be up to handle the incoming traffic. The minAvailable value can be changed based on need and incoming load.
+  #As default replica of dashboards is 1 and pdb.minAvailable is 50%, it will not allow to drain the node and service will not get interrupted.
+  #If user still wants to drain the node:
+  #option 1: If service outage is not acceptable - increase the num of replicas for dashboards so that the PDB conditions are met.
+  #option 2: If service outage is acceptable -  either disable PDB or set minAvailable to empty and maxUnavailable to 1 so that node can be drained.
+  pdb:
+    enabled: true
+    minAvailable: 50%
+    maxUnavailable: 
+  #Sets PriorityClass for dashboards pods. If left blank or empty quotes, pods will be configured to cluster default PriorityClass.
+  #dashboards.priorityClassName has higher precedence than priorityClassName in global scope
+  priorityClassName: ""
+
+  #Additional dns entries can be added to pod's /etc/hosts for dns resolution by configuring hostaliases
+  #Ex- In case of keycloak with istio, when ckey is mesh_external, if the ckey hostname is not resolvable, host aliases need to be added
+  # For configuring hostAliases remove [], uncomment and configure like below example.
+  hostAliases: []
+  #hostAliases:
+  #- hostnames:
+  #  - keycloak.com
+  #  ip: 10.67.67.67
+
+  #Set unifiedLogging.enabled to false if you do not want to get dashboards pod's logs in CLOG format.
+  #Deprecated harmonizedLogging section and recommended to use unifiedLogging instead. Precedence is given to unifiedLogging section. For backward compatibility, to use harmonizedLogging section, set unifiedLogging.enabled to false and configure the fluentd sidecar related parameters (from enabled till resources) under harmonizedLogging section.
+  unifiedLogging:
+    enabled: true
+    # Following are the image and resource details for the fluentd sidecar used to achieve unified logging
+    imageRepo: bssc-fluentd
+    imageTag: 1.16.2-2311.0.1 # Desired image flavor must be configured at imageFlavor. If the flavor is included in imageTag (for ex. 1.16.2-rocky8-jre17-2311.0.1), the complete tag would be read as-is, irrespective of configuration at imageFlavor.
+    imagePullPolicy: IfNotPresent
+    # Set image flavor at container level for fluentd sidecar container. It takes higher precedence over imageFlavor configured at global/root/workload levels. Supports rocky8-jre11 and rocky8-jre17. It picks rocky8-jre11 by default.
+    imageFlavor:
+    # Set image flavor policy at container level for fluentd sidecar container. It takes higher precedence over imageFlavor configured at global/root/workload levels. It supports Strict or BestMatch. It is BestMatch by default.
+    imageFlavorPolicy:
+    resources:
+      limits:
+        #cpu: "50m"
+        memory: "100Mi"
+        ephemeral-storage: "200Mi"
+      requests:
+        cpu: "20m"
+        memory: "80Mi"
+        ephemeral-storage: "200Mi"
+    syslog:
+      #Enable sending logs to syslog. Takes precedence over global.unifiedLogging.syslog.enabled. Enabled value left empty intentionally, default value is False.
+      enabled:
+      facility:
+      host:
+      port:
+      protocol:
+      #Note - If SSL is enabled for syslog server, configure its root CA certificate in a precreated secret and configure the secret name and key containing the ca certificate under caCrt/tls section
+      ## syslog.caCrt section will be deprecated in future. It is still supported currently, however the new parameter syslog.tls.secretRef takes higher precedence over syslog.caCrt if both are configured.
+      caCrt:
+        secretName:
+        key:
+      ## Recommended to use below section to configure the secret name and key containing the ca certificate.
+      tls:
+        secretRef:
+          # Secret name, pointing to a Secret object.
+          name: 
+          # Secret key names mapping.
+          # If the provided Secret is of type `kubernetes.io/tls', then key names do not need to be changed.
+          keyNames:
+            # Name of Secret key, which contains CA certificate.
+            caCrt: "ca.crt"
+   
+      #set buffer size for application and sidecar logs.
+      appLogBufferSize: 50MB
+      sidecarLogBufferSize: 20MB
+    #Provide list of extended fields that component can use to enrich the log event by removing {} and configure like below example.
+    #This has precedence over global.unifiedLogging.extension
+    extension: {}
+    #extension:
+       #VM_Name: abc
+       #VM_UUID: 123
+    #Provide list of env parameters to be added in fluentd sidecar in below section after removing {}.
+    env: {}  
+    
+    #If using deprecated harmonizedLogging section, this fluentd configuration has be be placed under configMaps.harmonizedLoggingConfig instead of unifiedLoggingConfig.
+    unifiedLoggingConfig: |
+      #system directive is added here to format fluentd sidecar logs into json.
+      <system>
+        <log>
+          format json
+          time_format %Y-%m-%dT%H:%M:%S%z
+        </log>
+      </system>
+      <source>
+        @type tail
+        path /tmp/mainContainerLogs/*.log
+        pos_file /tmp/fluentd.pos
+        read_from_head true
+        tag dashboards-main-container-logs
+        <parse>
+          @type json
+        </parse>
+      </source>
+      <source>
+        @type tail
+        path /tmp/sidecarContainerLogs/*.log
+        pos_file /tmp/sidecar.pos
+        read_from_head true
+        tag dashboards-sidecar-alert-logs
+        <parse>
+          @type json
+          time_key time
+          time_format %iso8601
+          keep_time_key true
+        </parse>
+      </source>
+      <filter dashboards-main-container-logs>
+        @type record_transformer
+        enable_ruby true
+        renew_record true
+        <record>
+          log ${ { message: record["message"]  } }
+          extension ${require 'json';record.merge(JSON.parse(ENV["EXTENSION_FIELDS"]))}
+          type "log"
+          level ${record.has_key?("level") ? record["level"]: "info" }
+          system ${ ENV["SYSTEM"] }
+          systemid ${ ENV["SYSTEMID"] }
+          host ${ ENV["HOSTNAME"]}.${ ENV["NAMESPACE"] || '' }
+          container ${ ENV["MAIN_CONTAINER_NAME"] }
+          timezone ${ ENV["TZ"] }
+          time ${record.has_key?("@timestamp") ? record["@timestamp"]: time.strftime('%Y-%m-%dT%H:%M:%S%z') }
+        </record>
+        remove_keys $.extension.@timestamp,$.extension.message,$.extension.level
+      </filter>
+      <filter dashboards-main-container-logs>
+        @type record_modifier
+        enable_ruby true
+        <record>
+          dummy ${require 'json';if record["extension"].empty?; record.delete("extension"); end}
+        </record>
+        remove_keys dummy
+      </filter>
+      {{- if $.syslogEnabled }}
+      <match dashboards-main-container-logs dashboards-sidecar-alert-logs>
+        @type rewrite_tag_filter
+        <rule>
+          key level
+          pattern (?i)alert
+          tag ${tag}.alert
+        </rule>
+        <rule>
+          key level
+          pattern .+
+          tag ${tag}.{{ tpl (default "notice" $.syslog.severity) . }}
+        </rule>
+      </match>
+      {{- end}}
+      @include sidecar.conf
+      <match **>
+        @include dest.conf
+      </match>
+
+  configMaps:
+    dashboards_configmap_yml: |-
+      ---
+      # Donot change sever name and host. This is default configuration.
+      server.name: dashboards
+      server.customResponseHeaders: { "X-Frame-Options": "DENY" }
+      #Enable server.ssl.supportedProtocols when Security is enabled. 
+      #server.ssl.supportedProtocols: ["TLSv1.2"]
+      #To enable multitenancy in dashboards uncomment and set "opensearch_security.multitenancy.enabled" to true and uncomment opensearch.requestHeadersAllowlist parameter.
+      #opensearch_security.multitenancy.enabled: false
+      # Allowlist basic headers and multi tenancy header
+      #opensearch.requestHeadersAllowlist: [ "Authorization", "securitytenant", "x-forwarded-for", "x-proxy-user", "x-proxy-roles" ] 
+      #opensearch_security.auth.unauthenticated_routes: []
+
+        # uncomment below section for keycloak authentication and provide required correct parameters
+      #opensearch_security.auth.type: "openid"
+      #opensearch_security.openid.connect_url: "https://<keyclaok-ip>:<port>/auth/realms/<realm-name>/.well-known/openid-configuration"
+      ### When sensitiveInfoInSecret is true then set opensearch_security.openid.client_id: , opensearch_security.openid.client_secret: , opensearch_security.openid.root_ca: to empty so that they are internally populated from the secrets.
+      #opensearch_security.openid.client_id: "<client-id>"
+      #opensearch_security.openid.client_secret: "<client-secret>"
+      #opensearch_security.openid.header: "Authorization"
+        ### for dashboards service on ingress port is not required 
+      #opensearch_security.openid.base_redirect_url: "https://<dbo-ip>:<port>/<dbobaseurl>"
+        ### Do not change root_ca file path as this is the default mount path.
+      #opensearch_security.openid.root_ca: "/etc/opensearch-dashboards/certs/keycloakRootCaPem"
+
+        # Uncomment below section for sane sso and provide required correct parameters
+      #csan.enabled: "true"
+      #csan.ssoproxy.url: https://<csan-ssoproxy-service-hostname>:<port>
+      #opendistro_security.auth.unauthenticated_routes: ["/api/status", "/csan/v1/sso"]
+      #csan.sco.url: http://system-credential-orchestrator-svc.credential.svc.cluster.local
+      #csan.sco.keycloak_entity: "ckey"
+      #csan.sco.keycloak_classifier: "realm-admin"
+      #csan.sco.sane_entity: "sane"
+      #csan.sco.sane_plugin_name: "sane-credential-plugin"
+      #csan.auth_type: 4
+      csp.strict: true
+
+  env:
+   # if security is enabled use https instead of http and set SERVER_SSL_ENABLED to true . Please provide proper indexsearch url to connect indexsearch
+   # if you have indexsearch service in paas namespace, you can access it using 'indexsearch.paas'
+   # When istio and security are enabled, indexsearch url should be https://indexsearch:9200 and SERVER_SSL_ENABLED set to false.
+   - name: "OPENSEARCH_HOSTS"
+     value: "http://indexsearch:9200"
+   #- name: "SERVER_SSL_ENABLED"
+   #  value: "true"
+   ## SERVER_HOST for dashboards can be configured under env with the desired value to override the default value. If dual stack is configured for dashboards, it can be set to "::"
+   #- name: "SERVER_HOST"
+   #  value: "::"
+
+  ## Uncomment sslsecretvolume if additional certificates from the precreated secret (security.sensitiveInfoInSecret.credentialName)are required to be mounted in dashboards pod.
+  # This accepts a list of key:value pairs, where key is a user-configurable name and the certificate will be mounted inside the pod under /etc/sharedMount with this filename - "/etc/sharedMount/key"
+  # Refer example - kubectl create secret generic my-dbo-cert --from-file=dbo.crt.pem=</path/to/server.crt.pem> --from-file=dbo.key.pem=</path/to/server.key.pem> --from-file=root-ca.pem=</path/to/is-root-ca.pem> --from-file=tlsCrtPem=</path/to/tls.crt.pem> --from-file=tlsKeyPem=</path/to/tls.key.pem>  --from-file=opensearchClientCert=</path/to/client.crt.pem> --from-file=opensearchClientKey=</path/to/client.key.pem>  --namespace logging 
+  ##Note: If cert-based auth for dashboards backend server is enabled, the keys under sslsecretvolume have to be fixed to osClientCrt and osClientKey for cert and key respectively. Example - osClientCrt: "opensearchClientCert" , osClientKey: "opensearchClientKey"
+  #sslsecretvolume:
+    #tlsKey: "tlsKeyPem" #secret key from pre-created secret
+    #tlsCrt: "tlsCrtPem" #secret key from pre-created secret
+    #osClientCrt: "opensearchClientCert" #secret key from pre-created secret
+    #osClientKey: "opensearchClientKey" #secret key from precreated secret
+  
+  ## Node labels for pod assignment
+  #### ref: https://kubernetes.io/docs/concepts/configuration/assign-pod-node/#nodeselector
+  nodeSelector: {}
+
+  ## Toleration is asking the K8S schedule to ignore a taint
+  #### ref: https://kubernetes.io/docs/concepts/configuration/taint-and-toleration/
+  tolerations: []
+
+  ## Pod scheduling preferences.
+  ### ref: https://kubernetes.io/docs/concepts/configuration/assign-pod-node/#affinity-and-anti-affinity
+  affinity: {}
+
+  # certManager.enabled and certificate.enabled must be true for using this certificate.
+  # The following certificate configurations  like duration etc would be given precedence over the configurations in security.certManager section.
+  certificate:
+    enabled: true
+    # If `issuerRef.name` or `issuerRef.kind` is not specified value from certManager section is taken
+    issuerRef:
+      name:
+      kind:
+      group: # set to "cert-manager.io" by default
+    duration:  # set to 8760h by default
+    renewBefore:  # set to 360h by default
+    # If left empty, it will be generated automatically.
+    secretName:
+    # Not needed in internal communication
+    subject:
+    # It has been deprecated since 2000 and is discouraged from being used for a server side certificates.
+    # `dnsNames` are used instead.
+    commonName:
+    # Usages is the set of x509 usages that are requested for the certificate.
+    # If `usages` is not specified, the following will be used:
+    # - server auth
+    usages:
+    # DNSNames is a list of DNS subjectAltNames to be set on the Certificate.
+    # If `dnsNames` is not specified then the following internal names will be used:
+    # - <service name>.<namespace>
+    # - <service name>.<namespace>.svc
+    # - <service name>.<namespace>.svc.<cluster domain>
+    # If ssl passthrough is used on the Ingress object,
+    # then dnsNames should be set to external DNS names.
+    dnsNames:
+    # URIs is a list of URI subjectAltNames to be set on the Certificate.
+    uris:
+    # IPAddresses is a list of IP address subjectAltNames to be set on the Certificate.
+    ipAddresses:
+    privateKey:
+      algorithm:
+      encoding:
+      size:
+      # Rotation of a key pair, when certificate is refreshed is recommended from a security point of view
+      rotationPolicy: Always
+
+dbobaseurl:
+  url: "/logviewer"
+  #Do not change cg(capture group) parameter below unless you want to change/modify nginx rewrite-target for dashboards ingress
+  cg: "/?(.*)"
+
+cbur:
+  enabled: false
+  #the maximum copy you want to saved.
+  maxCopy: 5
+  #Modes supported now: "local","NETBKUP","AVAMAR","CEPHS3","AWSS3", case insensitive
+  backendMode: "local"
+  #It is used for scheduled backup task
+  cronJob: "0 23 * * *"
+  #Set below parameters to true for auto enabling cron job
+  autoEnableCron: false
+  #Set below parameter to true in case you want cronjob to be automatically deleted when autoEnableCron is set back to false from true
+  autoUpdateCron: false
+ 
+ingress:
+  enabled: true
+  # Configure name of Ingress resource. The name must follow RFC 1035 Label Names restrictions. If not configured, the default name would be configured as <namespace>-<release_name>-<dashboards_port>
+  name:
+  # If security is enabled without istio i.e. SERVER_SSL_ENABLED is true, then uncomment 3 annotations. i.e ingress.class, ssl-passthrough, backend-protocol.
+  annotations:
+    nginx.ingress.kubernetes.io/affinity: "cookie"
+    nginx.ingress.kubernetes.io/rewrite-target: /$1
+    nginx.ingress.kubernetes.io/ssl-redirect: "true"
+    #kubernetes.io/ingress.class: nginx
+    #nginx.ingress.kubernetes.io/ssl-passthrough: "true"
+    #nginx.ingress.kubernetes.io/backend-protocol: "HTTPS"
+  ## dashboards Ingress hostnames
+  ## May be provided if Ingress is enabled
+  #host: "*"
+  ## This section can be evaluated as a template. For ex. secret-name can be dynamically read from another value. secretName: "{{ .Values.global.certs.serverCert }}"
+  tls: []
+  #  - secretName: chart-example-tls
+  #    hosts:
+  #      - chart-example.local
+  ## May be provided if Ingress is enabled
+  ## Specifies how Ingress paths should be matched. See k8s API for details.
+  pathType: Prefix
+# Set to true to enable istio for dashboards
+istio:
+  enabled: false
+  #Istio version specified at chart level takes precedence over global level.
+  #quote is important, otherwise value is treated as a float value. Ex. "1.7"
+  version:
+  # Whether istio cni is enabled in the environment.
+  cni:
+   enabled:
+  envoy:
+   # Health check port of istio envoy proxy. For istio versions less than 1.6, set the value to 15020.
+   healthCheckPort: 15021
+   # Time in seconds to wait for istio envoy proxy to load required configurations
+   waitTimeout: 60
+   # Port used to terminate istio envoy sidecar using /quitquitquit endpoint
+   stopPort: 15000
+   # This optional flag should only be used when application was installed in istio-injection=enabled namespace, but was configured with istio.enabled=false, thus istio sidecar could not be injected into this application. Client then would need destinationRule for accessing this application
+  createDrForClient: false
+  # Below configurations will be used for configuring spec of DestinationRule  when createDrForClient flag is enabled
+  customDrSpecForClient:
+    trafficPolicy:
+      tls:
+        mode: "DISABLE"
+
+  # Optional sharedHttpGateway which should be used if you need to share a gateway.
+  sharedHttpGateway:
+    # This section instructs the chart to reuse an already existing gateway for http/https purposes.
+    # This is applicable if you already have a gateway on the same hostname listening on 80/443.
+    # Namespace where the existing gateway object exists.
+    namespace: ""
+    # Name of the gateway object.
+    name: ""
+  # An optional array of gateways which can be added if needed. These gateways will be created fresh in your install.
+  gateways:
+  # Name of the gateway.
+    dashboards-gw:
+    # Should this be enabled or not.
+      enabled: true
+    # Optional labels to be added to gateway object.
+      labels: {}
+    # Any annotations to be added to the gateway object.
+      annotations: {}
+    # By default the chart will use label 'istio: ingressgateway' as selector which is the default one deployed in istio-system namespace.
+    # This should be the label of the istio ingressgateway pod which you want your gateway to attach to.
+      ingressPodSelector:
+        istio: ingressgateway
+    # Port number where the gateway should attach to.
+      port: 80
+    # Protocol to be used for the port(TLS/TCP/HTTP/HTTPS). TLS/HTTPS will need the optional tls section to be filled.
+      protocol: HTTP
+    # By default the chart will use '*'. It can be a YAML array of host names.
+      hosts: []
+    # TLS settings for your gateway. This section is mandatory if protocol is TLS/HTTPS.
+      tls:
+    # This optional flag is only applicable for an HTTP port to force a redirection to HTTPS.
+        redirect: false
+    # Mode can be SIMPLE / MUTUAL / PASSTHROUGH/ ISTIO_MUTUAL and it is exactly as per ISTIO documentation.
+        mode:
+    # The name of the kubernetes secret, in the namespace to be used for TLS traffic.
+        credentialName:
+    # Istio TLS has many other attributes and configurations. If for some reason none of the above fits your
+    # needs , then use this section to configure as per istio docs. Anything under here will be directly moved
+    # under TLS section of gateway definition.
+        custom: {}
+
+  virtual_svc:
+    hosts:
+    - "*"
+  #Set exportTo with list of namespaces to which virtual service needs to be exported. Value "*" defines an export to all namespaces.
+    exportTo:
+    - "*"
+    # IMPORTANT: Binding multiple gateways to one VirtualService can behave unaccordingly.
+    # It is recommended to keep one gateway to one virtual service
+    # Provide name of gateway(s) for dashboards virtual service to bind to.
+    # If sharedHttpGateway.name is configured, dashboards virtual service binds to that gateway only.
+    gateways:
+    - "dashboards-gw"
+
+initContainer:
+  repo: bssc-init
+  tag: 1.0.0-2311.0.1 # Desired image flavor must be configured at imageFlavor. If the flavor is included in imageTag (for ex. 1.0.0-rocky8-jre17-2311.0.1), the complete tag would be read as-is, irrespective of configuration at imageFlavor.
+  # Set image flavor at container level for init container. It takes higher precedence over imageFlavor configured at global/root/workload levels. Supports rocky8-jre11 and rocky8-jre17. It picks rocky8-jre11 by default
+  imageFlavor:
+  # Set image flavor policy at container level for init container. It takes higher precedence over imageFlavor configured at global/root/workload levels. It supports Strict or BestMatch. It is BestMatch by default.
+  imageFlavorPolicy:
+  resources:
+    limits:
+      #cpu: "100m"
+      memory: "100Mi"
+      ephemeral-storage: "30Mi"
+    requests:
+      cpu: "50m"
+      memory: "50Mi"
+      ephemeral-storage: "30Mi"
+
+dboPluginsInit:
+  repo: bssc-dboplugins
+  tag: 2.11.0-2311.0.1  # Desired image flavor must be configured at image.flavor. If the flavor is included in image.tag (for ex. 2.11.0-rocky8-2311.0.1), the complete tag would be read as-is, irrespective of configuration at image.flavor. It takes rocky8 as default flavor.
+  # Set requested imageFlavor for dboplugins. It supports only rocky8. If the flavor is configured at higher levels (workload, root or global) with a flavor not supported by dboplugins image, set this imageFlavor explicitly to rocky8.
+  imageFlavor:
+  # Set image flavor policy at container level for dboplugins container. It takes higher precedence over imageFlavor configured at global/root/workload levels. It supports Strict or BestMatch. It is BestMatch by default.
+  imageFlavorPolicy:
+  resources:
+    limits:
+      #cpu: "50m"
+      memory: "100Mi"
+      ephemeral-storage: "1Gi"
+    requests:
+      cpu: "20m"
+      memory: "80Mi"
+      ephemeral-storage: "400Mi"
+
+#certManager configuration at root level.
+#Set certManager.enabled as true to create certifcates using certmanager feature.
+#If certManager is enabled, security must be enabled too
+certManager:
+#enabled value left empty intentionally, default value is False
+#This value has higher precedence over global.certManager.enabled
+  enabled:
+
+security:
+  enable: false
+  #Certmanager configuration
+  certManager:
+    #This has higher precedence over certManager.enabled (root level) and global.certManager.enabled. Its default value is set to read the same value configured at .Values.certManager.enabled
+    enabled: "{{.Values.certManager.enabled}}"
+    apiVersion: "cert-manager.io/v1alpha3"
+    duration: "8760h" # 365d
+    renewBefore: "360h" # 15d
+    #By default <dbo-svc-name>.<nampespace>.svc.cluster.local is added as DN in the certificate. If you wish to add other DN's uncomment below section
+    #dnsNames:
+    #- example.com
+    issuerRef:
+      # We can refer different Issuers by changing the kind and group here.
+      # The default value is ncms-ca-issuer(i.e is a cluster issuer)
+      name: ncms-ca-issuer
+      kind: ClusterIssuer
+      group: cert-manager.io
+    # When security is enabled, sensitiveInfoInSecret is enabled by default
+    # User has to provide the pre-created secretName and secret keys.
+  sensitiveInfoInSecret:
+    enabled: '{{ .Values.security.enable }}'
+    # Secret creation command example- kubectl create secret generic my-dbo-cert --from-literal=dbo_is_password=<kibanaserver-user-password> --from-file=dbo.crt.pem=</path/to/server.crt.pem> --from-file=dbo.key.pem=</path/to/server.key.pem> --from-file=root-ca.pem=</path/to/is-root-ca.pem> --namespace logging
+  # From the above example, secretName: my-dbo-cert, dboServerCrt: dbo.crt.pem, dboServerKey: dbo.key.pem, dboIsPassword: dbo_is_password, IsRootCaPem: root-ca.pem
+    credentialName:  #pre created secret name 
+    # When sensitiveInfoInSecret is true and security is enabled without istio, dboServerCrt: to IsRootCaPem: secret key has to be provided from the pre-created secret.
+    dboServerCrt: #secret key for dashboards server crt
+    dboServerKey: #secret key for dashboards server key
+    #dboIsUsername is fixed to kibanaserver. dboIsPassword can be configured. This user is used by DBO in backend interactions with IS. This password should match bssc-indexsearch chart's security.sensitiveInfoInSecret.kibanaServerUserPwd when internal_users.yml file is not used for creating secret. Otherwise dboIsPassword should match IS internal_users.yml kibanaserver password(when internal_users.yml is used while creating secret).
+    dboIsPassword: #secret key for dashboards IS Password
+    IsRootCaPem: #secret key for IS RootCA pem
+    # If security is true and keycloak_auth is true then secret key has to be provided for below parameters. When istio is not enabled then secret key has to be provided for keycloakRootCaPem from the pre-created secret.
+    keycloakRootCaPem: #secret key for keycloak rootCA pem 
+    keycloakClientId: #secret key for client id in keycloak
+    keycloakClientSecret: #secret key for client secret in keycloak
+    IngressRootCaPem:  #secret key for Ingress rootCA pem 
+    #sane:
+      #keycloak_admin_user_name: #secret key for keycloak_admin_user_name
+      #keycloak_admin_password: #secret key for keycloak_admin_password
+      #keycloak_sane_user_password: #secret key for keycloak_sane_user_password
+
+  #For user supplied certificates via Kubernetes Secret for opensearch dashboards server certificates, set tls.secretRef.name with the secret name.
+  #Certificates from <workload name>.tls.secretRef.name secret takes precedence over certificates from the other parameters i.e. If secret name is specified here, the certificates from configured secret will be used, even if the cert-manager is enabled or certificates are provided in sensitiveInfo section.
+  tls:
+    secretRef:
+      # Secret name, pointing to a Secret object.
+      name: ""
+      # Secret key names mapping.
+      keyNames:
+        # Name of Secret key, which contains CA certificate. This field is optional.
+        caCrt:
+        # Name of Secret key, which contains TLS key
+        tlsKey:
+        # Name of Secret key, which contains TLS certificate
+        tlsCrt:
+
+  # if authentication is required via keycloak, then set keycloak_auth to true
+  keycloak_auth: false
+
+  # when istio is enabled for BSSC and keycloak_auth is enabled, provide keycloak server details as explained below
+  istio:
+    # FQDN of ckey hostname that is externally accessible from browser
+    extCkeyHostname: ""     # Ex. extCkeyHostname: "ckey.io"
+    # Location of ckey internal/external to the istio mesh. Default value is MESH_INTERNAL
+    extCkeyLocation: "MESH_INTERNAL"   # Accepted values: MESH_INTERNAL, MESH_EXTERNAL
+    extCkeyIP: ""         #IP to be used for DNS resolution of ckey hostname from the cluster (required only when ckey is external to the mesh and ckey hostname is not resolvable from the cluster)
+    # Port on which ckey is externally accessible
+    extCkeyPort: ""         # Ex. extCkeyPort: 31390
+    # Protocol on which ckey is externally accessible
+    extCkeyProtocol: ""     # accepted values: HTTP, HTTPS
+    ## FQDN of ckey k8s service name internally accessible within k8s cluster
+    ckeyK8sSvcName: ""     # Ex. keycloak-ckey.default.svc.cluster.local
+    # Port on which ckey k8s service is accessible
+    ckeyK8sSvcPort: ""    # Ex. ckeyK8sSvcPort: 8443
+
+  dashboards:
+    #When istio is enabled, set value for is_ssl_verification_mode as none
+    is_ssl_verification_mode: certificate
+
+#This section is used for configuring sizeLimit for emptyDir volumes. When emptyDirSizeLimit is not configured, default values will be used.
+emptyDirSizeLimit:
+  dboPluginsVolume: #default value is 1Gi
+  dashboardsData: #default value is 10Mi
+  #This location stores dashboards logs, and its default size is set as per the default log-rotation values. If these log rotation values have been modified (using LOGGING_ROTATE_EVERYBYTES and LOGGING_ROTATE_KEEPFILES envs), please tune the size of this emptyDir accordingly.
+  dashboardsLogs: #default value is 200Mi
+  dashboardsEmptydirconf: #default value is 10Mi
+  sharedVolume: #default value is 10Mi
+

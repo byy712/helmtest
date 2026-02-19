@@ -1,0 +1,538 @@
+# values-model.yaml
+type: object
+properties:
+
+    resources:
+        description: |
+            Resource configuration required by Kafka 
+
+        type: object
+        properties:
+            kafkaBrokerRegistry:
+                description: |
+                    Location of docker image of kafka broker.
+                type: string
+                default: csf-docker-delivered.repo.cci.nokia.net
+            jmxExporterRegistry:
+                description: |
+                    Location of docker image of JMX exporter.
+                type: string
+                default: csf-docker-delivered.repo.cci.nokia.net
+            cburAgentRegistry:
+                description: |
+                    Location of docker image of CCBUR agent sidecar.
+                type: string
+                default: csf-docker-delivered.repo.cci.nokia.net
+            lcmHookRegistry:
+                description: |
+                    Location of docker image of kubectl used in all lcm hooks like pre/post of heal,scale,delete etc.
+                type: string
+                default: csf-docker-delivered.repo.cci.nokia.net
+            kafkaMemoryRequest:
+                description: |
+                    Memory size reserved for each Kafka broker.
+                type: string
+                default: 2Gi
+                pattern: '^[1-9][0-9]*(Gi|Mi)$'
+            kafkaCpuRequest:
+                description: |
+                    CPU resources reserved for each Kafka broker.
+                type: string
+                default: 500m
+                pattern: '^[1-9][0-9]*m*$'
+            kafkaMemoryLimit:
+                description: |
+                    Memory limit size for each Kafka broker.
+                type: string
+                default: "4Gi"
+                pattern: '^[1-9][0-9]*(Gi|Mi)$'
+            kafkaCpuLimit:
+                description: |
+                    CPU limit size for each Kafka broker.
+                type: string
+                default: "1"
+                pattern: '^[1-9][0-9]*m*$'
+            kafkaDataStorageSize:
+                description: |
+                    Size of persistent volume reserved for each Kafka broker for data.
+                type: string
+                default: 10Gi
+                pattern: '^[1-9][0-9]*(Gi|Mi)$'
+            kafkaLogStorageSize:
+                description: |
+                    Size of persistent volume reserved for each Kafka broker for logs.
+                type: string
+                default: 10Gi
+                pattern: '^[1-9][0-9]*(Gi|Mi)$'
+            kafkaNameOverride:
+                description: |
+                    This section allows to configure user defined  nameOverride for kafka component resources.
+                type: string
+                default: ""
+            kafkaFullNameOverride:
+                description: |
+                    This section allows to configure user defined fullnameOverride for kafka component resources.
+                type: string
+                default: ""
+            zookeeperMemoryRequest:
+                description: |
+                    Memory size reserved for each Zookeeper server.
+                type: string
+                default: 2Gi
+                pattern: '^[1-9][0-9]*(Gi|Mi)$'
+            zookeeperCpuRequest:
+                description: |
+                    CPU resources reserved for each Zookeeper server.
+                type: string
+                default: 500m
+                pattern: '^[1-9][0-9]*m*$'
+            zookeeperMemoryLimit:
+                description: |
+                    Memory limit size for each Zookeeper server.
+                type: string
+                default: "4Gi"
+                pattern: '^[1-9][0-9]*(Gi|Mi)$'
+            zookeeperCpuLimit:
+                description: |
+                    CPU limit size for each Zookeeper server.
+                type: string
+                default: "1"
+                pattern: '^[1-9][0-9]*m*$'
+            zookeeperDataStorageSize:
+                description: |
+                    Size of persistent volume reserved per pod for data.
+                type: string
+                default: 10Gi
+                pattern: '^[1-9][0-9]*(Gi|Mi)$'
+            zookeeperLogStorageSize:
+                description: |
+                    Size of persistent volume reserved per pod for logs.
+                type: string
+                default: 10Gi
+                pattern: '^[1-9][0-9]*(Gi|Mi)$'
+            zookeeperNameOverride:
+                description: |
+                    This section allows to configure user defined nameOverride for zookeeper component resources.
+                type: string
+                default: ""
+            zookeeperFullNameOverride:
+                description: |
+                    This section allows to configure user defined fullnameOverride for zookeeper component resources.
+                type: string
+                default: ""
+            jmxExporterMemoryRequest:
+                description: |
+                    Memory size reserved for each JMX exporter pod.
+                type: string
+                default: 1Gi
+                pattern: '^[1-9][0-9]*(Gi|Mi)$'
+            jmxExporterCpuRequest:
+                description: |
+                    CPU resources reserved for each JMX exporter pod.
+                type: string
+                default: 100m
+                pattern: '^[1-9][0-9]*m*$'
+            jmxExporterMemoryLimit:
+                description: |
+                    Memory limit size for each JMX exporter pod.
+                type: string
+                default: "4Gi"
+                pattern: '^[1-9][0-9]*(Gi|Mi)$'
+            jmxExporterCpuLimit:
+                description: |
+                    CPU limit size for each JMX exporter pod.
+                type: string
+                default: "1"
+                pattern: '^[1-9][0-9]*m*$'
+    config:
+        description: |
+            Kafka tuning parameters
+
+        type: object
+        properties:
+            storageClass:
+               description: |
+                   StorageClass for Kafka cluster
+               type: string
+               default: ""
+               pattern: ".*"
+            enableRbac:
+               description: |
+                   Enable RBAC for Kafka cluster.
+               type: boolean
+               default: true
+            clusterDomain:
+                description: |
+                    Domain name of kubernetes cluster
+                type: string
+                default: "cluster.local"
+                pattern: '.*'           
+            KafkaPort:
+               description: |
+                   Kafka Port
+               type: integer
+               default: 9092
+               pattern: '^[1-9][0-9]*$'
+            numberOfZookeeperServer:
+                description: |
+                     Number of Zookeeper Server pods in cluster.
+                type: integer
+                default: 3
+                minimum: 1
+                pattern: '^[1-9][0-9]*$'
+            numberOfKafkaBroker:
+                description: |
+                     Number of Kafka broker pods in cluster.
+                type: integer
+                default: 3
+                minimum: 1
+                pattern: '^[1-9][0-9]*$'
+            logLevel:
+                description: |
+                     Level of logging.
+                type: string
+                default: INFO
+                pattern: '^(DEBUG|ERROR|FATAL|INFO)$'
+            maxFileSize:
+               description: |
+                   Maximum file size of kafka logs
+               type: string
+               default: "50MB"
+            maxBackupIndex:
+               description: |
+                   Maximum number of log files that should get created for the log rotation
+               type: integer
+               default: 10
+            autoPvEnabledKafka:
+               description: |
+                   Persistent volume already present
+               type: boolean
+               default: false
+            autoPvEnabledLabelKafka:
+               description: |
+                   Label matched for precreated volume
+               type: string
+               default: "kafka"
+            autoPvEnabledZk:
+               description: |
+                   Persistent volume already present
+               type: boolean
+               default: false
+            autoPvEnabledLabelZk:
+               description: |
+                   Label matched for precreated volume
+               type: string
+               default: "zookeeper"
+            kafkaHeapOpts: 
+                description: |
+                     Kafka Heap
+                type: string
+                default: "-Xmx1G -Xms1G"
+            autoCreateTopicsEnable:
+               description: |
+                    If enabled, Kafka will auto create topic if topic is not present and atleast one producer is producing for that topic. Not recommended to enable in a production setup.
+               type: boolean
+               default: true
+            defaultReplicationFactor:
+                description: |
+                     Default replication factors for automatically created topics.
+                type: integer
+                default: 1
+                minimum: 1
+                pattern: '^[1-9][0-9]*$'
+            numPartitions:
+                description: |
+                     The default number of log partitions per topic.
+                type: integer
+                default: 1
+                minimum: 1
+                pattern: '^[1-9][0-9]*$'
+            zookeeperClientPort:
+               description: |
+                   Zookeeper client Port
+               type: integer
+               default: 2181
+               pattern: '^[1-9][0-9]*$'
+            zookeeperConnectionTimeoutMs:
+                description: |
+                     The max time that the Kafka client waits to establish a connection to zookeeper.
+                type: integer
+                default: 18000
+                pattern: '^[1-9][0-9]*$'
+            zookeeperSessionTimeoutMs:
+                description: |
+                     Zookeeper session timeout.
+                type: integer
+                default: 6000
+                pattern: '^[1-9][0-9]*$'
+            zookeeperSetAcl:
+                description: |
+                   Set client to use secure ACLs.
+                type: boolean
+                default: false
+            logRetentionHours:
+                description: |
+                     The number of hours to keep a Kafka log file before deleting it.
+                type: integer
+                default: 168
+                pattern: '^[1-9][0-9]*$'
+            minInsyncReplicas:
+                description: |
+                     The number of min insync replicas.
+                type: integer
+                default: 1
+                pattern: '^[1-9][0-9]*$'
+    lcm:
+        description: |
+            Kafka life cycle event parameters
+
+        type: object
+        properties:
+            serviceAccountName:
+                description: |
+                    User can configure the precreated SA specifically for this chart here.
+                    If not, with rbac.enabled=true,zookeeper chart will create it's default sa.
+                type: string
+                default: ""
+                pattern: ".*"
+            enableKafkaNodeSelector:
+               description: |
+                   Enable k8s nodeSelector for kafka brokers. Provide the node labels in kafkaNodeLabel.
+               type: boolean
+               default: false
+            kafkaNodeLabel:
+               description: |
+                   If enableKafkaNodeSelector is enabled, then schedule the kafka pods only on nodes labeled with nodeType="kafkaNodeLabel".
+               type: string
+               default: ""
+            enableZookeeperNodeSelector:
+               description: |
+                   Enable k8s nodeSelector for zookeeper server. Provide the node labels in zookeeperNodeLabel.
+               type: boolean
+               default: false
+            zookeeperNodeLabel:
+               description: |
+                   If enableZookeeperNodeSelector is enabled, then schedule the zookeeper pods only on nodes labeled with nodeType="zookeeperNodeLabel".
+               type: string
+               default: ""
+            lcmEventMemoryRequest:
+                description: |
+                    Memory size reserved for each LCM event container like heal/scale/upgrade.
+                type: string
+                default: 1Gi
+                pattern: '^[1-9][0-9]*(Gi|Mi)$'
+            lcmEventCpuRequest:
+                description: |
+                    CPU resources reserved for each LCM event container like heal/scale/upgrade.
+                type: string
+                default: 200m
+                pattern: '^[1-9][0-9]*m*$'
+            lcmEventMemoryLimit:
+                description: |
+                    Memory limit size for each LCM event container like heal/scale/upgrade.
+                type: string
+                default: "4Gi"
+                pattern: '^[1-9][0-9]*(Gi|Mi)$'
+            lcmEventCpuLimit:
+                description: |
+                    CPU limit size for each LCM event container like heal/scale/upgrade.
+                type: string
+                default: "1"
+                pattern: '^[1-9][0-9]*m*$'
+            rem_pvc:
+               description: |
+                    Remove persistence volume(PV/PVC) after deletion of Kafka cluster.
+               type: boolean
+               default: true
+            rem_secret:
+               description: |
+                    Remove cluster secrets after deletion of Kafka cluster.
+               type: boolean
+               default: false
+            partitionReassignThrottle:
+               description: |
+                    Network bandwidth for throttle during partition reassignment during scaling event. Specified in bytes/sec
+               type: integer
+               default: 1000
+            enableBackupRestoreSupport:
+               description: |
+                   Enable support for backup and restore through CCBUR.
+               type: boolean
+               default: true
+            cburMemoryRequest:
+                description: |
+                    Memory size reserved for each CCBUR agent.
+                type: string
+                default: 2Gi
+                pattern: '^[1-9][0-9]*(Gi|Mi)$'
+            cburCpuRequest:
+                description: |
+                    CPU resources reserved for each CCBUR agent.
+                type: string
+                default: 200m
+                pattern: '^[1-9][0-9]*m*$'
+            cburMemoryLimit:
+                description: |
+                    Memory limit size for each CCBUR agent.
+                type: string
+                default: "4Gi"
+                pattern: '^[1-9][0-9]*(Gi|Mi)$'
+            cburCpuLimit:
+                description: |
+                    CPU limit size for each CCBUR agent.
+                type: string
+                default: "1"
+                pattern: '^[1-9][0-9]*m*$'
+            cburMaxBackupCopies:
+                description: |
+                     The number of maximum backup copies to be retained.
+                type: integer
+                default: 5
+                pattern: '^[1-9][0-9]*$'
+            cburBackendMode:
+                description: |
+                     Modes supported now: "local","NETBKUP","AVAMAR", case insensitive
+                type: string
+                default: "local"
+            cburCronJob:
+                description: |
+                     Format of cron job setting for backup. It is used for scheduled backup task. Empty string is allowed for no scheduled backup
+                type: string
+                default: "0 23 * * *"
+            cburTopicsToBackup:
+                description: |
+                     Provide the list of metadata topics to be backuped in comma separated fashion. Provide correct topic names, no spaces between separator and topic names . Please do not mention normal topics
+                type: string
+                default: "_schemas"
+            prepareRollback:
+                description: |
+                    If set to true then it will enable rollback support to chart version 1.5.4 or below.
+                type: boolean
+                default: false
+            clogEnable:
+                description: |
+                    If set to true then logs will write in CLOG format
+                type: boolean
+                default: true
+    kerberos:
+        description: |
+             Kerberos for Zookeeper
+        type: object
+        properties:
+            enable:
+                title: Enable Kerberos
+                description: |
+                    If enabled external Kerberos should be available
+                type: boolean
+                default: false
+            krbSecretName:
+                title: Name of Secret
+                type: string
+            krbPrincipalKey:
+                title: Key in Secret Containing Principal
+                type: string
+            krbKeytabKey:
+                title: Key in Secret Containing Keytab
+                type: string
+            krbConf:
+                title: Provide base64 encoding of krb5.conf file
+                description: |
+                    Use below command to get base64 encoding of krb5.conf file
+                    base64 <filename>  | tr -d '\n'
+                type: string
+                 
+    sasl:
+        description: |
+             SASL for Kafka
+        type: object
+        properties:
+            internalSecurityMode:
+                title: Kafka Listeners security config
+                description: |
+                    "SSL" or "SASL_SSL" or "PLAINTEXT"
+                type: string
+                default: "PLAINTEXT"            
+            enable:
+                title: Enable SASL
+                description: |
+                type: boolean
+                default: false
+            mechanism:
+                title: SASL Mechanism
+                description: |
+                    "GSSAPI" or "PLAIN"
+                type: string                
+            krbconfig:
+                description: |
+                    Kerberos Config
+                type: object
+                properties:
+                    krbConf:
+                        title: Provide base64 encoding of krb5.conf file
+                        description: |
+                            Use below command to get base64 encoding of krb5.conf file base64 <filename>  | tr -d '\n'
+                        type: string
+                    krbRealm:
+                        title: Kerberos REALM
+                        description: |
+                        type: string
+                    keytabs:
+                        title: Keytabs for all brokers
+                        type: array
+                        format: dynamic
+                        items:
+                            type: object
+                            properties:
+                              hostname:
+                                title: Pod hostname
+                                description: |
+                                    if release-name=test ,pod-number=0 ,namespace=default set to kf-test-0.kf-test-headless.default.svc.cluster.local
+                                type: string
+                                required: true
+                              keytab:
+                                title: keytab corresponding to Pod hostname
+                                description: |
+                                    keytab: base64-encoded-keytab
+                                type: string
+                                required: true
+            ckeyconfig:
+                type: object
+                description: |
+                    Keycloak Config
+                properties:
+                    userSecretName:
+                        title: Secret containing admin details 
+                        description: |
+                            Secret Containing Admin User Name and Password as userkey and passkey
+                        type: string
+                    superUsers:
+                        title: Admin User in Keycloak
+                        type: string
+                        default: "User:kafka-admin@kafka.com"
+                    configSecretName:
+                        title: Secret containing Keycloak config file
+                        type: string
+                    enableOAuth2AclAuthorizer:
+                        title: Enable OAuth2ACLAuth
+                        type: boolean
+                        default: false           
+    ssl:
+        description: |
+             SSL for Kafka
+        type: object
+        properties:
+            enabled:
+                title: Enable SSL
+                description: |
+                type: boolean
+                default: false
+            secret_name: 
+                title: Secret Name containing Trustore and Keystore details 
+                description: |
+                    kubectl create secret generic <secret-name> --from-literal=keyPass=<passwd> --from-literal=keyStorePass=<passwd> --from-literal=trustStorePass=<passwd> --from-file=keyStore=<certificatepath>/ca.truststore --from-file=trustStore=<certificatepath>/kube1.keystore
+                type: string                
+            securityInterBrokerProtocol: 
+                title: Inter Broker Security Protocol
+                description: |
+                type: string     
+                default: "SSL"

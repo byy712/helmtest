@@ -1,0 +1,18 @@
+{{- if and .Values.kubeStateMetrics.enabled .Values.kubeStateMetrics.pdb.enabled -}}
+apiVersion: {{ template "cpro.apiVersion.pdb" . }}
+kind: PodDisruptionBudget
+metadata:
+  labels:
+    {{- include "cpro.app.labels.v3" ( dict "root" . "context" .Values.kubeStateMetrics ) | nindent 4 }}
+{{- include "cpro.labelsOrAnnotations" (tuple .Values.global.labels) | indent 4}}
+  annotations:
+{{- include "cpro.labelsOrAnnotations" (tuple .Values.global.annotations) | indent 4}}
+  name: {{ template "cpro.prometheus.kubeStateMetrics.fullname" . }}
+spec:
+  {{- include "cpro.pdb-values" .Values.kubeStateMetrics.pdb | indent 2}}
+  selector:
+    matchLabels:
+      app: {{ template "cpro.prometheus.name" . }}
+      component: "{{ .Values.kubeStateMetrics.name }}"
+      release: {{ .Release.Name }}
+{{- end }}

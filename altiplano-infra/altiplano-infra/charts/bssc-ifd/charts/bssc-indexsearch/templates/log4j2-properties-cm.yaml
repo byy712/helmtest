@@ -1,0 +1,30 @@
+{{- include "bssc-indexsearch.syslogValues" . }}
+{{- include "bssc-indexsearch.syslogTlsValues" . }}
+{{- include "bssc-indexsearch.syslogSendLogsViaLog4j" . }}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ template "bssc-indexsearch.fullname" . }}-log4j2
+  labels:
+{{- include "bssc-indexsearch.commonLabels" (tuple .) | nindent 4 }}
+{{- include "bssc-indexsearch.csf-toolkit-helm.labels" (tuple .) | nindent 4 }}
+  annotations:
+{{- include "bssc-indexsearch.csf-toolkit-helm.annotations" (tuple .) | nindent 4 }}
+data:
+{{- if .Values.log4j2_properties }}
+  log4j2.properties:
+{{ toYaml .Values.log4j2_properties | indent 4 }}
+{{- else }}
+  {{- if $.syslogEnabled }}
+    {{- if ($.sendLogsViaLog4j) }}
+  log4j2.properties:
+{{ toYaml (tpl (.Files.Get "log4j2-properties/log4j2-syslog-console-appender.properties") .) | indent 4 }}
+    {{- else }}
+  log4j2.properties:
+{{ toYaml (tpl (.Files.Get "log4j2-properties/log4j2-file-appender.properties") .) | indent 4 }}
+    {{- end }}
+  {{- else }}
+  log4j2.properties:
+{{ toYaml (tpl (.Files.Get "log4j2-properties/log4j2-console-appender.properties") .) | indent 4 }}
+  {{- end }}
+{{- end }}

@@ -1,0 +1,10 @@
+--- bssc-ifd-13.0.1-nokia-patch-5/bssc-ifd/charts/bssc-indexsearch/templates/shared-pvc.yaml	2024-02-21 17:01:49.000000000 +0530
++++ bssc-ifd-13.0.1-nokia-patch-6/bssc-ifd/charts/bssc-indexsearch/templates/shared-pvc.yaml	2024-02-27 08:35:38.879368495 +0530
+@@ -9,6 +9,7 @@
+     release: {{ .Release.Name }}
+   annotations:
+ {{- include "bssc-indexsearch.csf-toolkit-helm.annotations" (tuple .) | nindent 4 }}
++    "helm.sh/resource-policy": keep
+ spec:
+   {{- if .Values.backup_restore.storageClassName }}
+   {{- if (eq "-" .Values.backup_restore.storageClassName) }}

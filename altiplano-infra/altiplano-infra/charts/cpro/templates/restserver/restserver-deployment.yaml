@@ -1,0 +1,356 @@
+{{- include "cpro.istio.cproInitIstio" . }}
+{{- if .Values.restserver.enabled -}}
+{{- $syslogEnabled := eq (include "csf-common-lib.v1.coalesceBoolean" (tuple .Values.restserver.unifiedLogging.syslog.enabled .Values.global.unifiedLogging.syslog.enabled false )) "true"  }}
+{{- $tlsEnabled := eq (include "csf-common-lib.v1.coalesceBoolean" (tuple .Values.restserver.tls.enabled .Values.tls.enabled .Values.global.tls.enabled .Values.restserver.configs.httpsEnabled false)) "true" }}
+apiVersion: {{ template "cpro.apiVersion.DeploymentAPI" . }}
+kind: Deployment
+metadata:
+  name: {{ template "cpro.prometheus.restserver.deploymentName" . }}
+  labels:
+    {{- include "cpro.labelsOrAnnotations" (tuple .Values.restserver.labels .Values.custom.restServerDeployment.labels .Values.global.labels) | indent 4}}
+    {{- include "cpro.app.labels.v3" ( dict "root" . "context" .Values.restserver ) | nindent 4 }}
+  annotations:
+{{- include "cpro.labelsOrAnnotations" (tuple .Values.restserver.annotations .Values.custom.restServerDeployment.annotations .Values.global.annotations) | indent 4}}
+{{- if or $syslogEnabled .Values.restserver.unifiedLogging.extension .Values.global.unifiedLogging.extension }}
+    configmap.reloader.stakater.com/reload: "{{ template "cpro.prometheus.restserver.fullname" . }},{{ template "cpro-common-lib-v1.ConfigmapName" (dict "name" "restserverfluentdcm" "root" .) }}"
+{{- if and $syslogEnabled (tpl (default "" $.syslog.tls.secretRef.name) .) (tpl (default "" $.syslog.tls.secretRef.keyNames.caCrt) .) }}
+    secret.reloader.stakater.com/reload: "{{ tpl $.syslog.tls.secretRef.name . }}" 
+{{- end }}
+{{- end }}
+spec:
+{{$data_csc := dict "cSecCtx" .Values.restserver.containerSecurityContext "ctx" . }}
+{{ include "cpro.configure.progressDeadlineSeconds" ( dict "compPDSValue" .Values.restserver.progressDeadlineSeconds "context" . ) | indent 2}}
+  replicas: {{ .Values.restserver.replicaCount }}
+  {{- if semverCompare ">=1.16.0-0" .Capabilities.KubeVersion.GitVersion }}
+  selector:
+   matchLabels:
+    app: {{ template "cpro.prometheus.name" . }}
+    component: "{{ .Values.restserver.name }}"
+    release: {{ .Release.Name }}
+  {{- end }}
+  template:
+    metadata:
+      annotations:
+        sidecar.istio.io/inject: "{{ $.istio.enabled }}"
+{{- if and ($.istio.enabled) ($.istio.mtls.enabled) }}
+        sidecar.istio.io/rewriteAppHTTPProbers: "true"
+{{- end }}
+{{- include "cpro.labelsOrAnnotations" (tuple .Values.restserver.annotations .Values.restserver.podAnnotations .Values.custom.pod.annotations .Values.global.annotations) | indent 8}}
+{{- if .Values.rbac.pspUseAppArmor }}
+{{- include "cpro.labelsOrAnnotations" (tuple .Values.custom.pod.apparmorAnnotations) | indent 8}}
+{{- end }}
+      labels:
+        {{- include "cpro.app.labels.v3" ( dict "root" . "context" .Values.restserver ) | nindent 8 }}
+        app: {{ template "cpro.prometheus.name" . }}
+        component: "{{ .Values.restserver.name }}"
+        release: {{ .Release.Name }}
+        {{- include "cpro.labelsOrAnnotations" (tuple .Values.restserver.labels .Values.custom.pod.labels .Values.global.labels) | indent 8}}
+    spec:
+      securityContext:
+      {{$data := dict "securitycontext" .Values.restserver.securityContext "ctx" . }}
+      {{- include "cpro.securitycontext" $data | nindent 8 }}
+      {{- if .Values.seLinuxOptions.enabled }}
+        seLinuxOptions:
+          level: {{ .Values.seLinuxOptions.level }}
+          role: {{ .Values.seLinuxOptions.role }}
+          type: {{ .Values.seLinuxOptions.type }}
+          user: {{ .Values.seLinuxOptions.user }}
+      {{- end }}
+      automountServiceAccountToken: true
+      serviceAccountName: {{ template "cpro.prometheus.serviceAccountName" . }}
+      initContainers:
+{{- if and $tlsEnabled (eq (include "csf-common-lib.v1.isEmptyValue" .Values.restserver.tls.secretRef.name) "true") (.Values.certManagerConfig.wait4Certs2BeConsumed.enabled) (eq .Values.restserver.certificateSecret "certmanager") }}
+{{ $certs := dict "restserver-tls" "/var/lib/certs" }}
+{{ $_ := set . "certMountPaths" $certs }}
+{{ include "cpro.wait4Certs2BeConsumed.template" (dict "root" . "workload" .Values.restserver ) | indent 8 }}
+{{- end }}
+        - name: {{ template "cpro.prometheus.restserver.initToolsContainerName" . }}
+{{- include "cpro.prometheus.python.image" (dict "root" . "workload" .Values.restserver "container" .Values.initConfigFile  ) | nindent 10}}
+{{- include "cpro.terminationMessage" . | nindent 10 }}
+          env:
+            {{- include "cpro.timeZoneEnvName" . | nindent 12 }}
+          command:
+          - /bin/sh
+          - -c
+          - |
+          {{- if $tlsEnabled }}
+          {{- if (ne (include "csf-common-lib.v1.isEmptyValue" .Values.restserver.tls.secretRef.name) "true") }}
+            cp /var/lib/certs/{{ .Values.restserver.tls.secretRef.keyNames.caCrt }} /.secrets/ca.crt
+            cp /var/lib/certs/{{ .Values.restserver.tls.secretRef.keyNames.tlsCrt }} /.secrets/server.crt
+            cp /var/lib/certs/{{ .Values.restserver.tls.secretRef.keyNames.tlsKey }} /.secrets/server.key
+          {{- else if eq .Values.restserver.certificateSecret "certmanager" }}
+            cp /var/lib/certs/ca.crt /.secrets/
+            cp /var/lib/certs/tls.crt /.secrets/server.crt
+            cp /var/lib/certs/tls.key /.secrets/server.key
+          {{- else if .Values.restserver.certificateSecret }}
+            cp /etc/prometheus/certs/ca.crt /.secrets/
+            cp /etc/prometheus/certs/server.crt /.secrets/
+            cp /etc/prometheus/certs/server.key /.secrets/
+          {{- else if ne .Values.sensitiveDataSecretName "" }}
+            cp /etc/prometheus/secrets/ca.crt /.secrets/
+            cp /etc/prometheus/secrets/server.crt /.secrets/
+            cp /etc/prometheus/secrets/server.key /.secrets/
+          {{- else if and (.Values.restserver.configs.restCACert) (.Values.restserver.configs.restServerKey) (.Values.restserver.configs.restServerCert) }}
+            cp /etc/prometheus/ca.crt /.secrets/
+            cp /etc/prometheus/server.crt /.secrets/
+            cp /etc/prometheus/server.key /.secrets/
+          {{- else if (eq (include "csf-common-lib.v1.isEmptyValue" .Values.restserver.tls.secretRef.name) "true") }}
+            cp /etc/prometheus/ca.crt /.secrets/
+            cp /etc/prometheus/server.crt /.secrets/
+            cp /etc/prometheus/server.key /.secrets/
+          {{- else }}
+            {{ required "when https is enabled providing certs is necessary" .Values.restserver.certs }}
+          {{- end }}
+          {{- end }}
+            {{- if or $syslogEnabled .Values.restserver.unifiedLogging.extension .Values.global.unifiedLogging.extension }}
+            cp /etc/prometheus/log4j.xml /.secrets/log4j2.xml
+            {{- else }}
+            cp /etc/prometheus/log4j2.xml /.secrets/
+            {{- end }}
+            cp /etc/prometheus/prometheus.restServer.properties /.secrets/
+          volumeMounts:
+          - name: secure-data
+            mountPath: /.secrets
+          - name: config-volume
+            mountPath: /etc/prometheus
+          {{- if ne .Values.sensitiveDataSecretName "" }}
+          - name: sensitivedata
+            mountPath: /etc/prometheus/secrets
+          {{- end }}
+{{- if $tlsEnabled }}
+      {{- if eq .Values.restserver.certificateSecret "certmanager" }}
+          - name: restserver-tls
+            mountPath: /var/lib/certs
+      {{- else if ne .Values.restserver.certificateSecret "" }}
+          - name: restcerts
+            mountPath: /etc/prometheus/certs
+      {{- end }}
+{{- end }}
+          resources:
+{{- include "cpro-common-lib.v1.resources" ( dict "root" . "workloadresources" .Values.restserver.resources "defaultcpulimit" "1") | nindent 12 }}
+          securityContext:
+         {{- include "cpro.containerSecurityContext" $data_csc | nindent 12 }}
+{{ include "cpro-common-lib.imagePullSecrets" (dict "workloadName" .Values.restserver "root" .) | indent 6 }}
+      containers:
+            {{- if or $syslogEnabled .Values.restserver.unifiedLogging.extension .Values.global.unifiedLogging.extension }}
+        {{- include "cpro-common-lib.fluentd-v2" ( dict "root" . "context" .Values.fluentd "workload" .Values.restserver "registry" .Values.intFluentdReg ) | nindent 8 }}
+          volumeMounts:
+            - name: logs
+              mountPath: /var/log/restserver
+            - name: harmonized-logging-conf
+              mountPath: /etc/fluent/
+            - mountPath: /tmp
+              name: tempfolder
+             {{- if and $syslogEnabled (tpl (default "" $.syslog.tls.secretRef.name) .) (tpl (default "" $.syslog.tls.secretRef.keyNames.caCrt) .) }}
+            - mountPath: /etc/fluent/certs/
+              name: fluentd-tls
+             {{- end}}
+           {{- end }}
+        - name: {{ template "cpro.prometheus.restserver.configmapReloadContainerName" . }}
+{{- include "cpro.prometheus.distro.image" (dict "root" . "workload" .Values.restserver "container" .Values.configmapReload  ) | nindent 10}}                
+          command: [ "/configmap-reload" ]
+{{- include "cpro.terminationMessage" . | nindent 10 }}
+          env:
+            {{- include "cpro.timeZoneEnvName" . | nindent 12 }}
+          args:
+            - --volume-dir=/etc/prometheus
+            {{- if ne .Values.sensitiveDataSecretName "" }}
+            - --volume-dir=/etc/prometheus/secrets
+            {{- end }}
+            {{- if and $tlsEnabled ( or (eq .Values.restserver.certificateSecret "certmanager") (ne (include "csf-common-lib.v1.isEmptyValue" .Values.restserver.tls.secretRef.name) "true")) }}
+            - --volume-dir=/var/lib/certs
+            {{- end }}
+            - --webhook-url=http://127.0.0.1:{{ .Values.restserver.configs.reloadPort }}/cpro/v1/reload
+          resources:
+{{- include "cpro-common-lib.v1.resources" ( dict "root" . "workloadresources" .Values.restserver.configmapReload.resources "defaultcpulimit" "10m") | nindent 12 }}
+          volumeMounts:
+          {{- if .Values.externalCredentials }}
+          {{- include "cpro-common-lib.v1-includeExternalCredentialMounts" (dict "creds" .Values.externalCredentials "root" . ) | indent 12 }}
+          {{- end }}
+            - name: config-volume
+              mountPath: /etc/prometheus
+              readOnly: true
+            {{- if ne .Values.sensitiveDataSecretName "" }}
+            - name: sensitivedata
+              mountPath: /etc/prometheus/secrets
+              readOnly: true
+            {{- end }}
+            {{- if and $tlsEnabled ( or (eq .Values.restserver.certificateSecret "certmanager") (ne (include "csf-common-lib.v1.isEmptyValue" .Values.restserver.tls.secretRef.name) "true")) }}
+            - name: restserver-tls
+              mountPath: /var/lib/certs
+              readOnly: true
+            {{- end }}
+          securityContext:
+         {{- include "cpro.containerSecurityContext" $data_csc | nindent 12 }}
+        - name: {{ template "cpro.prometheus.restserver.restServerContainerName" . }}
+{{- include "cpro.rest.server.image" (dict "root" . "workload" .Values.restserver  ) | nindent 10}}
+{{- include "cpro.terminationMessage" . | nindent 10 }}
+          ports:
+            - name: tcp-metrics
+              containerPort: {{ .Values.restserver.configs.httpPort }}
+              protocol: TCP
+            - name: tcp-health
+              containerPort: {{ .Values.restserver.configs.reloadPort }}
+              protocol: TCP
+          volumeMounts:
+          {{- if .Values.externalCredentials }}
+          {{- include "cpro-common-lib.v1-includeExternalCredentialMounts" (dict "creds" .Values.externalCredentials "root" . ) | indent 10 }}
+          {{- end }}
+            {{- if or $syslogEnabled .Values.restserver.unifiedLogging.extension .Values.global.unifiedLogging.extension }}
+          - name: logs
+            mountPath: /var/log/restserver
+            {{- end }}
+          - name: secure-data
+            mountPath: /.secrets
+{{- if ( include "cpro.restserver.containerSecurityContext" . )  }}
+          - name: restserver-log
+            mountPath: /var/tmp
+          - name: restserver-data
+            mountPath: /usr/local/cpro/rest
+{{- end }}
+          securityContext:
+         {{- include "cpro.containerSecurityContext" $data_csc | nindent 12 }}
+{{- include "cpro.prometheus.restserver.probe" . | indent 10 }}
+          resources:
+{{- include "cpro-common-lib.v1.resources" ( dict "root" . "workloadresources" .Values.restserver.resources "defaultcpulimit" "1") | nindent 12 }}
+          env:
+            {{- include "cpro.timeZoneEnvName" . | nindent 12 }}
+            - name: BCMT_MASTER_URL
+              value: {{ .Values.restserver.BCMT.serverURL }}
+            - name: NAMESPACE
+              value: {{ .Release.Namespace }}
+            - name: CONFIGMAP_NAME
+              value: {{ template "cpro.prometheus.restserver.fullname" . }}
+            - name: SECRET_NAME
+              value: {{ .Values.sensitiveDataSecretName }}
+            {{- range $key, $value := .Values.restserver.env }}
+            - name: {{ $key }}
+              value: {{ $value }}
+            {{- end }}
+{{- if $.istio.enabled }}
+            - name: "ISTIO_ENABLED"
+              value: "true"
+{{- end }}                   
+{{- if and ($.istio.enabled) ($.istio.gateways.cproRestserver.enabled) (ne ($.istio.gateways.cproRestserver.protocol | upper) "HTTPS") }}
+            - name: "ISTIO_GATEWAY_ALERT"
+              value: "true"
+{{- end }}
+{{- if  and (not $.istio.enabled) ($syslogEnabled) (eq (tpl (default "" $.syslog.tls.secretRef.name) .) "") }}
+            - name: "RSYSLOG_SERVER_ALERT"
+              value: "true"
+{{- end }}
+      {{- if .Values.restserver.topologySpreadConstraints }}
+      topologySpreadConstraints: {{- include "cpro.topologySpreadConstraints" (tuple . .Values.restserver) | nindent 8 }}
+      {{- end }}
+      volumes:
+      {{- if .Values.externalCredentials  }}
+      {{- include "cpro-common-lib.v1-includeExternalCredentials" (dict "creds" .Values.externalCredentials ) | indent 8 }}
+      {{- end }}
+        {{- if or $syslogEnabled .Values.restserver.unifiedLogging.extension .Values.global.unifiedLogging.extension }}
+        - name: logs
+          emptyDir: {}
+        - name: tempfolder
+          emptyDir: {}
+        - name: harmonized-logging-conf
+          configMap:
+            name: {{ template "cpro-common-lib-v1.ConfigmapName" (dict "name" "restserverfluentdcm" "root" .) }} 
+              {{- if and $syslogEnabled (tpl (default "" $.syslog.tls.secretRef.name) .) (tpl (default "" $.syslog.tls.secretRef.keyNames.caCrt) .) }}
+        - name: fluentd-tls
+          secret:
+            secretName: {{ tpl $.syslog.tls.secretRef.name . }}
+            items:
+              - key: {{ tpl $.syslog.tls.secretRef.keyNames.caCrt . }}
+                path: syslogRootCaPem
+        {{- end }}
+        {{- end }}
+        {{- if ne .Values.sensitiveDataSecretName "" }}
+        - name: sensitivedata
+          secret:
+            secretName: {{ .Values.sensitiveDataSecretName }}
+          {{- if and ($tlsEnabled) (eq .Values.restserver.certificateSecret "") (eq (include "csf-common-lib.v1.isEmptyValue" .Values.restserver.tls.secretRef.name) "true")}}
+            {{- if or (hasPrefix "$(" (.Values.restserver.configs.ncmsUsername | default "" )) (hasPrefix "$(" (.Values.restserver.configs.ncmsPassword | default "" )) (hasPrefix "$(" (.Values.restserver.configs.ncmsPassPhrase | default "" )) }}
+            items:
+            - key: restserver_secret.yaml
+              path: sensitive.txt
+            {{- end }}
+          {{- end }}
+          {{- if and ($tlsEnabled) (eq .Values.restserver.certificateSecret "") (eq (include "csf-common-lib.v1.isEmptyValue" .Values.restserver.tls.secretRef.name) "true")}}
+            - key: ca-cert
+              path: ca.crt
+            - key: server-key
+              path: server.key
+            - key: server-cert
+              path: server.crt
+         {{- end }}
+         {{- end }}
+        - name: secure-data
+          emptyDir: {}
+{{- if ( include "cpro.restserver.containerSecurityContext" . )  }}
+        - name: restserver-data
+          emptyDir: {}
+        - name: restserver-log
+          emptyDir: {}
+{{- end }}
+        - name: config-volume
+          configMap:
+            name: {{ template "cpro.prometheus.restserver.fullname" . }}
+            items:
+{{- range $path , $bytes := .Files.Glob "configs/*" }}
+{{- if or $syslogEnabled $.Values.restserver.unifiedLogging.extension $.Values.global.unifiedLogging.extension }}
+{{- if eq $path "configs/log4j2.xml" }}
+{{- else }}
+            - key: {{ base $path }}
+              path: {{ base $path }}
+{{- end }}
+{{- else }}
+{{- if eq $path "configs/log4j.xml" }}
+{{- else }}
+            - key: {{ base $path }}
+              path: {{ base $path }}
+{{- end }}
+{{- end }}
+{{- end }}
+{{- if $tlsEnabled }}
+      {{- if or (ne (include "csf-common-lib.v1.isEmptyValue" .Values.restserver.tls.secretRef.name) "true") (eq .Values.restserver.certificateSecret "certmanager") }}
+        - name: restserver-tls
+          secret:
+            secretName: {{ template "cpro.restserver.server.secret" . }}
+            defaultMode: 0440
+      {{- else if ne .Values.restserver.certificateSecret "" }}
+        - name: restcerts
+          secret:
+            secretName: {{ template "cpro.restserver.server.secret" . }}
+            defaultMode: 0440
+      {{- else }}
+{{- if .Values.restserver.configs.restCACert }}
+            - key: ca.crt
+              path: ca.crt
+{{- end }}
+{{- if .Values.restserver.configs.restServerKey }}
+            - key: server.key
+              path: server.key
+{{- end }}
+{{- if .Values.restserver.configs.restServerCert }}
+            - key: server.crt
+              path: server.crt
+{{- end }}
+      {{- end }}
+{{- end }}
+      tolerations:
+{{ toYaml .Values.restserver.tolerations | indent 8 }}
+{{$data := dict "component_pc" .Values.restserver  "ctx" . }}
+{{- include "cpro.pod.priority.classname" $data | nindent 6 }}
+      nodeSelector:
+{{ toYaml .Values.restserver.nodeSelector | indent 8 }}
+      affinity:
+      {{- include "cpro.restserver.podAntiAffinity" . | indent 8 }}
+      {{- if .Values.restserver.affinity }}
+      {{- if .Values.restserver.affinity.podAntiAffinity }}
+{{ toYaml .Values.restserver.affinity.podAntiAffinity | indent 10 }}
+      {{- end }}
+      {{- if .Values.restserver.affinity.podAffinity }}
+        podAffinity:
+{{ toYaml .Values.restserver.affinity.podAffinity | indent 10 }}
+      {{- end }}
+      {{- end }}
+{{- end -}}

@@ -1,0 +1,69 @@
+{{- if and (.Values.cbur.enabled) (.Values.cmdb.enabled) (.Capabilities.APIVersions.Has "cbur.csf.nokia.com/v1") }}
+apiVersion: {{ template "cpro-grafana.apiVersion.brHookapiversion" . }}
+kind: BrHook
+metadata:
+  name: {{ include "csf-common-lib.v1.resourceName" (tuple . "BrHook" "pre-backup") }}
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "cpro-grafana.app.labels-v3" . | nindent 4 }}
+    {{- include "cpro-grafana.labelsOrAnnotations" (tuple .Values.global.labels) | indent 4}}
+  annotations:
+    {{- include "cpro-grafana.labelsOrAnnotations" (tuple .Values.global.annotations) | indent 4}}
+spec:
+  properties:
+    {{- $cburDict := .Values.cbur | default dict }}
+    targetType: {{ $cburDict.brhookType | default "brpolicy" }}
+    targetName: {{ template "cpro-grafana.stsName" . }}
+    hookPoint: prebackup
+    weight: {{ .Values.cbur.preBackupHookWeight }}
+    enable:  true
+    timeout: {{ .Values.cbur.preBackupJobTimeout }}
+    deletePolicy: "hook-succeeded,before-hook-creation"
+  template:
+    spec:
+      template:
+        metadata:
+          labels:
+            {{- include "cpro-grafana.app.labels-v3" . | nindent 12 }}
+          annotations:
+            sidecar.istio.io/inject: "false"
+        spec:
+          restartPolicy: Never
+          serviceAccountName: {{ template "cpro-grafana.serviceAccountName" . }}
+          automountServiceAccountToken: true
+          securityContext:
+              {{$securityContextvalue := dict "cSecCtx" .Values.securityContext "ctx" . }}
+              {{- include "cpro-grafana.securitycontext" $securityContextvalue | nindent 12 }}
+{{ include "cpro-common-lib.imagePullSecrets" (dict "workloadName" .Values.grafana "root" .) | indent 10 }}
+          containers:
+            - name: {{ template "cpro-grafana.cbur.prebackup.container" . }}
+{{- include "cpro-grafana.kubectl.image" (dict "root" . "workload" .Values.helmDeleteImage "imageName" .Values.helmDeleteImage.imagerocky ) | nindent 14}}
+{{- include "cpro-grafana.terminationMessage" . | nindent 14 }}
+              resources:
+{{- include "cpro-common-lib.v1.resources" ( dict "root" . "workloadresources" .Values.SetDatasource.resources "defaultcpulimit" "200m") | nindent 16 }}
+              env:
+                 {{- include "cpro-grafana.timeZoneName" . | nindent 16 }}
+              securityContext:
+                 {{$securityContextvalue := dict "cSecCtx" .Values.grafanaUtil.containerSecurityContext "ctx" . }}
+                 {{- include "cpro-grafana.containerSecurityContext" $securityContextvalue | nindent 16 }}
+              command:
+               - sh
+               - -c
+               - |
+                 set -x
+{{- if and (.Values.grafana_ini.database.ssl_mode) (ne (.Values.grafana_ini.database.ssl_mode | quote) "false") }}
+{{- if eq .Values.cmdb.certsecret  "certmanager" }}
+                 preBackupCmd=("/usr/bin/secretdata --namespace={{ .Release.Namespace }} --secretPathPrefix={{ .Values.secretPathPrefix }} --certmgrsecretname={{ include "csf-common-lib.v3.certificateSecretName" (tuple . .Values.grafana .Values.grafana.certificate) }} --secretname={{ template "cpro-grafana.mdbSecretName" . }} --sensitivedata={{ .Values.sensitiveDataSecretName }} --scriptname=/usr/bin/grafana_backup.sh")
+{{- else }}
+                 preBackupCmd=("/usr/bin/secretdata --namespace={{ .Release.Namespace }} --secretPathPrefix={{ .Values.secretPathPrefix }} --cmdbsecretname={{ template "cpro-grafana.cmdb.userSecretName" . }} --secretname={{ template "cpro-grafana.mdbSecretName" . }} --sensitivedata={{ .Values.sensitiveDataSecretName }} --scriptname=/usr/bin/grafana_backup.sh")
+{{- end }}
+{{- else }}
+                 preBackupCmd=("/usr/bin/secretdata --namespace={{ .Release.Namespace }} --secretPathPrefix={{ .Values.secretPathPrefix }} --secretname={{ template "cpro-grafana.mdbSecretName" . }} --sensitivedata={{ .Values.sensitiveDataSecretName }} --scriptname=/usr/bin/grafana_backup.sh")
+{{- end }}
+
+                 res=$(kubectl get pod --namespace {{ .Release.Namespace }} -l app={{ template "cpro-grafana.name" . }},release={{ .Release.Name }} -o jsonpath="{.items[*].metadata.name}")
+                 kubectl exec -i --namespace {{ .Release.Namespace }} $res  -c {{ template "cpro-grafana.grafanaMdbtool" . }} -- bash -c "$preBackupCmd";
+                 res1=$?
+                 echo $res1
+                 exit $res1
+{{- end }}

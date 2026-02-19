@@ -1,0 +1,93 @@
+{{- include "ckaf-ksql.istio.initIstio" . }}
+{{- if eq $.istio.enabled true }}
+{{- if $.shared_istio_gateway  }}
+---
+apiVersion: networking.istio.io/v1beta1
+kind: VirtualService
+metadata:
+  name: {{ template "ckaf-ksql.name" . }}-http-virtualservice
+  labels:
+{{ include "ckaf-ksql.commonlabels" . | indent 4 }}
+{{- include "csf-common-lib.v1.customLabels" (tuple .Values.global.labels) | indent 4 }}
+  annotations:
+{{- include "csf-common-lib.v1.customAnnotations" (tuple .Values.global.annotations) | indent 4 }}
+spec:
+  gateways:
+  - {{ $.shared_istio_gateway }}
+  hosts:
+  - "*"
+  http:
+  - route:
+    - destination:
+        host: {{ template "ckaf-ksql.resourceName" (tuple . "Service" "")  }}.{{ .Release.Namespace }}.svc.{{ .Values.clusterDomain }}
+        port:
+          number: {{ .Values.servicePort }}
+{{- else }}
+{{- $releaseName := include "ckaf-ksql.name" . }}
+{{- $domainName := .Values.clusterDomain }}
+{{- $servicePort := .Values.servicePort }}
+{{- $root := . }}
+{{- $chartName :=  .Chart.Name }}
+{{- $releaseNameLabel := .Release.Name }}
+{{- $chartVersion := .Chart.Version }}
+{{- $partOf := .Values.partOf }}
+{{- $managedBy := .Values.managedBy }}
+{{- range $index, $gateways := $.istio.gateways }}
+  {{- if eq $gateways.enabled true }}
+---
+apiVersion: networking.istio.io/v1beta1
+kind: VirtualService
+metadata:
+  name: {{ $releaseName }}-{{ $index }}-http-virtualservice
+  labels:
+{{ include "ckaf-ksql.commonlabels" $root | indent 4 }}
+{{- include "csf-common-lib.v1.customLabels" (tuple $gateways.labels $root.Values.global.labels ) | indent 4 }}
+  annotations:
+{{- include "csf-common-lib.v1.customAnnotations" (tuple $gateways.annotations $root.Values.global.annotations) | indent 4 }}
+spec:
+  gateways:
+  - {{ $gateways.name }}
+  hosts:
+  {{- if $gateways.hosts }}
+{{ toYaml ( $gateways.hosts ) | indent 4 }}
+  {{- else }}
+  - "*"
+  {{- end }}
+  {{- if $gateways.tls.mode }}
+  {{- if and ( eq $gateways.tls.mode "PASSTHROUGH") ( eq $gateways.protocol "HTTPS" ) }}
+  tls:
+  - match:
+    - port: {{ $gateways.port }}
+      sniHosts:
+      {{- if $gateways.hosts }}
+      {{- range $gateways.hosts }}
+      - "{{ . }}"
+      {{- end }}
+      {{- else }}
+      - "*"
+      {{- end }}
+    route:
+    - destination:
+        host: {{ $releaseName }}.{{ $root.Release.Namespace }}.svc.{{ $domainName }}
+        port:
+          number: {{ $servicePort }}
+  {{- else }}
+  http:
+  - route:
+    - destination:
+        host: {{ $releaseName }}.{{ $root.Release.Namespace }}.svc.{{ $domainName }}
+        port:
+          number: {{ $servicePort }}
+  {{- end }}
+  {{- else }}
+  http:
+  - route:
+    - destination:
+        host: {{ $releaseName }}.{{ $root.Release.Namespace }}.svc.{{ $domainName }}
+        port:
+          number: {{ $servicePort }}
+  {{- end }}
+{{- end }}
+{{- end }}
+{{- end }}
+{{- end -}}

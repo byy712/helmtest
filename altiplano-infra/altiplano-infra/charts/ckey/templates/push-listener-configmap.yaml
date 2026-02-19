@@ -1,0 +1,24 @@
+{{ if not .Values.pushEventListenerData.pushConfigMapName }}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ template "ckey.fullName" . }}-push-listener
+  annotations:
+    "restartOnUpdate": "true"
+    {{- include "ckey.customAnnotations" (tuple .Values.global.annotations) | indent 4 }}
+  labels:
+    app: {{ template "ckey.fullName" . }}
+    chart: "{{ .Chart.Name }}-{{ .Chart.Version }}"
+    release: "{{ .Release.Name }}"
+    heritage: "{{ .Release.Service }}"
+    {{- include "ckey.customLabels" (tuple .Values.global.labels ) | indent 4 }}
+    {{- include "ckey.commonLabels" . | indent 4 }}
+data:
+  push-listener-registry.json: |-
+    {
+      {{- if .Values.pushEventListenerData.notificationReceiverList }}
+         "notificationReceiverList": {{ .Values.pushEventListenerData.notificationReceiverList | default "" }}
+      {{- end }}
+    }
+{{ end }}
+

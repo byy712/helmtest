@@ -1,0 +1,31 @@
+--- bssc-ifd-13.0.1/bssc-ifd/charts/bssc-dashboards/templates/_helpers.tpl	2023-12-06 18:41:43.000000000 +0530
++++ bssc-ifd-patch/bssc-ifd/charts/bssc-dashboards/templates/_helpers.tpl	2024-01-08 15:41:49.005870000 +0530
+@@ -195,6 +195,7 @@
+ 
+ {{- define "bssc-dashboards.selectorLabels" -}}
+ {{- $root := index . 0 }}
++release: {{ $root.Release.Name }}
+ {{- $workloadName := index . 1 }}
+ app.kubernetes.io/name: {{ default $root.Chart.Name $root.Values.nameOverride }}
+ app.kubernetes.io/instance: {{ $root.Release.Name }}
+@@ -703,10 +704,12 @@
+ {{- include "bssc-dashboards.isCertManagerEnable" . }}
+ {{- $secretList := list }}
+ {{- if and (.Values.security.enable) (eq (tpl (.Values.security.sensitiveInfoInSecret.enabled | toString ) .) "true") }}
+-  {{- $secretList = append $secretList (.Values.security.sensitiveInfoInSecret.credentialName) }}
++  {{- $secretList = append $secretList (.Values.security.sensitiveInfoInSecret.credentialNamePassword) }}
+   {{- if eq $.isCertManagerEnabled "true" }}
+     {{- $secretName := printf "%s-%s" (include "bssc-dashboards.fullname" .) "certmgr" }}
+     {{- $secretList = append $secretList $secretName -}}
++  {{- else -}}
++    {{- $secretList = append $secretList (.Values.security.sensitiveInfoInSecret.credentialNameCert) }}
+   {{- end }}
+ {{- end }}
+ {{- if $.syslogEnabled }}
+@@ -897,4 +900,4 @@
+   annotations:
+ {{- include "bssc-dashboards.csf-toolkit-helm.annotations" (tuple $root) | nindent 4 }}
+   {{- end }}
+-{{- end }}
+\ No newline at end of file
++{{- end }}

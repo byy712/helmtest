@@ -1,0 +1,236 @@
+# The base hadoop image to use for all components.
+# See this repo for image build details: https://github.com/Comcast/kube-yarn/tree/master/image
+global:
+  timeZoneEnv: ""
+  registry: artifactory.net.nokia.com
+  namenodeHAEnabled: false
+  vault:
+    enabled: false
+  #ipFamilyPolicy:  SingleStack | PreferDualStack | RequireDualStack
+  # ipFamilies: ["IPv4"] | ["IPv6"] | ["IPv4","IPv6"] | ["IPv6","IPv4"]
+#ipFamilyPolicy:  SingleStack | PreferDualStack | RequireDualStack
+#ipFamilies: ["IPv4"] | ["IPv6"] | ["IPv4","IPv6"] | ["IPv6","IPv4"]
+image:
+  registry: #artifactory.net.nokia.com
+  repository: fnms-gradiant-hdfs
+  tag: nokia-4.0.0
+  pullPolicy: IfNotPresent
+  
+init:
+  image:
+    name: fnms-init-container
+    tag: nokia-2.0.1
+    pullPolicy: IfNotPresent
+  securityContext:
+    runAsUser: 1000
+    runAsGroup: 1000
+
+securityContext:
+  fsGroup: 114
+  runAsUser: 201
+  runAsGroup: 114
+
+# Select antiAffinity as either hard or soft, default is 'soft'
+# 'hard' is sugested for production setup
+antiAffinity: "soft"
+timeZoneEnv: ""
+zookeeperquorumPort: 2181
+conf:
+  coreSite:
+    ipc.client.connect.timeout: 90000
+    # fs.trash.interval: "10080"  # trash auto purge in minutes
+  hdfsSite:
+    dfs.replication: 3  # when changing this value ensure that dataNode.replicas is equal or higher than this value
+    dfs.namenode.replication.min: 1
+    dfs.namenode.datanode.registration.ip-hostname-check: "false"
+    dfs.namenode.avoid.read.stale.datanode: "true"
+    dfs.namenode.avoid.write.stale_datanode: "true"
+    dfs.namenode.write.stale.datanode.ratio: "1.0f"
+    dfs.namenode.check.stale.datanode: "true"
+    #dfs.datanode.du.reserved: "4294967296"  # number of bytes to reserve on disk to block hitting disk full, must be quoted for large numbers, because of gotemplate converting large numbers to float with scientific notation
+    dfs.datanode.max.transfer.threads: "16000"
+    dfs.blockreport.initialDelay: "300"
+    dfs.qjournal.start-segment.timeout.ms: 90000
+    dfs.qjournal.select-input-streams.timeout.ms: 90000
+    dfs.qjournal.write-txns.timeout.ms: 90000
+
+  hadoopPolicy:
+    security.client.protocol.acl: "hdfs hdfs"
+    security.client.datanode.protocol.acl: "hdfs hdfs"
+    security.datanode.protocol.acl: "hdfs hdfs"
+    security.inter.datanode.protocol.acl: "hdfs hdfs"
+    security.namenode.protocol.acl: "hdfs hdfs"
+    security.admin.operations.protocol.acl: "hdfs hdfs"
+    security.refresh.user.mappings.protocol.acl: "hdfs hdfs"
+    security.refresh.policy.protocol.acl: "hdfs hdfs"
+    security.ha.service.protocol.acl: "hdfs hdfs"
+    security.zkfc.protocol.acl: "hdfs hdfs"
+    security.qjournal.service.protocol.acl: "hdfs hdfs"
+    security.mrhs.client.protocol.acl: "hdfs hdfs"
+    security.resourcetracker.protocol.acl: "hdfs hdfs"
+    security.resourcemanager-administration.protocol.acl: "hdfs hdfs"
+    security.applicationclient.protocol.acl: "hdfs hdfs"
+    security.applicationmaster.protocol.acl: "hdfs hdfs"
+    security.resourcelocalizer.protocol.acl: "hdfs hdfs"
+    security.job.task.protocol.acl: "hdfs hdfs"
+    security.job.client.protocol.acl: "hdfs hdfs"
+    security.applicationhistory.protocol.acl: "hdfs hdfs"
+    security.containermanagement.protocol.acl: "hdfs hdfs"
+  kmsAcls:
+    hadoop.kms.acl.CREATE: "hdfs hdfs"
+    hadoop.kms.acl.DELETE: "hdfs hdfs"
+    hadoop.kms.acl.ROLLOVER: "hdfs hdfs"
+    hadoop.kms.acl.GET: "hdfs hdfs"
+    hadoop.kms.acl.GET_KEYS: "hdfs hdfs"
+    hadoop.kms.acl.GET_METADATA: "hdfs hdfs"
+    hadoop.kms.acl.SET_KEY_MATERIAL: "hdfs hdfs"
+    hadoop.kms.acl.GENERATE_EEK: "hdfs hdfs"
+    hadoop.kms.acl.DECRYPT_EEK: "hdfs hdfs"
+    default.key.acl.MANAGEMENT: "hdfs hdfs"
+    default.key.acl.GENERATE_EEK: "hdfs hdfs"
+    default.key.acl.DECRYPT_EEK: "hdfs hdfs"
+    default.key.acl.READ: "hdfs hdfs"
+# httpsfs service
+httpfs:
+  enabled: false
+  port: 14000
+  adminPort: 14001
+
+journalNode:
+  accessRoleLabel: internal-access
+  journalnodeQuorumSize: 3
+  resources:
+    requests:
+      memory: "256Mi"
+      cpu: "10m"
+    limits:
+      memory: "2048Mi"
+      cpu: "1000m"
+  nodeSelector: {}
+  fluentd_sidecar:
+    image:
+      name: "fnms-fluent"
+      tag: nokia-4.1.8
+      pullPolicy: IfNotPresent
+    securityContext:
+      fsGroup: 114
+      runAsUser: 1000
+      runAsGroup: 114
+nameNode:
+  accessRoleLabel: internal-access
+  env:
+    HADOOP_NAMENODE_HEAPSIZE: 1000
+    HDFS_NAMENODE_OPTS: "--add-opens java.base/java.nio=ALL-UNNAMED --add-opens java.security.jgss/sun.security.krb5=ALL-UNNAMED"
+  replicas: 1
+  ZKQuorumSize: 1
+  port: 8020
+  resources:
+    requests:
+      memory: "256Mi"
+      cpu: "10m"
+    limits:
+      memory: "2048Mi"
+      cpu: "1000m"
+  nodeSelector: {}
+  fluentd_sidecar:
+    image:
+      name: "fnms-fluent"
+      tag: nokia-4.1.8
+      pullPolicy: IfNotPresent
+    securityContext:
+      fsGroup: 114
+      runAsUser: 1000
+      runAsGroup: 114
+
+dataNode:
+  accessRoleLabel: internal-access
+  env:
+    HADOOP_DATANODE_HEAPSIZE: 1000
+  replicas: 3  # ensure this value is higher or equal to 'conf.hdfsSite.dfs.replication'
+  resources:
+    requests:
+      memory: "256Mi"
+      cpu: "10m"
+    limits:
+      memory: "2048Mi"
+      cpu: "1000m"
+  nodeSelector: {}
+  fluentd_sidecar:
+    image:
+      name: "fnms-fluent"
+      tag: nokia-4.1.8
+      pullPolicy: IfNotPresent
+    securityContext:
+      fsGroup: 114
+      runAsUser: 1000
+      runAsGroup: 114
+ingress:
+  nameNode:
+    enabled: false
+    annotations: {}
+    # kubernetes.io/ingress.class: nginx
+    # kubernetes.io/tls-acme: "true"
+    labels: {}
+    path: /
+    hosts:
+    - "hdfs-namenode.local"
+  dataNode:
+    enabled: false
+    annotations: {}
+    # kubernetes.io/ingress.class: nginx
+    # kubernetes.io/tls-acme: "true"
+    labels: {}
+    path: /
+    hosts:
+    - "hdfs-datanode.local"
+  httpfs:
+    enabled: false
+    annotations: {}
+    # kubernetes.io/ingress.class: nginx
+    # kubernetes.io/tls-acme: "true"
+    labels: {}
+    path: /
+    hosts:
+    - "httpfs.local"
+
+persistence:
+  journalNode:
+    enabled: false
+    storageClass:
+    accessMode: ReadWriteOnce
+    size: 10Gi
+  nameNode:
+    enabled: false
+    storageClass:
+    accessMode: ReadWriteOnce
+    size: 50Gi
+  dataNode:
+    enabled: false
+    storageClass:
+    accessMode: ReadWriteOnce
+    size: 200Gi
+
+## ------------------------------------------------------
+## Monitoring HDFS-NameNode
+## ------------------------------------------------------
+
+## Prometheus Exporter Configuration
+## ref: https://prometheus.io/docs/instrumenting/exporters/
+prometheus:
+  ## Exporter Configuration
+  enabled: true
+  port: 5556
+  resources: {}
+  image: fnms-prometheus-jmx-exporter-kubernetes
+  imageTag: nokia-3.0.0
+  # prometheus jmx_exporter config https://github.com/prometheus/jmx_exporter
+  config:
+    lowercaseOutputName: true
+    lowercaseOutputLabelNames: true
+    rules:
+      - pattern: Hadoop<service=(\w+), name=(\w+)><>([\w._]+)
+        name: hadoop_$1_$2_$3
+        labels:
+          "service": "$1"
+          "name": "$2"
+      - pattern: .+

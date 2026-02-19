@@ -1,0 +1,18 @@
+--- ckaf-mirror-maker-o/templates/fluentd_sidecar-configmap.yaml.patch	2024-04-11 14:44:01.396773014 +0530
++++ ckaf-mirror-maker/templates/fluentd_sidecar-configmap.yaml	2024-03-24 23:33:34.000000000 +0530
+@@ -0,0 +1,15 @@
++apiVersion: v1
++kind: ConfigMap
++metadata:
++  name: {{ template "ckaf-mirror-maker.name" . }}-fluentd-config
++  labels:
++{{ include "ckaf-mirror-maker.commonLabels" . | indent 4 }}
++{{- include "csf-common-lib.v1.customLabels" (tuple .Values.global.labels) | indent 4 }}
++    release: {{ .Release.Name }}
++data:
++  fluentd.conf: |-
++{{- if .Values.fluentd_sidecar.fluent_conf }}
++{{ tpl .Values.fluentd_sidecar.fluent_conf . | indent 4 }}
++{{- end }}
++
++

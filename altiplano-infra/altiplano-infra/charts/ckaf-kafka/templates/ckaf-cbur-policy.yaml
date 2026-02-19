@@ -1,0 +1,38 @@
+{{- if .Values.cbur.enabled  }}
+apiVersion: {{ template "ckaf-kafka.cburApiVersion" . }}
+kind: BrPolicy
+metadata:
+  name: {{ template "ckaf-kafka.name" . }}
+  labels:
+{{ include "ckaf-kafka.commonLabels" . | indent 4 }}
+{{- include "csf-common-lib.v1.customLabels" (tuple .Values.global.labels) | indent 4 }}
+  annotations:
+{{- include "csf-common-lib.v1.customAnnotations" (tuple .Values.global.annotations) | indent 4 }}
+  namespace: {{ template "ckaf-kafka.namespace" . }}
+spec:
+  weight: 4
+  selector:
+    matchLabels:
+      app: {{ .Chart.Name }}
+      release: {{ .Release.Name | quote }}
+  volumes:
+  - topic-backup
+  backend:
+    mode: "{{ .Values.cbur.backendMode }}"
+  cronSpec: "{{ .Values.cbur.cronJob }}"
+  autoEnableCron: {{ .Values.cbur.autoEnableCron }}
+  autoUpdateCron: {{ .Values.cbur.autoUpdateCron }}
+  k8sType: statefulset
+  brOption: 2
+  scheduleEnable: true
+  maxiCopy: {{ .Values.cbur.maxCopy }} 
+  ignoreFileChanged: true
+  hooks:
+  - name: ckaf-kafka-broker
+    commands:
+      preBackupCmd: ["sh", "-c", "/etc/kafka/backup-topics.sh"]
+      postBackupCmd: ["sh", "-c", "rm -rf /topic-backup/* "]
+      preRestoreCmd: []
+      postRestoreCmd: ["sh", "-c", "sed -i '/cluster.id/d' /topic-backup/meta.properties && rm -rf /topic-backup/lost+found && cp -r /topic-backup/* /var/lib/kafka/data/topics/ && rm -rf /topic-backup/*"]
+{{- end }} #cburEnable
+

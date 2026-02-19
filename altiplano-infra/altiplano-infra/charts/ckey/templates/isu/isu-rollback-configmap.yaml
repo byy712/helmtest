@@ -1,0 +1,17 @@
+
+{{ if .Values.isuUpgrade.enabled }}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ template "ckey.fullName" . }}-isu-rollback
+  annotations:
+    {{- include "ckey.customAnnotations" (tuple .Values.global.annotations) | indent 4 }}
+  labels:
+    app: {{ template "ckey.fullName" . }}
+    release: "{{ .Release.Name }}"
+    heritage: "{{ .Release.Service }}"
+    {{- include "ckey.customLabels" (tuple .Values.global.labels ) | indent 4 }}
+    {{- include "ckey.commonLabels" . | indent 4 }}
+data:
+  backup-id: ""
+{{ end }}

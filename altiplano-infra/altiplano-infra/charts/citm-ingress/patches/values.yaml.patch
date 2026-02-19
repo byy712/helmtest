@@ -1,0 +1,11 @@
+--- orig/citm-ingress/values.yaml	2023-12-06 13:01:58.000000000 +0530
++++ new/citm-ingress/values.yaml	2024-01-02 11:13:51.304162099 +0530
+@@ -120,7 +120,7 @@
+ component: "MessagingAndProtocols"
+ managedBy: "helm"
+ partOf: "citm"
+-
++accessRoleLabel: internal-access
+ imageFlavor:
+ imageFlavorPolicy:
+ 

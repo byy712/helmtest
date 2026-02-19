@@ -1,0 +1,46 @@
+{{- if eq .Values.ingress.enableExternalAccess true }}
+{{- $replicas := .Values.Replicas | int }}
+{{- $hostName := include "ckaf-kafka.statefulset" . }}
+{{- $root := . }}
+{{- $chartName :=  .Chart.Name }}
+{{- $releaseName := .Release.Name }}
+{{- $chartVersion := .Chart.Version }}
+{{- $partOf := .Values.partOf }}
+{{- $managedBy := .Values.managedBy }}
+{{- $externalListeners := .Values.ingress.externalListeners }}
+{{- range $replica := until $replicas }}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ $hostName }}-{{ $replica }}-broker-external
+  labels:
+{{ include "ckaf-kafka.commonLabels" $root | indent 4 }}
+{{- include "csf-common-lib.v1.customLabels" (tuple $root.Values.global.labels) | indent 4 }}
+    app: {{ $hostName }}
+    release: {{ $root.Release.Name | quote }}
+    heritage: {{ $root.Release.Service | quote }}
+  annotations:
+    {{- if (eq $root.Values.ingress.type "LoadBalancer") }}
+{{- include "csf-common-lib.v1.customAnnotations" (tuple $root.Values.ingress.annotationsForLoadBalancer) | indent 4 }}
+    {{- end }}
+{{- include "csf-common-lib.v1.customAnnotations" (tuple $root.Values.global.annotations) | indent 4 }}
+spec:
+{{ include "ckaf-kafka.dualStackConfig" $root | indent 2 }}
+  ports:
+  {{- range $extlistener := $externalListeners }}
+  {{- $externalListenerPort := add .startPortRangeOnEdgeNode $replica }}
+  - name: {{ printf "tcp-kafka-%s" .name | lower }}
+    port: {{ $externalListenerPort }}
+    targetPort: {{ $externalListenerPort }}
+  {{- end }}
+  {{- if (eq $root.Values.ingress.type "LoadBalancer") }}
+  type: "LoadBalancer"
+  {{- if eq (include "ckaf-kafka.disableLoadBalancerNodePorts" $root) "true" }}
+  allocateLoadBalancerNodePorts: false
+  {{- end }}
+  {{- end }}
+  selector:
+    statefulset.kubernetes.io/pod-name: {{ $hostName }}-{{ $replica }}
+{{- end }}
+{{- end }}

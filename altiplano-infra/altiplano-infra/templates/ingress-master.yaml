@@ -1,0 +1,19 @@
+{{- if eq .Values.global.INGRESS_CONTROLLER_TYPE "nginxinc" }}
+{{- $host := .Values.global.K8S_PUBLIC_IP }}
+{{- if $host }}
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: altiplano-ingress-master
+  annotations:
+    nginx.org/mergeable-ingress-type: "master"
+spec:
+  ingressClassName: nginx
+  tls:
+    - hosts:
+        - {{ $host }}
+      secretName: ingress-tls-secrets
+  rules:
+    - host: {{ $host }}
+{{- end }}
+{{- end }}

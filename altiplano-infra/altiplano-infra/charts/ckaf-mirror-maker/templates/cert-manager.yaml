@@ -1,0 +1,108 @@
+{{/* check if cert-manager object is to be created or not */}}
+{{- $workload := .Values.mirrorMakerConfig }}
+{{- if eq (include "ckaf-mirror-maker.tls" . |trim ) "true"}}
+{{- if and $workload.certificate.enabled (eq (include "ckaf-mirror-maker.certManager.enabled" .) "true") }}
+{{- include "ckaf-mirror-maker.v1.certificate" (tuple . $workload) }}
+{{- end -}}
+{{- end -}}
+
+{{- define "ckaf-mirror-maker.v1.certificate" -}}
+{{- $root := index . 0 }}
+{{- $workload := index . 1 }}
+---
+apiVersion: {{ template "ckaf-mirror-maker.certificateApiVersion" (tuple $root) }}
+kind: Certificate
+metadata:
+  name: {{ include "csf-common-lib.v2.resourceName" (tuple $root "Certificate" $workload.nameSuffix) }}
+  labels:
+    {{- include "csf-common-lib.v1.commonLabels" (tuple $root $workload.name) | indent 4 }}
+    {{- include "csf-common-lib.v1.customLabels" (tuple $root.Values.global.labels) | indent 4 }}
+  annotations:
+    {{- include "csf-common-lib.v1.customAnnotations" (tuple $root.Values.global.annotations) | indent 4 }}
+spec:
+{{ include "ckaf-mirror-maker.v1.certificateExtendedValues" (tuple $root $workload.certificate $workload) | indent 2 }}
+{{- end }}
+
+
+{{- define "ckaf-mirror-maker.v1.certificateExtendedValues" -}}
+{{- $root := index . 0 }}
+{{- $certificate := index . 1 }}
+{{- $workload := index . 2 }}
+{{- $defaultIssuerName := include "csf-common-lib.v2.resourceName" (tuple $root "Issuer" $workload.nameSuffix) }}
+secretName: {{ include "csf-common-lib.v3.certificateSecretName" (tuple $root $workload) }}
+issuerRef:
+  name: {{ ($certificate.issuerRef | default (dict)).name | default $defaultIssuerName | quote }}
+  kind: {{ ($certificate.issuerRef | default (dict)).kind | default "Issuer" | quote }}
+  group: {{ ($certificate.issuerRef | default (dict)).group | default "cert-manager.io" | quote }}
+{{- if $certificate.duration }}
+duration: {{ $certificate.duration | quote }}
+{{- else }}
+duration: 8760h # 1year
+{{- end }}
+{{- if $certificate.renewBefore }}
+renewBefore: {{ $certificate.renewBefore | quote }}
+{{- else }}
+renewBefore: 360h # 15d
+{{- end }}
+{{- if $certificate.subject }}
+subject: {{ $certificate.subject | toYaml | indent 2 }}
+{{- end }}
+{{- if $certificate.commonName }}
+commonName: {{ $certificate.commonName | quote }}
+{{- end }}
+privateKey:
+{{- if ($certificate.privateKey | default (dict)).algorithm }}
+  algorithm: {{ $certificate.privateKey.algorithm }}
+{{- end }}
+{{- if ($certificate.privateKey | default (dict)).encoding }}
+  encoding: {{ $certificate.privateKey.encoding }}
+{{- end }}
+{{- if ($certificate.privateKey | default (dict)).size }}
+  size: {{ $certificate.privateKey.size }}
+{{- end }}
+{{- if ($certificate.privateKey | default (dict)).rotationPolicy }}
+  rotationPolicy: {{ $certificate.privateKey.rotationPolicy }}
+{{- else }}
+  rotationPolicy: Always
+{{- end }}
+{{- if $certificate.usages }}
+usages:
+{{ $certificate.usages | toYaml | indent 2 }}
+{{- else }}
+usages:
+  - server auth
+  - client auth
+{{- end }}
+{{- if $certificate.dnsNames }}
+dnsNames:
+{{ $certificate.dnsNames | toYaml | indent 2 }}
+{{- else }}
+dnsNames:
+  - localhost
+  - {{ include "csf-common-lib.v2.resourceName" (tuple $root "Service" $workload.nameSuffix) }}.{{ $root.Release.Namespace }}
+  - {{ include "csf-common-lib.v2.resourceName" (tuple $root "Service" $workload.nameSuffix) }}.{{ $root.Release.Namespace }}.svc
+  - {{ include "csf-common-lib.v2.resourceName" (tuple $root "Service" $workload.nameSuffix) }}.{{ $root.Release.Namespace }}.svc.{{ $root.Values.clusterDomain | default "cluster.local" }}
+  - {{ template "ckaf-mirror-maker.resourceName" (tuple $root "Service" "") }}
+  - {{ template "ckaf-mirror-maker.resourceName" (tuple $root "Service" "") }}.{{ $root.Release.Namespace }}.svc
+  - {{ template "ckaf-mirror-maker.resourceName" (tuple $root "Service" "") }}.{{ $root.Release.Namespace }}.svc.{{ $root.Values.clusterDomain }}
+{{- end }}
+{{- if $certificate.uris }}
+{{- if and (.Capabilities.APIVersions.Has "cert-manager.io/v1alpha3/Certificate") (not (.Capabilities.APIVersions.Has "cert-manager.io/v1/Certificate")) }}
+uriSANs:
+{{- else }}
+uris:
+{{- end }}
+{{ $certificate.uris | toYaml | indent 2 }}
+{{- end }}
+ipAddresses:
+{{- if $certificate.ipAddresses }}
+{{ $certificate.ipAddresses | toYaml | indent 2 }}
+{{- else }}
+  - "127.0.0.1"
+  - "::1"
+{{- end }}
+{{- if $certificate.keystores.jks.create }}
+keystores:
+{{ $certificate.keystores | toYaml | indent 2 }}
+{{- end }}
+{{- end }}

@@ -1,0 +1,265 @@
+--- charts/bssc-indexsearch/templates/upgrade-job-original.yaml	2023-12-06 18:41:43.000000000 +0530
++++ charts/bssc-indexsearch/templates/upgrade-job.yaml	2024-04-08 14:16:28.786970800 +0530
+@@ -1,262 +0,0 @@
+-## Upgrade job is non-hook and is added to handle initialization/updation of .opendistro_security index (using securityadmin.sh) when upgrading to BELK with opensearch security enabled.
+-## In pre-upgrade job, a configmap <>-upg-sec is created to distinguish the type of upgrade. The key upgradeAction in the configmap is mounted to the upgrade job as an env.
+-###1. Wait until atleast one data pod gets recreated as part of upgrade and are on Opensearch image with security enabled (This check is added now because as part of name change all the pods will get recreated and for running security admin or reload script Opensearch cluster has to get formed)
+-###2. Wait until one client pod gets created on Opensearch with security enabled and monitor that pod's logs. Keep waiting until atleast the data node (found in 1.) joins the cluster.
+-##--------- secToSec ------------
+-##If upgrade action is security enabled to security enabled( secToSec ), then we peform the below check:
+-##If osinstalled-cm do not exists, then:
+-##   It means the .opendistro_security has not been initialized before and securityadmin must be run with entire securityconfig directory.
+-##      i. Initialize .opendistro_security index by running securityadmin with entire securityconfig directory
+-##      ii. The above iteration is retried thrice until securityadmin succeeds successfully.
+-##If osinstalled-cm exists, then:
+-##   It means the .opendistro_security has already been initialized before and now only updates to config.yml must be done via securityadmin (all updates to other files in securityconfig are accepted via REST API/Kibana UI).
+-##      i. Wait for a delay of client initialDelaySeconds. This delay is given so that sufficient time is given for updated configmap to get mounted in the client pods.
+-##      ii. If client pods are restarting as part of upgrade(could be due to change in volume mounts, env etc), then the upgrade job must wait for atleast one client pod to come up with updated changes so that reload script can be executed on latest pod. For this, the job compares the value of updated (UP-TO-DATE) replicas vs the desired number of replicas. If atleast 2 replicas are UP-TO-DATE, it means atleast 1 new pod is up and 1/1. So the job waits until 2 replicas are updated (or only 1 if total desired replica count is itself 1). If it fails to update this minimum number of replicas within timeout period, the job fails with exit code 1. Else it proceeds to next step.
+-##      iii. Get the list of running client pods and fetch the name of most recent pod and run reloadSecConfig.sh script. This script performs any necessary modifications on config.yml and then runs securityadmin with -f <config.yml>. If securityadmin runs successfully, the job ends.
+-##      iv. The above iteration is retried thrice until securityadmin succeeds successfully.
+-#------- nonSecToSec -------------
+-#Else(nonSecToSec) it means the .opendistro_security has not been initialized before and securityadmin must be run with entire securityconfig directory.
+-#  ii. Initialize .opendistro_security index : User provided configurations would be already read into security-configmap from values.yml and mounted in the client pod (found in step 2). This job logs into the client pod & runs securityadmin.
+-#  iii. The above iteration is retried thrice until securityadmin succeeds successfully.
+-#     else the job fails with error
+-
+-#Success criteria for securityAdmin.sh run:
+-#Securityadmin prints "Done with success" message at the end of successful execution and this can be considered as success criteria. It also prints SUCC message for each file successfully uploaded to .opendistro_security index.
+-#In some cases, even if all the security configuration files get created/updated successfully into .opendistro_security index, if in case the number of nodes in the cluster vary during the execution of securityadmin, it would fail with message "Done with failures". To avoid job failure in such cases, if "Done with success" condition is not met, the job also checks for SUCC msg for each file successfully uploaded to .opendistro_security index.
+-
+-## a. Upgrade scenario is security to security: For this case, securityAdmin script is run with only config.yml, so it looks for SUCC message for config file and if found, it is considered as successful run.
+-## b. Upgrade scenario is non-security to security: For this case, securityAdmin.sh is run with entire securityconfig directory and there are 9 files currently. The job looks for "Done with success" or SUCC messages for 9 files - if atleast one of these conditions is met, the securityAdmin.sh is considered as successful run.
+-{{- include "bssc-indexsearch.syslogValues" . }}
+-{{- include "bssc-indexsearch.syslogSendLogsViaLog4j" . }}
+-{{- if and (.Values.security.enable) ( .Release.IsUpgrade) }}
+-apiVersion: batch/v1
+-kind: Job
+-metadata:
+-  name: {{ template "bssc-indexsearch.upgradeJob.name" . }}
+-  labels:
+-{{- include "bssc-indexsearch.csf-toolkit-helm.labels" (tuple . .Values.custom.hookJobs.job.labels) | indent 4 }}
+-{{- include "bssc-indexsearch.commonLabels" (tuple .) | nindent 4 }}
+-  annotations:
+-{{- include "bssc-indexsearch.csf-toolkit-helm.annotations" (tuple . .Values.custom.hookJobs.job.annotations) | indent 4 }}
+-spec:
+-  backoffLimit: {{ default "2" .Values.jobs.secAdminUpgradeJob.backoffLimit }}
+-  template:
+-    metadata:
+-      labels:
+-{{- include "bssc-indexsearch.csf-toolkit-helm.labels" (tuple . .Values.custom.hookJobs.pod.labels) | indent 8 }}
+-{{- include "bssc-indexsearch.commonLabels" (tuple .) | nindent 8 }}
+-      annotations:
+-        sidecar.istio.io/inject: "false"
+-{{- include "bssc-indexsearch.csf-toolkit-helm.annotations" (tuple . .Values.custom.hookJobs.pod.annotations) | indent 8 }}
+-    spec:
+-      serviceAccountName: {{ template "bssc-indexsearch.inupgServiceAccount.name" . }}
+-      automountServiceAccountToken: true
+-      {{- if .Values.jobs.affinity }}
+-      affinity:
+-{{ toYaml .Values.jobs.affinity | indent 8 }}
+-      {{- end }}
+-      {{- if .Values.jobs.nodeSelector }}
+-      nodeSelector:
+-{{ toYaml .Values.jobs.nodeSelector | indent 8 }}
+-      {{- end }}
+-      {{- if .Values.jobs.tolerations }}
+-      tolerations:
+-{{ toYaml .Values.jobs.tolerations | indent 8 }}
+-      {{- end }}
+-      restartPolicy: Never
+-      securityContext:
+-{{ include "bssc-indexsearch.pod.securityContext" . | indent 8 }}
+-      {{- with or .Values.imagePullSecrets .Values.global.imagePullSecrets }}
+-      imagePullSecrets:
+-{{- toYaml . | nindent 8 }}
+-      {{- end }}
+-      volumes:
+-      # tmp folder is mounted as emptyDir as client pod logs are stored in /tmp
+-      - name: tmp
+-        emptyDir:
+-          sizeLimit: {{ default "150Mi"  .Values.emptyDirSizeLimit.secAdminJobTmp }}
+-      containers:
+-      - name: {{ template "bssc-indexsearch.upgradeContainer.name" . }}
+-        image: {{ include "bssc-indexsearch.registry" (tuple .Values .Values.internalToolsRegistry) }}/{{ include "bssc-indexsearch.imageRepositoryPath" (tuple .Values.global.flatRegistry .Values.kubectl.image.repo) }}:{{ (include "bssc-indexsearch.imageTag" (tuple .Values.kubectl.image.tag .Values.kubectl.image.supportedImageFlavor .Values .Values.kubectl .Values.kubectl.image )) }}
+-        volumeMounts:
+-        - name: tmp
+-          mountPath: /tmp
+-        securityContext:
+-{{ include "bssc-indexsearch.container.securityContext" . | indent 10 }}
+-        resources:
+-{{ include "bssc-indexsearch.resources" (tuple . .Values.jobs.secAdminUpgradeJob.resources "500m") | indent 10 }}
+-        env:
+-        - name: UPGRADE_ACTION
+-          valueFrom:
+-            configMapKeyRef:
+-              name: {{ template "bssc-indexsearch.fullname" . }}-upg-sec
+-              key: upgradeAction
+-
+-        - name: TZ
+-          value: {{ or .Values.timezone.timeZoneEnv .Values.global.timeZoneEnv "UTC" | quote }}
+-        command:
+-        - bash
+-        - "-c"
+-        - |
+-          echo "Upgrade job started at - `date +'%Y-%m-%dT%H:%M:%S'`"
+-          sleep $((2*{{ .Values.data.readinessProbe.initialDelaySeconds }}))
+-
+-          ## Wait until atleast 1 data node comes up on Opensearch image with security enabled. If the condition is not met within timeout period, the job fails. Timeout period is calculated as per readinessProbe parameters configured for data pod with an additional delay of 300s(5min).
+-          data_wait_timeout=$(( SECONDS + ( {{ .Values.data.readinessProbe.initialDelaySeconds }} + {{ .Values.data.readinessProbe.periodSeconds }}*{{ .Values.data.readinessProbe.failureThreshold }} + 300 )))
+-          while true
+-          do
+-            for pod_id in $(kubectl get pods  --namespace {{ .Release.Namespace }} -l app.kubernetes.io/instance={{ .Release.Name }},app.kubernetes.io/name={{ default .Chart.Name .Values.nameOverride }},app.kubernetes.io/component={{ .Values.data.name}}  --no-headers=true --field-selector=status.phase==Running | sort -r |  awk '{ print$1 }')
+-            do
+-              kubectl exec -i ${pod_id} --namespace {{ .Release.Namespace }} -c {{ template "bssc-indexsearch.data.container" . }} -- bash -c '[ "$SEC_ENABLED" == "true" ]'
+-             if [ $? -eq 0 ]; then
+-                data_pod_name=$pod_id
+-                break
+-              fi
+-            done
+-
+-            if [[ ! -z $data_pod_name  ]]; then
+-             echo "Data pod ${data_pod_name} is updated to Opensearch image with security enabled at - `date +'%Y.%m.%d-%H:%M:%S'`"
+-             break
+-            elif [ $SECONDS -lt $data_wait_timeout ]; then
+-             echo "Even 1 data node is not yet updated to Opensearch image with security enabled. Waiting for {{ .Values.data.readinessProbe.initialDelaySeconds }} s"
+-             sleep {{ .Values.data.readinessProbe.initialDelaySeconds }}
+-            else
+-             echo "ERROR: Even 1 data node has not got updated to Opensearch image with security enabled. Failing the job as it timed out waiting for the condition."
+-             exit 1
+-            fi
+-          done
+-
+-
+-          ## Wait for atleast one client pod to get updated to Opensearch image with security enabled and data pod to join the cluster. If the condition is not met within  timeout period, the job fails. Timeout period is calculated as per readinessProbe parameters configured for client with an additional delay of 300s(5min).
+-          client_wait_timeout=$((SECONDS+({{ .Values.client.readinessProbe.initialDelaySeconds }}+{{ .Values.client.readinessProbe.periodSeconds }}*{{ .Values.client.readinessProbe.failureThreshold }}+300)))
+-          retry_count=0
+-          while true
+-          do
+-            for pod_id in $(kubectl get pods  --namespace {{ .Release.Namespace }} -l app.kubernetes.io/instance={{ .Release.Name }},app.kubernetes.io/name={{ default .Chart.Name .Values.nameOverride }},app.kubernetes.io/component={{ .Values.client.name}} --no-headers=true --field-selector=status.phase==Running | sort -r |  awk '{ print$1 }')
+-            do
+-               echo "Checking if client $pod_id is on opensearch with security enabled -- `date +'%Y.%m.%d-%H:%M:%S'`"
+-               kubectl exec -i ${pod_id} --namespace {{ .Release.Namespace }} -c {{ template "bssc-indexsearch.client.container" . }} -- bash -c '[ "$SEC_ENABLED" == "true" ]'
+-               if [ $? -eq 0 ]; then
+-                 echo "Monitoring ${pod_id} logs"
+-                 sleep 5
+-                 {{- if and ( $.syslogEnabled ) (eq .Values.client.syslogSidecar.enabled true ) (not ($.sendLogsViaLog4j)) }}
+-                   client_container_name="{{ template "bssc-indexsearch.unifiedLoggingContainer.name" . }}"
+-                 {{- else }}
+-                   client_container_name="{{ template "bssc-indexsearch.client.container" . }}"
+-                 {{- end }}
+-                 kubectl logs ${pod_id} --namespace {{ .Release.Namespace }} -c ${client_container_name}  > /tmp/is-${pod_id}.log
+-                 echo "Checking if data node ${data_pod_name} joined in cluster"
+-                 if $(grep -q -m 1 -E "added.*($data_pod_name)" /tmp/is-${pod_id}.log); then
+-                   cat /tmp/is-${pod_id}.log
+-                   echo "Found data node at - `date +'%Y.%m.%d-%H:%M:%S'`"
+-                   client_pod_name=$pod_id
+-                   echo "------------------------------------------------------------"
+-                   break
+-                  fi
+-                fi
+-                rm -rf /tmp/is-${pod_id}.log
+-            done
+-            if [[ ! -z $client_pod_name  ]]; then
+-             echo "Client pod ${client_pod_name} is updated to Opensearch image with security enabled and $data_pod_name has joined at - `date +'%Y.%m.%d-%H:%M:%S'`"
+-             break
+-            elif [ $SECONDS -lt $client_wait_timeout ]; then
+-              echo "Waiting for atleast one client pod to be on Opensearch with security and a data node to join..."
+-            else
+-              echo "ERROR: Failing the job as it timed out while waiting for one client pod to get updated to Opensearch image with security and a data node to join the cluster. Please rollback to previous state, correct the configuration/cluster issues and retry helm upgrade."
+-              exit 1
+-            fi
+-          done
+-
+-          if [[ $UPGRADE_ACTION == "secToSec" ]]; then
+-
+-            # ------------- .opendistro_security index exists(secToSec) ------------------
+-            ## If the configmap is updated, it may take sometime for the changes to get reflected in the running pods. Hence, a delay of client pod's readinessProbe.initialDelaySeconds is provided before running reload script.
+-            echo "Waiting for client pods to get updated with latest changes at - `date +'%Y-%m-%dT%H:%M:%S'`"
+-            sleep {{ .Values.client.readinessProbe.initialDelaySeconds }}
+-
+-            echo "Upgrading from security enabled to security enabled. Updating opendistro_security index with config.yml in values at - `date +'%Y-%m-%dT%H:%M:%S'`"
+-            desired_replica={{.Values.client.replicas }}
+-            #The job waits until timeout period to find atleast 1 pod to come up with latest changes. Timeout period is calculated as per readinessProbe parameters configured for client with an additional delay of 300s(5min).
+-            client_wait_timeout=$((SECONDS+({{ .Values.client.readinessProbe.initialDelaySeconds }}+{{ .Values.client.readinessProbe.periodSeconds }}*{{ .Values.client.readinessProbe.failureThreshold }}+300)))
+-            while true
+-            do
+-              updated_replica=$(kubectl get deployment -n {{ .Release.Namespace }} {{ template "bssc-indexsearch.client.fullname" . }} --no-headers | awk '{ print $3 }')
+-              if [[ $updated_replica -ge 2 || $desired_replica -eq 1 && $updated_replica -eq 1 ]]; then
+-                break
+-              elif [ $SECONDS -ge $client_wait_timeout ]; then
+-                echo "Error: Even 1 client pod has not got updated with latest changes. Failing the job as it timed out waiting for the condition at - `date +'%Y-%m-%dT%H:%M:%S'`"
+-                exit 1
+-              fi
+-            done
+-
+-            retry=0
+-            while [ $retry -le 3 ];
+-            do
+-              pod_id=$(kubectl get pods  --namespace {{ .Release.Namespace }} -l app.kubernetes.io/instance={{ .Release.Name }},app.kubernetes.io/name={{ default .Chart.Name .Values.nameOverride }},app.kubernetes.io/component={{ .Values.client.name}}  --no-headers=true --sort-by=.metadata.creationTimestamp  --field-selector=status.phase==Running | awk '{ print$1 }' | tac | head -1)
+-              kubectl get configmap {{ template "bssc-indexsearch.fullname" . }}-osinstalled --namespace {{ .Release.Namespace }}
+-              if [ $? -ne 0 ]; then
+-                operation="Load securityAdmin with all configuration files"
+-                echo "$operations on pod ${pod_id} at `date +'%Y.%m.%d-%H:%M:%S'`"
+-                cmd_status=$(kubectl exec -i ${pod_id} --namespace {{ .Release.Namespace }} -c {{ template "bssc-indexsearch.client.container" . }} -- bash -c '/opt/opensearch/scripts/auth/securityadmin.sh -cd $SEC_CONFIG_DIRECTORY')
+-                echo -e "Output of running securityAdmin: \n $cmd_status"
+-                if [[ $(echo "$cmd_status") != *"ERR:"* ]] && [[ $(echo "$cmd_status" | grep "Done with success" ) || ($(echo "$cmd_status" | grep -E -c "SUCC: Configuration for .* created or updated") -ge 9) ]]; then
+-                  echo "SecurityAdmin executed successfully at `date +'%Y.%m.%d-%H:%M:%S'`. All configuration files are setup successfully !"
+-                  exit 0
+-                else
+-                  echo "SecurityAdmin failed due to above error"
+-                fi
+-              else
+-                operation="Reload securityadmin with config.yml"
+-                echo "$operation on pod ${pod_id} at `date +'%Y.%m.%d-%H:%M:%S'`"
+-                cmd_status=$(kubectl exec -i ${pod_id} --namespace {{ .Release.Namespace }} -c {{ template "bssc-indexsearch.client.container" . }} -- bash -c "export OPENDISTRO_SECURITY_ADMIN_ALLOW_MIXED_CLUSTER=true; /opt/opensearch/scripts/reloadSecConfig.sh")
+-                if [ $? -eq 0 ] && ($(echo $cmd_status | grep -q "SUCC: Configuration for 'config' created or updated")) ;then
+-                  echo "$cmd_status";
+-                  echo "Content of config.yml updated successfully at `date +'%Y.%m.%d-%H:%M:%S'`, exiting"
+-                  exit 0
+-                else
+-                  echo "Warning: Failure in updating config.yml"
+-                  echo "$cmd_status";
+-                fi
+-              fi
+-              ((retry++))
+-              sleep 10
+-              echo "Retry attempt to $operation : $retry "
+-            done
+-            echo "Error: Could not $operation in ${retry} attempts."
+-            exit 1
+-          else
+-            # ---------------- .opendistro_security index does not exist(nonSecToSec) ------------------
+-            retry_count=0
+-            while true
+-            do
+-              ((retry_count++))
+-              echo "------------------------------------------------------------"
+-              echo "Running securityadmin to initialise .opendistro_security with configurations provided in values"
+-              cmd_status=$(kubectl exec -i ${client_pod_name} --namespace {{ .Release.Namespace }} -c {{ template "bssc-indexsearch.client.container" . }} -- bash -c '/opt/opensearch/scripts/auth/securityadmin.sh -cd $SEC_CONFIG_DIRECTORY')
+-              echo "$cmd_status"
+-              echo "Security admin ended at - `date +'%Y.%m.%d-%H:%M:%S'`"
+-              # The job looks for "Done with success" or SUCC messages for 9 files to check if securityadmin is successful.
+-              if [[ $(echo "$cmd_status") != *"ERR:"* ]] && [[ $(echo "$cmd_status" | grep "Done with success" ) || ($(echo "$cmd_status" | grep -E -c "SUCC: Configuration for .* created or updated") -ge 9) ]]; then
+-                echo "Successfully initialised .opendistro_security index"
+-                exit 0
+-              else
+-                if [[ $retry_count > 3 ]]; then
+-                  echo "------------------------------------------------------------"
+-                  echo "Retry attempts exceeded !! job failed at `date +'%Y.%m.%d-%H:%M:%S'` exiting! Please rollback to previous state, correct the configuration issues and retry helm upgrade."
+-                  exit 1
+-                else
+-                  sleep 10
+-                  echo -e "\nERROR: Failure in initialising .opendistro_security index at `date +'%Y.%m.%d-%H:%M:%S'` Retrying to run security admin"
+-                fi
+-              fi
+-              rm -rf /tmp/is-${client_pod_name}.log
+-              if [ $SECONDS -lt $client_wait_timeout ]; then
+-                echo "Waiting for atleast one client pod to be on Opensearch with security and a data node to join..."
+-              else
+-                echo "ERROR: Failing the job as it timed out while waiting for one client pod to get updated to Opensearch image with security and a data node to join the cluster. Please rollback to previous state, correct the configuration/cluster issues and retry helm upgrade."
+-                exit 1
+-              fi
+-            done
+-          fi
+-{{- end }}
+-

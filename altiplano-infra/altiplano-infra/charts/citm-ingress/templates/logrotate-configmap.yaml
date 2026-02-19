@@ -1,0 +1,22 @@
+{{- if eq (include "citm-ingress.isSyslogEnabled" . ) "true" }}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  labels:
+    app: {{ template "citm-ingress.name" . }}
+    chart: {{ .Chart.Name }}-{{ .Chart.Version }} 
+    component: "{{ .Values.controller.name }}"
+    heritage: {{ .Release.Service }}
+    release: {{ .Release.Name }}
+    {{- include "citm-ingress.commonLabels" . | indent 4 }}
+  name: {{ template "citm-ingress.fullname" . }}-logrotate
+data:
+  logrotate.conf: {{- include "citm-ingress.logrotate-conf" . | nindent 4 }}
+  logrotate-cron.conf: {{- include "citm-ingress.cronjob-conf" . | nindent 4 }}
+  rsyslog-conf-file-map-key: | {{- include "citm-ingress.rsyslog-client-main-conf" . | nindent 4 }}
+  rsyslog-global-conf-key: | {{- include "citm-ingress.rsyslog-client-global-conf" . | nindent 4 }}
+  rsyslog-input-conf-key:  | {{- include "citm-ingress.rsyslog-client-input-conf" . | nindent 4 }}
+  rsyslog-unified-logging-format-conf-key: | {{- include "citm-ingress.rsyslog-client-unified-logging-format-conf" . | nindent 4 }}
+  rsyslog-actions-conf-key: | {{- include "citm-ingress.rsyslog-client-actions-conf" . | nindent 4 }}
+{{- end }}
+

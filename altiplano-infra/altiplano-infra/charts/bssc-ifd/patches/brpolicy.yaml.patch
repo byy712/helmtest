@@ -1,0 +1,36 @@
+--- bssc-ifd-13.0.1/bssc-ifd/charts/bssc-indexsearch/templates/brpolicy.yaml	2023-12-06 18:41:43.000000000 +0530
++++ bssc-ifd/charts/bssc-indexsearch/templates/brpolicy.yaml	2024-02-21 16:54:20.112389884 +0530
+@@ -1,6 +1,6 @@
+ {{- if .Values.cbur.enabled }}
+ {{- include "bssc-indexsearch.syslogSendLogsViaLog4j" . }}
+-apiVersion: {{ template "bssc-indexsearch.apiVersionBrPolicy" . }}
++apiVersion: {{ .Values.cbur.apiVersion }}
+ kind: BrPolicy
+ metadata:
+   name: {{ template "bssc-indexsearch.data.fullname" . }}
+@@ -16,6 +16,7 @@
+ {{- include "bssc-indexsearch.selectorLabels" (tuple . .Values.data.name ) | indent 6 }}
+   volumes:
+   - {{ .Values.backup_restore.path }}
++  {{- if .Values.cbur.backup_configmap }}
+   k8sobjects:
+   {{- if not (empty .Values.extraConfig) }}
+   - object-type: configmaps
+@@ -42,6 +43,7 @@
+   - object-type: configmaps
+     match-criteria: name
+     match-string: {{ template "bssc-indexsearch.fullname" . }}-rollback-script-cm
++  {{- end }}
+   backend:
+     mode: "{{ .Values.cbur.backendMode }}"
+   cronSpec: "{{ .Values.cbur.cronJob }}"
+@@ -53,7 +55,7 @@
+   hooks:
+   - name: {{ template "bssc-indexsearch.data.container" . }}
+     commands:
+-      preBackupCmd: ["sh", "-c","/opt/opensearch/scripts/preBackupCommand.sh"]
++      preBackupCmd: ["sh", "-c","/opt/opensearch/scripts/preBackupCommandAltiplano.sh"]
+       preRestoreCmd: ["sh", "-c","/opt/opensearch/scripts/preRestoreCleanup.sh"]
+-      postRestoreCmd: ["sh", "-c","/opt/opensearch/scripts/postRestoreCommand.sh"]
++      postRestoreCmd: ["sh", "-c","/opt/opensearch/scripts/postRestoreCommandAltiplano.sh"]
+ {{- end}}

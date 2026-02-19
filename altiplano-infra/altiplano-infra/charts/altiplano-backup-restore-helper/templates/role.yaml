@@ -1,0 +1,57 @@
+{{- if .Values.rbac.enabled }}
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: {{ template "altiplano-backup-restore-helper.fullname" . }}-role
+  labels:
+    app: {{ template "altiplano-backup-restore-helper.name" . }}
+    chart: {{ template "altiplano-backup-restore-helper.chart" . }}
+    release: {{ .Release.Name }}
+    heritage: {{ .Release.Service }}
+  namespace: {{ .Release.Namespace }}
+rules:
+  # Allow CBUR-Helper to access CBURM service
+  - apiGroups: [""]
+    resources: ["services"]
+    verbs: ["get", "watch", "list"]
+  # Allow CBUR-helper to access CBUR secrets
+  - apiGroups: [""]
+    resources: ["secrets"]
+    verbs: ["get", "list", "patch", "create"]
+  # Allow CBUR-Helper to access other deployments
+  - apiGroups: ["apps"]
+    resources: ["deployments"]
+    verbs: ["get", "watch", "list"]
+  # Allow CBUR -Helper to access other brpolicies
+  - apiGroups: ["cbur.csf.nokia.com"]
+    resources: ["brpolices"]
+    verbs: ["get", "watch", "list"]
+  # Allow CBUR -Helper to access other pods
+  - apiGroups: [""]
+    resources: ["pods", "pods/exec"]
+    verbs: ["get", "watch", "list", "create"]
+  # Allow CBUR-Helper to access other statefulSets
+  - apiGroups: ["apps"]
+    resources: ["statefulsets"]
+    verbs: ["get", "watch", "list"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: {{ template "altiplano-backup-restore-helper.fullname" . }}-rb
+  labels:
+    app: {{ template "altiplano-backup-restore-helper.name" . }}
+    chart: {{ template "altiplano-backup-restore-helper.chart" . }}
+    release: {{ .Release.Name }}
+    heritage: {{ .Release.Service }}
+  namespace: {{ .Release.Namespace }}
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: {{ template "altiplano-backup-restore-helper.fullname" . }}-role
+subjects:
+  - kind: ServiceAccount
+    name: {{ template "altiplano-backup-restore-helper.fullname" . }}-sa
+    namespace: {{ .Release.Namespace }}
+{{- end }}
+

@@ -1,0 +1,11 @@
+--- base_ksql/ckaf-ksql-8.1.0/ckaf-ksql/templates/ksql-rbac.yaml	2024-03-28 23:41:09.000000000 +0530
++++ charts/ckaf-ksql/templates/ksql-rbac.yaml	2024-04-16 12:10:51.644193750 +0530
+@@ -13,6 +13,8 @@
+   annotations:
+     seccomp.security.alpha.kubernetes.io/allowedProfileNames: {{ .Values.global.seccompAllowedProfileNames }} 
+     seccomp.security.alpha.kubernetes.io/defaultProfileName: {{ .Values.global.seccompDefaultProfileName }}
++    "helm.sh/hook": pre-install,pre-upgrade
++    "helm.sh/hook-weight": "-10"
+ {{- include "csf-common-lib.v1.customAnnotations" (tuple .Values.global.annotations) | indent 4 }}
+ automountServiceAccountToken: false
+ {{- if  coalesce .Values.imagePullSecrets .Values.global.imagePullSecrets }}

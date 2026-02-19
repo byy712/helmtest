@@ -1,0 +1,22 @@
+# config map for unit testing grafana templates
+{{- include "cpro-grafana.istio.grafanaInitIstio" . }}
+{{- if .Values.testConfigMap }}
+{{- $grafana_oauth := index .Values.grafana_ini "auth.generic_oauth" }}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: grafana-unit-test-template-configmap
+data:
+  {{- if $.istio.enabled }}
+  istioHealthCheckPort: {{ include "cpro-common-lib.istioHealthCheckPort" . | quote }}
+  istioStopPort: {{ include "cpro-common-lib.istioStopPort" . | quote }}
+  {{- end }}
+  grafana-ini: |
+    {{ if .Values.testGrafanaSecurityWithoutSensitiveData }}
+    {{- include "cpro-grafana-update-grafanaIniSecurity" (dict "key" "security" "value" .Values.grafana_ini.security "Values" .Values "context" $ "release" .Release) }}
+    {{- else }}
+    {{- include "cpro-grafana-update-grafanaIniSecurityForSensitiveData" (dict "key" "security" "value" .Values.grafana_ini.security "Values" .Values "context" $ "release" .Release) }}
+    {{- end }}
+    {{- include "cpro-grafana-update-grafanaIniDatabase" (dict "key" "database" "value" .Values.grafana_ini.database "Values" .Values "context" $ ) }}
+    {{- include "cpro-grafana-update-grafanaIniOauth" (dict "key" "auth.generic_oauth" "value" $grafana_oauth "Values" .Values "context" $ ) }}
+{{- end }}

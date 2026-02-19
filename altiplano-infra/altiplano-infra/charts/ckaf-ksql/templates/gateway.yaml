@@ -1,0 +1,1 @@
+{{ include "ckaf-ksql.istio.checkAndGenerateHttpGateway" . }}

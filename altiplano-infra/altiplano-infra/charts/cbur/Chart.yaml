@@ -1,0 +1,12 @@
+apiVersion: v2
+appVersion: 1.12.0
+dependencies:
+- name: csf-common-lib
+  repository: https://repo.cci.nokia.net/csf-helm-stable
+  version: 1.13.0
+description: csf backup and restore component
+maintainers:
+- email: jaroslaw.gorski@nokia.com
+  name: CSF CBUR Team
+name: cbur
+version: 1.17.0-nokia-patch-5

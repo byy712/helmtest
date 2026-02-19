@@ -1,0 +1,82 @@
+{{- include "bssc-indexsearch.isCertManagerEnable" . }}
+{{- if eq $.isCertManagerEnabled "true" }}
+{{- if .Values.indexsearch.externalClientCertificates.dashboards.certificate.enabled }}
+{{- $useV1alpha3 := and (.Capabilities.APIVersions.Has "cert-manager.io/v1alpha3/Certificate") (not (.Capabilities.APIVersions.Has "cert-manager.io/v1/Certificate")) }}
+{{- $dboClientCert := .Values.indexsearch.externalClientCertificates.dashboards.certificate }}
+apiVersion: {{ template "bssc-indexsearch.apiVersionCertManager" . }}
+kind: Certificate
+metadata:
+  name: {{ tpl ($dboClientCert.secretName) . }}
+  namespace: {{ .Release.Namespace }}
+  labels:
+{{- include "bssc-indexsearch.csf-toolkit-helm.labels" (tuple .) | nindent 4 }}
+{{- include "bssc-indexsearch.commonLabels" (tuple .) | indent 4 }}
+  annotations:
+{{- include "bssc-indexsearch.csf-toolkit-helm.annotations" (tuple .) | nindent 4 }}
+spec:
+  secretName: {{ tpl ($dboClientCert.secretName) . }}
+  duration: {{ $dboClientCert.duration }}
+  renewBefore: {{ $dboClientCert.renewBefore }}
+{{- if $dboClientCert.subject }}
+  subject: {{ $dboClientCert.subject }}
+{{- end }}
+  commonName: {{ $dboClientCert.commonName | quote }}
+  privateKey:
+    {{- if ($dboClientCert.privateKey | default (dict)).algorithm }}
+      {{- if $useV1alpha3 }}
+    keyAlgorithm: {{ $dboClientCert.privateKey.algorithm | lower }}
+      {{- else }}
+    algorithm: {{ $dboClientCert.privateKey.algorithm }}
+      {{- end }}
+    {{- end }}
+    {{- if ($dboClientCert.privateKey | default (dict)).encoding }}
+      {{- if $useV1alpha3 }}
+    keyEncoding: {{ $dboClientCert.privateKey.encoding | lower }}
+      {{- else }}
+    encoding: {{ $dboClientCert.privateKey.encoding }}
+      {{- end }}
+    {{- end }}
+    {{- if ($dboClientCert.privateKey | default (dict)).size }}
+      {{- if $useV1alpha3 }}
+    keySize: {{ $dboClientCert.privateKey.size }}
+      {{- else }}
+    size: {{ $dboClientCert.privateKey.size }}
+      {{- end }}
+    {{- end }}
+    {{- if ($dboClientCert.privateKey | default (dict)).rotationPolicy }}
+    rotationPolicy: {{ $dboClientCert.privateKey.rotationPolicy }}
+    {{- else }}
+    rotationPolicy: Always
+    {{- end }}
+  usages:
+{{ toYaml $dboClientCert.usages | indent 4 }}
+{{- if $dboClientCert.uris }}
+  {{- if $useV1alpha3 }}
+  uriSANs:
+  {{- else }}
+  uris:
+  {{- end }}
+{{  $dboClientCert.uris | toYaml | indent 4 }}  
+{{- end }}  
+  {{- if $dboClientCert.dnsNames }}
+  dnsNames:
+{{ $dboClientCert.dnsNames | toYaml | indent 4 }}          
+  {{- else }}
+  dnsNames:
+    - "localhost"
+    - {{ .Values.service.name }}.{{ .Release.Namespace }}
+    - {{ .Values.service.name }}.{{ .Release.Namespace }}.svc.cluster.local
+  {{- end }}
+  ipAddresses:
+  {{- if $dboClientCert.ipAddresses }}
+{{ $dboClientCert.ipAddresses | toYaml | indent 4 }}
+  {{- else }}
+    - "127.0.0.1"
+    - "::1"
+  {{- end }}
+  issuerRef:
+    name: {{ $dboClientCert.issuerRef.name }}
+    kind: {{ $dboClientCert.issuerRef.kind }}
+    group: {{ $dboClientCert.issuerRef.group | default "cert-manager.io" }}
+{{- end }}
+{{- end }}

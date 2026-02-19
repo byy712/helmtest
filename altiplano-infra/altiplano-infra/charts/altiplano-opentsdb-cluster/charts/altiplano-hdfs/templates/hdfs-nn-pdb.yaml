@@ -1,0 +1,19 @@
+apiVersion: {{ template "hdfs.apiVersionPolicyV1Beta1orPolicyV1" . }}
+kind: PodDisruptionBudget
+metadata:
+  name: {{ include "hdfs.fullname" . }}-namenode
+  labels:
+    app.kubernetes.io/name: {{ include "hdfs.name" . }}
+    app.kubernetes.io/component: namenode
+    {{- include "hdfs.labels" . | nindent 4 }}
+spec:
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: {{ include "hdfs.name" . }}
+      app.kubernetes.io/component: namenode
+      app.kubernetes.io/instance: {{ .Release.Name }}
+  {{- if .Values.nameNode.pdbMinAvailable }}
+  minAvailable: {{ .Values.nameNode.pdbMinAvailable }}
+  {{- else }}
+  minAvailable: {{ sub .Values.nameNode.replicas 1 }}
+  {{- end }}

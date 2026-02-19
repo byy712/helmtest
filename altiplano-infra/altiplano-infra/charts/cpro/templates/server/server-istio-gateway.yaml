@@ -1,0 +1,3 @@
+{{- if .Values.server.enabled }}
+{{ include "cpro.istio.checkAndGenerateCproServerHttpGateway" . }}
+{{- end }}

@@ -1,0 +1,4 @@
+{{- $workload := .Values.grafana }}
+{{- if eq (include "csf-common-lib.v1.coalesceBoolean" (tuple $workload.hpa.enabled .Values.global.hpa.enabled false)) "true" }}
+  {{- include "csf-common-lib.v3.hpa" (tuple . $workload) }}
+{{- end}}

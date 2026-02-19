@@ -1,0 +1,36 @@
+{{- include "crdb-redisio.init" . -}}
+{{/*
+*
+* A non-manifest helper to check that the images are of a required
+* minimum version.  This prevents performing an upgrade of a chart
+* while running an older version of the containers.  To be used when
+* a chart expects certain functionality to exist in the container, e.g.
+* in the entrypoint.
+*
+* NOTE: Currently only works with major.minor version of the images as
+* CSF/CRDB image tags are not semVer-compliant (no .patch).
+*
+* NOTE: Currently checks redisio, rolemon, and admin images against same
+* minimum version requirement.
+*
+*/}}
+
+{{- $min_ver := ">=6.0.0" -}}
+{{- $svr_ver := .Values.server.image.tag -}}
+{{- $rmn_ver := .Values.rolemon.image.tag | default .Values.server.image.tag -}}
+{{- $adm_ver := .Values.admin.image.tag | default .Values.server.image.tag -}}
+
+{{- $min_semver := printf "%s" $min_ver -}}
+{{- $svr_semver := regexReplaceAll "-([0-9]+)\\.?(.*)" $svr_ver ".${1}+${2}" -}}
+{{- $rmn_semver := regexReplaceAll "-([0-9]+)\\.?(.*)" $rmn_ver ".${1}+${2}" -}}
+{{- $adm_semver := regexReplaceAll "-([0-9]+)\\.?(.*)" $adm_ver ".${1}+${2}" -}}
+
+{{- if not .Values._disableImageVersionCheck -}}
+  {{- if not (semverCompare $min_semver $svr_semver) -}}
+    {{- $_ := required (printf "server.image.tag must be %s, is currently %s" $min_ver $svr_ver) "" -}}
+  {{- else if not (semverCompare $min_semver $rmn_semver) -}}
+    {{- $_ := required (printf "rolemon.image.tag must be %s, is currently %s" $min_ver $rmn_ver) "" -}}
+  {{- else if not (semverCompare $min_semver $adm_semver) -}}
+    {{- $_ := required (printf "admin.image.tag must be %s, is currently %s" $min_ver $adm_ver) "" -}}
+  {{- end -}}
+{{- end -}}

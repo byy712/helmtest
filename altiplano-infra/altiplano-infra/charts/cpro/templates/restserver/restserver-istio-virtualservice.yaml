@@ -1,0 +1,62 @@
+{{- include "cpro.istio.cproInitIstio" . }}
+{{- if and $.istio.enabled .Values.restserver.enabled }}
+apiVersion: {{ template "cpro.apiVersion.virtualService" . }}
+kind: VirtualService
+metadata:
+  labels:
+    {{- include "cpro.app.labels.v3" ( dict "root" . "context" .Values.restserver ) | nindent 4 }}
+{{- include "cpro.labelsOrAnnotations" (tuple .Values.global.labels) | indent 4}}
+  name: {{ template "cpro.prometheus.restserver.fullname" . }}-vs
+  annotations:
+{{- include "cpro.labelsOrAnnotations" (tuple .Values.global.annotations) | indent 4}}
+spec:
+  hosts:
+  {{- $numHosts := len $.istio.gateways.cproRestserver.host }}
+  {{- if (eq $numHosts 0) }}
+  - "*"
+  {{- else }}
+  {{- range $.istio.gateways.cproRestserver.host }}
+  - {{ . | quote }}
+  {{- end }}
+  {{- end }}
+  gateways:
+  {{- if $.shared_istio_gateway }}
+  - {{ $.shared_istio_gateway }}
+    {{- else }}
+  - {{ template "cpro.restserver.istioGatewayName"  $ }}
+    {{- end }}
+  {{- if (and (eq $.shared_istio_gateway "" ) (eq $.istio.gateways.cproRestserver.tls.mode "PASSTHROUGH")) }}
+  tls:
+  - match:
+    - port: {{ $.istio.gateways.cproRestserver.port }}
+      {{- if semverCompare ">1.5" $.istio.version }}
+      sniHosts:
+      {{- else }}
+      sni_hosts:
+      {{- end }}
+      {{- if gt (len $.istio.gateways.cproRestserver.host) 0 }}
+      {{- range $.istio.gateways.cproRestserver.host }}
+      - {{ . | quote }}
+      {{- end }}
+      {{- else }}
+      - "*"
+      {{- end }}
+    route:
+    - destination:
+        host: {{ template "cpro.prometheus.restserver.fullname" . }}
+        port:
+          number: {{ .Values.restserver.service.servicePort }}
+  {{- else }}
+  http:
+  - match:
+    - uri:
+        prefix: /{{ .Values.restserver.contextRoot }}/
+    rewrite:
+      uri: /
+    route:
+    - destination:
+        host: {{ template "cpro.prometheus.restserver.fullname" . }}
+        port:
+          number: {{ .Values.restserver.service.servicePort }}
+  {{- end }}
+{{- end }}

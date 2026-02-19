@@ -1,0 +1,9 @@
+apiVersion: v2
+appVersion: 24.6.1-REL_256
+dependencies:
+- name: csf-common-lib
+  repository: ""
+  version: 1.7.0
+description: Nokia NSP Helm Chart for nspos-rabbitmq
+name: altiplano-nspos-rabbitmq
+version: 24.6.1-REL-0256

@@ -1,0 +1,79 @@
+{{- include "cmdb.init" . -}}
+{{- if .Values.mariadb.pdb.enabled }}
+---
+apiVersion: {{ .Capabilities.APIVersions.Has "policy/v1/PodDisruptionBudget" | ternary "policy/v1" "policy/v1beta1" }}
+kind: PodDisruptionBudget
+metadata:
+  name: {{ template "cmdb.pod-prefix" . }}-mariadb
+  labels:
+    {{- include "cmdb-mariadb.labels" (tuple . "poddisruptionbudget") | nindent 4 }}
+  annotations:
+    {{- include "cmdb-mariadb.annotations" (tuple . "poddisruptionbudget") | nindent 4 }}
+spec:
+  selector:
+    matchLabels:
+      {{- include "cmdb-mariadb.selector_labels" . | nindent 6 }}
+      type: mariadb
+  {{- if hasKey .Values.mariadb.pdb "minAvailable" }}
+  minAvailable: {{ .Values.mariadb.pdb.minAvailable }}
+  {{- end }}
+  {{- if hasKey .Values.mariadb.pdb "maxUnavailable" }}
+  maxUnavailable: {{ .Values.mariadb.pdb.maxUnavailable }}
+  {{- end }}
+  {{- if or (and .Values.mariadb.pdb.maxUnavailable .Values.mariadb.pdb.minAvailable) (and (not .Values.mariadb.pdb.maxUnavailable) (not .Values.mariadb.pdb.minAvailable)) }}
+  {{- required "One and only one of maxUnavailable or minAvailable values for mariadb need to be set." "" }}
+  {{- end }}
+{{- end }}
+
+{{- if .Values.maxscale.pdb.enabled }}
+---
+apiVersion: {{ .Capabilities.APIVersions.Has "policy/v1/PodDisruptionBudget" | ternary "policy/v1" "policy/v1beta1" }}
+kind: PodDisruptionBudget
+metadata:
+  name: {{ template "cmdb.pod-prefix" . }}-maxscale
+  labels:
+    {{- include "cmdb-maxscale.labels" (tuple . "poddisruptionbudget") | nindent 4 }}
+  annotations:
+    {{- include "cmdb-maxscale.annotations" (tuple . "poddisruptionbudget") | nindent 4 }}
+spec:
+  selector:
+    matchLabels:
+      {{- include "cmdb-maxscale.selector_labels" . | nindent 6 }}
+      type: maxscale
+  {{- if hasKey .Values.maxscale.pdb "maxUnavailable" }}
+  maxUnavailable: {{ .Values.maxscale.pdb.maxUnavailable }}
+  {{- end }}
+  {{- if hasKey .Values.maxscale.pdb "minAvailable" }}
+  minAvailable: {{ .Values.maxscale.pdb.minAvailable }}
+  {{- end }}
+  {{- if or (and .Values.maxscale.pdb.maxUnavailable .Values.maxscale.pdb.minAvailable) (and (not .Values.maxscale.pdb.maxUnavailable) (not .Values.maxscale.pdb.minAvailable)) }}
+  {{- required "One and only one of maxUnavailable or minAvailable values for maxscale need to be set." "" }}
+  {{- end }}
+{{- end }}
+
+{{- if .Values.admin.pdb.enabled }}
+---
+apiVersion: {{ .Capabilities.APIVersions.Has "policy/v1/PodDisruptionBudget" | ternary "policy/v1" "policy/v1beta1" }}
+kind: PodDisruptionBudget
+metadata:
+  name: {{ template "cmdb.pod-prefix" . }}-admin
+  labels:
+    {{- include "cmdb-admin.labels" (tuple . "poddisruptionbudget") | nindent 4 }}
+  annotations:
+    {{- include "cmdb-admin.annotations" (tuple . "poddisruptionbudget") | nindent 4 }}
+spec:
+  selector:
+    matchLabels:
+      {{- include "cmdb-admin.selector_labels" . | nindent 6 }}
+      type: admin
+  {{- if hasKey .Values.admin.pdb "maxUnavailable" }}
+  maxUnavailable: {{ .Values.admin.pdb.maxUnavailable }}
+  {{- end }}
+  {{- if hasKey .Values.admin.pdb "minAvailable" }}
+  minAvailable: {{ .Values.admin.pdb.minAvailable }}
+  {{- end }}
+  {{- if or (and .Values.admin.pdb.maxUnavailable .Values.admin.pdb.minAvailable) (and (not .Values.admin.pdb.maxUnavailable) (not .Values.admin.pdb.minAvailable)) }}
+  {{- required "One and only one of maxUnavailable or minAvailable values for admin need to be set." "" }}
+  {{- end }}
+{{- end }}
+

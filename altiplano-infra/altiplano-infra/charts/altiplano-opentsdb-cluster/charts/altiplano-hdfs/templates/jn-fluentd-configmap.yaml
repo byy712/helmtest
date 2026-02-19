@@ -1,0 +1,12 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ template "hdfs.name" . }}-journalnode-fluentd-config
+  
+data:
+  fluentd.conf: |-
+{{- if .Values.journalNode.fluentd_sidecar.fluent_conf }}
+{{ tpl .Values.journalNode.fluentd_sidecar.fluent_conf . | indent 4 }}
+{{- end }}
+  
+---

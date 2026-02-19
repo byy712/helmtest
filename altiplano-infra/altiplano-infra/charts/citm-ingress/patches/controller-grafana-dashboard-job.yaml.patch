@@ -1,0 +1,10 @@
+--- orig/citm-ingress/templates/controller-grafana-dashboard-job.yaml	2023-12-06 13:01:58.000000000 +0530
++++ new/citm-ingress/templates/controller-grafana-dashboard-job.yaml	2024-01-02 10:59:26.953398550 +0530
+@@ -17,6 +17,7 @@
+   template:
+     metadata:
+       labels:
++        altiplano-role: {{ .Values.accessRoleLabel }}
+         app: {{ template "citm-ingress.name" . }}
+         release: {{ .Release.Name }}
+         {{- include "citm-ingress.commonLabels" . | indent 8 }}

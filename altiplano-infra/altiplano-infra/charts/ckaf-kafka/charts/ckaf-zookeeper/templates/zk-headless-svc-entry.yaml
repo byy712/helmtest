@@ -1,0 +1,28 @@
+# added as a workaround for istio 1.6.8 headless service issue(CSFS-31731)
+{{- include "ckaf-zookeeper.istio.initIstio" . }}
+{{- if eq $.istio.enabled true }}
+apiVersion: networking.istio.io/v1beta1
+kind: ServiceEntry
+metadata:
+  name: {{ template "ckaf-zookeeper.name" . }}-headless-se
+  labels:
+{{ include "ckaf-zookeeper.commonlabels" . | indent 4 }}
+{{- include "csf-common-lib.v1.customLabels" (tuple .Values.global.labels) | indent 4 }}
+  annotations:
+{{- include "csf-common-lib.v1.customAnnotations" (tuple .Values.global.annotations) | indent 4 }}
+  namespace: {{ .Release.Namespace }}
+spec:
+  location: MESH_INTERNAL
+  hosts:
+  - {{ template "ckaf-zookeeper.name" . }}-headless.{{ .Release.Namespace }}.svc.{{ .Values.clusterDomain }}
+  ports:
+  - number: {{ .Values.serverPort }}
+    name: tcp-server
+    protocol: TCP
+  - number: {{ .Values.leaderElectionPort }}
+    name: tcp-leader
+    protocol: TCP
+  - number: {{ .Values.zookeeperClientPort }}
+    name: tcp-client
+    protocol: TCP
+{{- end }}

@@ -1,0 +1,18 @@
+{{- if and (eq .Values.controller.kind "Deployment") .Values.controller.pdb.enabled }}
+apiVersion: {{ template "citm-ingress.pdb.apiVersionPolicyV1Beta1orV1" . }}
+kind: PodDisruptionBudget
+metadata:
+  labels:
+    app: {{ template "citm-ingress.name" . }}
+    chart: {{ .Chart.Name }}-{{ .Chart.Version }}
+    component: "{{ .Values.controller.name }}"
+    heritage: {{ .Release.Service }}
+    release: {{ .Release.Name }}
+    {{- include "citm-ingress.commonLabels" . | indent 4 }}
+  name: {{ template "citm-ingress.fullname" . }}
+spec:
+  {{- include "citm-ingress.pdb-values" . | indent 2 }}
+  selector:
+    matchLabels:
+      app: {{ template "citm-ingress.name" . }}
+{{- end }}

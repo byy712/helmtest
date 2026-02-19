@@ -1,0 +1,796 @@
+---
+global:
+  jobhookenable: false
+  jobtimeout: 300
+  prerestore: 0
+  postrestore: 0
+
+  # global unified logging definition
+  unifiedLogging:
+    extension: {}
+    syslog:
+      enabled:
+      facility:
+      host:
+      port:
+      protocol:
+      timeout:
+      closeReqType:
+      keyStore: {}
+      keyStorePassword: {}
+      trustStore: {}
+      trustStorePassword: {}
+
+  ## Use generated certificates via cert-manager (see tls.certificates.certManager)
+  certManager:
+    enabled:
+
+internalRedisioRegistry: {{ cluster.redisioImageRegistry | default(model.properties.cluster.properties.redisioImageRegistry.default) }}
+internalRolemonRegistry: {{ cluster.redisioImageRegistry | default(model.properties.cluster.properties.redisioImageRegistry.default) }}
+internalAdminRegistry: {{ cluster.redisioImageRegistry | default(model.properties.cluster.properties.redisioImageRegistry.default) }}
+internalExporterRegistry: {{ metrics.redisioMetricsImageRegistry | default(model.properties.metrics.properties.redisioMetricsImageRegistry.default) }}
+internalCburAgentRegistry: {{ cbur.redisioCburaImageRegistry | default(model.properties.cbur.properties.redisioCburaImageRegistry.default) }}
+
+rbac:
+  ## RBAC enabled flag
+  enabled: {{ (rbac | default("")).rbacEnabled | default(model.properties.rbac.properties.rbacEnabled.default) }}
+
+{% if (rbac | default("")).enabled is defined %}
+## Service account
+serviceAccountName: {{ rbac.serviceAccountName | default("") }}
+{% endif %}
+
+## unifiedLogging is used to configure pod logging for generation of log
+## messages to a syslog server.
+unifiedLogging:
+  ## map of logging extension to add to each log message
+  extension: {}
+
+  ## Syslog logging parameters
+  syslog:
+    enabled: {{ (unifiedLogging | default("")).syslog.enabled | default(model.properties.unifiedLogging.properties.syslog.properties.enabled.default) }}
+    # Defines which facility will be used for sending the log message.
+    # This is a required option, otherwise the appender will be invalid.
+    facility: {{ (unifiedLogging | default("")).syslog.facility | default ("") }}
+    # Sets the appender target's host. (Domain name or IP address)
+    host: {{ (unifiedLogging | default("")).syslog.host | default ("") }}
+    # Sets the appender target's port.
+    port: {{ (unifiedLogging | default("")).syslog.port | default ("") }}
+    # Defines which socket protocol is used for sending the log into the
+    # target host.  Can be either UDP, TCP or SSL
+    protocol: {{ (unifiedLogging | default("")).syslog.protocol | default ("") }}
+    # SSL handshake/connection timeout (milliseconds, default 1000)
+    timeout: {{ (unifiedLogging | default("")).syslog.timeout | default ("") }}
+    # SSL close request type (default GNUTLS_SHUT_RDWR, GNUTLS_SHUT_WR also valid)
+    closeReqType: {{ (unifiedLogging | default("")).syslog.closeReqType | default ("") }}
+    # The keystore is meant to contain your private keys and certificates,
+    # and determines which authentication credentials to send to the remote
+    # host.  'key' in the Secret named 'secretName' will be used as keystore
+    # file. Only PKCS12 file format is supported.
+    keyStore:
+      secretName: {{ (unifiedLogging | default("")).syslog.keyStore.secretName | default ("") }}
+      key: {{ (unifiedLogging | default("")).syslog.keyStore.key | default ("") }}
+    # Plain text password to access the keystore stored in 'key' in the
+    # Secret named 'secretName'
+    keyStorePassword:
+      secretName: {{ (unifiedLogging | default("")).syslog.keyStorePassword.secretName | default ("") }}
+      key: {{ (unifiedLogging | default("")).syslog.keyStorePassword.key | default ("") }}
+    # Location should point to file defined in the 'key' in the Secret named
+    # 'secretName', which should be mounted in a container.
+    trustStore:
+      secretName: {{ (unifiedLogging | default("")).syslog.trustStore.secretName | default ("") }}
+      key: {{ (unifiedLogging | default("")).syslog.trustStore.key | default ("") }}
+    # The trust store is meant to contain the CA certificates you are willing
+    # to trust when a remote party presents its certificate. Determines whether
+    # the remote authentication credentials (and thus the connection) should be
+    # trusted. In some cases, they can be one and the same store, although it is
+    # is often better practice to use distinct stores. 'key' in the Secret
+    # named 'secretName' will be used as truststore file. Only PKCS12 file
+    # format is supported.
+    trustStorePassword:
+      secretName: {{ (unifiedLogging | default("")).syslog.trustStorePassword.secretName | default ("") }}
+      key: {{ (unifiedLogging | default("")).syslog.trustStorePassword.key | default ("") }}
+
+## Use generated certificates via cert-manager (see tls.certificates.certManager)
+certManager:
+  enabled:
+
+## Cluster domain (tail end of the hostname, e.g. ...namespace.svc.cluster.local)
+clusterDomain: {{ cluster.domain | default(model.properties.cluster.properties.domain.default) }}
+
+## Anti-affinity among all pods to share a node (server+sentinel).  soft/hard
+nodeAntiAffinity: {% if (cluster | default("")).enabled | default(true) %}hard{% else %}soft{% endif %}
+
+## CRDB-Redisio Parameters
+# The master group name for identifying this set of servers within sentinel
+# If not specified, the chart release will be used
+groupName:
+
+services:
+  # Indicates the service Type of the redis database
+  redis:
+    ## By default, set to ClusterIP to expose database only within cluster
+    ## Set as NodePort to expose database externally
+    type: ClusterIP
+
+    ## By default, tlsPort or nonTlsPort will be configured to use the default
+    ## Redis port (6379), based on if server tls.enabled or not.
+    ## If server tls.enabled, additionally nonTlsPort can be set to enable
+    ## simultaneous non-TLS access on a different port.
+    ## These valus can also be comma-separated lists of ports.
+    ## Leave blank or set to 0 to disable.
+    tlsPort:
+    nonTlsPort:
+
+  sentinel:
+    type: ClusterIP
+    port: 26379
+
+server:
+  ## Suffix used by common-lib for certs
+  nameSuffix: server
+
+  image:
+    name: {{ cluster.redisioServerImageName | default(model.properties.cluster.properties.redisioServerImageName.default) }}
+    tag: {{ cluster.redisioServerImageTag | default(model.properties.cluster.properties.redisioServerImageTag.default) }}
+    flavor: {{ cluster.imageFlavor | default(model.properties.cluster.properties.imageFlavor.default) }}
+    pullPolicy: {{ cluster.redisioServerImagePullPolicy | default(model.properties.cluster.properties.redisioServerImagePullPolicy.default) }}
+
+  # Number of Redis server instances to run
+  count: {{ cluster.serverCount | default(model.properties.cluster.properties.serverCount.default) }}
+  logLevel: "verbose"
+
+  ## Major Release Rollback Support
+  ## Redis 7.0 introduced data incompatibilities preventing rollback to previous versions.
+  ##
+  ## By default, support has been add to allow rollback between certain Major CRDB
+  ## Redis.io releases when there are data incompatibilies between the Redis releases.
+  ## See the documentation for supported releases, requirements and restrictions.
+  ##
+  ## If a rollback is attempted that does not meet all requirements, it will be blocked
+  ## during the pre-rollback phase
+  ##
+  ## For scenarios where a data rollback is not possible.  Setting this to true
+  ## will allow for the software to rollback while REMOVING ALL DATA.
+  majorRollbackDelDb: {{ (resources | default("")).majorRollbackDelDb | default(model.properties.resources.properties.majorRollbackDelDb.default) }}
+
+  # If set to true, the working directory where Redis saves the database will use
+  # a tmpfs-backed emptyDir volume instead of the persistent volume (PVC).
+  # IMPORTANT: When this is enabled, there is no persistent storage of the database
+  #            and data loss is highly likely in failure scenarios and node reboots.
+  # IMPORTANT: When this is enabled, the memory usage of the server pod(s) will
+  #            be doubled from the perspective of Kubernetes as the database is
+  #            stored twice in memory.  The size of the tmpfs volume will be limited
+  #            to half the server memory limit
+  tmpfsWorkingDir: {{ (resources | default("")).serverTmpfsWorkingDir | default(model.properties.resources.properties.serverTmpfsWorkingDir.default) }}
+
+  ## Persistence
+  ## IMPORTANT: If persistence is disabled, the ephemeral storage provided to the 
+  ##            server must be large enough to contain a full copy of the saved 
+  ##            database.  This space is required temporarily in cases where
+  ##            a full resynchronization of the database occurs.
+  ##
+  ##            Alternatively, if the repl-diskless-load configuration is being
+  ##            used, or tmpfsWorkingDir is true, the ephemeral storage may be kept
+  ##            low, but the memory usage could double in some replication scenarios.
+  ##
+  ##            Setting persistence to disabled will, by default, configure redis
+  ##            so it does not persistence data to disk (save "")
+  ##
+  ## IMPORTANT: Backups taken while persistence is disabled will NOT backup any data
+  ##
+  ## If disabling persistence, familiarize yourself with the following and review 
+  ## the cluster.masterRestartDelay value.
+  ## https://redis.io/docs/management/replication/#safety-of-replication-when-master-has-persistence-turned-off
+  persistence:
+    enabled: true
+    accessMode: ReadWriteOnce
+    size: {{ (resources | default("")).volumeSize | default(model.properties.resources.properties.volumeSize.default) }}
+    storageClass: {{ (resources | default("")).storageClass | default(model.properties.resources.properties.storageClass.default) }}
+    resourcePolicy: delete
+    preservePvc: false
+
+  resources:
+    requests:
+      memory: {{ (resources | default("")).serverRequestsMemory | default(model.properties.resources.properties.serverRequestsMemory.default) }}
+      cpu: {{ (resources | default("")).serverRequestsCpu | default(model.properties.resources.properties.serverRequestsCpu.default) }}
+      ephemeral-storage: {{ (resources | default("")).serverRequestsEphemeral | default(model.properties.resources.properties.serverRequestsEphemeral.default) }}
+    limits:
+      memory: {{ (resources | default("")).serverLimitsMemory | default(model.properties.resources.properties.serverLimitsMemory.default) }}
+      cpu: {{ (resources | default("")).serverLimitsCpu | default(model.properties.resources.properties.serverLimitsCpu.default) }}
+      ephemeral-storage: {{ (resources | default("")).serverLimitsEphemeral | default(model.properties.resources.properties.serverLimitsEphemeral.default) }}
+
+  # Redis server configuration parameters to include in the server.conf file
+  # IMPORTANT: Any parameters set here are subject to being overwritten by dynamic
+  #            configuration changes.  This can cause unexpected behavior as
+  #            subsequent changes to the following value can trigger update
+  #            configuration lifecycle event handling yet not actually apply to
+  #            the real, runtime configuration.
+  confInclude: |
+
+  ## Readiness/Liveness Probe Configuration (Redis server container)
+  ## ref: https://kubernetes.io/docs/tasks/configure-pod-container/configure-liveness-readiness-startup-probes/#configure-probes
+  ##
+  livenessProbe:
+    initialDelaySeconds: {{ (cluster.serverLivenessProbe | default("")).initialDelaySeconds | default(180) }}
+    periodSeconds: {{ (cluster.serverLivenessProbe | default("")).periodSeconds | default(10) }}
+    timeoutSeconds: {{ (cluster.serverLivenessProbe | default("")).timeoutSeconds | default(5) }}
+    failureThreshold: {{ (cluster.serverLivenessProbe | default("")).failureThreshold | default(6) }}
+    probeCmd: {{ (cluster.serverLivenessProbe | default("")).probeCmd | default("") }}
+  readinessProbe:
+    initialDelaySeconds: {{ (cluster.serverReadinessProbe | default("")).initialDelaySeconds | default(10) }}
+    periodSeconds: {{ (cluster.serverReadinessProbe | default("")).periodSeconds | default(15) }}
+    timeoutSeconds: {{ (cluster.serverReadinessProbe | default("")).timeoutSeconds | default(1) }}
+    failureThreshold: {{ (cluster.serverReadinessProbe | default("")).failureThreshold | default(3) }}
+    probeCmd: {{ (cluster.serverReadinessProbe | default("")).probeCmd | default("") }}
+
+  ## Termination grace period (in seconds).  Defaults to 120 seconds.
+  ## Must provide enough time for failover and save to disk, which can
+  ## vary greatly depending on the size of the dataset.
+  terminationGracePeriodSeconds: {{ cluster.serverTerminationGracePeriod | default(120) }}
+
+  metrics:
+    enabled: {{ (metrics | default("")).metricsEnabled | default(model.properties.metrics.properties.metricsEnabled.default) }}
+
+    image:
+      name: {{ metrics.redisioMetricsImageName | default(model.properties.metrics.properties.redisioMetricsImageName.default) }}
+      tag: {{ metrics.redisioMetricsImageTag | default(model.properties.metrics.properties.redisioMetricsImageTag.default) }}
+      pullPolicy: {{ metrics.redisioMetricsImagePullPolicy | default(model.properties.metrics.properties.redisioMetricsImagePullPolicy.default) }}
+
+    usePodServices: {{ (metrics | default("")).redisioMetricsUsePodServices | default(model.properties.metrics.properties.redisioMetricsUsePodServices.default) }}
+
+    annotations:
+      prometheus.io/scrape: "true"
+      prometheus.io/port: "9121"
+
+    # additional arguments to include to the image commandline
+    argsInclude:
+
+    resources:
+      requests:
+        memory: 64Mi
+        cpu: 250m
+        ephemeral-storage: 64Mi
+      limits:
+        memory: 64Mi
+        cpu: 250m
+        ephemeral-storage: 64Mi
+
+  dashboard:
+    enabled: {{ (metrics.dashboard | default("")).metricsDashboardEenabled | default(model.properties.metrics.properties.dashboard.properties.metricsDashboardEnabled.default) }}
+    label:
+      grafana_dashboard: "yes"
+
+  ## tls settings for server
+  ## takes precedence over .tls.enabled
+  tls:
+    enabled: {{ (tls | default("")).tlsEnabled | default(model.properties.tls.properties.tlsEnabled.default) }}
+    ## Required if tls.enabled is true and certManager.enabled is false
+    secretRef:
+      # Secret name, pointing to a Secret object of type `kubernetes.io/tls`.
+      # If empty then automatically generated secret with certificate will be used
+      name: {{ ((tls | default("")).serverCert | default("")).secret }}
+      # Secret key names mapping.
+      # If the provided Secret is of type `kubernetes.io/tls', then key names do not need to be changed.
+      keyNames:
+        # Name of Secret key, which contains CA certificate
+        caCrt: {{ ((tls | default("")).serverCert | default("")).caCert | default(model.properties.tls.properties.serverCert.properties.caCert.default) }}
+        # Name of Secret key, which contains TLS key
+        tlsKey: {{ ((tls | default("")).serverCert | default("")).key | default(model.properties.tls.properties.serverCert.properties.key.default) }}
+        # Name of Secret key, which contains TLS certificate
+        tlsCrt: {{ ((tls | default("")).serverCert | default("")).cert | default(model.properties.tls.properties.serverCert.properties.cert.default) }}
+
+  ## server-side cert-manager certificate for server
+  ## When using generated certificates via cert-manager,
+  ## the following are used to create the Certificate objects.
+  certificate:
+    enabled: true
+    ## Suffix used by common-lib for secretName of certs
+    nameSuffix: server-cert
+    issuerRef:
+      # if name not provided, will generate automatically
+      name: {{ (((tls | default("")).certMgr | default("")).caIssuer | default("")).name | default(model.properties.tls.properties.certMgr.properties.caIssuer.properties.name.default) }}
+      kind: {{ (((tls | default("")).certMgr | default("")).caIssuer | default("")).kind | default(model.properties.tls.properties.certMgr.properties.caIssuer.properties.kind.default) }}
+      group: {{ (((tls | default("")).certMgr | default("")).caIssuer | default("")).group | default(model.properties.tls.properties.certMgr.properties.caIssuer.properties.group.default) }}
+    duration: {{ ((tls | default("")).certMgr | default("")).duration | default(model.properties.tls.properties.certMgr.properties.duration.default) }}
+    renewBefore: {{ ((tls | default("")).certMgr | default("")).renewBefore | default(model.properties.tls.properties.certMgr.properties.renewBefore.default) }}
+    # Not needed in internall communication
+    subject:
+    # It has been deprecated since 2000 and is discouraged from being used. `dnsNames` are used instead.
+    commonName: {{ ((tls | default("")).certMgr | default("")).commonName }}
+    # If `usages` is not specified, the following will be used:
+    # - server auth
+    # - client auth
+    usages:
+    # If `dnsNames` is not specified then the following internal names will be used:
+    # - localhost
+    # - <service name>.<namespace>
+    # - <service name>.<namespace>.svc
+    # - <service name>.<namespace>.svc.<cluster domain>
+    # If ssl passthrough is used on the Ingress object,
+    # then dnsNames should be set to external DNS names.
+    dnsNames: {{ ((tls | default("")).certMgr | default("")).dnsNames | default(model.properties.tls.properties.certMgr.properties.dnsNames.default) }}
+    uris: {{ ((tls | default("")).certMgr | default("")).uris | default(model.properties.tls.properties.certMgr.properties.uris.default) }}
+    # If ipAddresses not specified then the following internal local IPs will be used:
+    # - "127.0.0.1"
+    # - "::1"
+    ipAddresses: {{ ((tls | default("")).certMgr | default("")).ipAddresses | default(model.properties.tls.properties.certMgr.properties.ipAddresses.default) }}
+    privateKey:
+      algorithm:
+      encoding:
+      size:
+      rotationPolicy: Always
+
+## Redis Cluster Parameters
+cluster:
+  ## Enable Redis Cluster
+  ## When cluster is enabled, sentinel must be disabled and all related values
+  ## will be ignored
+  enabled: {{ (cluster | default("")).redisClusterEnabled | default(model.properties.cluster.properties.redisClusterEnabled.default) }}
+
+  ## Indicates the number of shards to split the database into.
+  ## Redis requires a minimum of 3 shards when using Redis Cluster.
+  ##
+  ## Note: server.count must be >= cluster.shardCount
+  ##
+  ## Redis Cluster will distribute the "extra" servers as slaves within each
+  ## shard.  It is recommended to have server.count be a multiple of cluster.shardCount
+  ## to ensure evenly sized shards.
+  ##
+  ## IMPORTANT: A server.count < (2 x cluster.shardCount) will result in a precarious
+  ## condition where a single pod failure/restart can cause a shard failure and thus
+  ## a full cluster failure.  This is not allowed.
+  shardCount: {{ (cluster | default("")).redisClusterShardCount | default(model.properties.cluster.properties.redisClusterShardCount.default) }}
+
+  ## Redis Cluster configuration parameters to include in the server.conf file
+  ## IMPORTANT: Any parameters set here are subject to being overwritten by dynamic
+  ##            configuration changes.  This can cause unexpected behavior as
+  ##            subsequent changes to the following value can trigger update
+  ##            configuration lifecycle event handling yet not actually apply to
+  ##            the real, runtime configuration.
+  confInclude: |
+
+  ## CRDB provides a cluster robustness audit that runs on the admin pod.  This audit
+  ## continually monitors the state of the Redis Cluster with respect to the shard
+  ## configuration and the distribution on Kubernetes nodes.  When less-than-ideal
+  ## conditions are detected, the audit will take corrective action.
+  audit:
+    enabled: {{ (cluster | default("")).redisClusterAuditEnabled | default(model.properties.cluster.properties.redisClusterAuditEnabled.default) }}
+    timers:
+      # The number of seconds the audit will wait between subsequent actions
+      no_action_time: {{ (cluster | default("")).redisClusterAuditNoActionTimer | default(model.properties.cluster.properties.redisClusterAuditNoActionTimer.default) }}
+      # The number of seconds to leave a pod labeled for avoidance during a
+      # reschedule action
+      resched_label_time: {{ (cluster | default("")).redisClusterAuditReschedLabelTime | default(model.properties.cluster.properties.redisClusterAuditReschedLabelTime.default) }}
+      # The number of seconds to wait for a slave to move to a new master
+      # (needs to account for a full replication)
+      slave_movement_wait: {{ (cluster | default("")).redisClusterAuditSlaveMovementWait | default(model.properties.cluster.properties.redisClusterAuditSlaveMovementWait.default) }}
+    slaveMovementMode: {{ (cluster | default("")).redisClusterAuditSlaveMovementMode | default(model.properties.cluster.properties.redisClusterAuditSlaveMovementMode.default) }}
+
+  ## In the case where persistence is disabled, this parameters is used to delay the restart
+  ## of a server where the node configuration indicates it was a master prior to restart.
+  ## 
+  ## There is the possibility of a master restart resulting in dataloss if it were to become
+  ## master after reboot with an empty dataset
+  ##
+  ## https://redis.io/docs/management/replication/#safety-of-replication-when-master-has-persistence-turned-off
+  masterRestartDelay: 10
+
+sentinel:
+  {% if ( ( (cluster.serverCount | default(model.properties.cluster.properties.serverCount.default)) > 1 ) and
+          ( (cluster.redisClusterEnabled | default(model.properties.cluster.properties.redisClusterEnabled.default)) == false ) )
+   %}
+  enabled: true
+  {% else %}
+  enabled: false
+  {% endif %}
+
+  ## Suffix used by common-lib for certs
+  nameSuffix: sentinel
+
+  image:
+    name: {{ cluster.redisioSentinelImageName | default(model.properties.cluster.properties.redisioSentinelImageName.default) }}
+    tag: {{ cluster.redisioSentinelImageTag | default(model.properties.cluster.properties.redisioSentinelImageTag.default) }}
+    flavor: {{ cluster.imageFlavor | default(model.properties.cluster.properties.imageFlavor.default) }}
+    pullPolicy: {{ cluster.redisioSentinelImagePullPolicy | default(model.properties.cluster.properties.redisioSentinelImagePullPolicy.default) }}
+
+  metrics:
+    enabled: {{ (metrics | default("")).sentinelMetricsEnabled | default(model.properties.metrics.properties.sentinelMetricsEnabled.default) }}
+
+    image:
+      name: {{ metrics.redisioSentinelMetricsImageName | default(model.properties.metrics.properties.redisioSentinelMetricsImageName.default) }}
+      tag: {{ metrics.redisioSentinelMetricsImageTag | default(model.properties.metrics.properties.redisioSentinelMetricsImageTag.default) }}
+      pullPolicy: {{ metrics.redisioSentinelMetricsImagePullPolicy | default(model.properties.metrics.properties.redisioSentinelMetricsImagePullPolicy.default) }}
+
+    usePodServices: {{ (metrics | default("")).redisioSentinelMetricsUsePodServices | default(model.properties.metrics.properties.redisioSentinelMetricsUsePodServices.default) }}
+
+    annotations:
+      prometheus.io/scrape: "true"
+      prometheus.io/port: "9121"
+
+    # additional arguments to include to the image commandline
+    argsInclude:
+
+    resources:
+      requests:
+        memory: 64Mi
+        cpu: 250m
+        ephemeral-storage: 64Mi
+      limits:
+        memory: 64Mi
+        cpu: 250m
+        ephemeral-storage: 64Mi
+
+  #
+  # IMPORTANT: A majority of sentinels must be working and communicating to actually
+  #            perform the failover, regardless of the quorum value. In other words,
+  #            a quorum must agree on master=down; but a majority is required to do
+  #            something about it.
+  #
+  # Number of Redis sentinels to run - minimum 3
+  count: {{ cluster.sentinelCount | default(model.properties.cluster.properties.sentinelCount.default) }}
+
+  # Number of sentinels that must agree on a master as down to perform failover
+  quorum: {{ cluster.sentinelQuorum | default(model.properties.cluster.properties.sentinelQuorum.default) }}
+
+  downAfterMilliseconds: {{ cluster.sentinelDownAfterMillis | default(model.properties.cluster.properties.sentinelDownAfterMillis.default) }}
+  failoverTimeout: {{ cluster.sentinelFailoverTimeout | default(model.properties.cluster.properties.sentinelFailoverTimeout.default) }}
+  parallelSyncs: {{ cluster.sentinelParallelSyncs | default(model.properties.cluster.properties.sentinelParallelSyncs.default) }}
+
+  clientPort: 26379
+
+  resources:
+    requests:
+      memory: {{ (resources | default("")).sentinelRequestsMemory | default(model.properties.resources.properties.sentinelRequestsMemory.default) }}
+      cpu: {{ (resources | default("")).sentinelRequestsCpu | default(model.properties.resources.properties.sentinelRequestsCpu.default) }}
+      ephemeral-storage: {{ (resources | default("")).sentinelRequestsEphemeral | default(model.properties.resources.properties.sentinelRequestsEphemeral.default) }}
+    limits:
+      memory: {{ (resources | default("")).sentinelLimitsMemory | default(model.properties.resources.properties.sentinelLimitsMemory.default) }}
+      cpu: {{ (resources | default("")).sentinelLimitsCpu | default(model.properties.resources.properties.sentinelLimitsCpu.default) }}
+      ephemeral-storage: {{ (resources | default("")).sentinelLimitsEphemeral | default(model.properties.resources.properties.sentinelLimitsEphemeral.default) }}
+
+  # Redis sentinel configuration parameters to include in the server.conf file
+  # IMPORTANT: Any parameters set here are subject to being overwritten by dynamic
+  #            configuration changes.  This can cause unexpected behavior as
+  #            subsequent changes to the following value can trigger update
+  #            configuration lifecycle event handling yet not actually apply to
+  #            the real, runtime configuration.
+  confInclude: |
+
+  ## Readiness/Liveness Probe Configuration (Redis sentinel container)
+  ## ref: https://kubernetes.io/docs/tasks/configure-pod-container/configure-liveness-readiness-startup-probes/#configure-probes
+  ##
+  livenessProbe:
+    initialDelaySeconds: {{ (cluster.sentinelLivenessProbe | default("")).initialDelaySeconds | default(180) }}
+    periodSeconds: {{ (cluster.sentinelLivenessProbe | default("")).periodSeconds | default(10) }}
+    timeoutSeconds: {{ (cluster.sentinelLivenessProbe | default("")).timeoutSeconds | default(5) }}
+    failureThreshold: {{ (cluster.sentinelLivenessProbe | default("")).failureThreshold | default(6) }}
+    probeCmd: {{ (cluster.sentinelLivenessProbe | default("")).probeCmd | default("") }}
+  readinessProbe:
+    initialDelaySeconds: {{ (cluster.sentinelReadinessProbe | default("")).initialDelaySeconds | default(10) }}
+    periodSeconds: {{ (cluster.sentinelReadinessProbe | default("")).periodSeconds | default(15) }}
+    timeoutSeconds: {{ (cluster.sentinelReadinessProbe | default("")).timeoutSeconds | default(1) }}
+    failureThreshold: {{ (cluster.sentinelReadinessProbe | default("")).failureThreshold | default(3) }}
+    probeCmd: {{ (cluster.sentinelReadinessProbe | default("")).probeCmd | default("") }}
+
+  ## tls settings for sentinel
+  ## takes precedence over .tls.enabled
+  tls:
+    enabled: {{ (tls | default("")).tlsEnabled | default(model.properties.tls.properties.tlsEnabled.default) }}
+    ## Required if tls.enabled is true and certManager.enabled is false
+    secretRef:
+      # Secret name, pointing to a Secret object of type `kubernetes.io/tls`.
+      # If empty then automatically generated secret with certificate will be used
+      name: {{ ((tls | default("")).sentinelCert | default("")).secret }}
+      # Secret key names mapping.
+      # If the provided Secret is of type `kubernetes.io/tls', then key names do not need to be changed.
+      keyNames:
+        # Name of Secret key, which contains CA certificate
+        caCrt: {{ ((tls | default("")).sentinelCert | default("")).caCert | default(model.properties.tls.properties.sentinelCert.properties.caCert.default) }}
+        # Name of Secret key, which contains TLS key
+        tlsKey: {{ ((tls | default("")).sentinelCert | default("")).key | default(model.properties.tls.properties.sentinelCert.properties.key.default) }} 
+        # Name of Secret key, which contains TLS certificate
+        tlsCrt: {{ ((tls | default("")).sentinelCert | default("")).cert | default(model.properties.tls.properties.sentinelCert.properties.cert.default) }}
+
+
+  ## server-side cert-manager certificate for sentinel
+  ## When using generated certificates via cert-manager,
+  ## the following are used to create the Certificate objects.
+  certificate:
+    enabled: true
+    ## Suffix used by common-lib for secretName of certs
+    nameSuffix: sentinel-cert
+    issuerRef:
+      # if name not provided, will generate automatically
+      name: {{ (((tls | default("")).certMgr | default("")).caIssuer | default("")).name | default(model.properties.tls.properties.certMgr.properties.caIssuer.properties.name.default) }}
+      kind: {{ (((tls | default("")).certMgr | default("")).caIssuer | default("")).kind | default(model.properties.tls.properties.certMgr.properties.caIssuer.properties.kind.default) }}
+      group: {{ (((tls | default("")).certMgr | default("")).caIssuer | default("")).group | default(model.properties.tls.properties.certMgr.properties.caIssuer.properties.group.default) }}
+    duration: {{ ((tls | default("")).certMgr | default("")).duration | default(model.properties.tls.properties.certMgr.properties.duration.default) }}
+    renewBefore: {{ ((tls | default("")).certMgr | default("")).renewBefore | default(model.properties.tls.properties.certMgr.properties.renewBefore.default) }}
+    # Not needed in internall communication
+    subject:
+    # It has been deprecated since 2000 and is discouraged from being used. `dnsNames` are used instead.
+    commonName: {{ ((tls | default("")).certMgr | default("")).commonName }}
+    # If `usages` is not specified, the following will be used:
+    # - server auth
+    # - client auth
+    usages:
+    # If `dnsNames` is not specified then the following internal names will be used:
+    # - localhost
+    # - <service name>.<namespace>
+    # - <service name>.<namespace>.svc
+    # - <service name>.<namespace>.svc.<cluster domain>
+    # If ssl passthrough is used on the Ingress object,
+    # then dnsNames should be set to external DNS names.
+    dnsNames: {{ ((tls | default("")).certMgr | default("")).dnsNames | default(model.properties.tls.properties.certMgr.properties.dnsNames.default) }}
+    uris: {{ ((tls | default("")).certMgr | default("")).uris | default(model.properties.tls.properties.certMgr.properties.uris.default) }}
+    # If ipAddresses not specified then the following internal local IPs will be used:
+    # - "127.0.0.1"
+    # - "::1"
+    ipAddresses: {{ ((tls | default("")).certMgr | default("")).ipAddresses | default(model.properties.tls.properties.certMgr.properties.ipAddresses.default) }}
+    privateKey:
+      algorithm:
+      encoding:
+      size:
+      rotationPolicy: Always
+
+rolemon:
+  image:
+    name: {{ cluster.redisioRolemonImageName | default(model.properties.cluster.properties.redisioRolemonImageName.default) }}
+    tag: {{ cluster.redisioRolemonImageTag | default(model.properties.cluster.properties.redisioRolemonImageTag.default) }}
+    flavor: {{ cluster.imageFlavor | default(model.properties.cluster.properties.imageFlavor.default) }}
+    pullPolicy: {{ cluster.redisioRolemonImagePullPolicy | default(model.properties.cluster.properties.redisioRolemonImagePullPolicy.default) }}
+
+  resources:
+    requests:
+      memory: {{ (resources | default("")).rolemonRequestsMemory | default(model.properties.resources.properties.rolemonRequestsMemory.default) }}
+      cpu: {{ (resources | default("")).rolemonRequestsCpu | default(model.properties.resources.properties.rolemonRequestsCpu.default) }}
+      ephemeral-storage: {{ (resources | default("")).rolemonRequestsEphemeral | default(model.properties.resources.properties.rolemonRequestsEphemeral.default) }}
+    limits:
+      memory: {{ (resources | default("")).rolemonLimitsMemory | default(model.properties.resources.properties.rolemonLimitsMemory.default) }}
+      cpu: {{ (resources | default("")).rolemonLimitsCpu | default(model.properties.resources.properties.rolemonLimitsCpu.default) }}
+      ephemeral-storage: {{ (resources | default("")).rolemonLimitsEphemeral | default(model.properties.resources.properties.rolemonLimitsEphemeral.default) }}
+
+  ## Liveness Probe Configuration (rolemon container)
+  ## ref: https://kubernetes.io/docs/tasks/configure-pod-container/configure-liveness-readiness-startup-probes/#configure-probes
+  ##
+  livenessProbe:
+    initialDelaySeconds: {{ (cluster.rolemonLivenessProbe | default("")).initialDelaySeconds | default(180) }}
+    periodSeconds: {{ (cluster.rolemonLivenessProbe | default("")).periodSeconds | default(60) }}
+    timeoutSeconds: {{ (cluster.rolemonLivenessProbe | default("")).timeoutSeconds | default(5) }}
+    failureThreshold: {{ (cluster.rolemonLivenessProbe | default("")).failureThreshold | default(6) }}
+    probeCmd: {{ (cluster.rolemonLivenessProbe | default("")).probeCmd | default("") }}
+
+admin:
+  image:
+    name: {{ cluster.redisioAdminImageName | default(model.properties.cluster.properties.redisioAdminImageName.default) }}
+    tag: {{ cluster.redisioAdminImageTag | default(model.properties.cluster.properties.redisioAdminImageTag.default) }}
+    flavor: {{ cluster.imageFlavor | default(model.properties.cluster.properties.imageFlavor.default) }}
+    pullPolicy: {{ cluster.redisioAdminImagePullPolicy | default(model.properties.cluster.properties.redisioAdminImagePullPolicy.default) }}
+
+  resources:
+    requests:
+      memory: {{ (resources | default("")).adminRequestsMemory | default(model.properties.resources.properties.adminRequestsMemory.default) }}
+      cpu: {{ (resources | default("")).adminRequestsCpu | default(model.properties.resources.properties.adminRequestsCpu.default) }}
+      ephemeral-storage: {{ (resources | default("")).adminRequestsEphemeral | default(model.properties.resources.properties.adminRequestsEphemeral.default) }}
+    limits:
+      memory: {{ (resources | default("")).adminLimitsMemory | default(model.properties.resources.properties.adminLimitsMemory.default) }}
+      cpu: {{ (resources | default("")).adminLimitsCpu | default(model.properties.resources.properties.adminLimitsCpu.default) }}
+      ephemeral-storage: {{ (resources | default("")).adminLimitsEphemeral | default(model.properties.resources.properties.adminLimitsEphemeral.default) }}
+
+  hookDeletePolicy: "hook-succeeded"
+  #debug: true
+
+  # Post-instlal hook job essentially waits for all pods/containers to be ready
+  # This behavior can be disabled by setting to false
+  postInstall:
+    enabled: true
+
+  ## Readiness/Liveness Probe Configuration (admin container)
+  ## ref: https://kubernetes.io/docs/tasks/configure-pod-container/configure-liveness-readiness-startup-probes/#configure-probes
+  ##
+  livenessProbe:
+    initialDelaySeconds: {{ (cluster.redisioAdminLivenessProbe | default("")).initialDelaySeconds | default(180) }}
+    periodSeconds: {{ (cluster.redisioAdminLivenessProbe | default("")).periodSeconds | default(10) }}
+    timeoutSeconds: {{ (cluster.resisioAdminLivenessProbe | default("")).timeoutSeconds | default(5) }}
+    failureThreshold: {{ (cluster.redisioAdminLivenessProbe | default("")).failureThreshold | default(6) }}
+    probeCmd: {{ (cluster.redisioAdminLivenessProbe | default("")).probeCmd | default("") }}
+  readinessProbe:
+    initialDelaySeconds: {{ (cluster.redisioAdminReadinessProbe | default("")).initialDelaySeconds | default(10) }}
+    periodSeconds: {{ (cluster.redisioAdminReadinessProbe | default("")).periodSeconds | default(15) }}
+    timeoutSeconds: {{ (cluster.redisioAdminReadinessProbe | default("")).timeoutSeconds | default(1) }}
+    failureThreshold: {{ (cluster.redisioAdminReadinessProbe | default("")).failureThreshold | default(3) }}
+    probeCmd: {{ (cluster.redisioAdminReadinessProbe | default("")).probeCmd | default("") }}
+
+## Backup/Recovery via CBUR
+cbur:
+  enabled: {{ (cbur | default("")).cburEnabled | default(model.properties.cbur.properties.cburEnabled.default) }}
+
+  ## Exposes legacy NCMS Helm plugin hooks to override the BrHook mechanism added
+  ## to BCMT in 20.03
+  legacyHooks: false
+
+  ## Exposes the BrHook parameters which may be used to control the execution
+  ## and sequencing of the hooks per CBUR logic
+  brHookType: brpolicy
+  brHookWeight: 0
+  brHookEnable: true
+  brHookTimeout: 600
+
+  image:
+    name: {{ cbur.redisioCburaImageName | default(model.properties.cbur.properties.redisioCburaImageName.default) }}
+    tag: {{ cbur.redisioCburaImageTag | default(model.properties.cbur.properties.redisioCburaImageTag.default) }}
+    pullPolicy: {{ cbur.redisioCburaImagePullPolicy | default(model.properties.cbur.properties.redisioCburaImagePullPolicy.default) }}
+
+  securityContext: {}
+
+  resources:
+    requests:
+      memory: {{ (cbur | default("")).cburaRequestsMemory | default(model.properties.cbur.properties.cburaRequestsMemory.default) }}
+      cpu: {{ (cbur | default("")).cburaRequestsCpu | default(model.properties.cbur.properties.cburaRequestsCpu.default) }}
+      ephemeral-storage: {{ (cbur | default("")).cburaRequestsEphemeral | default(model.properties.cbur.properties.cburaRequestsEphemeral.default) }}
+    limits:
+      memory: {{ (cbur | default("")).cburaLimitsMemory | default(model.properties.cbur.properties.cburaLimitsMemory.default) }}
+      cpu: {{ (cbur | default("")).cburaLimitsCpu | default(model.properties.cbur.properties.cburaLimitsCpu.default) }}
+      ephemeral-storage: {{ (cbur | default("")).cburaLimitsEphemeral | default(model.properties.cbur.properties.cburaLimitsEphemeral.default) }}
+
+  backend:
+    mode: local
+
+  ## Automatic backup triggering
+  backup:
+    # Perform automatic backup on (before) upgrade
+    # Triggered during pre-upgrade, only when Server image or count change detected
+    # (Values changed: server.image.* or server.count)
+    # Note: User must ensure admin.preUpgradeTimeout and helm timeout sufficient to
+    #       perform backup AND upgrade, or timeout failures will occur.
+    upgrade: {{ (cbur.backup | default("")).onUpgrade  | default(model.properties.cbur.properties.backup.properties.onUpgrade.default) }}
+
+    # Timeout for performing backup (sec)
+    timeout: {{ (cbur.backup | default("")).timeoutSeconds  | default(model.properties.cbur.properties.backup.properties.timeoutSeconds.default) }}
+
+  # CBUR Master Service access information used to initiate backup via CBUR API,
+  # e.g., when cbur.backup.upgrade: true
+  service:
+    # The namespace where the CBUR Master Service (ignored if url set)
+    namespace: {{ (cbur.service | default("")).namespace | default(model.properties.cbur.properties.service.properties.namespace.default) }}
+    # The Service name of the CBUR Master Service (ignored if url set)
+    name: {{ (cbur.service | default("")).name | default(model.properties.cbur.properties.service.properties.name.default) }}
+    # The protocol to use for CBUR API (http/https)
+    protocol: {{ (cbur.service | default("")).protocol | default(model.properties.cbur.properties.service.properties.protocol.default) }}
+
+    # If unset, will be automatically constructed from name, namespace, and
+    # clusterDomain.  Can be used to set a custom URL
+    url: {{ (cbur.service | default("")).url | default(model.properties.cbur.properties.service.properties.url.default) }}
+
+    # A secret providing the username/password for accessing the CBUR Master
+    # Service.  Necessary when CBUR is auth enabled
+    authSecret: {{ (cbur.service | default("")).authSecret | default(model.properties.cbur.properties.service.properties.authSecret.default) }}
+
+## Istio environment
+istio:
+  enabled: {{ (istio | default("")).enabled | default(model.properties.istio.properties.enabled.default) }}
+
+## Data in Flight TLS Encryption
+##
+tls:
+  enabled: {{ (tls | default("")).tlsEnabled | default(model.properties.tls.properties.tlsEnabled.default) }}
+
+  ## mTLS
+  ##
+  ## Redis enables mutual TLS by default, when TLS is enabled.
+  ## To disable client certificate authentication, set authClients to false
+  ## NOTE: This setting also affects replication of traffic between server
+  ##       pods for replication or clustering.
+  authClients: {{ (tls | default("")).authClients | default(model.properties.tls.properties.authClients.default) }}
+  ###### site-specific params #####
+  ## Certificates
+  ##
+  ## See *.certificate. When *.certManager is enabled, cert-manager will be used
+  ## to generate the certificate(s). Disable *.certManger to use a pre-created
+  ## secret.
+  ##
+  ## NOTE: These interfaces are valid only when *.tls.enabled=true
+  ##
+  ## 1. Automatically generated certificates
+  ##    P/V:   .certManager.enabled
+  ##           *.tls.enabled
+  ##           *.certificate
+  ##    Descr: This interface creates kubectl secret objects with the
+  ##           following names:
+  ##           - {{crdb-redisio.fullname}}-client-cert
+  ##           - {{crdb-redisio.fullname}}-server-cert
+  ##           - {{crdb-redisio.fullname}}-sentinel-cert
+  ##    Notes:
+  ##      - Secret is mounted in the /var/run/certs/<workload> directory.
+  ##
+  ## 2. Manually supplied certificates
+  ##    P/V:   *.tls.enabled
+  ##           *.tls.secretRef.name
+  ##           *.tls.secretRef.keyNames
+  ##    Descr: The *.tls.secretRef.name value is a kubectl Secret object that contains
+  ##           3 files as data items in the Secret.  The keys can be indicated
+  ##           using caCert, tlsKey, and tlsCrt under *.tls.secretRef.keyNames.
+  ##    Notes:
+  ##      - The secret resource containing all the certificate files must be
+  ##        pre-populated before helm install
+  ##      - Secret is mounted in the /var/run/certs/<workload> directory.
+  ##
+  ##
+  ###### site-specific params #####
+  ##
+  certificates:
+    ## If threshold greater than zero, a Major alarm is generated if the
+    ## certificate is about to expire in the specified number of days
+    ## (default 7). A Critical alarm is generated when the certificate is
+    ## expired. The zero value disables certificate alarming.
+    threshold: {{ (tls | default("")).threshold | default(model.properties.tls.properties.threshold.default) }}
+    server:
+      rolloutWait: {{ ((tls | default("")).serverCert | default("")).rolloutWait | default(model.properties.tls.properties.serverCert.properties.rolloutWait.default) }}
+
+## Client-side site-specific params ###
+clients:
+  ##
+  ## The internal (workload) client is used by the internal tooling for things like
+  ## LCM/admin events, monitoring, alarming, metrics, etc.
+  ## Applications can use the internal client aspects (e.g., certificates), if so desired.
+  ##
+  internal:
+    ## Suffix used by common-lib for certs
+    nameSuffix: client
+    tls:
+      ## If tls.authClients is true, then the internal client requires a
+      ## certificate passed in via a Secret.
+      secretRef:
+        ## Secret containing the certificate to be used for this client.
+        ## If empty then automatically generated secret with certificate will be used
+        name:
+        ## Secret key names mapping.
+        ## If the provided Secret is of type `kubernetes.io/tls', then key names do not
+        ## need to be changed.
+        keyNames:
+          ## Name of Secret key, which contains CA certificate
+          caCrt: {{ ((tls | default("")).clientCert | default("")).caCert | default(model.properties.tls.properties.clientCert.properties.caCert.default) }}
+          ## Name of Secret key, which contains TLS key
+          tlsKey: {{ ((tls | default("")).clientCert | default("")).key | default(model.properties.tls.properties.clientCert.properties.key.default) }}
+          ## Name of Secret key, which contains TLS certificate
+          tlsCrt: {{ ((tls | default("")).clientCert | default("")).cert | default(model.properties.tls.properties.clientCert.properties.cert.default) }}
+    ## When using generated certificates via cert-manager,
+    ## the following are used to create the Certificate objects.
+    certificate:
+      enabled: true
+      ## Suffix used by common-lib for secretName for certs
+      nameSuffix: client-cert
+      issuerRef:
+        # if name not provided, will generate automatically
+        name: {{ (((tls | default("")).certMgr | default("")).caIssuer | default("")).name | default(model.properties.tls.properties.certMgr.properties.caIssuer.properties.name.default) }}
+        kind: {{ (((tls | default("")).certMgr | default("")).caIssuer | default("")).kind | default(model.properties.tls.properties.certMgr.properties.caIssuer.properties.kind.default) }}
+        group: {{ (((tls | default("")).certMgr | default("")).caIssuer | default("")).group | default(model.properties.tls.properties.certMgr.properties.caIssuer.properties.group.default) }}
+      duration: {{ ((tls | default("")).certMgr | default("")).duration | default(model.properties.tls.properties.certMgr.properties.duration.default) }}
+      renewBefore: {{ ((tls | default("")).certMgr | default("")).renewBefore | default(model.properties.tls.properties.certMgr.properties.renewBefore.default) }}
+      # Not needed in internal client
+      subject:
+      # It has been deprecated since 2000 and is discouraged from being used. `dnsNames` are used instead.
+      commonName: {{ ((tls | default("")).certMgr | default("")).commonName }}
+      # If `usages` is not specified, the following will be used:
+      # - client auth
+      usages:
+      # if name not provided, will generate automatically
+      # If `dnsNames` is not specified then the following internal names will be used:
+      # - localhost
+      # - <service name>.<namespace>
+      # - <service name>.<namespace>.svc
+      # - <service name>.<namespace>.svc.<cluster domain>
+      # If ssl passthrough is used on the Ingress object,
+      # then dnsNames should be set to external DNS names.
+      dnsNames: {{ ((tls | default("")).certMgr | default("")).dnsNames | default(model.properties.tls.properties.certMgr.properties.dnsNames.default) }}
+      uris: {{ ((tls | default("")).certMgr | default("")).uris | default(model.properties.tls.properties.certMgr.properties.uris.default) }}
+      # If ipAddresses not specified then the following internal local IPs will be used:
+      # - "127.0.0.1"
+      # - "::1"
+      ipAddresses: {{ ((tls | default("")).certMgr | default("")).ipAddresses | default(model.properties.tls.properties.certMgr.properties.ipAddresses.default) }}
+      privateKey:
+        algorithm:
+        encoding:
+        size:
+        rotationPolicy: Always

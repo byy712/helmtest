@@ -1,0 +1,77 @@
+{{- if (and (.Values.cbur.enabled) (.Values.cbur.brHookPostRestore.enable)) }}
+{{- if .Values.cbur.apiVersion }}
+apiVersion: {{ .Values.cbur.apiVersion }}
+{{- else if .Capabilities.APIVersions.Has "cbur.csf.nokia.com/v1/BrHook" }}
+apiVersion: cbur.csf.nokia.com/v1
+{{- else }}
+apiVersion: cbur.bcmt.local/v1
+{{- end }}
+kind: BrHook
+metadata:
+  name: {{ template "ckey.postrestoreHookName" . }}
+  namespace: {{ .Release.Namespace }}
+  annotations:
+    {{- include "ckey.customAnnotations" (tuple .Values.global.annotations) | indent 4 }}
+  labels:
+    {{- include "ckey.customLabels" (tuple .Values.global.labels ) | indent 4 }}
+    {{- include "ckey.commonLabels" . | indent 4 }}
+spec:
+  properties:
+    targetType: "brpolicy"
+    targetName: {{ template "ckey.keycloak.statefulsetName" . }}
+    hookPoint: "postrestore"
+    weight: {{ .Values.cbur.brHookPostRestore.weight }}
+    enable: {{ .Values.cbur.brHookPostRestore.enable }}
+    timeout: {{ .Values.cbur.brHookPostRestore.timeout }}
+    deletePolicy: 'before-hook-creation,hook-succeeded'
+  template:
+    spec:
+      template:
+        metadata:
+          annotations:
+          {{- if .Values.istio.enabled }}
+            sidecar.istio.io/inject: "true"
+            traffic.sidecar.istio.io/excludeInboundPorts: "443"
+            traffic.sidecar.istio.io/excludeOutboundPorts: "443"
+            {{- include "ckey.istio.resources" .  }}
+          {{- else }}
+            sidecar.istio.io/inject: "false"
+          {{- end }}
+            {{- include "ckey.customAnnotations" (tuple .Values.global.annotations) | indent 12 }}
+          labels:
+            {{- include "ckey.customLabels" (tuple .Values.global.labels ) | indent 12 }}
+            {{- include "ckey.commonLabels" . | indent 12 }}
+        spec:
+          serviceAccountName: {{ template "ckey.serviceAccountBRHook" . }}
+          automountServiceAccountToken: true
+          securityContext:
+{{ include "ckey.keycloak.securitycontext" . | indent 12 }}
+          containers:
+            - name: {{ template "ckey.postRestoreContainerName" . }}
+              image: {{ include "ckey.container.image" (tuple $ .Values.images.kubectl .Values.internalKubectlRegistry) }}
+              imagePullPolicy: "{{ .Values.images.pullPolicy }}"
+              securityContext:
+              {{- include "ckey.container.securitycontext" . | nindent 16 }}
+              env:
+                {{- include "ckey.timezone" . | nindent 16 }}
+              command:
+                - sh
+                - -c
+                - |
+                  echo 'Postrestore job for release: {{ .Release.Name }}'
+                  kubectl delete pods -l app={{ template "ckey.chartName" . }},release={{ .Release.Name }} --namespace={{ .Release.Namespace }}
+                  echo 'Waiting 5 seconds before job cleanup'
+                  sleep 5
+{{ include "ckey.istio.quit_proxy_container" . | indent 18 }}
+                  exit 0
+              resources:
+{{ include "ckey.keycloak.busybox-container-resources-spec" . | indent 16 }}
+          {{- include "ckey.imagePullSecrets" (tuple . "kubectl") | nindent 10 }}
+          restartPolicy: Never
+          terminationGracePeriodSeconds: {{ .Values.cbur.terminationGracePeriodSecondsForBackup }}
+          {{- if .Values.nodeSelector }}
+          nodeSelector:
+{{ toYaml .Values.nodeSelector | indent 12 }}
+          {{- end }}
+{{ include "ckey.common.affinity" . | indent 10 }}
+{{- end }}

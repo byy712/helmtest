@@ -1,0 +1,399 @@
+## Image Registry
+global:
+  # global registry will take precedence over internalRegistry provided
+  registry:
+
+  # Set flatRegistry to true to use images from registries with a flat structure. 
+  # If enabled, any subpaths in the image repository name (separated by /) would be skipped and only its last part would be used. Please ensure that all the images are available in the docker registry in the expected flat structure.
+  flatRegistry: false
+  # limit the length of podNamePrefix i.e 30 characters
+  disablePodNamePrefixRestrictions: false
+  # podNamePrefix should not exceed 30 characters
+  podNamePrefix:
+  # containerNamePrefix should not exceed 34 characters
+  containerNamePrefix:
+  priorityClassName: ""
+  # Global Custom Labels
+  labels: {}
+  # -- Required to  add image from the private registry
+  # Visit  https://kubernetes.io/docs/concepts/containers/images/#specifying-imagepullsecrets-on-a-pod
+  # The secret should be in the same namespace.
+  # imagePullSecrets:
+  #  - name: secret-name
+  imagePullSecrets: []
+  
+  # Set this to true to use default values for CPU limits inside the container else container will run without CPU limits set
+  # NOTE: enableDefaultCpuLimits takes precedence over the global.enableDefaultCpuLimits
+  enableDefaultCpuLimits: false
+  
+  podSecurityPolicy:
+    # +--------------------------------------------------------------------------------------------------------------------------------+
+    # | pspName is the name of the psp to be used for the roles & rolebindings. If 'userProvided' is set to true, then rbac role will  |
+    # | Following are the possible combinations and behavior based on the combination                                                  |
+    # | userProvided: false  pspName: blank ---> Helm Chart will create PSP                                                            |
+    # | userProvided: false  pspName: some value ---> Helm Chart will create PSP                                                       |
+    # | userProvided: true   pspName: blank ---> pspName can not be blank , if blank chart installation fails                          |
+    # | userProvided: true   pspName: some value ---> PSP mentioned in the pspName would be used                                       |
+    # +--------------------------------------------------------------------------------------------------------------------------------+
+    userProvided: false
+    pspName:
+
+  ipFamilyPolicy:
+  ipFamilies: []
+  dualStack:
+    enabled: false                 #DEPRECATED: Use global.ipFamilyPolicy and global.ipFamilies
+    ipFamilyPolicy:                #DEPRECATED: Use global.ipFamilyPolicy
+    ipFamilies: []                 #DEPRECATED: Use global.ipFamilies
+  # +--------------------------------------------------------------------------------------------------------------------+
+  # | To set the security context to the pod/containers, all of them are integers unless specified as "auto"             |
+  # | Set this to "auto" so K8s will assign userId/groupid to the container and fsgroup to the pod                       |
+  # | !!! NOTE : if runAsUser is set to "auto" then this needs to "auto" as well                                         |
+  # +--------------------------------------------------------------------------------------------------------------------+
+  securityContext:
+    runAsUser: 1000
+    runAsGroup: 1000
+    fsGroup: 1000
+  containerSecurityContext:
+    enabled: false
+    readOnlyRootFS: true
+    dropCapabilities: "ALL"
+    runAsNonRoot: true
+    seccompProfile:
+      type: RuntimeDefault  # RuntimeDefault/Localhost
+      path: "" # Provide path when type is set to Localhost
+    privilegeEscalation: false
+    seLinuxOptions:
+      enabled: false
+      level: ""
+      role: ""
+      type: ""
+      user: ""
+
+# limit the length of podNamePrefix i.e 30 characters, root level takes precedence over global level
+disablePodNamePrefixRestrictions:
+
+# +-------------------+
+# | FOR COMMON LABELS |
+# +-------------------+
+component: "MessagingAndProtocols"
+managedBy: "helm"
+partOf: "citm"
+
+# Registry of the citm image
+internalCitmRegistry: "csf-docker-delivered.repo.cci.nokia.net"
+# Registry of the Kubectl image
+internalToolsRegistry: "csf-docker-delivered.repo.cci.nokia.net"
+
+# NOTE: when imageRepo is provided as "repo/imageName", .imageName shouldn't be used
+imageRepo: "citm"
+imageName: "citm-default-backend"
+imageTag: "4.0.4-19.3"
+imagePullPolicy: IfNotPresent
+
+# Required to add an image from the private registry.
+# Visit  https://kubernetes.io/docs/concepts/containers/images/#specifying-imagepullsecrets-on-a-pod
+# The secret should be in the same namespace.
+# imagePullSecrets:
+#  - name: secret-name
+imagePullSecrets: []
+
+nodeSelector: {}
+
+runOnEdge: false
+
+# Enabled common labels (Refer to HBP guide HBP-Kubernetes.html#common-labels)
+commonLabels: true
+
+# +------------------------------------------+
+# | Def404 Custom Labels                     |
+# | labels:                                  |
+# |   "environment" : "PROD"                 |
+# +------------------------------------------+
+labels: {}
+
+# labels to add to the pod container metadata
+podLabels: {}
+# key: value
+
+tolerations: []
+
+# See https://kubernetes.io/docs/concepts/scheduling-eviction/assign-pod-node/#inter-pod-affinity-and-anti-affinity
+# Example - 1 : Pod anti-affinity rule as "HARD"
+# affinity:
+#   podAntiAffinity:
+#     requiredDuringSchedulingIgnoredDuringExecution:
+#       - labelSelector:
+#           matchExpressions:
+#             - key: app
+#               operator: In
+#               values:
+#               - default404
+#         topologyKey: kubernetes.io/hostname
+#       - labelSelector:
+#           matchExpressions:
+#             - key: app
+#               operator: In
+#               values:
+#               - default404
+#         topologyKey: failure-domain.beta.kubernetes.io/zone
+# Example - 2 : Pod anti-affinity rule as "SOFT" (default)
+#  affinity:
+#    podAntiAffinity:
+#      preferredDuringSchedulingIgnoredDuringExecution:
+#      - weight: 100
+#        podAffinityTerm:
+#          labelSelector:
+#            matchExpressions:
+#              - key: app
+#                operator: In
+#                values:
+#                - default404
+#          topologyKey: kubernetes.io/hostname
+#      - weight: 100
+#        podAffinityTerm:
+#          labelSelector:
+#            matchExpressions:
+#              - key: app
+#                operator: In
+#                values:
+#                - default404
+#          topologyKey: failure-domain.beta.kubernetes.io/zone
+
+affinity:
+  podAntiAffinity:
+    preferredDuringSchedulingIgnoredDuringExecution:
+      - podAffinityTerm:
+          labelSelector:
+            matchExpressions:
+              - key: app
+                operator: In
+                values:
+                - default404
+          topologyKey: kubernetes.io/hostname
+        weight: 100
+
+# Note: If kubernetes version is equal to 1.16 or 1.17, you must enable the EvenPodsSpread feature gate
+# and then set evenPodSpreadEnabled to true.
+# Ref: https://kubernetes.io/docs/reference/command-line-tools-reference/feature-gates/
+evenPodSpreadEnabled: false
+
+# topologySpreadConstraints allow control of how pods are spread across
+# cluster among failure-domains such as regions, zones, nodes, and other
+# user-defined topology domains. This can help to achieve high availability
+# as well as efficient resource utilization.
+# The following attributes can be defined here:
+#   maxSkew           - Describes the degree to which pods may be unevenly distributed. It must be greater than zero.
+#   topologyKey       - The key of node labels.
+#   whenUnsatisfiable - [optional] Indicates how to deal with a Pod if it doesn't satisfy the spread constraint. Defaults
+#   to DoNotSchedule. Options: DoNotSchedule or ScheduleAnyway
+#   labelSelector     - [optional] Define labels to find the matching pods
+# If autoGenerateLabelSelector is set to true and labelSelector key is omitted in <topologySpreadConstraint parameters>
+#    then .spec.topologySpreadConstraints[*].labelSelector is automatically generated.
+# If labelSelector key defined in <topologySpreadConstraint parameters>
+#    then .spec.topologySpreadConstraints[*].labelSelector is filled based on labelSelector key
+# NOTE: Pod labels will be defaulted by the chart, if not specified here.
+# Ref: https://kubernetes.io/docs/concepts/workloads/pods/pod-topology-spread-constraints/
+# example-1: Single Pod Topology Constraints
+# topologySpreadConstraints:
+#   - maxSkew: 1
+#     topologyKey: zone
+#     whenUnsatisfiable: DoNotSchedule
+#     autoGenerateLabelSelector: boolean
+#     labelSelector:
+#       matchLabels:
+#         app: default404
+# example-2: Multiple Pod Topology Constraints
+# topologySpreadConstraints:
+#   - maxSkew: 1
+#     topologyKey: zone
+#     whenUnsatisfiable: DoNotSchedule
+#     labelSelector:
+#       matchLabels:
+#         app: default404
+#   - maxSkew: 1
+#     topologyKey: node
+#     whenUnsatisfiable: DoNotSchedule
+#     labelSelector:
+#       matchLabels:
+#         app: default404
+
+topologySpreadConstraints: []
+
+# use clusterDomain for accessing svc
+clusterDomain: cluster.local
+
+replicaCount: 1
+
+# +------------------------------------------------------------------------------------------------------------------+
+# | If set to true, container will use default CPU limits                                                            |
+# | If set to false, container will run without CPU limits set                                                       |
+# | NOTE: Takes precedence over global.enableDefaultCpuLimits, if empty global.enableDefaultCpuLimits will be used   |
+# +------------------------------------------------------------------------------------------------------------------+
+enableDefaultCpuLimits:
+
+resources:
+  requests:
+    memory: 10Mi
+    cpu: 1m
+  limits:
+    memory: 64Mi
+    cpu: 10m
+
+probe:
+  enabled: true
+  #startupProbe requires at least K8S 1.18 (BCMT20.06)
+  startup:
+    path: /healthz
+    # initialDelaySeconds
+    delay: 10
+    # periodSeconds
+    period: 10
+    # timeoutSeconds
+    timeout: 3
+    # failureThreshold
+    maxfailure: 6
+  liveness:
+    path: /healthz
+    # if K8S 1.18+, then initialDelaySeconds is forced to 0 since startupProbe has been run
+    #initialDelaySeconds
+    delay: 5
+    # periodSeconds
+    period: 5
+    # timeoutSeconds
+    timeout: 3
+    # failureThreshold
+    maxfailure: 5
+  readiness:
+    path: /healthz
+    # If K8S 1.18+, then initialDelaySeconds is forced to 0 since startupProbe has been run
+    # initialDelaySeconds
+    delay: 3
+    # periodSeconds
+    period: 5
+    # timeoutSeconds
+    timeout: 3
+    # failureThreshold
+    maxfailure: 5
+
+service:
+  type: ClusterIP
+  servicePort: 8080
+
+  # -- Represents the dual-stack-ness requested or required by this Service.
+  # Possible values are SingleStack, PreferDualStack or RequireDualStack.
+  # The ipFamilies and clusterIPs fields depend on the value of this field.
+  # Ref: https://kubernetes.io/docs/concepts/services-networking/dual-stack/
+  ipFamilyPolicy:
+
+  # -- List of IP families (e.g. IPv4, IPv6) assigned to the service. This field is usually assigned automatically
+  # based on cluster configuration and the ipFamilyPolicy field.
+  # Ref: https://kubernetes.io/docs/concepts/services-networking/dual-stack/
+  ipFamilies: [] 
+ 
+  dualStack:
+    enabled: false                       #DEPRECATED: Use service.ipFamilyPolicy and service.ipFamilies
+    ipFamilyPolicy: "RequireDualStack"   #DEPRECATED: Use service.ipFamilyPolicy
+    ipFamilies:                          #DEPRECATED: Use service.ipFamilies 
+      - IPv4
+      - IPv6
+
+
+backend:
+  name: default404
+  port: 8080
+  debug: "false"
+  page:
+    title: "404 - Not found"
+    body: "The requested page was not found"
+    copyright: "Nokia. All rights reserved"
+    productFamilyName: "CITM"
+    productName: "Default backend"
+    productRelease: "{{ .Chart.AppVersion }}"
+    toolbarTitle: "View more ..."
+
+# See https://kubernetes.io/docs/concepts/configuration/pod-priority-preemption/#priorityclass
+priorityClassName: ""
+
+
+# +--------------------------------------------------------------------------------------------------------------------+
+# | To set the security context to the pod/containers, all of them are integers unless specified as "auto"             |
+# | Set this to "auto" so K8s will assign userId/groupid to the container and fsgroup to the pod                       |
+# | !!! NOTE : if runAsUser is set to "auto" then this needs to "auto" as well                                         |
+# +--------------------------------------------------------------------------------------------------------------------+
+securityContext:
+  runAsUser: 1000
+  runAsGroup: 1000
+  fsGroup: 1000
+
+containerSecurityContext:
+  enabled: true
+  readOnlyRootFS: true
+  dropCapabilities: "ALL"
+  runAsNonRoot: true
+  seccompProfile:
+    type: RuntimeDefault  # RuntimeDefault/Localhost
+    path: "" # Provide path when type is set to Localhost
+  privilegeEscalation: false
+  seLinuxOptions:
+    enabled: false
+    level: ""
+    role: ""
+    type: ""
+    user: ""
+
+# If deployed on openshift with runAsUser set to "auto" then serviceAccount should not be loaded
+rbac:
+  enabled: true
+  serviceAccountName: default
+  #-- automountServiceAccountToken will be disabled by default.(!! Istio environments it is enabled by default !!)
+  automountServiceAccountToken: false
+  podSecurityPolicy:
+    enabled: true
+    annotations: 
+      seccomp.security.alpha.kubernetes.io/allowedProfileNames: '*'
+
+#PodDisruptionBudgets
+#This will ensure that configured number of pods are always up and try to prevent the evictions
+#Note: either minAvailable or maxUnavailable should be used, both cannot be set at the same time
+#single pod instance PDB should be disabled by default
+default404:
+  pdb:
+    enabled: false
+    minAvailable: 1
+    #maxUnavailable: 0
+
+# +-----------------------------------------------------------------------------------------------------------------------------------------+
+# |Kubernetes retrieves termination messages from the termination message file specified in the terminationMessagePath field of a container,|
+# |Users can set the terminationMessagePolicy filed of a Container for further customization                                                |
+# |(ref https://kubernetes.io/docs/tasks/debug-application-cluster/determine-reason-pod-failure/#customizing-the-termination-message)       |
+# +-----------------------------------------------------------------------------------------------------------------------------------------+
+terminationMessagePath: "/dev/termination-log"
+terminationMessagePolicy: "FallbackToLogsOnError"
+
+istio:
+  #istio with cni enabled will work on restrictive namespace in PSA. Need to install istio with cni enabled and set the below cni flag to true when installing default404 chart.
+  #cni disabled will need privileged permissions to run.
+  enabled: false
+  version: "1.18.5"
+  # Whether istio cni is enabled in the environment. Note: from CIST 22.09 FP4 PP1 [istio 1.18.5] release, istio without Istio CNI enabled is no longer available.
+  cni:
+    enabled: true
+    # MTLS section of configuration.
+  mtls:
+    #Is strict MTLS enabled in the environment.
+    enabled: true
+  # Should allow mutual TLS as well as clear text for your deployment.
+  permissive: true
+
+# For helm test
+test:
+  skipTest: false
+  imageRepo: "tools"
+  # NOTE: when imageRepo is provided as "repo/imageName", test.imageName shouldn't be used
+  imageName: "kubectl"
+  imageTag: "1.26.11-rocky8-nano-20231124"
+  hookDeletePolicy: "before-hook-creation, hook-succeeded"
+  numberOfRetry: 10
+  delaySecondsBetweenRetry: 5
+  # Extra options for the curl command. Examples: "--connect-timeout 60 -v", "-vL", "-v -L"
+  curlExtraOpts: "--connect-timeout 60"

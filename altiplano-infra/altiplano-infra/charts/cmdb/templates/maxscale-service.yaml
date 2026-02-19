@@ -1,0 +1,76 @@
+{{- include "cmdb.init" . -}}
+{{- if eq (include "cmdb.has_maxscale" .) "true" }}
+{{- $service_value := .Values.services.maxscale }}
+{{- $service_name := $service_value.name | default (printf "%s-maxscale" (include "cmdb.fullname" .)) }}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ $service_name }}
+  labels:
+    {{- include "cmdb-maxscale.labels" (tuple . "service") | nindent 4 }}
+  annotations:
+    {{- include "cmdb-maxscale.annotations" (tuple . "service") | nindent 4 }}
+spec:
+  type: {{ eq $service_value.type "NodePort" | ternary "NodePort" "ClusterIP" }}
+  {{- include "cmdb.dual-stack" (tuple . $service_value) | nindent 2 }}
+  ports:
+  - name: tcp-maxscale
+    port: {{ $service_value.port }}
+    targetPort: tcp-maxscale
+    {{- if and (or (.Values.geo_redundancy.enabled) (eq $service_value.type "NodePort")) ($service_value.nodePort) }}
+    nodePort: {{ $service_value.nodePort }}
+    {{- end }}
+  selector:
+    {{- include "cmdb-maxscale.selector_labels" . | nindent 4 }}
+    type: maxscale
+    maxscale-leader: "yes"
+
+{{- /*******************************************
+     * ConfigMap for port-based Ingress (CITM) *
+     *******************************************/}}
+{{- if eq $service_value.type "IngressConfigMap" }}
+---
+{{- /* Check Required Values */}}
+{{- $cm_prefix := required "services.maxscale.citmIngress.configMapName is required when type: IngressConfigMap" $service_value.citmIngress.configMapName }}
+{{- $ingress_port := required "services.maxscale.citmIngress.port is required when type: IngressConfigMap" $service_value.citmIngress.port }}
+{{- $port_config := (list $service_value.port (default "" $service_value.citmIngress.keywords)) | join ":" | trimSuffix ":" }}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ $cm_prefix }}-{{ $service_name }}
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "cmdb-maxscale.labels" (tuple . "configmap") | nindent 4 }}
+  annotations:
+    {{- include "cmdb-maxscale.annotations" (tuple . "configmap") | nindent 4 }}
+data:
+  "{{ $ingress_port }}": "{{ .Release.Namespace }}/{{ $service_name }}:{{ $port_config }}"
+
+{{- /******************************************************
+     * TransportIngress for port-based Ingress (CSFP/NCS) *
+     ******************************************************/}}
+{{- else if eq $service_value.type "TransportIngress" }}
+---
+{{- if (not (.Capabilities.APIVersions.Has "csf.nokia.com/v1/TransportIngress")) }}
+  {{- $err := required "Missing environment dependency.  TransportIngress CRD must be defined when type: TransportIngress." .err }}
+{{- end }}
+{{- /* Check Required Values */}}
+{{- $ingress_port := required "services.maxscale.csfTransportIngress.port is required when type: TransportIngress" $service_value.csfTransportIngress.port }}
+apiVersion: "csf.nokia.com/v1"
+kind: TransportIngress
+metadata:
+  name: {{ $service_value.csfTransportIngress.name | default $service_name }}
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "cmdb-maxscale.labels" (tuple . "transportingress") | nindent 4 }}
+  annotations:
+    {{- include "cmdb-maxscale.annotations" (tuple . "transportingress") | nindent 4 }}
+spec:
+  port: {{ $ingress_port }}
+  targetPort: {{ $service_value.port }}
+  targetService: {{ $service_name }}
+  protocol: TCP
+{{- end }}
+
+{{- end }}

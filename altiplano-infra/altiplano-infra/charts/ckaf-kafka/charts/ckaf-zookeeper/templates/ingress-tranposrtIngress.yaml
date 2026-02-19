@@ -1,0 +1,30 @@
+# create TransportIngress cr for the zookeeper service.
+# Render TransportIngress only in case of non-istio enabled env, till the support of istio is provided for TransportIngress CRD.
+{{- if and (eq .Values.ingress.enableExternalAccess true) (eq .Values.global.istio.enabled false) (eq .Values.global.istio.createDrForClient false) (eq .Values.ingress.type "TransportIngress") }}
+{{- $portOnEdgeNode := .Values.ingress.edgeNodePort | int }}
+{{- $targetPort := .Values.zookeeperClientPort | int }}
+{{- $name := include "ckaf-zookeeper.name" . }}
+{{- $root := . }}
+{{- $releaseNamespace :=  .Release.Namespace }}
+{{- $chartName :=  .Chart.Name }}
+{{- $releaseName := .Release.Name }}
+{{- $chartVersion := .Chart.Version }}
+{{- $partOf := .Values.partOf }}
+{{- $managedBy := .Values.managedBy }}
+---
+apiVersion: csf.nokia.com/v1
+kind: TransportIngress
+metadata:
+  name: {{ $name }}
+  namespace: {{ $releaseNamespace }}
+  labels:
+{{ include "ckaf-zookeeper.commonlabels" $root | indent 4 }}
+{{- include "csf-common-lib.v1.customLabels" (tuple $root.Values.global.labels) | indent 4 }}
+  annotations:
+{{- include "csf-common-lib.v1.customAnnotations" (tuple $root.Values.global.annotations) | indent 4 }}
+spec:
+  port: {{ $portOnEdgeNode }}
+  protocol: TCP
+  targetPort: {{ $targetPort }}
+  targetService: {{ $name }}
+{{- end }}

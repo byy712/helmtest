@@ -1,0 +1,17 @@
+{{- if .Values.default404.pdb.enabled }}
+apiVersion: {{ template "default404.pdb.apiVersionPolicyV1Beta1orV1" . }}
+kind: PodDisruptionBudget
+metadata:
+  labels:
+    app: {{ template "default404.name" . }}
+    chart: {{ .Chart.Name }}-{{ .Chart.Version }}
+    heritage: {{ .Release.Service }}
+    release: {{ .Release.Name }}
+    {{- include "default404.commonLabels" . | indent 4 }}
+  name: {{ template "default404.fullname" . }}
+spec:
+  {{- include "default404.pdb-values" . | indent 2}}
+  selector:
+    matchLabels:
+      app: {{ template "default404.name" . }}
+{{- end }}

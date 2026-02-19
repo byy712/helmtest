@@ -1,0 +1,87 @@
+{{- if not .Values.global.clustered_opentsdb }}
+{{- if (or .Values.persistence.enabled .Values.global.persistence) }}
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: long-retention-opentsdb-pvclaim
+  labels:
+    app: {{ template "altiplano-long-retention-opentsdb.name" . }}
+    chart: {{ template "altiplano-long-retention-opentsdb.chart" . }}
+    release: {{ .Release.Name }}
+    heritage: {{ .Release.Service }}
+  annotations:
+    "helm.sh/resource-policy": keep
+spec:
+  accessModes:
+  {{- range .Values.persistence.accessModes }}
+  - {{ . | quote }}
+  {{- end }}
+  resources:
+    requests:
+      storage: {{ .Values.persistence.size | quote }}
+  {{- if .Values.persistence.storageClass }}
+  {{- if (eq "-" .Values.persistence.storageClass) }}
+  storageClassName: ""
+  {{- else }}
+  storageClassName: {{ .Values.persistence.storageClass | quote }}
+  {{- end }}
+  {{- end }}
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: long-retention-opentsdb-backup-pvclaim
+  labels:
+    app: {{ template "altiplano-long-retention-opentsdb.name" . }}
+    chart: {{ template "altiplano-long-retention-opentsdb.chart" . }}
+    release: {{ .Release.Name }}
+    heritage: {{ .Release.Service }}
+  annotations:
+    "helm.sh/resource-policy": keep
+spec:
+  accessModes:
+  {{- range .Values.persistence.accessModes }}
+  - {{ . | quote }}
+  {{- end }}
+  resources:
+    requests:
+      storage: {{ .Values.persistence.size | quote }}
+  {{- if .Values.persistence.storageClass }}
+  {{- if (eq "-" .Values.persistence.storageClass) }}
+  storageClassName: ""
+  {{- else }}
+  storageClassName: {{ .Values.persistence.storageClass | quote }}
+  {{- end }}
+  {{- end }}
+---
+{{- if .Values.cbur.enabled }}
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: long-retention-opentsdb-cburtmp-pvclaim
+  labels:
+    app: {{ template "altiplano-long-retention-opentsdb.name" . }}
+    chart: {{ template "altiplano-long-retention-opentsdb.chart" . }}
+    release: {{ .Release.Name }}
+    heritage: {{ .Release.Service }}
+  annotations:
+    "helm.sh/resource-policy": keep
+spec:
+  accessModes:
+  {{- range .Values.cbur.persistence.cburtmp.accessModes }}
+  - {{ . | quote }}
+  {{- end }}
+  resources:
+    requests:
+      storage: {{ .Values.cbur.persistence.cburtmp.size | quote }}
+  {{- if .Values.cbur.persistence.cburtmp.storageClass }}
+  {{- if (eq "-" .Values.cbur.persistence.cburtmp.storageClass) }}
+  storageClassName: ""
+  {{- else }}
+  storageClassName: {{ .Values.cbur.persistence.cburtmp.storageClass | quote }}
+  {{- end }}
+  {{- end }}
+{{- end }}
+{{- end }}
+{{- end }}
+

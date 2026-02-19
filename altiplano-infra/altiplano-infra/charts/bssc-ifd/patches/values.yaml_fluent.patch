@@ -1,0 +1,43 @@
+--- bssc-ifd-13.0.1/bssc-ifd/charts/bssc-fluentd/values.yaml	2023-12-06 18:41:43.000000000 +0530
++++ bssc-ifd-patch/bssc-ifd/charts/bssc-fluentd/values.yaml	2023-12-21 08:29:22.246071000 +0530
+@@ -110,6 +110,8 @@
+ #Internal registry used for kubectl image
+ internalToolsRegistry:
+ 
++accessRoleLabel: internal-access
++
+ #When rbac.enabled is set to true, chart would create its own rbac related resources; If false, an external/pre-created service account as configured at serviceAccountName will be used.
+ rbac:
+   enabled: true
+@@ -216,6 +218,8 @@
+     tag: 1.16.2-2311.0.1
+     initRepo: bssc-init
+     initTag: 1.0.0-2311.0.1
++    fnmsInitRepo: fnms-init-container
++    fnmsInitTag: nokia-1.0.5
+     # set image Flavor at container level for main container and init container. It has higher precedence than global.imageFlavor, .imageFlavor and fluentd.imageFlavor. It supports rocky8-jre11 or rocky8-jre17 Default value is rocky8-jre11.   
+     flavor:
+     # set image Flavor policy at container level for main container and init container. It has higher precedence than global.imageFlavorPolicy, .imageFlavorPolicy and fluentd.imageFlavorPolicy. It supports Strict or BestMatch. Default value is BestMatch.
+@@ -311,6 +315,8 @@
+   containerSecurityContext:
+     #When enable_root_privilege is set to 'true', fluentd containers will run as root user (runAsNonRoot: false) irrespective of value configured in runAsNonRoot.
+     runAsNonRoot: true
++    ##Set 'allowPrivilegeEscalation' to 'True' when securityContext.privileged is set to True
++    allowPrivilegeEscalation: false
+     seccompProfile:
+       type: RuntimeDefault
+ 
+@@ -832,6 +838,13 @@
+   rpc_timeout: 300
+   cvea_retrytimes: 10
+   cvea_retryinterval: 200
++  
++cronjob:
++  schedule: "*/15 * * * *"
++  concurrencyPolicy: "Forbid"
++  failedJobsHistoryLimit: "0"
++  successfulJobsHistoryLimit: "0"
++  suspend: "False"
+ 
+ #This section is used for configuring sizeLimit for emptyDir volumes. When emptyDirSizeLimit is not configured, default values will be used.
+ emptyDirSizeLimit:

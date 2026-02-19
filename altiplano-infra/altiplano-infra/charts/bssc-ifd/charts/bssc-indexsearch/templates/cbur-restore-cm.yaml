@@ -1,0 +1,14 @@
+{{- if .Values.cbur.enabled }}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ template "bssc-indexsearch.fullname" . }}-restore-params
+  labels:
+{{- include "bssc-indexsearch.commonLabels" (tuple .) | nindent 4 }}
+{{- include "bssc-indexsearch.csf-toolkit-helm.labels" (tuple .) | nindent 4 }}
+  annotations:
+{{- include "bssc-indexsearch.csf-toolkit-helm.annotations" (tuple .) | nindent 4 }}
+data:
+  params.yaml: {{ toYaml .Values.cbur.cbur_restore_parameters | indent 2 }}
+{{- end -}}
+

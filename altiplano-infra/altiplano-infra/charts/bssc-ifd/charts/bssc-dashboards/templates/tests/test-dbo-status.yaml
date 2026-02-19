@@ -1,0 +1,139 @@
+{{- include "bssc-dashboards.istio.initIstio" . }}
+{{- include "bssc-dashboards.clientCertAuthEnabled" . }}
+{{- include "bssc-dashboards.supportedImageFlavor" . }}
+apiVersion: v1
+kind: Pod
+metadata:
+  name: "{{ template "bssc-dashboards.helmTestPod.name" . }}"
+  namespace: {{ .Release.Namespace }}
+  labels:
+{{- include "bssc-dashboards.commonLabels" (tuple .  "dashboards" ) | indent 4 }}
+{{- include "bssc-dashboards.csf-toolkit-helm.labels" (tuple . .Values.dashboards.custom.hookJobs.pod.labels) | indent 4}}
+  annotations:
+    "helm.sh/hook": test-success
+    "helm.sh/hook-delete-policy": before-hook-creation, hook-succeeded
+    sidecar.istio.io/inject: "{{ $.istio.enabled }}"
+    seccomp.security.alpha.kubernetes.io/allowedProfileNames: {{ .Values.global.seccompAllowedProfileNames }}
+    seccomp.security.alpha.kubernetes.io/defaultProfileName: {{ .Values.global.seccompDefaultProfileName }}
+{{- include "bssc-dashboards.csf-toolkit-helm.annotations" (tuple . .Values.dashboards.custom.hookJobs.pod.annotations) | indent 4}}
+spec:
+  securityContext:
+{{ include "bssc-dashboards.pod.securityContext" . | indent 4 }}
+  serviceAccountName: {{ template "bssc-dashboards.serviceAccount.name" . }}
+  {{- if ($.istio.enabled) }}
+  automountServiceAccountToken: true
+  {{- else}}
+  automountServiceAccountToken: false
+  {{- end }}
+  {{- if .Values.jobs.affinity }}
+  affinity:
+{{ toYaml .Values.jobs.affinity | indent 4 }}
+  {{- end }}
+  {{- if .Values.jobs.nodeSelector }}
+  nodeSelector:
+{{ toYaml .Values.jobs.nodeSelector | indent 4 }}
+  {{- end }}
+  {{- if .Values.jobs.tolerations }}
+  tolerations:
+{{ toYaml .Values.jobs.tolerations | indent 4 }}
+  {{- end }}
+  {{- with or .Values.dashboards.imagePullSecrets .Values.imagePullSecrets .Values.global.imagePullSecrets }}
+  imagePullSecrets:
+{{- toYaml . | nindent 4 }}
+  {{- end }}
+  containers:
+  - name: "{{ template "bssc-dashboards.helmTestContainer.name" . }}"
+    image: {{ include "bssc-dashboards.registry" (tuple .Values .Values.internalAppRegistry) }}/{{.Values.dashboards.image.repo}}:{{.Values.dashboards.image.tag}}
+    imagePullPolicy: {{.Values.dashboards.ImagePullPolicy}}
+    securityContext:
+{{ include "bssc-dashboards.container.securityContext" . | indent 6 }}
+    resources:
+{{ include "bssc-dashboards.resources" (tuple . .Values.jobs.hookJobs.resources "120m") | indent 6 }}
+    env:
+    - name: TZ
+      value: {{ or .Values.timezone.timeZoneEnv .Values.global.timeZoneEnv "UTC" | quote }}
+    command:
+    - "bash"
+    - "-c"
+    - |
+      {{- if $.istio.enabled }}
+      until curl -s http://localhost:{{ $.istio.envoy.healthCheckPort }}/healthz/ready
+          do
+            echo "Waiting for istio-proxy to be ready..."
+            sleep 1
+          done
+      echo "Istio proxy ready at  `date +'%Y-%m-%d %H:%M:%S:%3N'`, waiting for 30s more.."
+      sleep 30
+      {{- end }}
+
+      dboService={{ default (printf "%s" (include "bssc-dashboards.fullname" .)) .Values.service.name }}
+
+      {{- if and (.Values.security.enable) (eq (tpl (.Values.security.sensitiveInfoInSecret.enabled | toString ) .) "true")  }}
+         {{- if eq $.clientCertAuth "false" }}
+      OPENSEARCH_PASSWORD=`cat /tmp/dboSecret/.dboIsPassword` 
+      CREDENTIALS="-u kibanaserver:$OPENSEARCH_PASSWORD"
+         {{- end }}
+      {{- end }}
+      {{- if and ( $.istio.enabled ) ( ne .Values.dbobaseurl.url "/" ) }}
+      curl -s --connect-timeout 60 $CREDENTIALS http://$dboService:{{ .Values.dashboards.port }}{{ .Values.dbobaseurl.url }}/api/status | jq .status.overall.state | grep -w green
+      {{- else if and ( .Values.security.enable ) ( not $.istio.enabled ) }}
+         {{- if eq $.clientCertAuth "true" }}
+      curl -s -k https://$dboService:{{ .Values.dashboards.port }}  
+         {{- else }}
+      curl -s -k --connect-timeout 60 $CREDENTIALS https://$dboService:{{ .Values.dashboards.port }}/api/status | jq .status.overall.state | grep -w green
+         {{- end }}
+      {{- else }}
+      curl -s --connect-timeout 60 $CREDENTIALS http://$dboService:{{ .Values.dashboards.port }}/api/status | jq .status.overall.state | grep -w green
+      {{- end }}
+
+      RC=$?
+      if [ $RC -ne 0 ]; then
+        echo "Dashboards status is not green yet.."
+      else
+        echo "Dashboards is up and running"
+      fi
+      {{- if $.istio.enabled }}
+      echo "Terminating istio proxy at `date +'%Y-%m-%d %H:%M:%S:%3N'`"
+      curl -s -X POST http://localhost:{{ $.istio.envoy.stopPort }}/quitquitquit
+      {{- end }}
+      exit $RC
+  {{- if (.Values.security.enable) }}
+  {{- if eq (tpl (.Values.security.sensitiveInfoInSecret.enabled | toString ) .) "true" }}
+    {{- if eq $.clientCertAuth "false" }}
+    volumeMounts:
+    - name: dashboards-passwordsecret
+      mountPath: "/etc/initContainerMount/passwords"
+    - name: dashboards-certsecret
+      mountPath: "/tmp/dboSecret"
+
+  volumes:
+  - name: dashboards-certsecret
+    secret:
+      secretName: {{ .Values.security.sensitiveInfoInSecret.credentialNameCert }}
+      items:
+      {{- if .Values.security.keycloak_auth }}
+          {{- if not $.istio.enabled }}
+              {{- if .Values.security.sensitiveInfoInSecret.keycloakRootCaPem }}
+      - key: {{ .Values.security.sensitiveInfoInSecret.keycloakRootCaPem }}
+        path: keycloakRootCaPem
+              {{- end }}
+          {{- end }}
+      {{- end }}
+      {{- if not $.istio.enabled }}
+      - key: {{ .Values.security.sensitiveInfoInSecret.dboServerCrt }}
+        path: dboServerCrt
+      - key: {{ .Values.security.sensitiveInfoInSecret.dboServerKey }}
+        path: dboServerKey
+      - key: {{ .Values.security.sensitiveInfoInSecret.IsRootCaPem }}
+        path: IsRootCaPem
+      {{- end }}
+  - name: dashboards-passwordsecret
+    secret:
+      secretName: {{ .Values.security.sensitiveInfoInSecret.credentialNamePassword }}
+      items:
+        - key: {{ .Values.security.sensitiveInfoInSecret.dboIsPassword }}
+          path: .dboIsPassword
+    {{- end }}
+  {{- end }}
+  {{- end }}
+  restartPolicy: Never

@@ -1,0 +1,713 @@
+# Default values for Mirror-Maker
+# This is a YAML-formatted file.
+global:
+  # This registry references to delivered images.
+  registry: csf-docker-delivered.repo.cci.nokia.net
+           
+  # If flatRegistry is set to true then, user is open to use their own flat registries. By default flatRegistry is set to false.
+  # When flatRegistry is enabled then repo path will not be used.
+  flatRegistry: false
+  vault:
+    enabled: false
+  rbac:
+    enabled: true
+  jmx:
+    enabled: true
+  #CLOG configuration
+  clog:
+    enabled: true
+  #unifiedLogging.extension has precedence over global.unifiedLogging.extension
+  #extension accepts key: value pair
+  #example:
+  #unifiedLogging:
+  #  extension:
+  #    component: ckaf
+  #    ns_uuid: 123  
+  unifiedLogging:
+    extension: {}
+    syslog:
+      enabled: false
+      host:
+      port:
+      facility:
+      protocol: "UDP"
+ 
+  # Enable this flag to set default pod CPU resources limit in all containers. Default value is set to false.
+  enableDefaultCpuLimits: false
+  # prefix for the resource names
+  podNamePrefix:
+  # parameter to disable PodNamePrefixRestrictions
+  #If disablePodNamePrefixRestrictions set to true, it will not limit the length of <podNamePrefix> to 30 characters
+  disablePodNamePrefixRestrictions: false
+  seccompAllowedProfileNames: runtime/default
+  seccompDefaultProfileName: runtime/default
+  preheal: 0
+  postheal: 0
+
+  #Refer section "LabelsandAnnotations" from the Helm Best Practices documentation
+  annotations: {}
+  #Add the annotations here
+  labels: {}
+  #Add the labels here
+  #Refer section "CommonLabels" from the Helm Best Practices documentation
+  common_labels: true
+ 
+  #To ensure logs and other data are synchronized between pods and the hosted components are using the same timezone.
+  timeZoneEnv: 
+
+  # istio configurations
+  istio:
+    # setting "enabled: true" injects istio proxy side cars to the mirror-maker pods.
+    enabled: false
+    # Whether istio cni is enabled in the environment.
+    cni:
+      enabled: true
+  # Specify the PriorityClass name for mirror maker deployment.
+  # If left blank or empty quotes, pods will be configured with priorityClassName config at root level or cluster default PriorityClass.
+  # See https://kubernetes.io/docs/concepts/configuration/pod-priority-preemption/#priorityclass
+  priorityClassName: ""
+  imagePullSecrets:
+  # Accepts array of secret name
+  #  - registry-cred-secret1
+  #  - registry-cred-secret2  
+  certManager:
+    enabled: true
+
+  imageFlavor: "rocky8"
+  imageFlavorPolicy:
+
+  # For IPv4 and IPv6 dual stack support
+  # ipFamilyPolicy:  SingleStack | PreferDualStack | RequireDualStack
+  ipFamilyPolicy:
+  # ipFamilies: ["IPv4"] | ["IPv6"] | ["IPv4","IPv6"] | ["IPv6","IPv4"]
+  ipFamilies: []
+# - IPv4
+# - IPv6
+
+# workload level scope
+ipFamilyPolicy:
+ipFamilies: []
+
+
+
+#To ensure logs and other data are synchronized between pods and the hosted components are using the same timezone.
+## If set will take precedence over global.timeZoneEnv
+timeZone:
+  timeZoneEnv: 
+
+certManager:
+  enabled: 
+
+#Release is the release name mentioned by the user while installing the chart
+topologySpreadConstraints: []
+#  - maxSkew: 1
+#    topologyKey: zone
+#    whenUnsatisfiable: DoNotSchedule/ScheduleAnyway
+#    labelSelector:
+#      matchLabels:
+#        app: ckaf-mirror-maker
+#        release: 'kmm'
+#    autoGenerateLabelSelector: False
+
+strategy:
+  type:
+
+clusterDomain: "cluster.local"
+
+managedBy: Helm
+name: Analytics
+
+# Workload level annotations/labels
+mmDeployment:
+  annotations: {}
+  #Add the annotations here
+  labels: {}
+  #Add the labels here
+# Pod level annotations/labels
+mmPodLevel:
+  annotations: {}
+  #Add the annotations here
+  labels: {}
+  #Add the labels here
+
+imageFlavor:
+imageFlavorPolicy:
+
+# Configure mirror-maker specific annotations/labels below. Use 6 space indentation
+custom:
+  # Custom workload level annotations/labels
+  mmDeployment:
+    annotations: {}
+    #Add the annotations here
+    labels: {} 
+    #Add the labels here
+  #pod level annotations/labels ( *istio related annotations must go in annotation section below)
+  mmPodLevel:
+    annotations: {}
+    #Add the annotations here
+    labels: {}
+    #Add the labels here
+
+# Configure PodDisruptionBudget here
+# Specify the minimum number of pods that must be available after the eviction, even in the absence of the evicted pod.
+# Either set minAvailable or maxUnavailable but not both. Values can be numeric like 1,2,3 or percentage like 50%.
+pdb:
+  enabled: false
+  #maxUnavailable: 0
+  minAvailable: 1
+
+#unifiedLogging.extension has precedence over global.unifiedLogging.extension
+#extension accepts key: value pair
+#example:
+#unifiedLogging:
+#  extension:
+#    component: ckaf
+#    ns_uuid: 123
+
+# To forward logs to the syslog server enable syslog.enabled to "true"
+# As of now ckaf components only support UDP protocol to fwd the logs,
+# since log4j1/slf4j only supports  UDP.
+unifiedLogging:
+  extension: {}
+  syslog:
+    enabled:
+    host:
+    port:
+    facility:
+    protocol: "UDP"
+
+# Enable this flag to set default pod CPU resources limit in all containers. Default value is set to false
+enableDefaultCpuLimits: 
+#If disablePodNamePrefixRestrictions set to true, it will not limit the length of <podNamePrefix> to 30 characters
+disablePodNamePrefixRestrictions:
+# Enable this flag to set resource name with new HBP 3.7 convention. The default values is set to false. If the flag is set to true during upgrade, there can be data loss due to name change.
+installWithNewResourceNameConvention: false
+
+imagePullSecrets:
+# replicaCount can be incresed but its not advisable to have more than 1 replica.
+replicaCount: 1
+
+kubectlImageRepo: tools/kubectl
+#deprecated: kubectlImageName will be used instead of kubectlImageRepo when flatRegistry is set to true.
+#kubectlImageName:
+kubectlTag: 1.28.7-rocky8-nano-20240301
+
+kubectl:
+  imageFlavor:
+  imageFlavorPolicy:
+  # _imageFlavorMapping is a constant variable and users are not allowed to modify in this section. Changes in this section will impact chart installation.
+  _imageFlavorMapping:
+    - flavor: "rocky8"
+      tag: "1.28.7-rocky8-nano-20240301"
+      repository: "tools/kubectl"
+  imagePullPolicy: "IfNotPresent"
+
+image:
+  repository: "ckaf/ckaf-mirror-maker"
+  #name will be used instead of repository when flatRegistry is set to true.
+  name: "ckaf-mirror-maker"
+  tag: "8.6.0-rocky8-jre17-3.6.0-8105"
+  pullPolicy: IfNotPresent
+  imageFlavor:
+  imageFlavorPolicy:
+  # _imageFlavorMapping is a constant variable and users are not allowed to modify in this section. Changes in this section will impact chart installation.
+  _imageFlavorMapping:
+    - flavor: "rocky8-jre17"
+      tag: "9.1.0-rocky8-jre17-4.1.0-8675"
+      repository: "ckaf/ckaf-mirror-maker"
+    - flavor: "rocky8-jre11"
+      tag: "9.1.0-rocky8-jre11-4.1.0-8675"
+      repository: "ckaf/ckaf-mirror-maker"
+
+init:
+  imageRepo:
+  #deprecated: imageName will be used instead of imageRepo when flatRegistry is set to true.
+  #imageName:
+  imageTag:
+  imageFlavor:
+  imageFlavorPolicy:
+  # _imageFlavorMapping is a constant variable and users are not allowed to modify in this section. Changes in this section will impact chart installation.
+  _imageFlavorMapping:
+    - flavor: "rocky8-jre17"
+      tag: "9.1.0-rocky8-jre17-4.1.0-8675"
+      repository: "ckaf/ckaf-kafka-init"
+    - flavor: "rocky8-jre11"
+      tag: "9.1.0-rocky8-jre11-4.1.0-8675"
+      repository: "ckaf/ckaf-kafka-init"
+
+#Mirror Maker init container resources
+initContainerResources:
+  limits:
+    cpu: "1" 
+    memory: 256Mi
+    ephemeral-storage: 500M
+  requests:
+    cpu: 100m
+    memory: 128Mi
+    ephemeral-storage: 500M
+## JMX exporter
+JmxExporter:
+  imageRepo:
+  #deprecated: imageName will be used instead of imageRepo when flatRegistry is set to true.
+  #imageName: "cpro-jmx-exporter"
+  imageTag:
+  imageFlavor:
+  imageFlavorPolicy:
+  # _imageFlavorMapping is a constant variable and users are not allowed to modify in this section. Changes in this section will impact chart installation.
+  _imageFlavorMapping:
+    - flavor: "rocky8"
+      tag: "4.1.0-rocky8-0.20.0-3612"
+      repository: "cpro/cpro-jmx-exporter"
+  
+  imagePullPolicy: "IfNotPresent"
+  port: 32000
+  jmxResources:
+    resources:
+      requests:
+        cpu: 100m
+        memory: 1Gi
+        ephemeral-storage: 200M
+      limits:
+        cpu: "1"
+        memory: 1Gi
+        ephemeral-storage: 200M
+  tls:
+    enabled: false
+    # provide the certificate alias name in case of user generated certificates.
+    # defaults to certificate as to match the cert-manager generated certificates.
+    certificateAlias: "certificate"
+    secretRef:
+      # Secret name, pointing to a Secret object.
+      # If empty then automatically generated secret with certManager certificate will be used
+      name:
+      # Secret key names mapping.
+      keyNames:
+        # Keys for JKS format certificates.
+        # password keys are mandatory in case of JKS format certificates
+        keystore_key: keyStore
+        truststore_key: trustStore
+        truststore_passwd_key: trust
+        keystore_passwd_key: key
+  certificate:
+    # Certificate object is created based on the data in this section.
+    issuerRef:
+      # We can refer different Issuers by changing the kind here.
+      # The default value is ncms-ca-issuer(i.e is a cluster issuer)
+      name: ncms-ca-issuer
+      kind: ClusterIssuer
+      group: cert-manager.io
+    duration: "8760h" # 365d
+    renewBefore: "360h" # 15d
+    # If left empty, it will be generated automatically.
+    secretName:
+    # Not needed in internal communication
+    subject:
+    # It has been deprecated since 2000 and is discouraged from being used for a server side certificates.
+    # `dnsNames` are used instead.
+    commonName:
+    # Usages is the set of x509 usages that are requested for the certificate.
+    usages:
+    # DNSNames is a list of DNS subjectAltNames to be set on the Certificate.
+    dnsNames:
+    # URIs is a list of URI subjectAltNames to be set on the Certificate.
+    uris:
+    # IPAddresses is a list of IP address subjectAltNames to be set on the Certificate.
+    ipAddresses:
+    # password for the keystore file to be provided as a secret.
+    # Note: same password wil be used to encrypt the trustore, keystore and keypasswords.
+    # if the format of certificates is PEM then this need not be provided.
+    store_password_secret_name: <user-defined>
+    store_password_key: <user-defined>
+    privateKey:
+      # allowed values for algorithm are 'RSA','Ed25519' or 'ECDSA'
+      algorithm: "RSA"
+      # allowed values for encoding are 'PKCS1' or 'PKCS8'
+      # Only 'PKCS8' is supported for PEM Certificates
+      encoding: "PKCS1"
+      size: "2048"
+      # Rotation of a key pair, when certificate is refreshed is recommended from a security point of view
+      rotationPolicy: Always
+
+RollingUpdate:
+  MaxSurge: 1
+  MaxUnavailable: 0
+
+
+livenessProbe:
+  initialDelaySeconds: 10
+  periodSeconds: 15
+  timeoutSeconds: 5
+  failureThreshold: 3
+readinessProbe:
+  initialDelaySeconds: 10
+  periodSeconds: 15
+  timeoutSeconds: 5
+  failureThreshold: 3
+
+security:
+  enabled: true
+  runAsUser: 999
+  fsGroup: 998
+  readOnlyRootFilesystem: true
+  seccompProfile:
+    type: "RuntimeDefault"
+
+LogLevel: "INFO"
+
+resources:
+  limits:
+    cpu: "1"
+    memory: 2Gi
+    ephemeral-storage: 1G
+  requests:
+    cpu: 1
+    memory: 1Gi
+    ephemeral-storage: 1G
+
+fluentd_sidecar:
+  image:
+    name: "fnms-fluent"
+    tag: "nokia-4.1.4"
+    pullPolicy: IfNotPresent
+  securityContext:
+    runAsUser: 1000
+    runAsGroup: 998
+
+#Job Resources
+jobResources:
+  requests:
+    cpu: 200m
+    memory: 1Gi
+    ephemeral-storage: 200M
+  limits:
+    cpu: "1"
+    memory: 1Gi
+    ephemeral-storage: 200M
+
+# Node labels for pod assignment
+# ref: https://kubernetes.io/docs/concepts/configuration/assign-pod-node/
+# Add user defined label under nodeLabel as key value pair.
+# Enable it to true to use nodeLabel feature
+# Always quote the value part. Example nodeType: "mirror-maker-enable"
+# Example:
+# mirroMakerNodeSelector:
+#   enable: true
+#   nodeLabel:
+#     "key1" : "value1"
+mirrorMakerNodeSelector:
+  enable: false
+  nodeLabel:
+
+#User can configure the precreated SA specifically for this chart here.
+serviceAccountName:
+
+initContainer:
+  image:
+    name: fnms-init-container
+    tag: nokia-1.0.8
+    pullPolicy: IfNotPresent
+  securityContext:
+    runAsNonRoot: true
+    runAsUser: 1000
+    runAsGroup: 1000
+certificates:
+  altiplano_keystore_secrets: altiplano-keystore-secrets
+  altiplano_keystore_password: keystore-password
+  secrets:
+    altiplano_kafka_certificate_secrets: altiplano-kafka-mirrormaker-certificate-secrets
+    altiplano_keystore_secrets: altiplano-keystore-secrets
+  fileNames:
+    kafka_server_key_pem: kafka-mirrormaker-kafka-client-key.pem
+    kafka_server_key_pass: kafka-mirrormaker-kafka-client-key.pass
+    kafka_server_cert_pem: kafka-mirrormaker-kafka-client-cert.pem
+    altiplano_keystore_password: keystore-password
+    kafka_server_keystore_jks: server.jks
+    kafka_server_trustchain_cert_pem: kafka-mirrormaker-kafka-client-trustchain-cert.pem
+    kafka_server_truststore_jks: trustchain.jks
+mirrorMakerConfig:
+  # Give comma separated cluster aliases for each of the kafka cluster between whom you want to enable the data replication.
+  # If you want to enable data replication between two kafka-clusters, give two comma-separated alias and for 3 clusters give 3 comma-separated alias.
+  # Replicated topics in the target cluster will be prefixed with the source cluster alias.
+  # For eg. If you have 2 kafka-clusters and you have cluster alias as a,b than all the topics replicated from a to b will be with name a.<topicName> in b cluster and vice versa.
+  # Supports cluster aliases with lowercase only.
+  # For each cluster alias, under mirrorMakerConfig.clusters, add cluster details.
+  # For eg. mmClusters: "a,b"
+  mmClusters: ""
+  # Cluster aliases to be verified for security checks.
+  # For eg. mmClustersVerifySecurity: "a,b"
+  mmClustersVerifySecurity: ""
+  # In order to evenly distribute the workload, it is advised to set maxTasks at least to 2 or even larger depending on the hardware resources and the total number partitions to be replicated
+  maxTasks: 1
+  # If any of the below kafka-cluster is krb-enabled, make sure to create configmap as mentioned belew to mount krb5.conf.
+  # In case of multiple kafka-clusters with krb, all should point to sigle KDC.
+  # kubectl create configmap <krbConfigmapName> --from-file=<KrbConfKeyName>=<path to krb5.conf>
+  krbConfigmapName: 
+  KrbConfKeyName:
+
+  # configure cipherSuites to be used at mirror maker. 
+  sslCipherSuites: ""
+  
+  #set KafkaHeapOpts here
+  heapOpts: "-Xmx750M -Xms750M"
+  # for each of cluster alias provided in mirrorMakerConfig.mmClusters provide the cluster details below.   
+  clusters:
+  # one of the cluster alias provided in mirrorMakerConfig.mmClusters.
+  - alias: ""
+    # kafka bootstrap address
+    bootstrap.servers: ""
+    # kafka security protocol.
+    security.protocol: "SSL"
+    # Mirror maker creates mm2-configs.<alias>.internal,mm2-offsets.<alias>.internal,mm2-status.<alias>.internal topics 
+    # on source and target clusters to store the connectors and their respective tasks, status and configuration.
+    # set the replication factors for these topics based on cluster configuration using below parameters.
+    # For eg. if config.offset.storage.replication.factor: 1 than on this kafka cluster mirror maker will create
+    # mm2-offsets.<alias>.internal topic with replication factor 1.
+    config: 
+      config.storage.replication.factor: 3
+      offset.storage.replication.factor: 3  
+      status.storage.replication.factor: 3
+    # Set tls.enabled true or false based on the security.protocol.
+    # For eg. if security.protocol = 'SSL' or 'SASL_SSL' than set this to true.
+    # Mount client keystore and truststore, required to connect kafka cluster using below secret.
+    # Example K8s secret command:
+    # kubectl create secret generic <secret-name> --from-literal=keyPass=<passwd> --from-literal=keyStorePass=<passwd> --from-literal=trustStorePass=<passwd> --from-file=keyStore=<clientKestorePath> --from-file=trustStore=<clientTruststorePath>
+    # cipher suite is a named combination of authentication, encryption, MAC and key exchange algorithm used to negotiate the security settings for a network connection using TLS
+    # By default all the available cipher suites are supported.
+    tls:
+      enabled: true
+      enabledProtocols: TLSv1.2,TLSv1.3
+      protocol: TLSv1.2
+      cipherSuites: ""
+      secretRef:
+        name: 
+        keyNames:
+          keystore_key: 
+          truststore_key: 
+          truststore_passwd_key: 
+          keystore_passwd_key: 
+          keystore_key_passwd_key: 
+    # Set saslKrb.enabled to true or false based on the security.protocol.
+    # For eg. if security.protocol = 'SASL' or 'SASL_SSL' mainly with 'GSSAPI' protocol than set this to true.
+    # Mount client keytab using below secret and it will be used to connect this kafka cluster.
+    # kubectl create secret generic <secret-name> --from-literal=<krbPrincipalKey>=<principal-name> --from-file=<krbKeytabKey>=<local-path-to-keytab>
+    # For eg. kubectl create secret generic mirror-sasl-secret --from-literal=krbPrincipalKey=mirrormaker@EXAMPLE.COM --from-file=krbKeytabKey=/home/cloud-user/test/client.keytab
+      certificates:
+        altiplano_keystore_secrets: altiplano-keystore-secrets
+        altiplano_keystore_password: keystore-password
+        secrets:
+          altiplano_kafka_certificate_secrets: altiplano-kafka-mirrormaker-certificate-secrets
+          altiplano_keystore_secrets: altiplano-keystore-secrets
+        fileNames:
+          kafka_server_key_pem: kafka-mirrormaker-kafka-client-key.pem
+          kafka_server_key_pass: kafka-mirrormaker-kafka-client-key.pass
+          kafka_server_cert_pem: kafka-mirrormaker-kafka-client-cert.pem
+          altiplano_keystore_password: keystore-password
+          kafka_server_keystore_jks: server.jks
+          kafka_server_trustchain_cert_pem: kafka-mirrormaker-kafka-client-trustchain-cert.pem
+          kafka_server_truststore_jks: trustchain.jks
+    saslKrb:
+      enabled: false
+      krbSecretName: <mirror-maker-sasl-secret>
+      krbPrincipalKey: <krbPrincipalKey>
+      krbKeytabKey: <krbKeytabKey>
+    # Set saslKrb.enabled to true or false based on the security.protocol.
+    # For eg. if security.protocol = 'SASL' or 'SASL_SSL' mainly with 'PLAIN' protocol than set this to true.
+    # Mount user credentials using below secret and it will be used to connect this kafka cluster.
+    # kubectl create secret generic plain-admin-pass --from-literal=<userkey>=<kafka-admin@kafka.com> --from-literal=passkey=<12345>
+    saslPlain:
+      enabled: false
+      secretName: <plain-admin-pass>
+      usernameKey: <userkey>
+      passwordKey: <passkey>
+
+  - alias: ""
+    bootstrap.servers: ""
+    security.protocol: "SSL"
+    config:
+      config.storage.replication.factor: 3
+      offset.storage.replication.factor: 3
+      status.storage.replication.factor: 3
+    tls:
+      enabled: true
+      enabledProtocols: TLSv1.2,TLSv1.3
+      protocol: TLSv1.2
+      cipherSuites: ""
+      secretRef:
+        name:
+        keyNames:
+          keystore_key: 
+          truststore_key: 
+          truststore_passwd_key: 
+          keystore_passwd_key: 
+          keystore_key_passwd_key: 
+      certificates:
+        altiplano_keystore_secrets: altiplano-keystore-secrets
+        altiplano_keystore_password: keystore-password
+        secrets:
+          altiplano_kafka_certificate_secrets: altiplano-kafka-mirrormaker-certificate-secrets
+          altiplano_keystore_secrets: altiplano-keystore-secrets
+        fileNames:
+          kafka_server_key_pem: kafka-mirrormaker-kafka-client-key.pem
+          kafka_server_key_pass: kafka-mirrormaker-kafka-client-key.pass
+          kafka_server_cert_pem: kafka-mirrormaker-kafka-client-cert.pem
+          altiplano_keystore_password: keystore-password
+          kafka_server_keystore_jks: server.jks
+          kafka_server_trustchain_cert_pem: kafka-mirrormaker-kafka-client-trustchain-cert.pem
+          kafka_server_truststore_jks: trustchain.jks
+    saslKrb:
+      enabled: false
+      krbSecretName: <mirror-maker-sasl-secret>
+      krbPrincipalKey: <krbPrincipalKey>
+      krbKeytabKey: <krbKeytabKey>
+    saslPlain:
+      enabled: false
+      secretName: <plain-admin-pass>
+      usernameKey: <userkey>
+      passwordKey: <passkey>
+  
+  # This section is used when certmanager is enabled
+  certificate:
+    enabled: true
+    # If left empty, it will be generated automatically.
+    secretName:
+    duration: 8760h
+    renewBefore: 360h
+    # Not needed in internal communication
+    subject:
+    # It has been deprecated since 2000 and is discouraged from being used for a server side certificates.
+    # `dnsNames` are used instead.
+    commonName:
+    usages:
+      - server auth
+      - client auth
+    dnsNames: []
+    # URIs is a list of URI subjectAltNames to be set on the Certificate.
+    uris:
+    # IPAddresses is a list of IP address subjectAltNames to be set on the Certificate.
+    ipAddresses:
+    privateKey:
+      algorithm: "RSA"
+      encoding: "PKCS1"
+      size: "2048"
+      # Rotation of a key pair, when certificate is refreshed is recommended from a security point of view
+      rotationPolicy: Always
+    keystores:
+      jks:
+        create: true
+        passwordSecretRef:
+          key: <user-provided>
+          name: <user-provided>
+    issuerRef:
+      name: ncms-ca-issuer
+      kind: ClusterIssuer
+      group: cert-manager.io 
+  # This section is to enable replication flow between clusters.
+  # with below configuration, replication will be enabled from sourceCluster to targetCluster means mirror-maker will replicate 
+  # all the topic from sourceCluster to targetCluster and to enable bidirectional replication flow, copy the below mirror 
+  # and paste after it by replacing the sourceCluster and targetCluster values with each other and 
+  # can add other mirrors based on the requirement.
+  mirrors:
+  # source kafka cluster from where we want to replicate topics.
+  # provide sourceCluster alias.
+  - sourceCluster: "" 
+    # target kafka cluster to which we want to repliate topics.
+    # provide targetCluster alias.
+    targetCluster: ""
+    # MirrorMaker replicates topics in target cluster with replication factor set under sourceConnector.config.replication.factor
+    # MirroMaker doesn't replicate replication factors of the topics.
+    purgeKafkaTopic: "true"
+    sourceConnector:
+      config:
+        replication.factor: 2
+        # An offset sync topic encodes cluster-to-cluster offset mappings for each topic-partition being replicated.
+        # Set replication factor according to sourceCluster configuration.
+        offset-syncs.topic.replication.factor: 3
+        # If set to true will replicate the acls enabled on topic.
+        sync.topic.acls.enabled: "false"
+    heartbeatConnector:
+      config:
+        # To enable connector to periodically emit heartbeats.
+        emit.hearbeats.enabled: "true"
+        # Set replication factor according to sourceCluster and target cluster configuration as mirror-maker will create
+        # hearbeats topic on both source and target cluster.
+        heartbeats.topic.replication.factor: 3
+    checkpointConnector: 
+      config:
+        # To enable connector to periodically emit consumer offset information from sourcecluster to targetCluster 
+        # It will emit consumer offsets from sourceCluster __consumer_offsets topic to targetCluster checkpoints.internal topic.
+        emit.checkpoints.enabled: "true"
+        # Set replication factor according to target cluster configuration.
+        checkpoints.topic.replication.factor: 3
+    # frequency to check source cluster for new groups.
+    refresh.groups.interval.seconds: "600"
+    # frequency to check source cluster for new topics.
+    refresh.topics.interval.seconds: "600"
+    # frequency to sync topics configuration.
+    sync.topic.configs.interval.seconds: "600"
+    # regex of topics to replicate, e.g. "topic1|topic2|topic3". Comma-separated lists are also supported.
+    topics: ".*" 
+    # regex of groups to replicate, e.g. ".*" 
+    groups: ".*"
+    # excluded topics. Supports comma-separated topic names and regexes.
+    topics.exclude: ".*[\\-\\.]internal, .*\\.replica, __.*"
+    # excluded groups. Supports comma-separated group IDs and regexes.
+    groups.exclude: "console-consumer-.*, connect-.*, __.*"
+
+# Adding entries to a Pod’s /etc/hosts file provides Pod-level override of hostname resolution
+# # eg. configuration:
+# # hostAliases:
+# # - ip: "10.99.26.136"
+# #   hostnames:
+# #   - "vm-10-99-26-136"
+# #   - "mytestvm"
+# # - ip: "10.99.26.135"
+# #   hostnames:
+# #   - "vm-10-99-26-135" 
+hostAliases: []
+
+# toleration can be added for three types of taints : NoSchedule, PreferNoSchedule and NoExecute
+# operator can also be given as Exists and value parameter can be omitted in that case
+# tolerationSeconds (in seconds) can be added as part of NoExecute toleration that specifies how long the pod will stay bound after the node tainting.
+# Multiple tolerations can be added
+# Example:
+# tolerations:
+# - key: "testing1"
+#   operator: "Equal"
+#   value: "no1"
+#   effect: "NoSchedule"
+# - key: "testing2"
+#   operator: "Exists"
+#   effect: "NoExecute"
+#   tolerationSeconds: 120
+# toleration matches a taint if key and effect is same.
+# An empty 'key' with operator Exists will tolerate everything as it matches all keys, values and effects.
+# Example:
+# - operator: "Exists"
+# An empty 'effect' matches all effects with key 'key'
+# Example:
+# - key: "key"
+#   operator: "Exists"
+tolerations: []
+
+podAntiAffinity:
+  zone:
+    #Possible options: soft/hard/none
+    type:
+    topologyKey: "topology.kubernetes.io/zone"
+  node:
+    #Possible options: soft/hard/none
+    type:
+    topologyKey: "kubernetes.io/hostname"
+  customRules:
+    #- type: soft/hard (by default soft)
+    #  topologyKey:
+    #  weight: 100 (by default 100)
+    #  autoGenerateLabelSelector: true
+    #  labelSelector: <pod labels> (none by default)
+    #  namespaceSelector: <namespace labels> (none by default)
+    #  namespaces:
+
+# Specify the PriorityClass name for kafka mirror deployment.
+# If left blank or empty quotes, pods will be configured with global.priorityClassName if defined or cluster default PriorityClass.
+# See https://kubernetes.io/docs/concepts/configuration/pod-priority-preemption/#priorityclass
+priorityClassName: ""

@@ -1,0 +1,57 @@
+{{- include "cbur.tls" . }}
+{{- include "cbur.gkeingress" . }}
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ template "cbur.fullname" . }}
+  labels:
+    app: {{ template "cbur.name" . }}
+    release: {{ .Release.Name }}
+    cbur.csf.nokia.com/name: "cbur-master"
+    cbur.csf.nokia.com/version: "{{ .Chart.Version }}"
+    {{- include "cbur.proxy.commonLabels" (tuple .) | indent 4 }}
+    {{- include "cbur.customLabels" (tuple .Values.cburm.labels .Values.global.labels) | indent 4 }}
+  annotations:
+    {{- include "cbur.customAnnotations" (tuple .Values.cburm.annotations .Values.global.annotations) | indent 4 }}
+    {{- if and (.Values.ingress.enabled) (eq .Values.ingress.ingressType "gce") }}
+    cloud.google.com/neg: '{"ingress": true}'
+    {{- end }}
+    {{- if .Values.service.annotations }}
+{{ toYaml .Values.service.annotations | indent 4 }}
+    {{- end }}
+spec:
+  type: "{{ .Values.service.type }}"
+  ports:
+  {{- if eq (include "cbur.proxy.coalesceBoolean" (tuple .Values.tls.enabled .Values.global.tls.enabled false)) "true" }}
+  - port: {{ .Values.tls.port }}
+    targetPort: 8443
+    name: https-cbur
+    {{- if semverCompare ">=1.19.0-0" .Capabilities.KubeVersion.GitVersion }}
+    appProtocol: https
+    {{- end }}
+  {{- else }}
+  - port: {{ .Values.serverPort }}
+    targetPort: 8080
+    name: http-cbur
+    {{- if semverCompare ">=1.19.0-0" .Capabilities.KubeVersion.GitVersion }}
+    appProtocol: http
+    {{- end }}
+  {{- end }}
+  selector:
+    app: "{{ template "cbur.fullname" . }}"
+  {{- if .Values.ipFamilyPolicy }}
+  ipFamilyPolicy: "{{ .Values.ipFamilyPolicy }}"
+  {{- else if .Values.global.ipFamilyPolicy }}
+  ipFamilyPolicy: "{{ .Values.global.ipFamilyPolicy }}"
+  {{- end }}
+  {{- if .Values.ipFamilies }}
+  ipFamilies:
+  {{- range .Values.ipFamilies }}
+  - {{ . | title }}
+  {{- end }}
+  {{- else if .Values.global.ipFamilies }}
+  ipFamilies:
+  {{- range .Values.global.ipFamilies }}
+  - {{ . | title }}
+  {{- end }}
+  {{- end }}

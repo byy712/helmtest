@@ -1,0 +1,48 @@
+{{- include "cpro.istio.cproInitIstio" . }}
+{{- if and $.istio.enabled .Values.alertmanager.enabled}}
+apiVersion: {{ template "cpro.apiVersion.virtualService" . }}
+kind: VirtualService
+metadata:
+  labels:
+    {{- include "cpro.app.labels.v3" ( dict "root" . "context" .Values.alertmanager ) | nindent 4 }}
+{{- include "cpro.labelsOrAnnotations" (tuple .Values.global.labels) | indent 4}}
+  name: {{ template "cpro.prometheus.alertmanager.fullname" . }}-vs
+  annotations:
+{{- include "cpro.labelsOrAnnotations" (tuple .Values.global.annotations) | indent 4}}
+spec:
+  hosts:
+  {{- $numHosts := len $.istio.gateways.cproAlertmanager.host }}
+  {{- if (eq $numHosts 0) }}
+  - "*"
+  {{- else }}
+  {{- range $.istio.gateways.cproAlertmanager.host }}
+  - {{ . | quote }}
+  {{- end }}
+  {{- end }}
+  gateways:
+  {{- if $.shared_istio_gateway }}
+  - {{ $.shared_istio_gateway }}
+    {{- else }}
+  - {{ template "cpro.alertmanager.istioGatewayName"  $ }}
+    {{- end }}
+  http:
+  - match:
+    - uri:
+        prefix: {{ template "cpro.alertmanager.routePrefixURL" . }}
+    rewrite:
+  {{- $rewriteURI := include "cpro.alertmanager.routePrefixURL" . -}}
+  {{- if ne $rewriteURI "" }}
+      uri: {{ $rewriteURI }}
+  {{- else }}
+      uri: /
+  {{- end }}
+    route:
+    - destination:
+        {{- if .Values.ha.enabled }}
+        host: {{ template "cpro.prometheus.alertmanager.fullname" . }}-ext
+        {{- else }}
+        host: {{ template "cpro.prometheus.alertmanager.fullname" . }}
+        {{- end }}
+        port:
+          number: {{ .Values.alertmanager.service.servicePort }}
+{{- end }}

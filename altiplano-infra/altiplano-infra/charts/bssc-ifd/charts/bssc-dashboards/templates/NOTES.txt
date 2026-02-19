@@ -1,0 +1,63 @@
+{{- include "bssc-dashboards.isCertManagerEnable" . }}
+
+Getting Dashboards pod information deployed in {{ .Release.Namespace }} namespace
+kubectl get pods --namespace {{ .Release.Namespace }} -l app.kubernetes.io/name={{ default .Chart.Name .Values.nameOverride }},app.kubernetes.io/instance={{ .Release.Name }},app.kubernetes.io/component=dashboards,role=dashboards-gui
+
+How to access Dashboards UI on browser:
+Once Dashboards pod becomes Ready then you can access Dashboards UI like below:
+
+{{- if .Values.istio.enabled }}
+
+If you are using default ingress-istio-gateway running with NodePort use below command: otherwise refer https://istio.io/latest/docs/tasks/traffic-management/ingress/ingress-control/#determining-the-ingress-ip-and-ports
+
+INGRESS_PORT=$(kubectl -n istio-system get service istio-ingressgateway -o jsonpath='{.spec.ports[?(@.name=="http2")].nodePort}')
+SECURE_INGRESS_PORT=$(kubectl -n istio-system get service istio-ingressgateway -o jsonpath='{.spec.ports[?(@.name=="https")].nodePort}')
+INGRESS_HOST=$(kubectl get pod -l istio=ingressgateway -n istio-system -o jsonpath='{.items[0].status.hostIP}')
+
+echo $INGRESS_PORT $SECURE_INGRESS_PORT $INGRESS_HOST
+
+If tls is enabled for istio ingress gateway then use https protocol, $SECURE_INGRESS_PORT else use http port, $INGRESS_PORT
+
+<http/https>://<$INGRESS_HOST>:<$INGRESS_PORT/$SECURE_INGRESS_PORT>{{ .Values.dbobaseurl.url }}
+{{- else }}
+
+  {{- if .Values.ingress.enabled }}
+      {{- if .Values.ingress.host }}
+          {{- if .Values.security.enable }}
+      https://{{ .Values.ingress.host }}{{ .Values.dbobaseurl.url }}
+          {{- else }}
+      http://{{ .Values.ingress.host }}{{ .Values.dbobaseurl.url }}
+          {{- end }}
+      {{- else }}
+DBO_IP=$(kubectl get nodes -l is_edge=true -o jsonpath='{ $.items[*].status.addresses[?(@.type=="ExternalIP")].address }' | cut -d ' ' -f 1)
+NOTE- If "echo $DBO_IP" is empty then it means ExternalIP is not configured for edge node, try using "InternalIP" instead of "ExternalIP" in the above command.
+https://$DBO_IP{{ .Values.dbobaseurl.url }}
+      {{- end }}
+  {{- else }}
+      {{- if eq "NodePort" .Values.service.type }}
+DBO_IP=$(kubectl get nodes -l is_edge=true -o jsonpath='{ $.items[*].status.addresses[?(@.type=="ExternalIP")].address }' | cut -d ' ' -f 1)
+NOTE- If "echo $DBO_IP" is empty then it means ExternalIP is not configured for edge node, try using "InternalIP" instead of "ExternalIP" in the above command.
+DBO_PORT={{.Values.dashboards.node_port}}
+
+            {{- if .Values.security.enable }}
+
+https://<$DBO_IP>:<$DBO_PORT>
+            {{- else }}
+
+http://<$DBO_IP>:<$DBO_PORT>
+            {{- end }}
+      {{- else }}
+            echo "Dashboards UI will not be accessible externally. It is suggested to either enable ingress or set service type to NodePort"
+      {{- end }}
+
+  {{- end }}
+
+{{- end }}
+
+{{- if eq $.isCertManagerEnabled "true" }}
+  {{- if not .Values.security.enable }}
+
+WARNING: certManager will not be used in this deployment as it has been enabled without enabling security. 
+  {{- end }}
+{{- end }}
+

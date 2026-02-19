@@ -1,0 +1,6 @@
+name: "scale"
+version: "0.1.0"
+usage: "helm scale << helmrelease >> << replicacount >>"
+description: |-
+  This plugin scales helm realse given helm release name and replicacount.
+command: "$HELM_PLUGIN_DIR/scale.sh"

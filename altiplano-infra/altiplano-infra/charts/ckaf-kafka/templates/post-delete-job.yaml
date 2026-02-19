@@ -1,0 +1,249 @@
+{{- if (and ( .Values.global.rbac.enabled) (not .Values.serviceAccountName) ) }}
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: {{ template "ckaf-kafka.name" . }}-kf-postdel-admin
+  namespace: "{{.Release.Namespace}}"
+  labels:
+{{ include "ckaf-kafka.commonLabels" . | indent 4 }}
+{{- include "csf-common-lib.v1.customLabels" (tuple .Values.global.labels) | indent 4 }}
+    app: {{ .Chart.Name }}
+    heritage: {{ .Release.Service }}
+    release: {{ .Release.Name }}
+  annotations:
+    # This is what defines this resource as a hook. Without this line, the
+    # job is considered part of the release.
+    # If there're multiple hooks, may define different hook-weight value.
+    seccomp.security.alpha.kubernetes.io/allowedProfileNames: {{ .Values.global.seccompAllowedProfileNames }}
+    seccomp.security.alpha.kubernetes.io/defaultProfileName: {{ .Values.global.seccompDefaultProfileName }}
+    "helm.sh/hook": post-delete
+    "helm.sh/hook-weight": "-8"
+    "helm.sh/hook-delete-policy": before-hook-creation,hook-succeeded,hook-failed
+{{- include "csf-common-lib.v1.customAnnotations" (tuple .Values.global.annotations) | indent 4 }}
+automountServiceAccountToken: false
+{{- if  coalesce .Values.imagePullSecrets .Values.global.imagePullSecrets }}
+imagePullSecrets:
+  - name: {{ coalesce .Values.imagePullSecrets .Values.global.imagePullSecrets }}
+{{- end }}
+{{- end }}
+---
+{{- if (and ( .Values.global.rbac.enabled) (not .Values.serviceAccountName) ) }}
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  labels:
+    app: {{ .Chart.Name }}
+    heritage: {{ .Release.Service }}
+    release: {{ .Release.Name }}
+{{ include "ckaf-kafka.commonLabels" . | indent 4 }}
+{{- include "csf-common-lib.v1.customLabels" (tuple .Values.global.labels) | indent 4 }}
+  name: {{ template "ckaf-kafka.name" . }}-kf-postdel-role
+  namespace: {{ .Release.Namespace }}
+  annotations:
+    seccomp.security.alpha.kubernetes.io/allowedProfileNames: {{ .Values.global.seccompAllowedProfileNames }}
+    seccomp.security.alpha.kubernetes.io/defaultProfileName: {{ .Values.global.seccompDefaultProfileName }}
+    "helm.sh/hook": post-delete
+    "helm.sh/hook-weight": "-7"
+    "helm.sh/hook-delete-policy": before-hook-creation,hook-succeeded,hook-failed
+{{- include "csf-common-lib.v1.customAnnotations" (tuple .Values.global.annotations) | indent 4 }}
+rules:
+- apiGroups: [""]
+  resources: ["pods"]
+  verbs: ["list", "get", "watch", "delete","deletecollection"]
+- apiGroups: [""]
+  resources: ["persistentvolumeclaims"]
+  verbs: ["get", "list", "delete"]
+- apiGroups: [""]
+  resources: ["pods/status"]
+  verbs: ["get"]
+- apiGroups: [""]
+  resources: ["services","configmaps"]
+  verbs:  ["get","delete","patch"]
+- apiGroups: [""]
+  resources: ["secrets"]
+  verbs: ["list", "get", "watch", "delete"]
+- apiGroups: ["extensions","networking.k8s.io"]
+  resources: ["ingresses"]
+  verbs: ["get", "list"]
+- apiGroups: ["batch"]
+  resources: ["jobs","cronjobs"]
+  verbs: ["get","delete","deletecollection"]
+- apiGroups: ["apps"]
+  resources: ["statefulsets/scale","statefulsets"]
+  verbs: ["get", "delete", "deletecollection","list"]
+- apiGroups: [""]
+  resources: ["services"]
+  verbs: ["get", "delete","list"]
+- apiGroups: ["extensions"]
+  resources: ["replicasets","replicasets/scale"]
+  verbs: ["get", "delete","list"]
+- apiGroups: [""]
+  resources: ["pods/log"]
+  verbs: ["get", "list"]
+- apiGroups: [""]
+  resources: ["pods/exec"]
+  verbs: ["create"]
+{{- if and ( eq .Values.global.istio.enabled true ) ( eq .Values.global.istio.cni.enabled false ) ( eq (include "ckaf-kafka.PspCreation" .) "true") }}
+- apiGroups:
+  - extensions
+  resourceNames:
+  - {{ .Release.Name }}-{{ .Chart.Name }}-istio-psp
+  resources:
+  - podsecuritypolicies
+  verbs:
+  - use
+{{- end }}
+{{- end }}
+---
+{{- if (and ( .Values.global.rbac.enabled) (not .Values.serviceAccountName) ) }}
+kind: RoleBinding
+apiVersion: rbac.authorization.k8s.io/v1
+metadata:
+  name: {{ template "ckaf-kafka.name" . }}-kf-postdel-rolebind
+  namespace: "{{.Release.Namespace}}"
+  labels:
+{{ include "ckaf-kafka.commonLabels" . | indent 4 }}
+{{- include "csf-common-lib.v1.customLabels" (tuple .Values.global.labels) | indent 4 }}
+    app: {{ .Chart.Name }}
+  annotations:
+    seccomp.security.alpha.kubernetes.io/allowedProfileNames: {{ .Values.global.seccompAllowedProfileNames }}
+    seccomp.security.alpha.kubernetes.io/defaultProfileName: {{ .Values.global.seccompDefaultProfileName }}
+    "helm.sh/hook": post-delete
+    "helm.sh/hook-weight": "-6"
+    "helm.sh/hook-delete-policy": before-hook-creation,hook-succeeded,hook-failed
+{{- include "csf-common-lib.v1.customAnnotations" (tuple .Values.global.annotations) | indent 4 }}
+subjects:
+- kind: ServiceAccount
+  name: {{ template "ckaf-kafka.name" . }}-kf-postdel-admin
+  namespace: "{{.Release.Namespace}}"
+roleRef:
+  kind: Role
+  name: {{ template "ckaf-kafka.name" . }}-kf-postdel-role
+  apiGroup: rbac.authorization.k8s.io
+{{- end }}
+---
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: {{ template "ckaf-kafka.postDeleteJobName" . }}
+  labels:
+{{ include "ckaf-kafka.commonLabels" . | indent 4 }}
+{{- include "csf-common-lib.v1.customLabels" (tuple .Values.global.labels) | indent 4 }}
+    app: {{ .Chart.Name }}
+    release: {{ .Release.Name | quote }}
+    heritage: {{ .Release.Service | quote }}
+  annotations:
+    # This is what defines this resource as a hook. Without this line, the
+    # job is considered part of the release.
+    seccomp.security.alpha.kubernetes.io/allowedProfileNames: {{ .Values.global.seccompAllowedProfileNames }}
+    seccomp.security.alpha.kubernetes.io/defaultProfileName: {{ .Values.global.seccompDefaultProfileName }}
+    "helm.sh/hook": post-delete
+    "helm.sh/hook-delete-policy": before-hook-creation,hook-succeeded
+    "helm.sh/hook-weight": "-5"
+{{- include "csf-common-lib.v1.customAnnotations" (tuple .Values.global.annotations) | indent 4 }}
+spec:
+  template:
+    metadata:
+      labels:
+        altiplano-role: {{ .Values.accessRoleLabel }}
+        app: {{ .Chart.Name }}
+{{ include "ckaf-kafka.commonLabels" . | indent 8 }}
+{{- include "csf-common-lib.v1.customLabels" (tuple .Values.global.labels) | indent 8 }}
+      annotations:
+        sidecar.istio.io/inject: "false"
+{{- include "csf-common-lib.v1.customAnnotations" (tuple .Values.global.annotations) | indent 8 }}
+    spec:
+      {{- if .Values.kafkaNodeSelector.enable }}
+      nodeSelector:
+{{ toYaml .Values.kafkaNodeSelector.nodeLabel | indent 8 }}
+      {{- end }}
+      {{- include "ckaf-kafka.tolerations" . | indent 6 }}
+      {{- if .Values.global.rbac.enabled }}
+      {{- if not .Values.serviceAccountName }}
+      serviceAccountName: {{ template "ckaf-kafka.name" . }}-kf-postdel-admin
+      {{ else }}
+      serviceAccountName: {{ template "ckaf-kafka.serviceAccountName" . }}
+      {{ end }}
+      {{ end }}
+      {{- if eq .Values.security.enabled true }}
+      securityContext:
+        {{- if ( ne ( toString ( .Values.security.runAsUser )) "auto" ) }}
+        runAsUser: {{ .Values.security.runAsUser }}
+        {{- end }}    
+        runAsNonRoot: true
+        {{- if ( ne ( toString (.Values.security.fsGroup)) "auto" ) }}
+        fsGroup: {{ .Values.security.fsGroup }}
+        {{- end }}
+        {{- if eq (include "ckaf-kafka.renderSeccompProfile" .) "true" }}
+        seccompProfile:
+          type: {{ .Values.security.seccompProfile.type }}
+        {{- end }}
+      {{- end }}
+      restartPolicy: Never
+      {{- if  coalesce .Values.imagePullSecrets .Values.global.imagePullSecrets }}
+      imagePullSecrets:
+        - name: {{ coalesce .Values.imagePullSecrets .Values.global.imagePullSecrets }}
+      {{- end }}
+      automountServiceAccountToken: true
+      containers:
+      - name: {{ template "ckaf-kafka.postDeleteJobContainerName" . }}
+        {{- if eq .Values.global.flatRegistry true }}
+        image: "{{ .Values.global.registry }}/{{ .Values.kubectlImageName }}:{{ .Values.kubectlTag }}"
+        {{- else }}
+        image: "{{ coalesce .Values.global.registry3 .Values.global.registry }}/{{ include "ckaf-kafka.kubectlImageRepo" . }}:{{ .Values.kubectlTag }}"
+        {{- end }}
+        {{- if eq .Values.security.enabled true }}
+        securityContext:
+          runAsNonRoot: true
+          readOnlyRootFilesystem: {{ .Values.security.readOnlyRootFilesystem }}
+          {{- if ( ne ( toString ( .Values.security.runAsUser )) "auto" ) }}
+          runAsUser: {{ .Values.security.runAsUser }}
+          {{- end }}  
+          {{- if .Values.security.runAsGroup }}
+          runAsGroup: {{ .Values.security.runAsGroup }}
+          {{- end }}        
+          allowPrivilegeEscalation: false
+          {{- if eq (include "ckaf-kafka.renderSeccompProfile" .) "true" }}
+          seccompProfile:
+            type: {{ .Values.security.seccompProfile.type }}
+          {{- end }}
+          privileged: false
+          capabilities:
+            drop: ["ALL"]
+        {{- end }}
+        resources:
+{{- include "ckaf-kafka.getResources" (tuple . .Values.jobResources "1") | indent 10 }}
+        env:
+        - name: TZ
+          value: {{ template "ckaf-kafka.timeZoneEnv" . }}
+        command:
+        - sh
+        - -c
+        - |
+          {{- if .Values.deleteKafkaJob.auto_remove_kf_pvc }}
+          kubectl delete pvc --namespace {{ .Release.Namespace }} -l app={{ .Chart.Name }},release={{ .Release.Name }}
+          {{- end }}
+          {{- if .Values.deleteKafkaJob.auto_remove_kf_secret }}
+          {{- if .Values.ssl.secret_name }}
+          response=`kubectl get  secrets  --namespace={{ .Release.Namespace | quote }} {{ .Values.ssl.secret_name }} --output=jsonpath={.metadata.name}`
+          if [[ ! -z $response ]]; then
+            kubectl delete secrets  --namespace={{ .Release.Namespace | quote }} $response
+          fi
+          {{- end }}
+          response_cert_mgr=`kubectl get  secrets  --namespace={{ .Release.Namespace | quote }} {{ template "ckaf-kafka.statefulset" . }}-cert-manager-secret --output=jsonpath={.metadata.name}`
+          if [[ ! -z $response_cert_mgr ]]; then
+            kubectl delete secrets  --namespace={{ .Release.Namespace | quote }} $response_cert_mgr
+            kubectl delete secrets  --namespace={{ .Release.Namespace | quote }} {{ .Values.ssl.certManager.store_password_secret_name }}
+          fi
+          {{- end }}
+          
+          # clean up the replicas config map when, scale via upgrade feature is turned ON.
+          {{- if .Values.global.enable_scale_via_upgrade }}
+            kubectl delete configmap {{ template "ckaf-kafka.name" . }}-replicas -n {{ .Release.Namespace }}
+          {{- end }}
+          # clean up the configmap, which is created during pre-rollback to handle helm/operator interoperability. 
+          configmapName=$( kubectl get configmap ko-{{ .Release.Name }}-rollbackinprogress --namespace={{ .Release.Namespace | quote }} --output=jsonpath={.metadata.name})
+          if [ $configmapName ]; then
+            echo "Deleting the kafka helm created configmap."
+            kubectl delete configmap ko-{{ .Release.Name }}-rollbackinprogress --namespace={{ .Release.Namespace | quote}}
+          fi

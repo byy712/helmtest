@@ -1,0 +1,23 @@
+{{- if .Values.pdb.enabled }}
+{{- if .Capabilities.APIVersions.Has "policy/v1/PodDisruptionBudget" }}
+apiVersion: policy/v1
+{{- else }}
+apiVersion: policy/v1beta1
+{{- end }}
+kind: PodDisruptionBudget
+metadata:
+  name: {{ template "ckey.keycloak.statefulsetName" . }}-pdb
+  annotations:
+    {{- include "ckey.customAnnotations" (tuple .Values.global.annotations) | indent 4 }}
+  labels:
+    app: {{ template "ckey.fullName" . }}
+    release: {{ .Release.Name }}
+    {{- include "ckey.customLabels" (tuple .Values.global.labels ) | indent 4 }}
+    {{- include "ckey.commonLabels" . | indent 4 }}
+spec:
+{{- include "ckey.pdbValue" .Values.pdb | indent 2 }}
+  selector:
+    matchLabels:
+      app: {{ template "ckey.chartName" . }}
+      release: {{ .Release.Name }}
+{{- end }}

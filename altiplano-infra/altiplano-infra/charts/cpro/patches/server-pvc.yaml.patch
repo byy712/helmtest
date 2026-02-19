@@ -1,0 +1,10 @@
+--- orig/cpro/templates/server/server-pvc.yaml	2023-12-13 16:53:25.000000000 +0530
++++ new/cpro/templates/server/server-pvc.yaml	2023-12-27 17:12:31.150389189 +0530
+@@ -9,6 +9,7 @@
+ {{- include "cpro.labelsOrAnnotations" (tuple .Values.server.persistentVolume.annotations .Values.global.annotations) | indent 4}}
+   labels:
+     {{- include "cpro.app.labels.v3" ( dict "root" . "context" .Values.server ) | nindent 4 }}
++    release: {{ .Release.Name | quote }}    
+ {{- include "cpro.labelsOrAnnotations" (tuple .Values.global.labels) | indent 4}}
+   name: {{ template "cpro.prometheus.server.fullname" . }}
+ spec:

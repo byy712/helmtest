@@ -1,0 +1,18 @@
+#variabes used component will have .Values.kubeStateMetrics data(yaml)
+##certificateName with be name of certificate created
+##secretName will be the name of secret created
+##the above variables are used in the cpro.certmanager.template
+{{- if and (.Values.kubeStateMetrics.enabled) (eq (include "csf-common-lib.v1.coalesceBoolean" (tuple .Values.kubeStateMetrics.tls.enabled .Values.tls.enabled .Values.global.tls.enabled .Values.kubeStateMetrics.tls_auth_config.tls.enabled false)) "true") (eq (include "csf-common-lib.v1.isEmptyValue" .Values.kubeStateMetrics.tls.secretRef.name) "true") (eq .Values.kubeStateMetrics.tls_auth_config.tls.externalSecret "") }}
+{{- if eq (include "csf-common-lib.v1.coalesceBoolean" (tuple .Values.certManager.enabled .Values.global.certManager.enabled true)) "true" }}
+{{- if .Values.kubeStateMetrics.certificate.enabled }}
+{{ $_ := set . "component" .Values.kubeStateMetrics }}
+{{ $certificateName := include "cpro.kubeStateMetrics.server.resourceName" . }}
+{{ $_ := set . "certificateName" $certificateName }}
+{{ $secretName := include "cpro.kubeStateMetrics.server.secret" . }}
+{{ $_ := set . "secretName" $secretName }}
+{{ $serviceName := printf "%s" (include "cpro.prometheus.kubeStateMetrics.fullname" . ) }}
+{{ $_ := set . "serviceName" $serviceName }}
+{{- include "cpro-common-lib.v4.certificate" (tuple . .Values.kubeStateMetrics "pobserve-issuer") }}
+{{- end }}
+{{- end }}
+{{- end }}

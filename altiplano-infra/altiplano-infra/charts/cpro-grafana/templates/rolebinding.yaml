@@ -1,0 +1,19 @@
+{{- if and .Values.rbac.enabled .Values.restrictedToNamespace -}}
+apiVersion: {{ template "cpro-grafana.grafanaApiVersion.roleBinding" . }}
+kind: RoleBinding
+metadata:
+  name: {{ template "cpro-grafana.fullname" . }}
+  labels:
+    {{- include "cpro-grafana.app.labels-v3" . | nindent 4 }}
+    {{- include "cpro-grafana.labelsOrAnnotations" (tuple .Values.global.labels) | indent 4}}
+  annotations:
+    {{- include "cpro-grafana.labelsOrAnnotations" (tuple .Values.global.annotations) | indent 4}}
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: {{ template "cpro-grafana.fullname" . }}
+subjects:
+- kind: ServiceAccount
+  name: {{ template "cpro-grafana.serviceAccountName" . }}
+  namespace: {{ .Release.Namespace }}
+{{- end -}}

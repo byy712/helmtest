@@ -1,0 +1,10 @@
+--- cpro-grafana-7.0.4/templates/update_datasource_job.yaml	2024-03-07 14:27:41.000000000 +0530
++++ templates/update_datasource_job.yaml	2024-04-02 17:07:28.155935430 +0530
+@@ -19,6 +19,7 @@
+     metadata:
+       labels:
+         {{- include "cpro-grafana.app.labels-v3" . | nindent 8 }}
++        altiplano-role: {{ .Values.accessRoleLabel }}
+         component: "{{ .Values.name }}"
+ {{- include "cpro-grafana.labelsOrAnnotations" (tuple .Values.grafana.labels .Values.custom.pod.labels .Values.global.labels) | indent 8}}
+       annotations:

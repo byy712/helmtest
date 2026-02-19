@@ -1,0 +1,54 @@
+{{- include "cmdb.init" . -}}
+{{- $useV1alpha3 := and (.Capabilities.APIVersions.Has "cert-manager.io/v1alpha3/Certificate") (not (.Capabilities.APIVersions.Has "cert-manager.io/v1/Certificate")) }}
+
+{{/*
+* create a site level self-signed CA issuer in the case user provides just tls.enabled for non-production use.
+* Refer "csf-common-lib.v6.certificateValues", "commonDefaultIssuer": default issuer name will be common for all certificates within the chart.
+* This is used for syslog certificate. Could be used for mariadb/maxscale cert in the future
+*/}}
+
+{{- if .syslogCommonIssuer }}
+---
+{{/* create a self-signed issuer to sign the CA cert */}}
+apiVersion: cert-manager.io/{{ $useV1alpha3 | ternary "v1alpha3" "v1" }}
+kind: Issuer
+metadata:
+  name: {{ include "csf-common-lib.v3.resourceName" (tuple . "Issuer" "self-signed-issuer") }}
+  labels:
+    {{- include "csf-common-lib.v1.commonLabels" (tuple .) | nindent 4 }}
+  annotations:
+    {{- include "csf-common-lib.v1.customAnnotations" (tuple .Values.global.annotations) | indent 4 }}
+spec:
+  selfSigned: {}
+---
+{{/* create the common CA for the CA issuer */}}
+apiVersion: cert-manager.io/{{ $useV1alpha3 | ternary "v1alpha3" "v1" }}
+kind: Certificate
+metadata:
+  name: {{ include "csf-common-lib.v3.resourceName" (tuple . "Certificate" "issuer-ca-cert") }}
+spec:
+  isCA: true
+  dnsNames:
+    - localhost
+  secretName: {{ include "csf-common-lib.v3.resourceName" (tuple . "secret" "issuer-ca-cert") }}
+  privateKey:
+    algorithm: ECDSA
+    size: 256
+  issuerRef:
+    name: {{ include "csf-common-lib.v3.resourceName" (tuple . "Issuer" "self-signed-issuer") }}
+    kind: Issuer
+    group: "cert-manager.io"
+---
+{{/* create the default issuer that will be used for certs */}}
+apiVersion: cert-manager.io/{{ $useV1alpha3 | ternary "v1alpha3" "v1" }}
+kind: Issuer
+metadata:
+  name: {{ include "csf-common-lib.v3.resourceName" (tuple . "Issuer" "") }}
+  labels:
+    {{- include "csf-common-lib.v1.commonLabels" (tuple .) | nindent 4 }}
+  annotations:
+    {{- include "csf-common-lib.v1.customAnnotations" (tuple .Values.global.annotations) | indent 4 }}
+spec:
+  ca:
+    secretName: {{ include "csf-common-lib.v3.resourceName" (tuple . "secret" "issuer-ca-cert") }}
+{{- end }}

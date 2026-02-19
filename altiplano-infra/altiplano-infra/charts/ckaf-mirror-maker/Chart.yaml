@@ -1,0 +1,12 @@
+apiVersion: v2
+appVersion: 4.1.0
+dependencies:
+- name: csf-common-lib
+  repository: https://repo.cci.nokia.net/csf-helm-stable/
+  version: 1.15.0
+description: A Helm chart for Kubernetes kafka-mirror 2.0
+maintainers:
+- email: I_CKAF@internal.nsn.com
+  name: CSF CKAF Team
+name: ckaf-mirror-maker
+version: 5.1.0-nokia-patch-8

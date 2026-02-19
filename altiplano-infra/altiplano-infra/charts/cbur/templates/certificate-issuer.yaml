@@ -1,0 +1,30 @@
+{{- include "cbur.tls" . }}
+{{- if and (eq (include "cbur.proxy.coalesceBoolean" (tuple .Values.tls.enabled .Values.global.tls.enabled false)) "true") (and (not .Values.tls.certsPath)) (or (not .Values.tls.serverSecretRef.credentialName) (not .Values.tls.clientSecretRef.credentialName)) (eq (include "cbur.proxy.coalesceBoolean" (tuple .Values.certManager.enabled .Values.global.certManager.enabled false)) "true") (and (or (not .Values.certificate.issuerRef.name) (not .Values.clientCertificate.issuerRef.name)) (not .Values.certManager.issuerRef.name) (not .Values.global.certManager.issuerRef.name)) }}
+apiVersion: cert-manager.io/v1
+kind: Issuer
+metadata:
+  name: {{ template "cbur.fullname" . }}-selfsign-issuer
+spec:
+  selfSigned: {}
+---
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  name: {{ template "cbur.fullname" . }}-root-ca
+spec:
+  secretName: {{ template "cbur.fullname" . }}-root-ca
+  commonName: cbur.nokia.com
+  isCA: true
+  issuerRef:
+    name: {{ template "cbur.fullname" . }}-selfsign-issuer
+    kind: Issuer
+    group: cert-manager.io
+---
+apiVersion: cert-manager.io/v1
+kind: Issuer
+metadata:
+  name: {{ template "cbur.fullname" . }}-ca-issuer
+spec:
+  ca:
+    secretName: {{ template "cbur.fullname" . }}-root-ca
+{{- end }}

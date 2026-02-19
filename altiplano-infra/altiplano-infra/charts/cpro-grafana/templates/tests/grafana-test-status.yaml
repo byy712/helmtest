@@ -1,0 +1,75 @@
+{{- include "cpro-grafana.istio.grafanaInitIstio" . }}
+apiVersion: v1
+kind: Pod
+metadata:
+  name: {{ template "cpro-grafana.testPod" . }}
+  labels:
+    {{- include "cpro-grafana.app.labels-v3" . | nindent 4 }}
+{{- include "cpro-grafana.labelsOrAnnotations" (tuple .Values.grafana.labels .Values.custom.pod.labels .Values.global.labels) | indent 4 }}
+  annotations:
+    "helm.sh/hook": test-success
+    "helm.sh/hook-weight": "{{ .Values.helmTest.hookWeight }}"
+    "helm.sh/hook-delete-policy": before-hook-creation,hook-succeeded
+    sidecar.istio.io/inject: "{{ $.istio.enabled }}"
+{{- include "cpro-grafana.labelsOrAnnotations" (tuple .Values.grafana.annotations .Values.helmTest.podAnnotations .Values.custom.pod.annotations .Values.global.annotations) | indent 4 }}
+spec:
+  automountServiceAccountToken: true
+  serviceAccountName: {{ template "cpro-grafana.testServiceAccountName" . }}
+  securityContext:
+  {{$securityContextvalue := dict "cSecCtx" .Values.securityContext "ctx" . }}
+  {{- include "cpro-grafana.securitycontext" $securityContextvalue | nindent 4 }}
+  volumes:
+    - name: tests
+      configMap:
+        name: {{ template "cpro-grafana.testConfigmap" . }}
+{{ include "cpro-common-lib.imagePullSecrets" (dict "workloadName" .Values.grafana "root" .) | indent 2 }}          
+  containers:
+    - name: {{ template "cpro-grafana.testContainer" . }}
+{{- include "cpro-grafana.kubectl.image" (dict "root" . "workload" .Values.helmDeleteImage "imageName" .Values.helmDeleteImage.imagerocky) | nindent 6}}
+      {{- include "cpro-grafana.terminationMessage" . | nindent 6 }}      
+      volumeMounts:
+        - mountPath: /tests
+          name: tests
+          readOnly: true
+      resources:
+{{- include "cpro-common-lib.v1.resources" ( dict "root" . "workloadresources" .Values.helmTest.resources "defaultcpulimit" "100m") | nindent 8 }}
+      securityContext:
+      {{$securityContextvalue := dict "cSecCtx" .Values.helmTest.containerSecurityContext "ctx" . }}
+      {{- include "cpro-grafana.containerSecurityContext" $securityContextvalue | nindent 10 }}
+      command:
+         - bash
+         - -c
+         - |
+           {{- if $.istio.enabled }}
+           until [ $(curl --fail --silent --output /dev/stderr --write-out "%{http_code}" localhost:{{- template "cpro-common-lib.istioHealthCheckPort" . -}}/healthz/ready) -eq 200 ]; do
+              echo "Waiting for proxy..."
+              sleep 1
+           done
+
+           echo "istio-proxy available"
+           {{- end }}
+           source /tests/cmd.sh
+           output=1
+           curl_rc=0
+           cmd=""
+     
+           scheme={{ upper .Values.grafana_ini.server.protocol }}
+           if [ $scheme == "HTTPS" ]; then
+               cmd="curl --output /dev/null --silent --head --fail --insecure https://{{ template "cpro-grafana.service.name" . }}:{{ .Values.service.port }}/api/health --write-out %{http_code}"
+           else
+               cmd="curl --output /dev/null --silent --head --fail http://{{ template "cpro-grafana.service.name" . }}:{{ .Values.service.port }}/api/health --write-out %{http_code}"
+           fi
+           output=$($cmd)
+           curl_rc=$?
+           if [ $output -ne 200 ]; then
+             echo "grafana health check failed; API response: $output $curl_rc"
+             exit 1
+           fi
+           echo "grafana health check via API passed. Checking pod-container status "
+           wait_pod_running
+           {{- if $.istio.enabled }}
+           curl -X POST http://localhost:{{- template "cpro-common-lib.istioStopPort" . -}}/quitquitquit
+           {{- end }}
+{{$data := dict "component_pc" .Values.helmTest  "ctx" . }}
+{{- include "cpro-grafana.pod.pcName" $data | nindent 2 }}
+  restartPolicy: Never

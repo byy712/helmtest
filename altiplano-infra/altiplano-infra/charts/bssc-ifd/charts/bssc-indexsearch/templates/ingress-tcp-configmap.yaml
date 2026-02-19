@@ -1,0 +1,13 @@
+{{- if and (.Values.crossClusterReplication.leader.enabled) (.Values.crossClusterReplication.leader.ingressTcpConfigmap) }}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ .Values.crossClusterReplication.leader.ingressTcpConfigmap.tcpServicesConfigmapName }}-{{ .Release.Name }}-{{ .Release.Namespace }}
+  labels:
+{{- include "bssc-indexsearch.commonLabels" (tuple .) | nindent 4 }}
+{{- include "bssc-indexsearch.csf-toolkit-helm.labels" (tuple .) | nindent 4 }}
+  annotations:
+{{- include "bssc-indexsearch.csf-toolkit-helm.annotations" (tuple .) | nindent 4 }}
+data:
+  {{.Values.crossClusterReplication.leader.ingressTcpConfigmap.ingressTcpPort}}: "{{ .Release.Namespace }}/{{ .Values.service.name }}:{{ .Values.service.manager_port }}"
+{{- end }}

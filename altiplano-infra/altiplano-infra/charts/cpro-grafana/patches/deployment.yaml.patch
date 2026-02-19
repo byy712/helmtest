@@ -1,0 +1,22 @@
+--- cpro-grafana/templates/deployment.yaml	2024-05-06 17:04:15.874386444 +0530
++++ deployment.yaml	2024-05-06 17:04:17.638388569 +0530
+@@ -283,6 +283,9 @@
+               value: "ALL"
+             {{- else }}
+             {{- end }}
++            {{- if .Values.sidecar.dashboards.config}}
++{{ tpl (toYaml .Values.sidecar.dashboards.config) . | indent 12 }}     
++	     {{- end }}  
+           resources:
+ {{- include "cpro-common-lib.v1.resources" ( dict "root" . "workloadresources" .Values.sidecar.resources "defaultcpulimit" "100m") | nindent 12 }}
+           securityContext:
+@@ -401,6 +404,9 @@
+               value: "{{ .Values.sidecar.datasources.level }}"
+             - name: FOLDER
+               value: "/etc/grafana/provisioning/datasources"
++            {{- if .Values.sidecar.datasources.config}}
++{{ tpl (toYaml .Values.sidecar.datasources.config) . | indent 12 }}
++             {{- end }}
+           resources:
+ {{- include "cpro-common-lib.v1.resources" ( dict "root" . "workloadresources" .Values.sidecar.resources "defaultcpulimit" "100m") | nindent 12 }}
+           securityContext:

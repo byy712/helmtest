@@ -1,0 +1,190 @@
+apiVersion: batch/v1
+kind: Job
+
+metadata:
+  name: {{ template "crmq.postUpgradeJobName" . }}
+  labels:
+    app: {{ template "crmq.name" . }}-post-upgrade
+    chart: {{ template "crmq.chart" .  }}
+    release: "{{ .Release.Name }}"
+    heritage: "{{ .Release.Service }}"
+    {{- include "crmq.commonLabels" . | indent 4 }}
+    {{- include "csf-common-lib.v1.customLabels" (tuple .Values.global.labels) | indent 4 }}
+  annotations:
+    "helm.sh/hook": post-upgrade
+    {{- if .Values.hooks.deletePolicy }}
+    "helm.sh/hook-delete-policy": {{ .Values.hooks.deletePolicy }}
+    {{- else }}
+    "helm.sh/hook-delete-policy": hook-succeeded, before-hook-creation
+    {{- end }}
+    {{- include "csf-common-lib.v1.customAnnotations" (tuple .Values.global.annotations) | indent 4 }}
+
+spec:
+  template:
+    metadata:
+      {{- if .Values.istio.enabled }}
+      annotations:
+        sidecar.istio.io/inject: "false"
+      {{- end }}
+        {{- include "csf-common-lib.v1.customAnnotations" (tuple .Values.global.annotations) | indent 8 }}
+      labels:
+        altiplano-role: {{ .Values.accessRoleLabel }}
+        app: {{ template "crmq.name" . }}-post-ugrade-job
+        chart: {{ template "crmq.chart" .  }}
+        release: "{{ .Release.Name }}"
+        heritage: "{{ .Release.Service }}"
+        {{- include "crmq.commonLabels" . | indent 8 }}
+        {{- include "csf-common-lib.v1.customLabels" (tuple .Values.global.labels) | indent 8 }}
+    spec:
+      automountServiceAccountToken: true
+      hostname: {{ template "crmq.fullname" . }}-post-upgrade-pod
+      subdomain: {{ template "crmq.fullname" . }}
+      restartPolicy: Never     
+      {{- if .Values.rbac.enabled }}
+      {{- if and .Values.persistence.data.enabled (not .Values.persistence.reservePvcForScalein) }}
+      serviceAccountName: {{ template "crmq.fullname" . }}-scale
+      {{- else }}
+      serviceAccountName: {{ template "crmq.fullname" . }}-admin-forgetnode
+      {{- end }}
+      {{ else }}
+      {{- if and .Values.persistence.data.enabled (not .Values.persistence.reservePvcForScalein) }}
+        {{- if not ( empty .Values.serviceAccountNameScale )}}
+      serviceAccountName: "{{ .Values.serviceAccountNameScale }}"
+        {{- else }}
+      serviceAccountName: "{{ .Values.serviceAccountName }}"
+        {{- end }}
+      {{- else }}
+        {{- if not ( empty .Values.serviceAccountNameAdminForgetnode )}}
+      serviceAccountName: "{{ .Values.serviceAccountNameAdminForgetnode }}"
+        {{- else}}
+      serviceAccountName: "{{ .Values.serviceAccountName }}"
+        {{- end }}
+      {{- end }}
+      {{- end }}
+      {{- if eq .Values.antiAffinity "hard" }}
+      affinity:
+        podAntiAffinity:
+          requiredDuringSchedulingIgnoredDuringExecution:
+            - topologyKey: "kubernetes.io/hostname"
+              labelSelector:
+                matchLabels:
+                  app: {{ template "crmq.name" . }}
+                  release: {{ .Release.Name | quote }}
+      {{- else if eq .Values.antiAffinity "soft" }}
+      affinity:
+        podAntiAffinity:
+          preferredDuringSchedulingIgnoredDuringExecution:
+            - weight: 1
+              podAffinityTerm:
+                topologyKey: "kubernetes.io/hostname"
+                labelSelector:
+                  matchLabels:
+                    app: {{ template "crmq.name" . }}
+                    release: {{ .Release.Name | quote }}
+      {{- end }}
+      {{- if .Values.nodeSelector }}
+      nodeSelector:
+{{ toYaml .Values.nodeSelector | indent 8 }}
+      {{- end }}
+      {{- if .Values.tolerations }}
+      tolerations:
+{{ toYaml .Values.tolerations | indent 8 }}
+      {{- end }}
+      containers:
+      - name: {{ template "crmq.postUpgradeContainerName" . }}
+        image: "{{ .Values.global.registry1 }}/{{ .Values.kubectlImage.repository }}:{{ .Values.kubectlImage.tag }}"
+        securityContext:
+          capabilities:
+            drop: ["ALL"]
+          runAsNonRoot: true
+          {{- if eq (include "crmq.renderSeccompProfile" .) "true" }}
+          seccompProfile:
+            type: {{ .Values.securityContext.seccompProfile.type }}
+          {{- end }}
+          {{- if .Values.securityContext.allowPrivilegeEscalation }}
+          allowPrivilegeEscalation: {{ .Values.securityContext.allowPrivilegeEscalation }}
+          {{- else }}
+          allowPrivilegeEscalation: false
+          {{- end }}
+          readOnlyRootFilesystem: {{ required "Value is required true/false." .Values.securityContext.readOnlyRootFilesystem }}
+          {{- if ( ne ( toString ( .Values.securityContext.runAsUser )) "auto" ) }}
+          runAsUser: {{ .Values.securityContext.runAsUser }}
+          {{- end }}
+        {{ if empty .Values.global.podNamePrefix }}
+        command:
+          - bash
+          - -ec
+          - |
+            while true
+            do
+              rc=`kubectl get pods {{ template "crmq.fullname" . }}-0 -n {{ .Release.Namespace }} --no-headers=true|awk '{ print$2" "$3 }'`
+              IFS=' ' read -r -a array <<< "$rc"
+              STATUS=${array[1]};READY=${array[0]}
+              if [ $(cut -d'/' -f2 <<< $READY) == $(cut -d'/' -f1 <<< $READY) -a "${STATUS}" == "Running" ]
+              then
+                  # read default user name and password from mounted hidden files on the job container.
+                  default_user=$(<"/etc/default-user-creds/.username")
+                  default_user=$default_user | sed -e 's/^[[:space:]]*//' -e 's/[[:space:]]*$//'
+ 
+                  default_user_password=$(<"/etc/default-user-creds/.password")
+                  default_user_password=$default_user_password | sed -e 's/^[[:space:]]*//' -e 's/[[:space:]]*$//'
+                  kubectl exec {{ template "crmq.fullname" . }}-0 -c {{ default "" .Values.global.containerNamePrefix }}{{ template "crmq.fullname" . }} -n {{ .Release.Namespace }} -- rabbitmqctl change_password $default_user $default_user_password
+                 break
+              else
+                 echo "pod status : {{ template "crmq.fullname" . }}-0 ${READY} ${STATUS}"
+                 sleep 10
+              fi
+            done
+        {{ else }}
+        command:
+          - bash
+          - -ec
+          - |
+            while true
+            do
+             rc=`kubectl get pods {{ .Values.global.podNamePrefix }}{{ template "crmq.fullname" . }}-0 -n {{ .Release.Namespace }} --no-headers=true|awk '{ print$2" "$3 }'`
+             IFS=' ' read -r -a array <<< "$rc"
+             STATUS=${array[1]};READY=${array[0]}
+             if [ $(cut -d'/' -f2 <<< $READY) == $(cut -d'/' -f1 <<< $READY) -a "${STATUS}" == "Running" ]
+             then
+                 # read default user name and password from mounted hidden files on the job container.
+                 default_user=$(<"/etc/default-user-creds/.username")
+                 default_user=$default_user | sed -e 's/^[[:space:]]*//' -e 's/[[:space:]]*$//'
+
+                 default_user_password=$(<"/etc/default-user-creds/.password")
+                 default_user_password=$default_user_password | sed -e 's/^[[:space:]]*//' -e 's/[[:space:]]*$//'
+                 kubectl exec {{ .Values.global.podNamePrefix }}{{ template "crmq.fullname" . }}-0 -c {{ default "" .Values.global.containerNamePrefix }}{{ template "crmq.fullname" . }} -n {{ .Release.Namespace }} -- rabbitmqctl change_password $default_user $default_user_password                
+                 break
+             else
+               echo "pod status : {{ .Values.global.podNamePrefix }}{{ template "crmq.fullname" . }}-0 ${READY} ${STATUS}"
+               sleep 10
+             fi
+            done
+        {{ end }}
+        env:
+          - name: LC_ALL
+            value: en_US.UTF-8
+        volumeMounts:
+          - name: default-user-creds
+            mountPath: /etc/default-user-creds/
+          - name: tmp
+            mountPath: /tmp
+
+        {{- if .Values.resources }}
+        resources:
+{{ toYaml .Values.resources | indent 10 }}
+        {{- end }}
+      dnsConfig:
+        searches:
+          - {{ template "crmq.fullname" . }}.{{ .Release.Namespace }}.svc.cluster.local
+      volumes:
+        - name: default-user-creds
+          secret:
+            secretName: {{ .Values.rabbitmq.default_user_credentials.secretName }}
+            items:
+            - key: {{ .Values.rabbitmq.default_user_credentials.usernameKey }}
+              path: ".username"
+            - key: {{ .Values.rabbitmq.default_user_credentials.passwordKey }}
+              path: ".password"
+        - name: tmp
+          emptyDir: {}

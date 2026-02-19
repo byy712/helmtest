@@ -1,0 +1,99 @@
+{{- include "cpro-grafana.istio.grafanaInitIstio" . }}
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ template "cpro-grafana.service.name" . }}
+  labels:
+    {{- include "cpro-grafana.app.labels-v3" . | nindent 4 }}
+    {{- include "cpro-grafana.labelsOrAnnotations" (tuple .Values.service.labels .Values.global.labels) | indent 4}}
+  annotations:
+    prometheus.io/port: "{{ .Values.grafana_ini.server.http_port }}"
+    prometheus.io/path: "{{ template "cpro-grafana.probe" . }}/metrics"
+    prometheus.io/scheme: {{ .Values.scheme }}
+{{- include "cpro-grafana.labelsOrAnnotations" (tuple .Values.service.annotationsForScrape .Values.service.annotations .Values.global.annotations) | indent 4}}
+spec:
+{{- if (or (eq .Values.service.type "ClusterIP") (empty .Values.service.type)) }}
+  type: ClusterIP
+  {{- if .Values.service.clusterIP }}
+  clusterIP: {{ .Values.service.clusterIP }}
+  {{end}}
+{{- else if eq .Values.service.type "LoadBalancer" }}
+  type: {{ .Values.service.type }}
+  {{- if .Values.service.loadBalancerIP }}
+  loadBalancerIP: {{ .Values.service.loadBalancerIP }}
+  {{- end }}
+  {{- if .Values.service.loadBalancerSourceRanges }}
+  loadBalancerSourceRanges:
+{{ toYaml .Values.service.loadBalancerSourceRanges | indent 4 }}
+  {{- end -}}
+{{- else }}
+  type: {{ .Values.service.type }}
+{{- end }}
+{{- if .Values.service.externalIPs }}
+  externalIPs:
+{{ toYaml .Values.service.externalIPs | indent 4 }}
+{{- end }}
+  ports:
+    - name: tcp-service
+      port: {{ .Values.service.port }}
+      targetPort: tcp-grafana
+{{ if (and (eq .Values.service.type "NodePort") (not (empty .Values.service.nodePort))) }}
+      nodePort: {{.Values.service.nodePort}}
+{{ end }}
+      #appProtocol: {{ .Values.grafana_ini.server.protocol | default "http"}}
+  {{- include "cpro-grafana.dualStack.ipFamilyPolicy.config" . | indent 2 }}
+  {{- include "cpro-grafana.dualStack.ipFamilies.config" . | indent 2 }}
+  selector:
+    app: {{ template "cpro-grafana.name" . }}
+    release: {{ .Release.Name }}
+
+{{- if .Values.sane }}
+  {{- if .Values.sane.enabled }}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  labels:
+    {{- include "cpro-grafana.app.labels-v3" . | nindent 4 }}
+    {{- include "cpro-grafana.labelsOrAnnotations" (tuple .Values.service.labels .Values.global.labels) | indent 4}}
+  annotations:
+{{- include "cpro-grafana.labelsOrAnnotations" (tuple .Values.service.annotations .Values.global.annotations) | indent 4}}
+  name: {{ template "cpro-grafana.saneIngressName" . }}
+spec:
+  ports:
+  - name: tcp-sane-port
+    port: {{ .Values.sane.servicePort }}
+    targetPort: tcp-sane-port
+    #appProtocol: {{ .Values.sane.appProtocol | default "http"}}
+  {{- include "cpro-grafana.dualStack.ipFamilyPolicy.config" . | indent 2 }}
+  {{- include "cpro-grafana.dualStack.ipFamilies.config" . | indent 2 }}
+  selector:
+    app: {{ template "cpro-grafana.name" . }}
+    release: {{ .Release.Name }}
+  {{- end}}
+{{- end}}
+---
+{{- if or ($.istio.enabled) (.Values.includeWorkloadInIstioMesh) }}
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ template "cpro-grafana.istioDestinationRule" . }}
+  labels:
+    {{- include "cpro-grafana.app.labels-v3" . | nindent 4 }}
+    {{- include "cpro-grafana.labelsOrAnnotations" (tuple .Values.service.labels .Values.global.labels) | indent 4}}
+  annotations:
+{{- include "cpro-grafana.labelsOrAnnotations" (tuple .Values.service.annotations .Values.global.annotations) | indent 4}}
+spec:
+  type: ClusterIP
+  clusterIP: None
+  ports:
+    - name: tcp-service
+      port: {{ .Values.grafana_ini.server.http_port }}
+      targetPort: tcp-grafana
+      #appProtocol: {{ .Values.grafana_ini.server.protocol | default "http"}}
+  {{- include "cpro-grafana.dualStack.ipFamilyPolicy.config" . | indent 2 }}
+  {{- include "cpro-grafana.dualStack.ipFamilies.config" . | indent 2 }}
+  selector:
+    app: {{ template "cpro-grafana.name" . }}
+    release: {{ .Release.Name }}
+{{- end }}

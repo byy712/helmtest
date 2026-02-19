@@ -1,0 +1,165 @@
+{{- include "bssc-fluentd.istio.properties" . }}
+{{- include "bssc-fluentd.istio.initIstio" . }}
+{{- $createPsp := and .Values.rbac.psp.create (.Capabilities.APIVersions.Has "policy/v1beta1/PodSecurityPolicy") }}
+{{- $createScc := and .Values.rbac.scc.create (.Capabilities.APIVersions.Has "security.openshift.io/v1/SecurityContextConstraints") }}
+{{- if and (.Values.fluentd.enable_root_privilege) (.Values.rbac.enabled) }}
+apiVersion: {{ template "bssc-fluentd.apiVersionRbacAuthorizatioK8sIoV1Beta1orV1" . }}
+kind: ClusterRoleBinding
+metadata:
+  name: {{ template "bssc-fluentd.fullname" . }}-min-crb
+  namespace: {{ .Release.Namespace }}
+  labels:
+{{- include "bssc-fluentd.commonLabels" (tuple . "fluentd" ) | nindent 4 }}
+{{- include "bssc-fluentd.csf-toolkit-helm.labels" (tuple .) | nindent 4 }}
+  annotations:
+{{- include "bssc-fluentd.csf-toolkit-helm.annotations" (tuple .) | nindent 4 }}
+subjects:
+- kind: ServiceAccount
+  name: {{ template "bssc-fluentd.serviceAccount.name" . }}
+  namespace: {{ .Release.Namespace }}
+roleRef:
+  kind: ClusterRole
+  name: {{ template "bssc-fluentd.fullname" . }}-min-cr
+  apiGroup: rbac.authorization.k8s.io
+
+---
+apiVersion: {{ template "bssc-fluentd.apiVersionRbacAuthorizatioK8sIoV1Beta1orV1" . }}
+kind: ClusterRole
+metadata:
+  name: {{ template "bssc-fluentd.fullname" . }}-min-cr
+  labels:
+{{- include "bssc-fluentd.commonLabels" (tuple . "fluentd" ) | nindent 4 }}
+{{- include "bssc-fluentd.csf-toolkit-helm.labels" (tuple .) | nindent 4 }}
+  annotations:
+{{- include "bssc-fluentd.csf-toolkit-helm.annotations" (tuple .) | nindent 4 }}
+rules:
+- apiGroups:
+  - "" # "" indicates the core API group
+  resources:
+  - "pods"
+  - "namespaces"
+  verbs: ["get", "watch", "list"]
+{{- if $createPsp }}
+- apiGroups:
+  - "extensions" # "" indicates the core API group
+  resources:
+  - "podsecuritypolicies"
+  resourceNames:
+  - {{ template "bssc-fluentd.fullname" . }}-psp
+  verbs:
+  - "use"
+  - delete
+{{- end }}
+
+{{- if $createScc }}
+- apiGroups:
+  - security.openshift.io
+  resourceNames:
+  - {{ template "bssc-fluentd.fullname" . }}-scc
+  resources:
+  - securitycontextconstraints
+  verbs:
+  - use
+{{- end }}
+
+---
+{{- if $createPsp }}
+apiVersion: policy/v1beta1
+kind: PodSecurityPolicy
+metadata:
+  name: {{ template "bssc-fluentd.fullname" . }}-psp
+  labels:
+{{- include "bssc-fluentd.commonLabels" (tuple . "fluentd" ) | nindent 4 }}
+{{- include "bssc-fluentd.csf-toolkit-helm.labels" (tuple .) | nindent 4 }}
+  annotations:
+{{- include "bssc-fluentd.csf-toolkit-helm.annotations" (tuple . .Values.rbac.psp.annotations) | nindent 4 }}
+spec:
+  volumes:
+    - 'configMap'
+    - 'emptyDir'
+    - 'projected'
+    - 'secret'
+    - 'downwardAPI'
+    - 'persistentVolumeClaim'
+    - 'hostPath'
+  allowedHostPaths:
+{{ toYaml .Values.fluentd.allowedHostPathsInPSP | indent 4 }}
+  runAsUser:
+    # Require the container to run with root privileges.
+    rule: 'RunAsAny'
+  seLinux:
+    rule: 'RunAsAny'
+  supplementalGroups:
+    rule: 'MustRunAs'
+    ranges:
+      - min: 1
+        max: 65535
+  fsGroup:
+    rule: 'MustRunAs'
+    ranges:
+      - min: 1
+        max: 65535
+  {{- if .Values.fluentd.securityContext.privileged }}
+  privileged: true
+  {{- end }}
+  {{- if and ($.istio.enabled) (not $.istioCni) }}
+  allowedCapabilities:
+  - 'NET_ADMIN'
+  - 'NET_RAW'
+  {{- end }}
+{{- end }}
+
+{{- if $createScc }}
+apiVersion: security.openshift.io/v1
+kind: SecurityContextConstraints
+metadata:
+  name: {{ template "bssc-fluentd.fullname" . }}-scc
+  labels:
+{{- include "bssc-fluentd.commonLabels" (tuple . "fluentd" ) | nindent 4 }}
+{{- include "bssc-fluentd.csf-toolkit-helm.labels" (tuple .) | nindent 4 }}
+  annotations:
+{{- include "bssc-fluentd.csf-toolkit-helm.annotations" (tuple . .Values.rbac.scc.annotations) | nindent 4 }}
+allowHostDirVolumePlugin: true
+allowHostIPC: false
+allowHostNetwork: false
+allowHostPID: false
+allowHostPorts: false
+allowPrivilegeEscalation: true
+allowPrivilegedContainer: true
+readOnlyRootFilesystem: true
+defaultAddCapabilities: []
+requiredDropCapabilities:
+- 'KILL'
+- 'MKNOD'
+- 'SETUID'
+- 'SETGID'
+{{- if and ($.istio.enabled) (not $.istioCni) }}
+allowedCapabilities:
+- 'NET_ADMIN'
+- 'NET_RAW'
+{{- end }}
+priority: 10
+runAsUser:
+  type: RunAsAny
+seLinuxContext:
+  type: RunAsAny
+fsGroup:
+  type: RunAsAny
+supplementalGroups:
+  type: RunAsAny
+{{- if semverCompare ">= 1.24.0-0" .Capabilities.KubeVersion.GitVersion }}
+seccompProfiles:
+- runtime/default
+{{- end }}
+groups: []
+users: []
+volumes:
+- 'secret'
+- 'emptyDir'
+- 'configMap'
+- 'projected'
+- 'downwardAPI'
+- 'hostPath'
+- 'persistentVolumeClaim'
+{{- end }}
+{{- end }}

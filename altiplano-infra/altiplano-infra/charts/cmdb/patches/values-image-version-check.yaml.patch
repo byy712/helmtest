@@ -1,0 +1,37 @@
+--- cmdb-9.2.1/cmdb-original/templates/values-image-version-check.yaml	2024-04-25 05:27:41.000000000 +0530
++++ /home/chautruo/nokia/helm-dev/altiplano-infra/charts/cmdb/templates/values-image-version-check.yaml	2024-05-07 14:04:07.634858000 +0530
+@@ -1,34 +0,0 @@
+-{{/*
+-*
+-* A non-manifest helper to check that the images are of a required
+-* minimum version.  This prevents performing an upgrade of a chart
+-* while running an older version of the containers.  To be used when
+-* a chart expects certain functionality to exist in the container, e.g.
+-* in the entrypoint.
+-*
+-* NOTE: Currently only works with major.minor version of the images as
+-* CSF/CMDB image tags are not semVer-compliant (no .patch).
+-*
+-* NOTE: Currently checks MariaDB, Maxscale, and Admin images against same
+-* minimum version requirement.
+-*
+-*/}}
+-{{- include "cmdb.init" . -}}
+-
+-{{- $min_ver := ">=4.24" -}}
+-{{- $mdb_ver := .Values.mariadb.image.tag -}}
+-{{- $mxs_ver := .Values.maxscale.image.tag -}}
+-{{- $adm_ver := .Values.admin.image.tag -}}
+-
+-{{- $min_semver := printf "%s.0" $min_ver -}}
+-{{- $mdb_semver := regexReplaceAllLiteral "-.*" $mdb_ver ".0" -}}
+-{{- $mxs_semver := regexReplaceAllLiteral "-.*" $mxs_ver ".0" -}}
+-{{- $adm_semver := regexReplaceAllLiteral "-.*" $adm_ver ".0" -}}
+-
+-{{- if not (semverCompare $min_semver $mdb_semver) -}}
+-{{- $_ := required (printf "mariadb.image.tag must be %s, is currently %s" $min_ver $mdb_ver) "" -}}
+-{{- else if not (semverCompare $min_semver $mxs_semver) -}}
+-{{- $_ := required (printf "maxscale.image.tag must be %s, is currently %s" $min_ver $mxs_ver) "" -}}
+-{{- else if not (semverCompare $min_semver $adm_semver) -}}
+-{{- $_ := required (printf "admin.image.tag must be %s, is currently %s" $min_ver $adm_ver) "" -}}
+-{{- end -}}

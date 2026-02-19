@@ -1,0 +1,36 @@
+# A headless service to create DNS records
+{{- if .Values.httpfs.enabled -}}
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "hdfs.fullname" . }}-httpfs
+  labels:
+    app.kubernetes.io/name: {{ include "hdfs.name" . }}
+    app.kubernetes.io/component: httpfs
+    {{- include "hdfs.labels" . | nindent 4 }}
+spec:
+  ports:
+  - name: httpfs
+    port: {{ .Values.httpfs.port }}
+    protocol: TCP
+  selector:
+    app.kubernetes.io/name: {{ include "hdfs.name" . }}
+    app.kubernetes.io/component: httpfs
+    app.kubernetes.io/instance: {{ .Release.Name }}
+#dual stack config
+{{- if or ( .Values.ipFamilyPolicy ) ( .Values.ipFamilies ) }}
+  {{- if .Values.ipFamilyPolicy }}
+  ipFamilyPolicy: {{ .Values.ipFamilyPolicy }}
+  {{- end }}
+  {{- if .Values.ipFamilies }}
+  ipFamilies: {{ .Values.ipFamilies | toYaml | nindent 2 }}
+  {{- end }}
+{{- else if or ( .Values.global.ipFamilyPolicy ) ( .Values.global.ipFamilies ) }}
+  {{- if .Values.global.ipFamilyPolicy }}
+  ipFamilyPolicy: {{ .Values.global.ipFamilyPolicy }}
+  {{- end }}
+  {{- if .Values.global.ipFamilies }}
+  ipFamilies: {{ .Values.global.ipFamilies | toYaml | nindent 2 }}
+  {{- end }}
+{{- end }}
+{{- end -}}

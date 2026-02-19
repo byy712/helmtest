@@ -1,0 +1,781 @@
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+{{ if empty .Values.global.podNamePrefix }}
+  name: {{ template "crmq.fullname" . }}
+{{ else }}
+  name: {{ .Values.global.podNamePrefix }}{{ template "crmq.fullname" . }}
+{{ end }}
+  labels:
+    chart: {{ template "crmq.chart" .  }}
+    app: {{ template "crmq.name" . }}
+    release: "{{ .Release.Name }}"
+    heritage: "{{ .Release.Service }}"
+    {{- include "crmq.commonLabels" . | indent 4 }}
+    {{- include "csf-common-lib.v1.customLabels" (tuple .Values.statefulset.labels .Values.global.labels) | indent 4 }}
+  annotations: 
+    {{- include "csf-common-lib.v1.customAnnotations" (tuple .Values.statefulset.annotations .Values.custom.statefulset.annotations .Values.global.annotations) | indent 4 }}
+spec:
+  serviceName: {{ template "crmq.fullname" . }}
+  {{- if not .Values.rabbitmq.replicasManagedByHpa }}
+  replicas: {{ .Values.replicas }}
+  {{- end}}
+  updateStrategy:
+{{ toYaml .Values.updateStrategy | indent 4 }}
+  selector:
+    matchLabels:
+      app: {{ template "crmq.name" . }}
+      release: "{{ .Release.Name }}"
+  template:
+    metadata:
+      labels:
+        altiplano-role: {{ .Values.accessRoleLabel }}
+        app: {{ template "crmq.name" . }}
+        release: "{{ .Release.Name }}"
+        chart: {{ template "crmq.chart" .  }}
+        {{- include "crmq.commonLabels" . | indent 8 }}
+        {{- include "csf-common-lib.v1.customLabels" (tuple .Values.statefulset.labels .Values.global.labels) | indent 8 }}
+      annotations:
+        {{- include "csf-common-lib.v1.customAnnotations" (tuple .Values.statefulset.annotations .Values.custom.statefulset.annotations .Values.global.annotations) | indent 8 }} 
+        rollme: {{ randAlphaNum 5 | quote }}
+        sidecar.istio.io/inject: "{{ .Values.istio.enabled }}"
+        checksum/config: {{ include (print $.Template.BasePath "/secrets.yaml") . | sha256sum }}
+{{- if .Values.rabbitmq.clog.syslog.enabled }}
+        injector.tumblr.com/request: sidecar-rsyslog
+{{- end }}
+      {{- if .Values.podAnnotations }}
+{{ toYaml .Values.podAnnotations | indent 8 }}
+      {{- end }}
+        checksum/config: {{ include ( print $.Template.BasePath "/secrets.yaml") . | sha256sum }}
+        checksum/configuration: {{ include ( print $.Template.BasePath "/configuration.yaml") . | sha256sum }}
+        checksum/fluent-bit-config: {{ include ( print $.Template.BasePath "/fluent-bit-configmap.yaml") . | sha256sum }}
+    spec:
+      subdomain: {{ template "crmq.name" . }}
+      {{- if  coalesce .Values.image.pullSecrets .Values.global.imagePullSecrets }}
+      imagePullSecrets:
+        - name: {{ coalesce .Values.image.pullSecrets .Values.global.imagePullSecrets }}
+      {{- end }}
+      securityContext:
+        runAsUser: 10000
+        runAsGroup: 10000
+        {{- if ( ne ( toString (.Values.securityContext.fsGroup)) "auto" ) }}
+        fsGroup: {{ .Values.securityContext.fsGroup }}
+        {{- end }}
+        {{- if .Values.securityContext.supplementalGroups }}
+        supplementalGroups: {{ .Values.securityContext.supplementalGroups }}
+        {{- end }}
+        {{- if eq .Values.securityContext.seLinuxOptions.enabled true }}
+        seLinuxOptions:
+          level: {{ .Values.securityContext.seLinuxOptions.level }}
+          role: {{ .Values.securityContext.seLinuxOptions.role }}
+          type: {{ .Values.securityContext.seLinuxOptions.type }}
+          user: {{ .Values.securityContext.seLinuxOptions.user }}
+        {{- end }}
+        {{- if eq (include "crmq.renderSeccompProfile" .) "true" }}
+        seccompProfile:
+          type: {{ .Values.securityContext.seccompProfile.type }}
+        {{- end }}
+      serviceAccountName: {{ if .Values.rbac.enabled }}{{ template "crmq.fullname" . }}{{ else }}"{{ .Values.serviceAccountName }}"{{ end }}
+      automountServiceAccountToken: true
+      {{- if .Values.topologySpreadConstraints }}
+      topologySpreadConstraints: {{- include "csf-common-lib.v2.topologySpreadConstraints" (tuple . .Values ) | nindent 8 }}
+      {{- end }}
+      {{- if eq .Values.antiAffinity "hard" }}
+      affinity:
+        podAntiAffinity:
+          requiredDuringSchedulingIgnoredDuringExecution:
+            - topologyKey: "kubernetes.io/hostname"
+              labelSelector:
+                matchLabels:
+                  app: {{ template "crmq.name" . }}
+                  release: {{ .Release.Name | quote }}
+      {{- else if eq .Values.antiAffinity "soft" }}
+      affinity:
+        podAntiAffinity:
+          preferredDuringSchedulingIgnoredDuringExecution:
+            - weight: 1
+              podAffinityTerm:
+                topologyKey: "kubernetes.io/hostname"
+                labelSelector:
+                  matchLabels:
+                    app: {{ template "crmq.name" . }}
+                    release: {{ .Release.Name | quote }}
+      {{- end }}
+      {{- if .Values.localStorageOnly }}
+        podAntiAffinity:
+          requiredDuringSchedulingIgnoredDuringExecution:
+            - topologyKey: "kubernetes.io/hostname"
+              labelSelector:
+                matchLabels:
+                  app: {{ template "crmq.name" . }}
+                  release: {{ .Release.Name | quote }}
+      {{- if .Values.nodeLabel }}
+        nodeAffinity:
+          requiredDuringSchedulingIgnoredDuringExecution:
+            nodeSelectorTerms:
+              - matchExpressions:
+                  - key: "{{ .Values.nodeLabel }}"
+                    operator: In
+                    values:
+                      - "true"
+      {{- end }}
+      {{- end }}
+      {{- if .Values.nodeSelector }}
+      nodeSelector:
+{{ toYaml .Values.nodeSelector | indent 8 }}
+      {{- end }}
+      {{- if .Values.tolerations }}
+      tolerations:
+{{ toYaml .Values.tolerations | indent 8 }}
+      {{- end }}
+      terminationGracePeriodSeconds: 10
+      initContainers:
+      containers:
+      - name: {{ default "" .Values.global.containerNamePrefix }}{{ template "crmq.fullname" . }}
+        image: "{{ .Values.global.registry }}/{{ .Values.image.repository }}:{{ .Values.image.tag }}"
+        imagePullPolicy: {{ default "IfNotPresent" .Values.image.pullPolicy | quote }}
+        lifecycle:
+          preStop:
+            exec:
+              command: ["/bin/sh","-c","sh /var/lib/rabbitmq/cleaner.sh"]
+        securityContext:
+          runAsUser: 10000
+          runAsGroup: 10000
+          capabilities:
+            drop: ["ALL"]
+          runAsNonRoot: true
+          {{- if eq (include "crmq.renderSeccompProfile" .) "true" }}
+          seccompProfile:
+            type: {{ .Values.securityContext.seccompProfile.type }}
+          {{- end }}
+          {{- if .Values.securityContext.allowPrivilegeEscalation }}
+          allowPrivilegeEscalation: {{ .Values.securityContext.allowPrivilegeEscalation }}
+          {{- else }}
+          allowPrivilegeEscalation: false
+          {{- end }}
+          readOnlyRootFilesystem: {{ required "Value is required true/false." .Values.securityContext.readOnlyRootFilesystem }}
+        command:
+         - bash
+         - -ec
+         - |
+            # added below files deletion step as part of random-user support.
+            if [ -f /var/lib/rabbitmq/pod_health_check ]; then
+                 rm -f /var/lib/rabbitmq/pod_health_check
+            fi
+            if [ -f /var/lib/rabbitmq/.erlang.cookie ]; then
+                 rm -f /var/lib/rabbitmq/.erlang.cookie
+            fi
+
+            # delete the erlang cookie cleaner utility script if it exists and owned by a different user.
+            # added to handle ownership change issues wrt csfid-3371.
+            if [[ -f /var/lib/rabbitmq/cleaner.sh && ! -O /var/lib/rabbitmq/cleaner.sh ]]; then
+                 rm -f /var/lib/rabbitmq/cleaner.sh
+            fi
+            # remove the rabbitmq force stop utility script.
+            # added to handle ownership change issues wrt csfid-3371.
+            if [ -f /var/lib/rabbitmq/stop.sh ]; then
+                 rm -f /var/lib/rabbitmq/stop.sh
+            fi
+
+            touch /var/lib/rabbitmq/.start
+            cat > /var/lib/rabbitmq/pod_health_check <<EOF
+            #!/usr/bin/sh
+            rabbitmq-diagnostics -q status
+            RESULT=\$?
+            FILE=/var/lib/rabbitmq/.start
+            if [ \$RESULT -ne 0 ]; then
+                if [ -f \$FILE ]; then
+                    echo "The node not health when start, run rabbitmqctl status to check."
+                    rabbitmqctl status
+                    exit $?
+                else
+                    echo "The node not health when running, exit with error."
+                    exit \$RESULT
+                fi
+            fi
+            if [ -f \$FILE ]; then
+                rm -f \$FILE
+            fi
+            exit \$RESULT
+            EOF
+
+            # build erlang cookie cleaner utility script, CSFID 3371 rollback issue fix with id change.
+            # script is executed in preStop lifecycle hook and deletes the files to handle ownership changes.
+            cat > /var/lib/rabbitmq/cleaner.sh <<EOF
+            #!/usr/bin/sh
+
+            sh /var/lib/rabbitmq/stop.sh 6 &
+            if [ -f /var/lib/rabbitmq/.erlang.cookie ]; then
+              rm -f /var/lib/rabbitmq/.erlang.cookie
+            fi
+            rm -f /var/lib/rabbitmq/pod_health_check
+            EOF
+
+            # script will be executed as part of preStop cleaner.sh and will force kill the rabbitmq process
+            # if it will be taking more than 6 secs.
+            cat > /var/lib/rabbitmq/stop.sh <<EOF
+            #!/usr/bin/sh
+
+            sleep \$1
+            pid=\`ps -ef | grep boot | grep -v grep | grep -v diag* | awk '{print \$2}'\`
+            kill -9 \$pid
+            EOF
+
+            chmod 755 /var/lib/rabbitmq/stop.sh
+            chmod 755 /var/lib/rabbitmq/cleaner.sh
+            chmod 755 /var/lib/rabbitmq/pod_health_check
+
+            ls -al /var/lib/rabbitmq/
+            #persist the erlang cookie in both places for server and cli tools
+            if [ ! -f /var/lib/rabbitmq/.erlang.cookie ]; then
+              echo $RABBITMQ_ERL_COOKIE > /var/lib/rabbitmq/.erlang.cookie
+            else
+              chmod 755 /var/lib/rabbitmq/.erlang.cookie
+              echo $RABBITMQ_ERL_COOKIE > /var/lib/rabbitmq/.erlang.cookie
+            fi
+
+            #change permision so only the user has access to the cookie file
+            chmod 400 /var/lib/rabbitmq/.erlang.cookie
+
+            # copy configuration files from /etc/rabbitmq-config-tmp to /etc/rabbitmq/
+            cp /etc/rabbitmq-config-tmp/* /etc/rabbitmq/
+
+            {{- range $item := .Values.rabbitmq.thirdPartyPlugin }}
+            mkdir -p /var/lib/rabbitmq/plugins
+            cd /var/lib/rabbitmq/plugins
+            version=$(curl -s {{ $item.path }}/{{ $item.name }}/ | grep -oE "[vV][1-9]+[0-9]*(\.[1-9]+[0-9]*)+|([1-9]+\.){2}x"|uniq|sort -V|tail -n1)
+            pkg_list=$(curl {{ $item.path }}/{{ $item.name }}/$version/ |grep -oE "[a-z_\.0-9-]*\.ez" |uniq)
+            for pkg in $pkg_list; do
+              curl -C - -O {{ $item.path }}/{{ $item.name }}/$version/$pkg
+            done
+            cd -
+            {{- end }}
+
+            # clean core dump in workingdir except first one. really usefull in VMware env. This avoid to fulfill /var/lib/rabbimq
+            list=$(ls -1tr /var/lib/rabbitmq/ | grep ^core | tail -n +2)
+            if [ ! -z "$list" ];
+            then
+              cd /var/lib/rabbitmq/
+              rm --f $list
+            fi
+
+            # execute the python utility script to update the default user into the advanced config file.
+            python3 /usr/sbin/buildconfigs_helper.py
+
+            # execute the password change script in background. password change will be applied from first pod in cluster.
+            sh /usr/sbin/update_default_password.sh &
+            exec /usr/sbin/rabbitmq-server start
+        {{- if .Values.resources }}
+        resources:
+{{ toYaml .Values.resources | indent 10 }}
+        {{- end }}
+        volumeMounts:
+          {{- if .Values.rabbitmq.clog.syslog.enabled }}        
+          - name: work-directory
+            mountPath: /var/lib/rsyslog
+          {{- end }}
+          - name: config-volume
+            mountPath: /etc/rabbitmq/
+          - name: config-volume-tmp
+            mountPath: /etc/rabbitmq-config-tmp/
+          - name: data
+            mountPath: /var/lib/rabbitmq/
+          - name: log
+            mountPath: /var/log/rabbitmq/
+          - name: ssl-file
+            mountPath: /etc/rabbitmq.tls.conf
+          - name: default-user-creds
+            mountPath: /etc/default-user-creds
+          {{- if .Values.rabbitmq.tls.certmanager.used  }}
+          - name: cm-server-file
+            mountPath: /etc/rabbitmq.tls.conf/certManagerKeys/server
+            readOnly: true
+          {{- end }}
+          {{- if .Values.rabbitmq.management.tls.certmanager.used }}
+          - name: cm-management-file
+            mountPath: /etc/rabbitmq.tls.conf/certManagerKeys/management
+            readOnly: true
+          {{- end }}
+          {{- if .Values.rabbitmq.prometheus.tls.certmanager.used }}
+          - name: cm-prometheus-file
+            mountPath: /etc/rabbitmq.tls.conf/certManagerKeys/prometheus
+            readOnly: true
+          {{- end }}
+          {{- if and .Values.rabbitmq.management.enabled .Values.rabbitmq.management.tls.enabled .Values.rabbitmq.management.tls.secret.used }}
+          - name: secret-management-file
+            mountPath: /etc/rabbitmq.tls.conf/secret/management
+            readOnly: true
+          {{- end }}
+          # volume mount for tls certificates from secret - amqp listener.
+          {{- if and .Values.rabbitmq.tls.enabled .Values.rabbitmq.tls.secret.used }}
+          - name: secret-server-file
+            mountPath: /etc/rabbitmq.tls.conf/secret/server
+            readOnly: true
+          {{- end }}
+          # volume mount for tls certificates from secret - prometheus port.
+          {{- if and .Values.rabbitmq.prometheus.enabled .Values.rabbitmq.prometheus.tls.enabled .Values.rabbitmq.prometheus.tls.secret.used }}
+          - name: secret-prometheus-file
+            mountPath: /etc/rabbitmq.tls.conf/secret/prometheus
+            readOnly: true
+          {{- end }}
+          {{- if and .Values.rabbitmq.prometheus.enabled .Values.rabbitmq.prometheus.tls.enabled .Values.rabbitmq.prometheus.tls.passwordSecretName .Values.rabbitmq.prometheus.tls.passwordSecretKey }}
+          - name: secret-prometheus-cert-password
+            mountPath: /etc/rabbitmq.tls.conf/secret/prometheus-cert-credentials
+            readOnly: true
+          {{- end }}
+          # volume mount for internode tls certificate from secret/cert-manager
+          {{- if .Values.rabbitmq.internodetls.enabled }}
+          - name: secret-server-file-cm-itls
+            mountPath: /etc/rabbitmq.tls.conf/secret/internodetls/
+            readOnly: true
+          {{- end }}
+        ports:
+        - name: tcp-epmd
+          containerPort: 4369
+        - name: tcp-amqp
+          containerPort: {{ .Values.rabbitmq.amqpPort }}
+        - name: tcp-dist
+          containerPort: 25672
+        - name: tcp-erlang
+          containerPort: 35672
+        {{- if .Values.rabbitmq.management.enabled }}
+        - name: tcp-stats
+          containerPort: {{ .Values.rabbitmq.management.port }}
+        {{- end }}
+        {{- if .Values.rabbitmq.prometheus.enabled }}
+        - name: tcp-prometheus
+          containerPort: {{ .Values.rabbitmq.prometheus.port }}
+        {{- end }}
+        {{- if .Values.rabbitmq.mqtt.enabled }}
+        - name: tcp-mqtttcp
+          containerPort: {{ .Values.rabbitmq.mqtt.DefaultTcpPort }}
+        {{- if .Values.rabbitmq.mqtt.enabledSsl }}
+        - name: tcp-mqttssl
+          containerPort: {{ .Values.rabbitmq.mqtt.DefaultSslPort }}
+        {{- end }}
+        {{- end }}
+        {{- if .Values.rabbitmq.tls.enabled }}
+        - name: tcp-server-ssl
+          containerPort: {{ .Values.rabbitmq.tls.ssl_port }}
+        {{- end }}
+        {{- if .Values.livenessProbe.enabled }}
+        livenessProbe:
+          exec:
+            command:
+            - rabbitmq-diagnostics  
+            - status
+          initialDelaySeconds: {{ .Values.livenessProbe.initialDelaySeconds }}
+          timeoutSeconds: {{ .Values.livenessProbe.timeoutSeconds }}
+          failureThreshold: {{ .Values.livenessProbe.failureThreshold }}
+          periodSeconds: {{ .Values.livenessProbe.periodSeconds }}
+        {{- end }}
+        {{- if .Values.readinessProbe.enabled }}
+        readinessProbe:
+          exec:
+            command:
+            - sh
+            - -c
+            - sh /var/lib/rabbitmq/pod_health_check
+          initialDelaySeconds: {{ .Values.readinessProbe.initialDelaySeconds }}
+          failureThreshold: {{ .Values.readinessProbe.failureThreshold }}
+          timeoutSeconds: {{ .Values.readinessProbe.timeoutSeconds }}
+          periodSeconds: {{ .Values.readinessProbe.periodSeconds }}
+        {{- end }}
+        env:
+        {{- if .Values.image.debug}}
+          - name: BASH_DEBUG
+            value: "1"
+          - name: NAMI_DEBUG
+            value: "1"
+        {{- end }}
+          - name: LC_ALL
+            value: en_US.UTF-8
+          - name: LANG
+            value: en_US.UTF-8
+          - name: K8S_SERVICE_NAME
+            value: "{{ template "crmq.fullname" . }}"
+          - name: K8S_DOMAIN_NAME
+            value: {{ .Values.clusterDomain }}
+          - name: CLUSTERING_ADDRESS_TYPE
+            value: "{{ .Values.rabbitmq.clustering.address_type }}"
+          - name: RABBITMQ_ERL_COOKIE
+            {{- if .Values.rabbitmq.erlangCookie }}
+            value: {{ .Values.rabbitmq.erlangCookie | quote }}
+            {{- else }}
+            valueFrom:
+              secretKeyRef:
+                name: {{ template "crmq.fullname" . }}-const
+                key: rabbitmq-erlang-cookie
+            {{- end }}
+          - name: RABBITMQ_PASSWORD
+            valueFrom:
+              secretKeyRef:
+                name: {{ template "crmq.fullname" . }}
+                key: password
+          - name: MY_POD_NAME
+            valueFrom:
+              fieldRef:
+                fieldPath: metadata.name
+          - name: MY_POD_NAMESPACE
+            valueFrom:
+              fieldRef:
+                fieldPath: metadata.namespace
+          {{- if (eq "hostname" .Values.rabbitmq.clustering.address_type) }}
+          - name: RABBITMQ_NODENAME
+            value: "rabbit@$(MY_POD_NAME).$(K8S_SERVICE_NAME).$(MY_POD_NAMESPACE).svc.{{ .Values.rabbitmq.clustering.k8s_domain }}"
+          - name: K8S_HOSTNAME_SUFFIX
+            value: ".$(K8S_SERVICE_NAME).$(MY_POD_NAMESPACE).svc.{{ .Values.rabbitmq.clustering.k8s_domain }}"
+          - name: RABBITMQ_USE_LONGNAME
+            value: "true"
+          {{- else }}
+          - name: RABBITMQ_NODENAME
+            {{- if .Values.rabbitmq.rabbitmqClusterNodeName }}
+            value: {{ .Values.rabbitmq.rabbitmqClusterNodeName | quote }}
+            {{- else }}
+            value: "rabbit@$(MY_POD_NAME)"
+            {{- end }}
+          - name: RABBITMQ_USE_LONGNAME
+            value: "false"
+          {{- end }}
+          - name: HOME
+            value: "/var/lib/rabbitmq/"
+          {{- if and .Values.rabbitmq.management.enabled .Values.rabbitmq.management.tls.enabled }}
+          - name: MANAGEMENT_TLS_VERIFY_PEER
+            value: {{ .Values.rabbitmq.management.tls.fail_if_no_peer_cert | quote }}
+          {{- end }}
+          {{- if .Values.rabbitmq.internodetls.enabled }}
+          - name: INTERNODE_TLS_VERIFY_PEER
+            value: {{ .Values.rabbitmq.internodetls.verify_option | quote }}
+          - name: INTERNODE_TLS_FAIL_IF_NO_PEER_CERT
+            value: {{ .Values.rabbitmq.internodetls.fail_if_no_peer_cert | quote }}
+          - name: INTERNODE_TLS_HONOR_CIPHER_ORDER
+            value: {{ .Values.rabbitmq.internodetls.honor_cipher_order | quote }}
+          - name: INTERNODE_TLS_HONOR_ECC_ORDER
+            value: {{ .Values.rabbitmq.internodetls.honor_ecc_order | quote }}
+          - name: INTERNODE_TLS_VERSIONS
+            value: {{ .Values.rabbitmq.internodetls.versions | quote }}
+          - name: INTERNODE_TLS_CIPHERS
+            value: {{ .Values.rabbitmq.internodetls.ciphers_options | sha256sum }} 
+          {{- end }}              
+      {{- if .Values.rabbitmq.backuprestore.enabled }}
+      - name: {{ .Values.rabbitmq.backuprestore.agent.name }}
+        securityContext:
+          runAsUser: 1000
+          {{- if .Values.securityContext.allowPrivilegeEscalation }}
+          allowPrivilegeEscalation: {{ .Values.securityContext.allowPrivilegeEscalation }}
+          {{- else }}
+          allowPrivilegeEscalation: false
+          {{- end }}
+          readOnlyRootFilesystem: {{ required "Value is required true/false." .Values.securityContext.readOnlyRootFilesystem }}
+          {{- if ( ne ( toString ( .Values.securityContext.runAsUser )) "auto" ) }}
+          runAsUser: {{ .Values.securityContext.runAsUser }}
+          {{- end }}
+          capabilities:
+            drop: ["ALL"]
+        image: "{{ .Values.global.registry1 }}/{{ .Values.rabbitmq.backuprestore.agent.imageRepo }}:{{ .Values.rabbitmq.backuprestore.agent.imageTag }}"
+        imagePullPolicy: {{ default "IfNotPresent" .Values.rabbitmq.backuprestore.agent.imagePullPolicy | quote }}
+        volumeMounts:
+          - mountPath: /config-volume
+            name: config-volume
+          - mountPath: /tmp
+            name: tmp-volume
+        {{- if .Values.resources }}
+        resources:
+{{ toYaml .Values.rabbitmq.backuprestore.resources | indent 10 }}
+        {{- end }}
+      {{- end }}
+      {{- if .Values.rabbitmq.rsyslog.enabled }}
+      - name: rsyslog
+        image: "{{ .Values.global.registry }}/{{ .Values.rabbitmq.rsyslog.repository }}:{{ .Values.rabbitmq.rsyslog.tag }}"
+        imagePullPolicy: {{ default "IfNotPresent" .Values.rabbitmq.rsyslog.imagePullPolicy | quote }}
+        ports:
+          - name: tcp-2514
+            containerPort: 2514
+        volumeMounts:
+          - name: temp
+            mountPath: /tmp
+        securityContext:
+          {{- if .Values.securityContext.allowPrivilegeEscalation }}
+          allowPrivilegeEscalation: {{ .Values.securityContext.allowPrivilegeEscalation }}
+          {{- else }}
+          allowPrivilegeEscalation: false
+          {{- end }}
+          readOnlyRootFilesystem: {{ required "Value is required true/false." .Values.securityContext.readOnlyRootFilesystem }}
+          {{- if ( ne ( toString ( .Values.securityContext.runAsUser )) "auto" ) }}
+          runAsUser: {{ .Values.securityContext.runAsUser }}
+          {{- end }}
+      {{- end }}
+      {{- if .Values.logSidecar.enabled }}
+      - name: {{ .Release.Name }}-log
+        image: "{{ .Values.logSidecar.image.repository }}/{{ .Values.logSidecar.image.name }}:{{ .Values.logSidecar.image.tag }}"
+        command:
+          - /fluent-bit/bin/fluent-bit
+          - -c
+          - /fluent-bit/etc/fluent-bit.conf
+
+        resources:
+{{ toYaml .Values.logSidecar.resources | indent 10 }}
+        volumeMounts:
+          - name: shared-tls-volume
+            mountPath: /opt/nsp/os/ssl
+          - name: sidecar-config
+            mountPath: /fluent-bit/etc
+          - name: log
+            mountPath: {{ .Values.logSidecar.logPath }}
+            readOnly: true
+          {{- if .Values.logSidecar.logsToFile }}
+          - name: {{ .Release.Name }}-rabbitmq-logs
+            mountPath: /opt/nsp/fluentbit/log
+            subPath: logs
+          {{- end }}
+      {{- end }}
+      dnsConfig:
+        searches:
+          - {{ template "crmq.fullname" . }}.{{ .Release.Namespace }}.svc.{{ .Values.clusterDomain }}
+          - {{ .Release.Namespace }}.svc.{{ .Values.clusterDomain }}
+          - svc.{{ .Values.clusterDomain }}
+          - {{ .Values.clusterDomain }}
+      volumes:
+        {{- if .Values.rabbitmq.clog.syslog.enabled }}        
+        - name: work-directory
+          emptyDir: {}
+        {{- end }}
+        - name: config-volume
+          emptyDir: {}
+        - name: tmp-volume
+          emptyDir: {}
+        - name: temp
+          emptyDir: {}
+        - name: default-user-creds
+          secret:
+            secretName: {{ .Values.rabbitmq.default_user_credentials.secretName }}
+            items:
+            - key: {{ .Values.rabbitmq.default_user_credentials.usernameKey }}
+              path: ".username"
+            - key: {{ .Values.rabbitmq.default_user_credentials.passwordKey }}
+              path: ".password"
+        - name: config-volume-tmp
+          configMap:
+            name: {{ template "crmq.fullname" . }}-config
+            items:
+            - key: rabbitmq.conf
+              path: rabbitmq.conf
+            - key: rabbitmq-env.conf
+              path: rabbitmq-env.conf
+            - key: enabled_plugins
+              path: enabled_plugins
+            - key: advanced.config
+              path: advanced.config
+        {{- if .Values.rabbitmq.internodetls.enabled }}
+            - key: tls.config
+              path: tls.config
+        {{- end }}
+        {{- if .Values.ipv6Enabled }}
+            - key: erl_inetrc
+              path: erl_inetrc
+        {{- end }}
+        {{- if .Values.rabbitmq.tls.certmanager.used }}        
+        - name: cm-server-file
+          secret:
+            secretName: {{ template "crmq.fullname" . }}-crmq-server-cert-secret
+            items:
+            - key: ca.crt
+              path: ca.crt
+            - key: tls.crt
+              path: tls.crt
+            - key: tls.key
+              path: tls.key  
+        {{- end }}        
+        {{- if .Values.rabbitmq.management.tls.certmanager.used }}
+        - name: cm-management-file
+          secret:
+            secretName: {{ template "crmq.fullname" . }}-crmq-management-cert-secret
+            items:
+            - key: ca.crt
+              path: ca.crt
+            - key: tls.crt
+              path: tls.crt
+            - key: tls.key
+              path: tls.key   
+        {{- end }}
+        {{- if .Values.rabbitmq.prometheus.tls.certmanager.used }}   
+        - name: cm-prometheus-file
+          secret:
+            secretName: {{ template "crmq.fullname" . }}-crmq-prometheus-cert-secret
+            items:
+            - key: ca.crt
+              path: ca.crt
+            - key: tls.crt
+              path: tls.crt
+            - key: tls.key
+              path: tls.key   
+        {{- end }}
+        - name: ssl-file
+          secret:
+            secretName: {{ .Values.rabbitmq.secretName }}
+            items:
+            {{- if and .Values.rabbitmq.tls.enabled .Values.rabbitmq.tls.uploadPath.cacert .Values.rabbitmq.tls.uploadPath.cert .Values.rabbitmq.tls.uploadPath.key }}
+            - key: {{ .Values.rabbitmq.tls.uploadPath.cacert }}
+              path: server/cacert.pem
+            - key: {{ .Values.rabbitmq.tls.uploadPath.cert }}
+              path: server/cert.pem
+            - key: {{ .Values.rabbitmq.tls.uploadPath.key }}
+              path: server/key.pem
+            {{- end }}
+            {{- if and .Values.rabbitmq.management.enabled .Values.rabbitmq.management.tls.uploadPath.cacert .Values.rabbitmq.management.tls.uploadPath.cert .Values.rabbitmq.management.tls.uploadPath.key }}
+            - key: {{ .Values.rabbitmq.management.tls.uploadPath.cacert }}
+              path: management/cacert.pem
+            - key: {{ .Values.rabbitmq.management.tls.uploadPath.cert }}
+              path: management/cert.pem
+            - key: {{ .Values.rabbitmq.management.tls.uploadPath.key }}
+              path: management/key.pem
+            {{- end }}
+            {{- if and .Values.rabbitmq.prometheus.tls.enabled .Values.rabbitmq.prometheus.tls.uploadPath.cacert .Values.rabbitmq.prometheus.tls.uploadPath.cert .Values.rabbitmq.prometheus.tls.uploadPath.key }}
+            - key: prometheus.cacert.pem
+              path: prometheus/cacert.pem
+            - key: prometheus.cert.pem
+              path: prometheus/cert.pem
+            - key: prometheus.key.pem
+              path: prometheus/key.pem
+            {{- end }}
+            {{- range $item := .Values.tlsClient }}
+            - key: {{ $item.name }}.cacert.pem
+              path: {{ $item.name }}/cacert.pem
+            - key: {{ $item.name }}.cert.pem
+              path: {{ $item.name }}/cert.pem
+            - key: {{ $item.name }}.key.pem
+              path: {{ $item.name }}/key.pem
+            {{- end }}
+        {{- if not .Values.global.persistence }}
+        - name: data
+          emptyDir: {}
+        - name: log
+          emptyDir: {}
+        {{- end }}
+      {{- if and .Values.rabbitmq.management.enabled .Values.rabbitmq.management.tls.enabled .Values.rabbitmq.management.tls.secret.used }}
+        - name: secret-management-file
+          secret:
+            secretName: {{ .Values.rabbitmq.management.tls.secret.name }}
+            items:
+            - key: {{ .Values.rabbitmq.management.tls.secret.ca_cert_key }}
+              path: .cacert.pem
+            - key: {{ .Values.rabbitmq.management.tls.secret.tls_cert_key }}
+              path: .cert.pem
+            - key: {{ .Values.rabbitmq.management.tls.secret.tls_key_key }}
+              path: .key.pem
+      {{- end }}
+      # volume loaded from the user provided secret for amqp tls certificates.
+      {{- if and .Values.rabbitmq.tls.enabled .Values.rabbitmq.tls.secret.used }}
+        - name: secret-server-file
+          secret:
+            secretName: {{ .Values.rabbitmq.tls.secret.name }}
+            items:
+            - key: {{ .Values.rabbitmq.tls.secret.ca_cert_key }}
+              path: .cacert.pem
+            - key: {{ .Values.rabbitmq.tls.secret.tls_cert_key }}
+              path: .cert.pem
+            - key: {{ .Values.rabbitmq.tls.secret.tls_key_key }}
+              path: .key.pem
+      {{- end }}
+      # volume loaded from the user provided secret for prometheus tls certificates.
+      {{- if and .Values.rabbitmq.prometheus.enabled .Values.rabbitmq.prometheus.tls.enabled .Values.rabbitmq.prometheus.tls.secret.used }}
+        - name: secret-prometheus-file
+          secret:
+            secretName: {{ .Values.rabbitmq.prometheus.tls.secret.name }}
+            items:
+            - key: {{ .Values.rabbitmq.prometheus.tls.secret.ca_cert_key }}
+              path: .cacert.pem
+            - key: {{ .Values.rabbitmq.prometheus.tls.secret.tls_cert_key }}
+              path: .cert.pem
+            - key: {{ .Values.rabbitmq.prometheus.tls.secret.tls_key_key }}
+              path: .key.pem
+      {{- end }}
+      {{- if and .Values.rabbitmq.prometheus.enabled .Values.rabbitmq.prometheus.tls.enabled .Values.rabbitmq.prometheus.tls.passwordSecretName .Values.rabbitmq.prometheus.tls.passwordSecretKey }}
+        - name: secret-prometheus-cert-password
+          secret:
+            secretName: {{ .Values.rabbitmq.prometheus.tls.passwordSecretName }}
+            items:
+            - key: {{ .Values.rabbitmq.prometheus.tls.passwordSecretKey }}
+              path: .password
+      {{- end }}
+      # internode tls secret mount using secret/certmanager
+      {{- if .Values.rabbitmq.internodetls.enabled }}
+        - name: secret-server-file-cm-itls
+          secret:
+            secretName: {{ include "crmq.internode.tls.secret_name" . }}
+            items:
+            - key: {{ include "crmq.internode.tls.secretCAKey" . }}
+              path: .cacert.pem
+            - key: {{ include "crmq.internode.tls.secretCertKey" . }}
+              path: .cert.pem
+            - key: {{ include "crmq.internode.tls.secretKeyKey" . }}
+              path: .key.pem
+      {{- end }}
+    {{- if or .Values.persistence.data.enabled .Values.persistence.log.enabled }}
+      {{- if and .Values.persistence.data.enabled .Values.localStorageOnly }}
+        - name: data
+          persistentVolumeClaim:
+            claimName: "{{ .Release.Name }}-data"
+      {{- end }}
+      {{- if .Values.logSidecar.enabled }}
+        - name: sidecar-log
+          emptyDir: { }
+        - name: sidecar-config
+          configMap:
+            name: {{ .Release.Name }}-sidecar-configmap
+      {{- end }}
+    {{- end }}      
+
+  {{- if .Values.global.persistence }}
+  volumeClaimTemplates:
+  {{- if .Values.logSidecar.logsToFile }}
+    - metadata:
+        name: {{ .Release.Name }}-rabbitmq-logs
+      spec:
+        accessModes:
+          - ReadWriteOnce
+        resources:
+          requests:
+            storage: {{ .Values.size }}
+        storageClassName: {{ .Values.storageClass }}
+        volumeMode: Filesystem
+  {{- end }}
+    {{- if .Values.persistence.data.enabled }}
+    - metadata:
+        annotations:
+          "helm.sh/resource-policy": {{ default "delete" .Values.persistence.resourcePolicy }}
+        name: data
+        labels:
+          app: {{ template "crmq.name" . }}
+          release: "{{ .Release.Name }}"
+          heritage: "{{ .Release.Service }}"
+      spec:
+        accessModes:
+          - {{ .Values.persistence.data.accessMode | quote }}
+        resources:
+            requests:
+              storage: {{ .Values.persistence.data.size | quote }}
+      {{- if not (eq "" .Values.persistence.data.storageClass) }}
+        storageClassName: "{{ .Values.persistence.data.storageClass }}"
+      {{- end }}
+    {{- end }}
+    {{- if .Values.persistence.log.enabled }}
+    - metadata:
+        annotations:
+          "helm.sh/resource-policy": {{ default "delete" .Values.persistence.resourcePolicy }}
+        name: log
+        labels:
+          app: {{ template "crmq.name" . }}
+          release: "{{ .Release.Name }}"
+          heritage: "{{ .Release.Service }}"
+      spec:
+        accessModes:
+          - {{ .Values.persistence.log.accessMode | quote }}
+        resources:
+            requests:
+              storage: {{ .Values.persistence.log.size | quote }}
+      {{- if not (eq "" .Values.persistence.log.storageClass) }}
+        storageClassName: "{{ .Values.persistence.log.storageClass }}"
+      {{- end }}
+    {{- end }}
+  {{- end }}

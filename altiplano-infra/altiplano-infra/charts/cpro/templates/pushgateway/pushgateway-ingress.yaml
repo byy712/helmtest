@@ -1,0 +1,45 @@
+{{- if and .Values.pushgateway.enabled .Values.pushgateway.ingress.enabled -}}
+{{- $releaseName := .Release.Name -}}
+{{- $serviceName := include "cpro.prometheus.pushgateway.fullname" . }}
+{{- $servicePort := .Values.pushgateway.service.servicePort -}}
+{{- $kubeVersion := .Capabilities.KubeVersion.GitVersion -}}
+apiVersion: {{ template "cpro.apiVersion.ingress" . }}
+kind: Ingress
+metadata:
+  annotations:
+{{- include "cpro.labelsOrAnnotations" (tuple .Values.pushgateway.ingress.annotations .Values.global.annotations) | indent 4}}
+  labels:
+    {{- include "cpro.app.labels.v3" ( dict "root" . "context" .Values.pushgateway ) | nindent 4 }}
+{{- include "cpro.labelsOrAnnotations" (tuple .Values.global.labels) | indent 4}}
+  name: {{ template "cpro.prometheus.pushgateway.fullname" . }}
+spec:
+  rules:
+  {{- range .Values.pushgateway.ingress.hosts }}
+    {{- $url := splitList "/" . }}
+    - host: {{ first $url }}
+      http:
+        paths:
+          - path: /{{ rest $url | join "/" }}
+            {{- if semverCompare "<= 1.19.0-0" $kubeVersion }}
+            backend:
+              serviceName: {{ $serviceName }}
+              servicePort: {{ $servicePort }}
+            {{- else }}
+            {{- if eq $.Values.pushgateway.ingress.pathType "" }}
+            {{- required "This parameter needs to be provided. Possible Values are Prefix, ImplementationSpecific,Exact" ""}}
+            {{- else }}
+            pathType: {{ $.Values.pushgateway.ingress.pathType }}
+            {{- end }}
+
+            backend:
+              service:
+                name: {{ $serviceName }}
+                port:
+                  number: {{ $servicePort }}
+           {{- end }}
+  {{- end -}}
+{{- if .Values.pushgateway.ingress.tls }}
+  tls:
+{{ toYaml .Values.pushgateway.ingress.tls | indent 4 }}
+  {{- end -}}
+{{- end -}}

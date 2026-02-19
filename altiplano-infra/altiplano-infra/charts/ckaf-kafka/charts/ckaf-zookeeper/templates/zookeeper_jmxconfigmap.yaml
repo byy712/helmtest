@@ -1,0 +1,33 @@
+{{- if eq .Values.global.jmx.enabled true }}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ template "ckaf-zookeeper.name" . }}
+  annotations:
+    seccomp.security.alpha.kubernetes.io/allowedProfileNames: {{ .Values.global.seccompAllowedProfileNames }}
+    seccomp.security.alpha.kubernetes.io/defaultProfileName: {{ .Values.global.seccompDefaultProfileName }}
+{{- include "csf-common-lib.v1.customAnnotations" (tuple .Values.global.annotations) | indent 4 }}
+  labels:
+{{ include "ckaf-zookeeper.commonlabels" . | indent 4 }}
+{{- include "csf-common-lib.v1.customLabels" (tuple .Values.global.labels) | indent 4 }}
+    release: {{ .Release.Name }}
+data:
+ zookeeper-jmx.yaml: |
+  rules:
+  - pattern: "org.apache.ZooKeeperService<name0=ReplicatedServer_id(\\d)><>(\\w+)"
+    name: "zookeeper_$2"
+  - pattern: "org.apache.ZooKeeperService<name0=ReplicatedServer_id(\\d), name1=replica.(\\d)><>(\\w+)"
+    name: "zookeeper_$3"
+    labels:
+      replicaId: "$2"
+  - pattern: "org.apache.ZooKeeperService<name0=ReplicatedServer_id(\\d), name1=replica.(\\d), name2=(\\w+)><>(\\w+)"
+    name: "zookeeper_$4"
+    labels:
+      replicaId: "$2"
+      memberType: "$3"
+  - pattern: "org.apache.ZooKeeperService<name0=ReplicatedServer_id(\\d), name1=replica.(\\d), name2=(\\w+), name3=(\\w+)><>(\\w+)"
+    name: "zookeeper_$4_$5"
+    labels:
+      replicaId: "$2"
+      memberType: "$3"
+{{- end }}

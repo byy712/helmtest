@@ -1,0 +1,50 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ template "ckaf-zookeeper.name" . }}-dynamic-config
+  annotations:
+    "helm.sh/hook": pre-install
+    "helm.sh/hook-weight": "-1"
+    "helm.sh/hook-delete-policy": before-hook-creation
+    seccomp.security.alpha.kubernetes.io/allowedProfileNames: {{ .Values.global.seccompAllowedProfileNames }}
+    seccomp.security.alpha.kubernetes.io/defaultProfileName: {{ .Values.global.seccompDefaultProfileName }}
+{{- include "csf-common-lib.v1.customAnnotations" (tuple .Values.global.annotations) | indent 4 }}
+  labels:
+{{ include "ckaf-zookeeper.commonlabels" . | indent 4 }}
+{{- include "csf-common-lib.v1.customLabels" (tuple .Values.global.labels) | indent 4 }}
+    app: {{ .Chart.Name }}
+    release: {{ .Release.Name }}
+data:
+ dynamicfileorg.cfg.dynamic: |-
+   {{- $replicas := .Values.servers | int }}
+   {{- $root := . }}
+   {{- range $replica := until $replicas }}
+    {{- $serverid := add $replica 1 }}
+    server.{{ $serverid }}={{ template "ckaf-zookeeper.statefulset" $root }}-{{ $replica }}.{{ template "ckaf-zookeeper.name" $root }}-headless.{{ $root.Release.Namespace }}.svc.{{ $root.Values.clusterDomain }}:{{ $root.Values.serverPort }}:{{ $root.Values.leaderElectionPort }};0.0.0.0:{{ $root.Values.zookeeperClientPort }}
+   {{- end }}
+
+---
+# Config map which holds the number of replicas before any scale operation.
+# This config map is created and used by pre/post upgrade/rollback jobs to determine 
+# the scale in/out direction when the user chooses to use the feature of scale via upgrade
+{{ if .Values.global.enable_scale_via_upgrade }}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ template "ckaf-zookeeper.name" . }}-replicas
+  annotations:
+    "helm.sh/hook": pre-install
+    "helm.sh/hook-weight": "-5"
+    "helm.sh/hook-delete-policy": before-hook-creation
+    seccomp.security.alpha.kubernetes.io/allowedProfileNames: {{ .Values.global.seccompAllowedProfileNames }}
+    seccomp.security.alpha.kubernetes.io/defaultProfileName: {{ .Values.global.seccompDefaultProfileName }}
+{{- include "csf-common-lib.v1.customAnnotations" (tuple .Values.global.annotations) | indent 4 }}
+  labels:
+{{ include "ckaf-zookeeper.commonlabels" . | indent 4 }}
+{{- include "csf-common-lib.v1.customLabels" (tuple .Values.global.labels) | indent 4 }}
+    app: {{ .Chart.Name }}
+    release: {{ .Release.Name }}
+data:
+  replicas: {{ .Values.servers | quote }}
+{{- end }}
+---

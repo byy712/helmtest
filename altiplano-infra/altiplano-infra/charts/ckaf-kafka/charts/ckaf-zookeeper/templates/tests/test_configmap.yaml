@@ -1,0 +1,66 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ template "ckaf-zookeeper.name" .}}-zk-test-configmap
+  labels:
+{{ include "ckaf-zookeeper.commonlabels" . | indent 4 }}
+{{- include "csf-common-lib.v1.customLabels" (tuple .Values.global.labels) | indent 4 }}
+  namespace: {{ .Release.Namespace }}
+  annotations:
+    "helm.sh/hook": test
+    "helm.sh/hook-delete-policy": before-hook-creation,hook-succeeded
+    "helm.sh/hook-weight": "1"
+{{- include "csf-common-lib.v1.customAnnotations" (tuple .Values.global.annotations) | indent 4 }}
+data:
+  status_zk_shell_check.sh: |
+    #!/bin/bash
+    RETRY=5
+    servers={{ .Values.servers }}
+
+    function check_pod_status() {
+       i=0
+       echo "CHECKING ZOOKEEPER POD STATUS"
+       while [ $i -lt $RETRY ]
+       do
+           zk_pods=$(kubectl get pod --namespace {{ .Release.Namespace }} -l app={{ .Chart.Name }},release={{ .Release.Name }} |grep {{ template "ckaf-zookeeper.statefulset" .}} |grep  Running |wc -l)
+           if [[ "$servers" == "$zk_pods" ]]
+           then
+              echo "Zookeeper Pods are Up and Running"
+              break
+           else
+              if [[ $i == $(($RETRY-1)) ]]
+              then
+                 echo "Failed while checking the pod status...Exiting" 
+                 return 1 
+              fi
+              echo "Zookeeper is not Running...Retrying for $i time" 
+              sleep 10
+              (( i=i+1 ))
+           fi
+       done
+    }
+
+    function check_zookeeper_shell() {
+      i=0
+      while [ $i -lt $RETRY ]
+      do
+        unset RC1
+        echo "TESTING CONNECTABILITY WITH ZOOKEEPER SERVICE"
+        echo "env -i JAVA_HOME=/usr/jdk11-minimal/ zookeeper-shell {{ template "ckaf-zookeeper.name" . }}.{{ .Release.Namespace }}.svc.{{ .Values.clusterDomain }}:{{ .Values.zookeeperClientPort }} ls /" | kubectl exec -i {{ template "ckaf-zookeeper.statefulset" . }}-0 -n {{ .Release.Namespace }} -c {{ template "ckaf-zookeeper.containerName" . }} bash | grep "zookeeper" ; RC1=$?
+        if [[ $RC1 == 0 ]]
+        then
+           echo "Service Check for Zookeeper is a Success"
+           break
+        else
+           if [[ $i == $(($RETRY-1)) ]]
+           then
+              echo "Failed while testing connectivity with Zookeeper...Exiting"
+              return 1
+           fi
+           echo "Service Check for Zookeeper Failed...Retrying for $i time"
+           sleep 5
+           (( i=i+1 ))
+        fi
+      done
+ 
+    } 

@@ -1,0 +1,80 @@
+{{- include "crdb-redisio.init" . -}}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "csf-common-lib.v3.resourceName" (tuple . "configmap" "cluster-config") }}
+  labels:
+    {{- include "crdb-redisio.labels" (tuple . "configmap") | nindent 4 }}
+  annotations:
+    {{- include "crdb-redisio.annotations" (tuple . "configmap") | nindent 4 }}
+data:
+  cluster.env: |-
+    CHART_VERSION={{- include "crdb-redisio.chart-version" . }}
+    RELEASE_REVISION={{- include "crdb-redisio.revision" . }}
+    MAJOR_ROLLBACK_DELDB={{ .Values.server.majorRollbackDelDb }}
+    SERVER_COUNT={{ .Values.server.count }}
+    SERVER_NODE_SVC_PREFIX={{ include "csf-common-lib.v3.resourceName" (tuple . "service" .Values.server.nameSuffix) }}
+    SERVER_IMAGE_SUM={{- include "crdb-redisio.server.image.sum" .}}
+    SYSUSERAUTH_SUM={{- include "crdb-redisio.sysuserauth.sum" . | quote }}
+  {{- if .redis_cluster }}
+    REDIS_CLUSTER=yes
+    CLUSTER_SHARD_COUNT={{ .Values.cluster.shardCount }}
+    CLUSTER_SHARD_MINSIZE={{ .Values.cluster.shardSize | default 2 }}
+    CLUSTER_AUDIT_NOACTION_TIME={{ .Values.cluster.audit.timers.no_action_time | default 300 }}
+    CLUSTER_AUDIT_RESCHED_LABEL_TIME={{ .Values.cluster.audit.timers.resched_label_time | default 30 }}
+    CLUSTER_AUDIT_SLAVE_MOVEMENT_TIME={{ .Values.cluster.audit.timers.slave_movement_wait | default 300 }}
+    CLUSTER_AUDIT_SLAVE_MOVEMENT_MODE={{ .Values.cluster.audit.slaveMovementMode | default "reschedule" }}
+    {{- if hasKey .Values.cluster.audit "enabled" }}
+    CLUSTER_AUDIT_DISABLED={{ ternary "yes" "no" (eq .Values.cluster.audit.enabled false) }}
+    {{- end }}
+  {{- else if .sentinel_enabled }}
+    SENTINEL_COUNT={{ .Values.sentinel.count }}
+    SENTINEL_NODE_SERVICE={{ include "csf-common-lib.v3.resourceName" (tuple . "service" "sentinel-nodes") }}
+    SENTINEL_NODE_PREFIX={{ include "csf-common-lib.v3.resourceName" (tuple . "statefulset" .Values.sentinel.nameSuffix) }}
+    SENTINEL_QUORUM={{ .Values.sentinel.quorum }}
+    SENTINEL_ACL_ENABLED={{ .Values.sentinel.acl.enabled }}
+    SENTINEL_USER_SECRET={{ include "crdb-redisio.usercreds.secretname" (tuple . .Values.systemUsers.sentinel) }}
+  {{- end }}
+    TOOLS_USER_SECRET={{ include "crdb-redisio.usercreds.secretname" (tuple . .Values.systemUsers.tools) }}
+  {{- if .Values.acl.default }}
+  {{- $defuser := .Values.acl.default -}}
+  {{- if (or (eq (default "" $defuser.password) (b64enc "nopass")) (contains "nopass" $defuser.rules)) }}
+    INSECURE_DATABASE=yes
+  {{- end }}
+  {{- end }}
+  {{- if .Values.cbur.enabled }}
+    CBURM_URL={{ include "crdb-redisio.cburm.url" . }}
+  {{- end }}
+    ISTIO_ENABLED={{ .Values.istio.enabled }}
+  {{- if eq (include "crdb-redisio.logging.syslog_enabled" .) "true" }}
+    SYSLOG_PROTOCOL={{ include "crdb-redisio.logging.syslog_protocol" . }}
+  {{- end }}
+  {{- if .server_tls }}
+    SERVER_TLS=on
+  {{- end }}
+  rollback.json: |-
+    {
+      "config" :
+      {
+        "buffer_size_mb" : "10",
+        "disk_check_factor" : "3",
+        "load_modules" : "true",
+        "max_admin_threads" : "10",
+        "rollback_socket" : "{{ .Values.server.rollbackSocket }}",
+        "server_timeout" : "20"
+      },
+      "transforms_to_62" :
+      {
+        "(\\*7)(\\r\\n\\$6\\r\\nXGROUP\\r\\n\\$6\\r\\nCREATE\\r\\n\\$.*\\r\\n.*\\r\\n\\$.*\\r\\n.*\\r\\n\\$.*\\r\\n.*\\r\\n)(\\$11\\r\\nENTRIESREAD\\r\\n\\$.*\\r\\n.*\\r\\n)" : "*5\\g<2>",
+        "(\\*7)(\\r\\n\\$6\\r\\nXGROUP\\r\\n\\$5\\r\\nSETID\\r\\n\\$.*\\r\\n.*\\r\\n\\$.*\\r\\n.*\\r\\n\\$.*\\r\\n.*\\r\\n)(\\$11\\r\\nENTRIESREAD\\r\\n\\$.*\\r\\n.*\\r\\n)" : "*5\\g<2>",
+        "(\\*7)(\\r\\n\\$6\\r\\nXSETID\\r\\n\\$.*\\r\\n.*\\r\\n\\$.*\\r\\n.*\\r\\n)(\\$.*\\r\\nENTRIESADDED\\r\\n\\$.*\\r\\n.*\\r\\n\\$.*\\r\\nMAXDELETEDID\\r\\n\\$.*\\r\\n.*\\r\\n)" : "*3\\g<2>",
+        "\\*3\\r\\n\\$8\\r\\nFUNCTION\\r\\n\\$5\\r\\nFLUSH\\r\\n\\$4\\r\\nSYNC\\r\\n" : ""
+      }
+    }
+  acl-creds.txt: |-
+  {{- $top := . -}}
+  {{- range $username, $def := .Values.acl -}}
+  {{- if hasKey $def "enabled" | ternary $def.enabled true -}}
+    {{- include "crdb-redisio.usercreds.secretname" (tuple $top $username) | nindent 4 -}}
+  {{- end -}}
+  {{- end }}

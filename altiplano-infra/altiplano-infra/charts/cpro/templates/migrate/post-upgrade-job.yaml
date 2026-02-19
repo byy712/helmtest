@@ -1,0 +1,74 @@
+{{- if and .Values.server.enabled .Values.server.migrate.enabled -}}
+apiVersion: {{ template "cpro.apiVersion.jobApiversion" . }}
+kind: Job
+metadata:
+  labels:
+    {{- include "cpro.app.labels.v3" ( dict "root" . "context" .Values.server ) | nindent 4 }}
+{{- include "cpro.labelsOrAnnotations" (tuple .Values.server.labels .Values.global.labels) | indent 4}}
+  name: {{ template "cpro.prometheus.migrate.postUpgradePodName" . }}
+  annotations:
+{{- include "cpro.labelsOrAnnotations" (tuple .Values.server.annotations .Values.global.annotations) | indent 4}}
+    "helm.sh/hook": post-upgrade
+    "helm.sh/hook-weight": "-5"
+    "helm.sh/hook-delete-policy": before-hook-creation, hook-succeeded
+spec:
+{{$data_csc := dict "cSecCtx" .Values.server.containerSecurityContext "ctx" . }}
+  activeDeadlineSeconds:  {{ add (default 30 .Values.server.migrate.moveDuration) 300 }}
+  template:
+    metadata:
+      annotations:
+        #TODO CHECK
+        sidecar.istio.io/inject: "false"
+{{- include "cpro.labelsOrAnnotations" (tuple .Values.server.annotations .Values.custom.pod.annotations .Values.global.annotations) | indent 8}}
+{{- if .Values.rbac.pspUseAppArmor }}
+{{- include "cpro.labelsOrAnnotations" (tuple .Values.custom.pod.apparmorAnnotations) | indent 8}}
+{{- end }}
+      labels:
+        {{- include "cpro.app.labels.v3" ( dict "root" . "context" .Values.server ) | nindent 8 }}
+{{- include "cpro.labelsOrAnnotations" (tuple .Values.server.labels .Values.custom.pod.labels .Values.global.labels) | indent 8}}
+    spec:
+      {{- if or .Values.serviceAccountName .Values.global.serviceAccountName }}
+      serviceAccountName: {{ template "cpro.prometheus.serviceAccountName" . }}
+      {{- else if .Values.rbac.enabled }}
+      serviceAccountName: {{ template "cpro.prometheus.serviceAccount.fullname" . }}-post
+      {{- else }}
+      serviceAccountName: "default"
+      {{- end }}
+      securityContext:
+      {{$data := dict "securitycontext" .Values.server.migrate.securityContext "ctx" . }}
+      {{- include "cpro.securitycontext" $data | nindent 8 }}
+      {{- if .Values.seLinuxOptions.enabled }}
+        seLinuxOptions:
+          level: {{ .Values.seLinuxOptions.level }}
+          role: {{ .Values.seLinuxOptions.role }}
+          type: {{ .Values.seLinuxOptions.type }}
+          user: {{ .Values.seLinuxOptions.user }}
+      {{- end }}
+      restartPolicy: Never
+{{ include "cpro-common-lib.imagePullSecrets" (dict "workloadName" .Values.server  "root" .) | indent 6 }}
+      containers:
+        - name: {{ template "cpro.prometheus.migrate.postUpgradeContainer" . }} 
+       
+{{- include "cpro.helm.delete.image"  (dict "root" . "container" .Values.helmDeleteImage   ) | nindent 10 }}
+{{- include "cpro.terminationMessage" . | nindent 10 }}
+          env:
+            {{- include "cpro.timeZoneEnvName" . | nindent 12 }}
+          resources:
+{{- include "cpro-common-lib.v1.resources" ( dict "root" . "workloadresources" .Values.server.migrate.resources "defaultcpulimit" "200m") | nindent 12 }}
+          command: ["sh", "-c"]
+          args: ["sleep {{ .Values.server.migrate.moveDuration }}"]
+          securityContext:
+            {{- include "cpro.containerSecurityContext" $data_csc | nindent 12 }}
+{{- with .Values.hooks.nodeSelector }}
+      nodeSelector:
+{{ toYaml . | indent 8 }}
+{{- end }}
+{{- with .Values.hooks.tolerations }}
+      tolerations:
+{{ toYaml . | indent 8 }}
+{{- end }}
+{{- with .Values.hooks.affinity }}
+      affinity:
+{{ toYaml . | indent 8 }}
+{{- end }}
+{{- end }}

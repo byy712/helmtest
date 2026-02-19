@@ -1,0 +1,176 @@
+# Default values for altiplano.
+# This is a YAML-formatted file.
+# Declare variables to be passed into your templates.
+
+tags:
+  infra: false
+  avp: false
+  aac: false
+  virtualizer: false
+  external-isam-snmp-adapter: false
+  fsm: false
+  fmc: false
+  external-tor-adapter: false
+  slice-owner-controller: false
+  internal-acs-adapter: false
+  altiplano-command-center: false
+
+#NOTE
+# EITHER keep the line uncommented
+# OR keep it commented
+# NEVER set it to enabled: false
+global:
+  altiplano-opentsdb:
+    #enabled: true
+  registry: artifactory.net.nokia.com
+  #persistence: #true # NOTE Use altiplano-volumeclaims chart to create pvc  s
+  K8S_PUBLIC_IP:
+  clustered_opentsdb: true
+  vault:
+    enabled: false
+
+altiplano-opentsdb:
+  #enabled: false
+  image:
+    registry: #artifactory.net.nokia.com
+    #repository: #fnms-opentsdb
+    tag: nokia-4.0.2
+  init:
+    image:
+      name: fnms-init-container
+      tag: nokia-2.0.1
+      pullPolicy: IfNotPresent
+  env:
+    init: {} # remove the braces for the below values to take effect
+      #META_TABLE: 'tsdb-meta'
+      #TREE_TABLE: 'tsdb-tree'
+      #TSDB_TABLE: 'tsdb'
+      #UID_TABLE: 'tsdb-uid'
+      #TSDB_TTL: '604800'
+    #open: {}
+      # Example of job definition:
+      # .---------------- minute (0 - 59)
+      # |  .------------- hour (0 - 23)
+      # |  |  .---------- day of month (1 - 31)
+      # |  |  |  .------- month (1 - 12) OR jan,feb,mar,apr ...
+      # |  |  |  |  .---- day of week (0 - 6) (Sunday=0 or 7) OR sun,mon,tue,wed,thu,fri,sat
+      # |  |  |  |  |
+      # *  *  *  *  *
+    #cronjob:
+    # enabled: false
+    #  schedule: "0 1 * * *"
+  service:
+    type: ClusterIP
+    #ports:
+      #opentsdbNodePort: 30044
+  resources:
+    requests:
+      cpu: 0.3
+      memory: 1Gi
+
+altiplano-opentsdb-av:
+  enabled: false
+  image:
+    registry: #artifactory.net.nokia.com
+    #repository: #fnms-opentsdb
+    tag: nokia-4.0.2
+  init:
+    image:
+      name: fnms-init-container
+      tag: nokia-2.0.1
+      pullPolicy: IfNotPresent
+  startupProbe:
+    initialDelaySeconds: 10
+    periodSeconds: 20
+    timeoutSeconds: 10
+    failureThreshold: 15
+  livenessProbe:
+    initialDelaySeconds:
+      k8sversiongt118: 20
+      k8sversionlt118: 120
+    periodSeconds: 20
+    timeoutSeconds: 10
+    failureThreshold: 6
+  readinessProbe:
+    initialDelaySeconds: 20
+    periodSeconds: 20
+    timeoutSeconds: 10
+    failureThreshold: 6
+  env:
+    #HBASE_CB_TIMEOUT_SECOND: "1"
+    init: {} # remove the braces for the below values to take effect
+      #META_TABLE: 'tsdb-meta'
+      #TREE_TABLE: 'tsdb-tree'
+      #TSDB_TABLE: 'tsdb'
+      #UID_TABLE: 'tsdb-uid'
+      #TTL default value is 604800 seconds => 7Days
+      #TSDB_TTL: '604800'
+      #HBASE_IMAGE: fnms-gradiant-hbase
+      #HBASE_IMAGE_TAG: nokia-4.0.2
+      #open: {}
+      # Example of job definition:
+      # .---------------- minute (0 - 59)
+      # |  .------------- hour (0 - 23)
+      # |  |  .---------- day of month (1 - 31)
+      # |  |  |  .------- month (1 - 12) OR jan,feb,mar,apr ...
+      # |  |  |  |  .---- day of week (0 - 6) (Sunday=0 or 7) OR sun,mon,tue,wed,thu,fri,sat
+      # |  |  |  |  |
+    # *  *  *  *  *
+    #cronjob:
+    # enabled: false
+    #  schedule: "0 1 * * *"
+  service:
+    type: ClusterIP
+      #ports:
+    #opentsdbNodePort: 30045
+  resources:
+    requests:
+      cpu: 0.3
+      memory: 1Gi
+
+altiplano-hbase:
+  #enabled: false
+  persistence:
+    enabled: true
+    storageClassName: ""
+    accessMode: ReadWriteOnce
+    # Size of persistent storage of data pod to store the elasticsearch data.
+    size: 1Gi
+  image:
+    registry: #artifactory.net.nokia.com
+    #repository: #fnms-gradiant-hbase
+    tag: nokia-4.0.2
+    pullPolicy: IfNotPresent
+  init:
+    image:
+      name: fnms-init-container
+      tag: nokia-2.0.1
+      pullPolicy: IfNotPresent
+  conf:
+    hbaseSite:
+      hbase.zookeeper.quorum: "altiplano-zookeeper:2181"
+altiplano-hdfs:
+  image:
+    registry: #artifactory.net.nokia.com
+    #repository: #fnms-gradiant-hdfs
+    tag: nokia-4.0.0
+    pullPolicy: IfNotPresent
+  init:
+    image:
+      name: fnms-init-container
+      tag: nokia-2.0.1
+      pullPolicy: IfNotPresent
+  persistence:
+    nameNode:
+      enabled: true
+      storageClass:
+      accessMode: ReadWriteOnce
+      size: 1Gi
+    dataNode:
+      enabled: true
+      storageClass:
+      accessMode: ReadWriteOnce
+      size: 1Gi
+  prometheus:
+    exporter:
+      enabled: true

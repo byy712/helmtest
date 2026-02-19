@@ -1,0 +1,17 @@
+apiVersion: v2
+appVersion: 5.8.4
+description: Like a museum indexmgr manages the exhibits and collections on display,
+  Indexmgr helps you curate, or manage your indices.
+home: http://www.elastic.co/guide/en/elasticsearch/client/curator/current/index.html
+icon: https://static-www.elastic.co/assets/blteb1c97719574938d/logo-elastic-elasticsearch-lt.svg
+keywords:
+- indexmgr
+- indexsearch
+- log
+maintainers:
+- email: CSF-BELK@groups.nokia.com
+  name: BSSC Team
+name: bssc-indexmgr
+sources:
+- https://github.com/elastic/curator
+version: 10.0.1

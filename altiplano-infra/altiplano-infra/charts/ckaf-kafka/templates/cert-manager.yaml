@@ -1,0 +1,50 @@
+{{- if .Values.ssl.certManager.enabled }}
+apiVersion: {{ template "ckaf-kafka.certificateApiVersion" . }}
+kind: Certificate
+metadata:
+  name: {{ template "ckaf-kafka.statefulset" . }}-cert-manager
+  namespace: {{ .Release.Namespace }}
+  labels:
+{{ include "ckaf-kafka.commonLabels" . | indent 4 }}
+{{- include "csf-common-lib.v1.customLabels" (tuple .Values.global.labels) | indent 4 }}
+    app: {{ .Chart.Name }}
+    release: {{ .Release.Name | quote }}
+  annotations:
+{{- include "csf-common-lib.v1.customAnnotations" (tuple .Values.global.annotations) | indent 4 }}
+spec:
+  secretName: {{ template "ckaf-kafka.statefulset" . }}-cert-manager-secret
+  duration: {{ .Values.ssl.certManager.duration }}
+  renewBefore: {{ .Values.ssl.certManager.renewBefore }}
+  {{- include "ckaf-kafka.privateKeyConfigs" . | indent 2 }}
+  dnsNames:
+   {{- if eq .Values.ingress.enableExternalAccess true }}
+  {{- range $extlistener := .Values.ingress.externalListeners }}
+  {{- if .uniqueADL }}
+  - "*{{ .externalServiceName }}"
+  {{- else }}
+  - "{{ .externalServiceName }}"
+  {{- end }}
+  {{- end }}
+  {{- end }}
+  - "*.{{ template "ckaf-kafka.name" . }}-headless.{{ .Release.Namespace }}.svc.{{ .Values.clusterDomain }}"
+  - "{{ template "ckaf-kafka.name" . }}-headless.{{ .Release.Namespace }}.svc.{{ .Values.clusterDomain }}"
+  usages:
+    - server auth
+    - client auth
+  # if the keystore type is not of PEM then this section will be used for JKS cert creation.
+  # passwordSecretRef is a mandatory field in case of JKS certs.
+  {{- if  (ne (.Values.ssl.keyStoreType |upper) "PEM") }} 
+  keystores:
+    jks:
+      create: true
+      # Password used to encrypt the keystore
+      passwordSecretRef:
+          key: {{ .Values.ssl.certManager.store_password_key }}
+          name: {{ .Values.ssl.certManager.store_password_secret_name }}
+  {{- end }}
+  issuerRef:
+    name: {{ .Values.ssl.certManager.issuerRef.name }}
+    # We can reference ClusterIssuers by changing the kind here.
+    # The default value is Issuer (i.e. a locally namespaced Issuer)
+    kind: {{ .Values.ssl.certManager.issuerRef.kind }}
+{{- end }}

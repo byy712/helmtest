@@ -1,0 +1,263 @@
+{{- if .Values.rbac.enabled  }}
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: {{ template "bssc-fluentd.preUpgradePvMigrateServiceAccount.name" . }}
+  namespace: "{{.Release.Namespace}}"
+  labels:
+{{- include "bssc-fluentd.commonLabels" (tuple . "fluentd" ) | nindent 4 }}
+{{- include "bssc-fluentd.csf-toolkit-helm.labels" (tuple .) | nindent 4 }}
+  annotations:
+{{- include "bssc-fluentd.csf-toolkit-helm.annotations" (tuple .) | nindent 4 }}
+    "helm.sh/hook": pre-upgrade
+    "helm.sh/hook-weight": "-8"
+    "helm.sh/hook-delete-policy": before-hook-creation, hook-succeeded
+    seccomp.security.alpha.kubernetes.io/allowedProfileNames: {{ .Values.global.seccompAllowedProfileNames }}
+    seccomp.security.alpha.kubernetes.io/defaultProfileName: {{ .Values.global.seccompDefaultProfileName }}
+automountServiceAccountToken: false
+---
+{{ if (and (eq .Values.fluentd.kind "StatefulSet" )  ( .Values.upgrade.autoMigratePV)) }}
+apiVersion: {{ template "bssc-fluentd.apiVersionRbacAuthorizatioK8sIoV1Beta1orV1" . }}
+kind: ClusterRoleBinding
+metadata:
+  name: {{ template "bssc-fluentd.fullname" . }}-preupgpv-crb
+  namespace: "{{.Release.Namespace}}"
+  labels:
+{{- include "bssc-fluentd.commonLabels" (tuple . "fluentd" ) | nindent 4 }}
+{{- include "bssc-fluentd.csf-toolkit-helm.labels" (tuple .) | nindent 4 }}
+  annotations:
+{{- include "bssc-fluentd.csf-toolkit-helm.annotations" (tuple .) | nindent 4 }}
+    "helm.sh/hook": pre-upgrade
+    "helm.sh/hook-weight": "-7"
+    "helm.sh/hook-delete-policy": before-hook-creation, hook-succeeded
+    seccomp.security.alpha.kubernetes.io/allowedProfileNames: {{ .Values.global.seccompAllowedProfileNames }}
+    seccomp.security.alpha.kubernetes.io/defaultProfileName: {{ .Values.global.seccompDefaultProfileName }}
+subjects:
+- kind: ServiceAccount
+  name: {{ template "bssc-fluentd.preUpgradePvMigrateServiceAccount.name" . }}
+  namespace: "{{.Release.Namespace}}"
+roleRef:
+  kind: ClusterRole
+  name: {{ template "bssc-fluentd.fullname" . }}-preupgpv-cr
+  apiGroup: rbac.authorization.k8s.io
+---
+apiVersion: {{ template "bssc-fluentd.apiVersionRbacAuthorizatioK8sIoV1Beta1orV1" . }}
+kind: ClusterRole
+metadata:
+  name: {{ template "bssc-fluentd.fullname" . }}-preupgpv-cr
+  labels:
+{{- include "bssc-fluentd.commonLabels" (tuple . "fluentd" ) | nindent 4 }}
+{{- include "bssc-fluentd.csf-toolkit-helm.labels" (tuple .) | nindent 4 }}
+  annotations:
+{{- include "bssc-fluentd.csf-toolkit-helm.annotations" (tuple .) | nindent 4 }}
+    "helm.sh/hook": pre-upgrade
+    "helm.sh/hook-weight": "-7"
+    "helm.sh/hook-delete-policy": before-hook-creation, hook-succeeded
+    seccomp.security.alpha.kubernetes.io/allowedProfileNames: {{ .Values.global.seccompAllowedProfileNames }}
+    seccomp.security.alpha.kubernetes.io/defaultProfileName: {{ .Values.global.seccompDefaultProfileName }}
+rules:
+- apiGroups:
+  - ""
+  resources:
+  - persistentvolumes
+  verbs:
+  - create
+  - patch
+  - update
+  - get
+  - list
+{{- end }}
+---
+kind: RoleBinding
+apiVersion: {{ template "bssc-fluentd.apiVersionRbacAuthorizatioK8sIoV1Beta1orV1" . }}
+metadata:
+  name: {{ template "bssc-fluentd.fullname" . }}-preupgpv-rb
+  namespace: "{{.Release.Namespace}}"
+  labels:
+{{- include "bssc-fluentd.commonLabels" (tuple . "fluentd" ) | nindent 4 }}
+{{- include "bssc-fluentd.csf-toolkit-helm.labels" (tuple .) | nindent 4 }}
+  annotations:
+{{- include "bssc-fluentd.csf-toolkit-helm.annotations" (tuple .) | nindent 4 }}
+    "helm.sh/hook": pre-upgrade
+    "helm.sh/hook-weight": "-7"
+    "helm.sh/hook-delete-policy": before-hook-creation, hook-succeeded
+    seccomp.security.alpha.kubernetes.io/allowedProfileNames: {{ .Values.global.seccompAllowedProfileNames }}
+    seccomp.security.alpha.kubernetes.io/defaultProfileName: {{ .Values.global.seccompDefaultProfileName }}
+subjects:
+- kind: ServiceAccount
+  name: {{ template "bssc-fluentd.preUpgradePvMigrateServiceAccount.name" . }}
+  namespace: "{{.Release.Namespace}}"
+  apiGroup: ""
+roleRef:
+  kind: Role
+  name: {{ template "bssc-fluentd.fullname" . }}-preupgpv-role
+  apiGroup: rbac.authorization.k8s.io
+---
+kind: Role
+apiVersion: {{ template "bssc-fluentd.apiVersionRbacAuthorizatioK8sIoV1Beta1orV1" . }}
+metadata:
+  namespace: "{{.Release.Namespace}}"
+  name: {{ template "bssc-fluentd.fullname" . }}-preupgpv-role
+  labels:
+{{- include "bssc-fluentd.commonLabels" (tuple . "fluentd" ) | nindent 4 }}
+{{- include "bssc-fluentd.csf-toolkit-helm.labels" (tuple .) | nindent 4 }}
+  annotations:
+{{- include "bssc-fluentd.csf-toolkit-helm.annotations" (tuple .) | nindent 4 }}
+    "helm.sh/hook": pre-upgrade
+    "helm.sh/hook-weight": "-8"
+    "helm.sh/hook-delete-policy": before-hook-creation, hook-succeeded
+    seccomp.security.alpha.kubernetes.io/allowedProfileNames: {{ .Values.global.seccompAllowedProfileNames }}
+    seccomp.security.alpha.kubernetes.io/defaultProfileName: {{ .Values.global.seccompDefaultProfileName }}
+rules:
+- apiGroups:
+  - apps
+{{- if eq .Values.fluentd.kind "DaemonSet" }}
+  resources: ["daemonsets"]
+{{- else if eq .Values.fluentd.kind "StatefulSet" }}
+  resources: ["statefulsets"]
+{{- else }}
+  resources: ["deployments"]
+{{- end }}
+  verbs:
+  - get
+  - list
+  - delete
+{{- if ne .Values.fluentd.kind "StatefulSet" }}
+- apiGroups:
+  - extensions
+  {{- if eq .Values.fluentd.kind "DaemonSet" }}
+  resources: ["daemonsets"]
+  {{- else }}
+  resources: ["deployments"]
+  {{- end }}
+{{- end }}
+  verbs:
+  - get
+  - list
+  - delete
+- apiGroups:
+  - ""
+  resources:
+  - persistentvolumeclaims
+  verbs:
+  - create
+  - delete
+  - patch
+  - update
+  - get
+  - list
+{{- end }}
+---
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: {{ template "bssc-fluentd.preUpgradePvMigrateJob.name" . }}
+  labels:
+{{- include "bssc-fluentd.commonLabels" (tuple . "fluentd" ) | indent 4 }}
+{{- include "bssc-fluentd.csf-toolkit-helm.labels" (tuple . .Values.fluentd.custom.hookJobs.job.labels) | indent 4 }}
+  annotations:
+    "helm.sh/hook-weight": "-6"
+    "helm.sh/hook": pre-upgrade
+    "helm.sh/hook-delete-policy": before-hook-creation, hook-succeeded
+    seccomp.security.alpha.kubernetes.io/allowedProfileNames: {{ .Values.global.seccompAllowedProfileNames }}
+    seccomp.security.alpha.kubernetes.io/defaultProfileName: {{ .Values.global.seccompDefaultProfileName }}
+{{- include "bssc-fluentd.csf-toolkit-helm.annotations" (tuple . .Values.fluentd.custom.hookJobs.job.annotations) | indent 4 }}
+spec:
+  template:
+    metadata:
+      labels:
+        altiplano-role: {{ .Values.accessRoleLabel }}
+{{- include "bssc-fluentd.csf-toolkit-helm.labels" (tuple . .Values.fluentd.custom.hookJobs.pod.labels) | indent 8 }}
+{{- include "bssc-fluentd.commonLabels" (tuple . "fluentd") | indent 8 }}
+      annotations:
+        sidecar.istio.io/inject: "false"
+{{- include "bssc-fluentd.csf-toolkit-helm.annotations" (tuple . .Values.fluentd.custom.hookJobs.pod.annotations) | indent 8 }}
+    spec:
+      serviceAccountName: {{ template "bssc-fluentd.preUpgradePvMigrateServiceAccount.name" . }}
+      automountServiceAccountToken: true
+      {{- if .Values.jobs.affinity }}
+      affinity:
+{{ toYaml .Values.jobs.affinity | indent 8 }}
+      {{- end }}
+      {{- if .Values.jobs.nodeSelector }}
+      nodeSelector:
+{{ toYaml .Values.jobs.nodeSelector | indent 8 }}
+      {{- end }}
+      {{- if .Values.jobs.tolerations }}
+      tolerations:
+{{ toYaml .Values.jobs.tolerations | indent 8 }}
+      {{- end }}
+      restartPolicy: Never
+      securityContext:
+{{ include "bssc-fluentd.pod.securityContext" . | indent 8 }}
+      {{- with or .Values.fluentd.imagePullSecrets .Values.imagePullSecrets .Values.global.imagePullSecrets }}
+      imagePullSecrets:
+{{- toYaml . | nindent 8 }}
+      {{- end }}
+      containers:
+      - name: {{ template "bssc-fluentd.preUpgradePvMigrateContainer.name" . }}
+        image: {{ include "bssc-fluentd.registry" (tuple .Values .Values.internalToolsRegistry) }}/{{ include "bssc-fluentd.imageRepositoryPath" (tuple .Values.global.flatRegistry .Values.kubectl.image.repo) }}:{{ (include "bssc-fluentd.imageTag" (tuple .Values.kubectl.image.tag .Values.kubectl.image.supportedImageFlavor .Values .Values.kubectl .Values.kubectl.image )) }}
+        env:
+        - name: TZ
+          value: {{ or .Values.timezone.timeZoneEnv .Values.global.timeZoneEnv "UTC" | quote }}
+        - name: NAMESPACE
+          value: {{ .Release.Namespace }}
+        - name: DST_STS_FLU
+          value: {{ template "bssc-fluentd.statefulset.name" . }}
+        command:
+        - bash
+        - -c
+        - |
+          {{ if (and (eq .Values.fluentd.kind "StatefulSet" )  ( .Values.upgrade.autoMigratePV)) }}
+          echo "Checking if PV migration is required"
+          sleep 5
+          if [[ `kubectl --namespace {{ .Release.Namespace }} get sts -l component=fluentd --no-headers` ]]; then
+            echo "PV migration is required"
+            SRC_STS_FLU=$(kubectl --namespace $NAMESPACE get sts -l component=fluentd --no-headers=true -o custom-columns=:metadata.name)
+            sh /tmp/fluentd/pv-migrate.sh $NAMESPACE $SRC_STS_FLU $DST_STS_FLU
+            PVC_FLU=$(kubectl get pvc --namespace $NAMESPACE --no-headers | grep fluentd-dir-{{ template "bssc-fluentd.statefulset.name" . }} | awk '{print$1}')
+            for pvc in $PVC_FLU
+            do
+              {{- if .Values.partOf  }}
+              kubectl label pvc $pvc  --namespace {{ .Release.Namespace }} app.kubernetes.io/name={{ default .Chart.Name .Values.nameOverride }} app.kubernetes.io/instance={{ .Release.Name }}  app.kubernetes.io/managed-by={{ .Values.managedBy | default .Release.Service | quote}} app.kubernetes.io/part-of={{ .Values.partOf }} app.kubernetes.io/component=fluentd --overwrite app- release-
+              {{- else }}
+              kubectl label pvc $pvc  --namespace {{ .Release.Namespace }} app.kubernetes.io/name={{ default .Chart.Name .Values.nameOverride }} app.kubernetes.io/instance={{ .Release.Name }}  app.kubernetes.io/managed-by={{ .Values.managedBy | default .Release.Service | quote}} app.kubernetes.io/component=fluentd --overwrite app- release-
+              {{- end }}
+            done
+          else
+            echo "PV migration is not required"
+          fi
+          {{- end }}
+          {{- if eq .Values.fluentd.kind "Deployment"  }}
+            #Due to common labels changes and asset name changes, deployment and daemonset is deleted. Sts is deleted in pv-migrate.sh script
+              DEPLOYMENT=$(kubectl --namespace $NAMESPACE get deployment -l component=fluentd,version=v1.22 --no-headers=true -o custom-columns=:metadata.name |grep -w {{ template "bssc-fluentd.deployment.name" . }})
+              echo $DEPLOYMENT
+              if [[ ! -z "$DEPLOYMENT" ]]; then
+                kubectl delete deployment $DEPLOYMENT --namespace $NAMESPACE
+                echo "$DEPLOYMENT is deleted"
+              fi
+          {{- end }}
+          {{- if eq .Values.fluentd.kind "DaemonSet"  }}
+              DAEMONSET=$(kubectl --namespace $NAMESPACE get daemonset -l component=fluentd,version=v1.22 --no-headers=true -o custom-columns=:metadata.name |grep -w {{ template "bssc-fluentd.daemonset.name" . }})
+              echo $DAEMONSET
+              if [[ ! -z "$DAEMONSET" ]]; then
+                kubectl delete daemonset $DAEMONSET --namespace $NAMESPACE
+                echo "$DAEMONSET is deleted"
+              fi
+          {{- end }}
+        volumeMounts:
+        {{ if (and (eq .Values.fluentd.kind "StatefulSet" )  ( .Values.upgrade.autoMigratePV)) }}
+        - name: pv-migrate
+          mountPath: "/tmp/fluentd/"
+        {{- end }}
+        securityContext:
+{{ include "bssc-fluentd.container.securityContext" . | indent 10 }}
+        resources:
+{{ include "bssc-fluentd.resources" (tuple . .Values.jobs.hookJobs.resources "120m") | indent 10 }}
+      {{ if (and (eq .Values.fluentd.kind "StatefulSet" )  ( .Values.upgrade.autoMigratePV)) }}
+      volumes:
+      - configMap:
+          name: {{ template "bssc-fluentd.fullname" . }}-preupgpv
+        name: pv-migrate
+      {{- end }}
+

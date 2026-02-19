@@ -1,0 +1,606 @@
+# Model of ifd configuration.
+type: object
+properties:
+    imagesregistry:
+        description: |
+            registry is used for images
+        type: object
+        properties:
+            registry:
+                description: |
+                    This registry is used for bssc images
+                type: string
+                default: csf-docker-delivered.repo.cci.nokia.net
+            registry1:
+                description: |
+                    This registry is used for cbur and kubectl image
+                type: string
+                default: csf-docker-delivered.repo.cci.nokia.net
+
+    ifd:
+        description: |
+            ifd tags
+        type: object
+        properties:
+            bsscFluentd:
+                description: |
+                    enable this tag to launch fluentd
+                type: boolean
+                default: false
+            bsscIndexsearch:
+                description: |
+                    enable this tag to launch Indexsearch
+                type: boolean
+                default: true
+            bsscDashboards:
+                description: |
+                    enable this to launch Dashboards
+                type: boolean
+                default: true
+            bsscIndexmgr:
+                description: |
+                    enable this tag to launch Indexmgr
+                type: boolean
+                default: true
+
+
+    fluentd:
+        description: |
+            Fluentd configuration.
+        type: object
+        properties:
+            fluentdCpuLimit:
+                description: |
+                    CPU limit usage for fluentd per node
+                type: string
+                default: 1
+                pattern: '^[1-9][0-9]*m*$'
+            fluentdCpuRequest:
+                description: |
+                    CPU request usage for fluentd per node
+                type: string
+                default: 500m
+                pattern: '^[1-9][0-9]*m*$'
+            fluentdMemoryLimit:
+                description: |
+                    Memory limit usage for fluentd per node
+                type: string
+                default: 2024Mi
+                pattern: '^[1-9][0-9]*(Gi|Mi)$'
+            fluentdMemoryRequest:
+                description: |
+                    Memory request usage fluentd in MB per node
+                type: string
+                default: 1023Mi
+                pattern: '^[1-9][0-9]*(Gi|Mi)$'
+            kind:
+                description: |
+                    kind of fluentd
+                type: string
+                default: Deployment
+            #This part will be added when CSFP provides a way to configure a text box & maintain the indentation.  
+            #enabledCertificates:
+            #    description: |
+            #        enable it to add fluentd certificates
+            #    type: boolean
+            #    default: false
+            #This part will be added when CSFP provides a way to configure a text box & maintain the indentation.
+            #dataCertificates:
+            #    description: |
+            #        fluentd deployed as service
+            #    type: string
+            #    format: text-area
+            enabledService:
+                description: |
+                    fluentd deployed as service
+                type: boolean
+                default: false
+            custom_name:
+                description: |
+                    custom_name for service of fluentd
+                type: string
+            type:
+                description: |
+                    type of service for fluentd
+                type: string
+                default: ClusterIP
+            port:
+                description: |
+                    source port for forwarder
+                type: integer
+                default: 24224
+            metricsPort:
+                description: |
+                    metricsPort for fluentd service
+                type: integer
+                default: 24231
+            configFile:
+                description: |
+                    Refer to Fluentd docs for configurations:- https://docs.fluentd.org/
+                    "<source>\n
+                      @type tail\n
+                      path /var/log/test/*.log\n
+                      tag test\n
+                      pos_file /var/log/td-agent.pos\n
+                      format none\n
+                    </source>\n
+                    <match test>\n
+                      @type stdout\n
+                    </match>\n
+                    "
+                type: string
+                format: text-area
+            storageClassNameFluentd:
+                description: |
+                    provide storageClassName for fluentd
+                type: string
+            sizeFluentd:
+                description: |
+                    if fluetnd kind is statefulset then provide pvc size
+                type: string
+                default: 10Gi
+                pattern: '^[1-9][0-9]*(Gi|Mi)$'
+            pvc_auto_delete:
+                description: |
+                    auto delete deletes the pvc
+                type: boolean
+                default: false
+            enableCburFluentd:
+                description: |
+                    Enable support for backup and restore of Fluentd configmap through CBUR
+                type: boolean
+                default: false
+            cronJobCburFluentd:
+                description: |
+                    Format of cron job setting for backup of Fluentd configmap. It is used for scheduled backup task.
+                type: string
+                default: "0 23 * * *"
+            maxCopyCburFluentd:
+                description: |
+                    The number of maximum backup copies to be retained
+                type: integer
+                default: 5
+                pattern: '^[1-9][0-9]*$'
+            backendModeCburFluentd:
+                description: |
+                    Modes supported now "local","NETBKUP","AVAMAR", case insensitive
+                type: string
+                default: "local"
+            autoEnableCronCburFluentd:
+                description: |
+                    Enable autoCron to take backup periodically
+                type: boolean
+                default: false
+
+
+    indexsearch:
+        description: |
+            indexsearch cluster configuration.
+        type: object
+        properties:
+            replicasManager:
+                description: |
+                    Number of manager node replicas
+                type: integer
+                default: 3
+            managerCpuLimit:
+                description: |
+                    CPU limit usage for indexsearch manager per node
+                type: string
+                default: 1
+                pattern: '^[1-9][0-9]*m*$'
+            managerCpuRequest:
+                description: |
+                    CPU request usage for indexsearch manager per node
+                type: string
+                default: 500m
+                pattern: '^[1-9][0-9]*m*$'
+            managerMemoryLimit:
+                description: |
+                    Memory limit usage for indexsearch manager per node
+                type: string
+                default: 2024Mi
+                pattern: '^[1-9][0-9]*(Gi|Mi)$'
+            managerMemoryRequest:
+                description: |
+                    Memory request usage indexsearch manager in MB per node
+                type: string
+                default: 1023Mi
+                pattern: '^[1-9][0-9]*(Gi|Mi)$'
+            jvmOptsManager:
+                description: |
+                     java Heap for indexsearch manager
+                type: string
+                default: "-Xmx1G -Xms1G"
+            replicasClient:
+                description: |
+                    Number of client node replicas
+                type: integer
+                default: 3
+            clientCpuLimit:
+                description: |
+                    CPU limit usage for indexsearch client per node
+                type: string
+                default: 1
+                pattern: '^[1-9][0-9]*m*$'
+            clientCpuRequest:
+                description: |
+                    CPU request usage for indexsearch client per node
+                type: string
+                default: 500m
+                pattern: '^[1-9][0-9]*m*$'
+            clientMemoryLimit:
+                description: |
+                    Memory limit usage for indexsearch client per node
+                type: string
+                default: 4000Mi
+                pattern: '^[1-9][0-9]*(Gi|Mi)$'
+            clientMemoryRequest:
+                description: |
+                    Memory request usage indexsearch client in MB per node
+                type: string
+                default: 2024Mi
+                pattern: '^[1-9][0-9]*(Gi|Mi)$'
+            jvmOptsClient:
+                description: |
+                     java Heap for indexsearch client
+                type: string
+                default: "-Xmx2G -Xms2G"
+
+            replicasData:
+                description: |
+                    Number of data node replicas
+                type: integer
+                default: 2
+            dataCpuLimit:
+                description: |
+                    CPU limit usage for indexsearch data per node
+                type: string
+                default: 1
+                pattern: '^[1-9][0-9]*m*$'
+            dataCpuRequest:
+                description: |
+                    CPU request usage for indexsearch data per node
+                type: string
+                default: 500m
+                pattern: '^[1-9][0-9]*m*$'
+            dataMemoryLimit:
+                description: |
+                    Memory limit usage for indexsearch data per node
+                type: string
+                default: 4000Mi
+                pattern: '^[1-9][0-9]*(Gi|Mi)$'
+            dataMemoryRequest:
+                description: |
+                    Memory request usage indexsearch data in MB per node
+                type: string
+                default: 2024Mi
+                pattern: '^[1-9][0-9]*(Gi|Mi)$'
+            jvmOptsData:
+                description: |
+                     java Heap for indexsearch data
+                type: string
+                default: "-Xmx2G -Xms2G"
+            storageClassNameIndexsearch:
+                description: |
+                    provide storage class for Indexsearch.The value "" picks up the default storageClass configured in BCMT cluster.
+                type: string
+                default: ""
+            storageData:
+                description: |
+                    Persistent storage size per indexsearch data node in GB
+                type: string
+                default: 50Gi
+                pattern: '^[1-9][0-9]*(Gi|Mi)$'
+            storageManager:
+                description: |
+                    Persistent storage size per indexsearch manager node in GB
+                type: string
+                default: 1Gi
+                pattern: '^[1-9][0-9]*(Gi|Mi)$'
+            autoDeletePvc:
+                description: |
+                    Deletes the persistent volume
+                type: boolean
+                default: false
+            storageBackup:
+                description: |
+                    Persistent storage size of backup in GB
+                type: string
+                default: 25Gi
+                pattern: '^[1-9][0-9]*(Gi|Mi)$'
+            enableCburIndexsearch:
+                description: |
+                    Enable support for backup and restore of Indexsearch configmap through CBUR
+                type: boolean
+                default: false
+            cronJobCburIndexsearch:
+                description: |
+                    Format of cron job setting for backup of Indexsearch configmap. It is used for scheduled backup task.
+                type: string
+                default: "0 23 * * *"
+            maxCopyCburIndexsearch:
+                description: |
+                    The number of maximum backup copies to be retained
+                type: integer
+                default: 5
+                pattern: '^[1-9][0-9]*$'
+            backendModeCburIndexsearch:
+                description: |
+                    Modes supported now "local","NETBKUP","AVAMAR", case insensitive
+                type: string
+                default: "local"
+            autoEnableCronCburIndexsearch:
+                description: |
+                    Enable autoCron to take backup periodically
+                type: boolean
+            storageTmp:
+                description: |
+                    Persistent storage size of /tmp  in GB
+                type: string
+                default: 50Gi
+                pattern: '^[1-9][0-9]*(Gi|Mi)$'
+            serviceNameIndexsearch:
+                description: |
+                    service name of indexsearch
+                type: string
+                default: indexsearch
+            enableSearchGuard:
+                description: |
+                    enable searchguard for indexsearch
+                type: boolean
+                default: false
+            user_name:
+                description: |
+                    user_name for indexsearch
+                type: string
+                default: admin
+            keystore_type:
+                description: |
+                    keystore_type of indexsearch
+                type: string
+                default: JKS
+            truststore_type:
+                description: |
+                    truststore_type name of indexsearch
+                type: string
+                default: JKS
+            base64Keystore:
+                description: |
+                    base64Keystore name of indexsearch
+                type: string
+                format: text-area
+            base64KeystorePasswd:
+                description: |
+                    base64KeystorePasswd name of indexsearch
+                type: string
+            base64Truststore:
+                description: |
+                    base64Truststore name of indexsearch
+                type: string
+                format: text-area
+            base64TruststorePasswd:
+                description: |
+                    base64TruststorePasswd name of indexsearch
+                type: string
+            base64ClientKeystore:
+                description: |
+                    base64ClientKeystore name of indexsearch
+                type: string
+                format: text-area
+            base64RootCA:
+                description: |
+                    base64RootCA name of indexsearch
+                type: string
+                format: text-area
+            base64_client_cert:
+                description: |
+                    base64_client_cert name of indexsearch
+                type: string
+                format: text-area
+            base64_client_key:
+                description: |
+                    base64_client_key name of indexsearch
+                type: string
+                format: text-area
+            auth_admin_identity:
+                description: |
+                    auth_admin_identity name of indexsearch
+                type: string
+            sg_internal_users_yml:
+                description: |
+                    internal users of indexsearch searchguard
+                type: string
+                format: text-area
+            sg_action_groups_yml:
+                description: |
+                    sg_action_groups_yml of indexsearch searchguard
+                type: string
+                format: text-area
+            sg_config_yml:
+                description: |
+                    sg_config_yml of indexsearch searchguard
+                type: string
+                format: text-area
+            sg_roles_yml:
+                description: |
+                   sg_roles_yml of indexsearch searchguard
+                type: string
+                format: text-area
+            sg_roles_mapping_yml:
+                description: |
+                    sg_roles_mapping_yml of indexsearch searchguard
+                type: string
+                format: text-area
+    indexmgr:
+        description: |
+            indexmgr configuration.
+        type: object
+        properties:
+            indexmgrCpuLimit:
+                description: |
+                    CPU limit usage for indexmgr
+                type: string
+                default: 120m
+                pattern: '^[1-9][0-9]*m*$'
+            indexmgrCpuRequest:
+                description: |
+                    CPU request usage for indexmgr
+                type: string
+                default: 100m
+                pattern: '^[1-9][0-9]*m*$'
+            indexmgrMemoryLimit:
+                description: |
+                    Memory limit usage for indexmgr
+                type: string
+                default: 120Mi
+                pattern: '^[1-9][0-9]*(Gi|Mi)$'
+            indexmgrMemoryRequest:
+                description: |
+                    Memory request usage for indexmgr
+                type: string
+                default: 100Mi
+                pattern: '^[1-9][0-9]*(Gi|Mi)$'
+            scheduleIndexmgr:
+                description: |
+                    Schedule indexmgr time for deleting the old indices
+                type: string
+                default: "0 11 * * *"
+            enableSearchGuardIndexmgr:
+                description: |
+                    enable searchguard for indexmgr
+                type: boolean
+                default: false
+            base64_ca_certificate:
+                description: |
+                    base64 of indexsearch root ca
+                type: string
+            action_file_ymlIndexmgr:
+                description: |
+                    action_file for indexmgr
+                type: string
+                format: text-area
+            config_ymlIndexmgr:
+                description: |
+                    indexmgr  configuration
+                type: string
+                format: text-area
+
+
+    dashboards:
+        description: |
+            dashboards configuration.
+        type: object
+        properties:
+            enableSearchGuardDashboards:
+                description: |
+                    enable searchguard of dashboards
+                type: boolean
+            base64_dbo_is_username:
+                description: |
+                    base64_dbo_is_username name of dashboards
+                type: string
+            base64_dbo_is_password:
+                description: |
+                    base64_dbo_is_password of dashboards
+                type: string
+            base64_IS_RootCA:
+                description: |
+                    base64 of Indexsearch root ca
+                type: string
+                format: text-area
+            base64ServerCrt:
+                description: |
+                    base64ServerCrt of dashboards
+                type: string
+                format: text-area
+            base64ServerKey:
+                description: |
+                    base64ServerKey name of dashboards
+                type: string
+                format: text-area
+            dashboardsCpuLimit:
+                description: |
+                    CPU limit usage for dashboards per node
+                type: string
+                default: 1
+                pattern: '^[1-9][0-9]*m*$'
+            dashboardsCpuRequest:
+                description: |
+                    CPU request usage for dashboards per node
+                type: string
+                default: 500m
+                pattern: '^[1-9][0-9]*m*$'
+            dashboardsMemoryLimit:
+                description: |
+                    Memory limit usage for dashboards per node
+                type: string
+                default: 2024Mi
+                pattern: '^[1-9][0-9]*(Gi|Mi)$'
+            dashboardsMemoryRequest:
+                description: |
+                    Memory request usage for dashboards in MB per node
+                type: string
+                default: 1023Mi
+                pattern: '^[1-9][0-9]*(Gi|Mi)$'
+            initialDelaySeconds:
+                description: |
+                    delay seconds for dashboards to come up
+                type: string
+                default: 150
+            dashboards_configmap_yml:
+                description: |
+                    configmap of dashboards
+                type: string
+                format: text-area
+            #This part will be added when CSFP provides a way to configure a text box & maintain the indentation.
+            #envDashboards:
+            #    description: |
+            #           A representation of an env variable.
+            #    type: string
+            #    format: text-area
+            serviceNameDashboards:
+                description: |
+                    service name of dashboards
+                type: string
+                default: dashboards
+            type:
+                description: |
+                    to access dashboards service via NodePort set service.type NodePort
+                type: string
+                default: ClusterIP
+            urlDashboards:
+                description: |
+                    dashboards url to access dashboards via ClusterIP
+                type: string
+            cg:
+                description: |
+                    Do not change cg(capture group) parameter below unless you want to change/modify nginx
+                type: string
+            enableCburDashboards:
+                description: |
+                    Enable support for backup and restore of dashboards configmap through CBUR
+                type: boolean
+                default: false
+            cronJobCburDashboards:
+                description: |
+                    Format of cron job setting for backup of dashboards configmap. It is used for scheduled backup task.
+                type: string
+                default: "0 23 * * *"
+            maxCopyCburDashboards:
+                description: |
+                    The number of maximum backup copies to be retained
+                type: integer
+                default: 5
+                pattern: '^[1-9][0-9]*$'
+            backendModeCburDashboards:
+                description: |
+                    Modes supported now "local","NETBKUP","AVAMAR", case insensitive
+                type: string
+                default: "local"
+            autoEnableCronCburDashboards:
+                description: |
+                    Enable autoCron to take backup periodically
+                type: boolean
+                default: false
+

@@ -1,0 +1,88 @@
+{{- include "cpro.istio.cproInitIstio" . }}
+{{- if .Values.alertmanager.enabled }}
+{{- if or ($.istio.enabled) ($.istio.createDrForClient) }}
+apiVersion: {{ template "cpro.apiVersion.destinationRule" . }}
+kind: DestinationRule
+metadata:
+  labels:
+    {{- include "cpro.app.labels.v3" ( dict "root" . "context" .Values.alertmanager ) | nindent 4 }}
+{{- include "cpro.labelsOrAnnotations" (tuple .Values.global.labels) | indent 4}}
+  name: {{ template "cpro.prometheus.alertmanager.fullname" . }}
+  namespace: {{ .Release.Namespace }}
+  annotations:
+{{- include "cpro.labelsOrAnnotations" (tuple .Values.global.annotations) | indent 4}}
+spec:
+{{- if .Values.ha.enabled }}
+  host: "{{ template "cpro.prometheus.alertmanager.fullname" . }}-ext.{{ .Release.Namespace }}.svc.{{ .Values.clusterDomain }}"
+{{- else }}
+  host: "{{ template "cpro.prometheus.alertmanager.fullname" . }}.{{ .Release.Namespace }}.svc.{{ .Values.clusterDomain }}"
+{{- end }}
+  trafficPolicy:
+{{- if and ($.istio.mtls.enabled) (not $.istio.createDrForClient) (not $.istio.permissive) }}
+    tls:
+      mode: ISTIO_MUTUAL
+{{- else }}
+    tls:
+      mode: DISABLE
+{{- end }}
+{{- if .Values.ha.enabled }}
+    loadBalancer:
+      consistentHash:
+        useSourceIp: true
+{{- end }}
+{{- end }}
+{{- end }}
+
+---
+{{- if .Values.alertmanager.enabled }}
+{{- if or ($.istio.enabled) ($.istio.createDrForClient) }}
+{{- if .Values.ha.enabled }}
+apiVersion: {{ template "cpro.apiVersion.destinationRule" . }}
+kind: DestinationRule
+metadata:
+  labels:
+    {{- include "cpro.app.labels.v3" ( dict "root" . "context" .Values.alertmanager ) | nindent 4 }}
+{{- include "cpro.labelsOrAnnotations" (tuple .Values.global.labels) | indent 4}}
+  name: {{ template "cpro.prometheus.alertmanager.fullname" . }}-int
+  namespace: {{ .Release.Namespace }}
+  annotations:
+{{- include "cpro.labelsOrAnnotations" (tuple .Values.global.annotations) | indent 4}}
+spec:
+  host: "{{ template "cpro.prometheus.alertmanager.fullname" . }}.{{ .Release.Namespace }}.svc.{{ .Values.clusterDomain }}"
+  trafficPolicy:
+{{- if and ($.istio.mtls.enabled) (not $.istio.createDrForClient) (not $.istio.permissive) }}
+    tls:
+      mode: ISTIO_MUTUAL
+{{- else }}
+    tls:
+      mode: DISABLE
+{{- end }}
+{{- end }}
+{{- end }}
+{{- end }}
+
+---
+{{- if .Values.alertmanager.enabled }}
+{{- if or ($.istio.enabled) ($.istio.createDrForClient) }}
+apiVersion: {{ template "cpro.apiVersion.destinationRule" . }}
+kind: DestinationRule
+metadata:
+  labels:
+    {{- include "cpro.app.labels.v3" ( dict "root" . "context" .Values.alertmanager ) | nindent 4 }}
+{{- include "cpro.labelsOrAnnotations" (tuple .Values.global.labels) | indent 4}}
+  name: {{ template "cpro.prometheus.alertmanager.fullname" . }}-scr
+  namespace: {{ .Release.Namespace }}
+  annotations:
+{{- include "cpro.labelsOrAnnotations" (tuple .Values.global.annotations) | indent 4}}
+spec:
+  host: "{{ template "cpro.prometheus.alertmanager.fullname" . }}-scr.{{ .Release.Namespace }}.svc.{{ .Values.clusterDomain }}"
+  trafficPolicy:
+{{- if and ($.istio.mtls.enabled) (not $.istio.createDrForClient) (not $.istio.permissive) }}
+    tls:
+      mode: ISTIO_MUTUAL
+{{- else }}
+    tls:
+      mode: DISABLE
+{{- end }}
+{{- end }}
+{{- end }}

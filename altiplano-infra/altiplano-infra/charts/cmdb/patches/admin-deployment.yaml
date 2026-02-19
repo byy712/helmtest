@@ -1,0 +1,81 @@
+--- cmdb-9.2.1/cmdb-original/templates/admin-deployment.yaml	2024-04-25 05:27:41.000000000 +0530
++++ cmdb-9.2.xxxxx.new/cmdb/templates/admin-deployment.yaml	2024-05-07 13:40:07.679178888 +0530
+@@ -20,6 +20,7 @@
+   template:
+     metadata:
+       labels:
++        altiplano-role: {{ .Values.admin.accessRoleLabel }}
+         {{- include "cmdb-admin.labels" (tuple . "pod") | nindent 8 }}
+         type: admin
+         admin-daemon: "yes"
+@@ -114,10 +115,52 @@
+           successThreshold: {{ .Values.admin.readinessProbe.successThreshold | default 1 }}
+         resources:
+           {{- include "cmdb.get_resources" ( tuple .  .Values.admin.resources ) | nindent 10 }}
++      - name: {{ template "cmdb.container-prefix" . }}mariadb-admin-fluentd-sidecar
++        image: "{{ .Values.global.registry }}/{{ .Values.admin.fluentd_sidecar.image.name }}:{{ .Values.admin.fluentd_sidecar.image.tag }}"
++        imagePullPolicy: {{ .Values.admin.fluentd_sidecar.image.pullPolicy }}
++        securityContext:
++          readOnlyRootFilesystem: true
++          runAsUser: {{ .Values.admin.fluentd_sidecar.securityContext.runAsUser | default 1000 }}
++          runAsGroup: {{ .Values.admin.fluentd_sidecar.securityContext.runAsGroup | default 1773 }}
++        volumeMounts:
++        - name: tmp
++          mountPath: /tmp
++        - name: fluentd-config
++          mountPath: /etc/fluent/
++        - name: certificates
++          mountPath: /etc/.certificates/
++        - name: fs-varlogadmin
++          mountPath: /logs/admin/
++        resources:
++{{ toYaml .Values.admin.fluentd_sidecar.resources | indent 12 }}
++        env:
++        {{- if .Values.admin.fluentd_sidecar.secrets }}
++        - name: IS_USERNAME
++          valueFrom:
++            secretKeyRef:
++              key: {{ .Values.env.secrets.IS_USERNAME }}
++              name: {{ .Values.admin.fluentd_sidecar.secrets.passwordSecret | quote }}
++        - name: IS_PASSWORD
++          valueFrom:
++            secretKeyRef:
++              key: {{ .Values.env.secrets.IS_PASSWORD }}
++              name: {{ .Values.admin.fluentd_sidecar.secrets.passwordSecret | quote }}
++        {{- end }}
++        - name: CONTAINER_NAME
++          valueFrom:
++            fieldRef:
++              apiVersion: v1
++              fieldPath: metadata.name
++        - name: POD_IP
++          valueFrom:
++            fieldRef:
++              fieldPath: status.podIP          
+ 
+       volumes:
+       {{- include "cmdb-fs.vol" (tuple . "admin") | nindent 6 }}
+       {{- include "cmdb-logging.vol" (tuple . .Values.admin "false") | nindent 6 }}
++      - name: tmp
++        emptyDir: {}
+       - name: cluster-cm
+         configMap:
+           name: {{ template "cmdb.fullname" . }}-mariadb-cluster
+@@ -130,6 +173,17 @@
+           optional: true
+       - name: datadir
+         emptyDir: {}
++      - name: fluentd-config
++        configMap:
++          name: {{ template "cmdb.fullname" . }}-mariadb-admin-fluentd-config
++      {{- if .Values.admin.fluentd_sidecar.secrets }}
++      - name: certificates
++        secret:
++          secretName: {{ (tpl .Values.admin.fluentd_sidecar.secrets.certSecret .) }}
++      - name: passwords
++        secret:
++          secretName: {{ (tpl .Values.admin.fluentd_sidecar.secrets.passwordSecret .) }}
++      {{- end }}
+ 
+     {{- if .Values.admin.tolerations }}
+       tolerations:

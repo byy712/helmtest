@@ -1,0 +1,22 @@
+apiVersion: v2
+appVersion: 3.11.18
+dependencies:
+- name: csf-common-lib
+  repository: https://repo.cci.nokia.net/csf-helm-stable/
+  version: 1.7.0
+description: Open source message broker software that implements the Advanced Message
+  Queuing Protocol (AMQP)
+home: https://www.rabbitmq.com
+icon: https://bitnami.com/assets/stacks/rabbitmq/img/rabbitmq-stack-220x234.png
+keywords:
+- rabbitmq
+- message queue
+- AMQP
+- crmq
+- 'X-COMPAAS: { "CATEGORY": "Messaging", "SVC_NAME": "RabbitMQ", "SVC_TYPE": "CRMQ",
+  "SVC_SCOPE": [ "PRIVATE" ] }'
+maintainers:
+- email: aa-csf-ps@LIST.NOKIA.COM
+  name: CSF AR team
+name: crmq
+version: 4.3.2

@@ -1,0 +1,22 @@
+#variabes used component will have .Values.server data(yaml)
+##certificateName with be name of certificate created
+##secretName will be the name of secret created
+##the above variables are used in the cpro.certmanager.template
+{{- if and (.Values.server.enabled) (eq (include "csf-common-lib.v1.coalesceBoolean" (tuple .Values.server.tls.enabled .Values.tls.enabled .Values.global.tls.enabled .Values.server.tls_auth_config.tls.enabled false)) "true") (eq (include "csf-common-lib.v1.isEmptyValue" .Values.server.tls.secretRef.name) "true")  (eq .Values.server.tls_auth_config.tls.externalSecret "") }}
+{{- if eq (include "csf-common-lib.v1.coalesceBoolean" (tuple .Values.certManager.enabled .Values.global.certManager.enabled true)) "true" }}
+{{- if .Values.server.certificate.enabled }}
+{{ $_ := set . "component" .Values.server }}
+{{ $certificateName := include "cpro.server.server.resourceName" . }}
+{{ $_ := set . "certificateName" $certificateName }}
+{{ $secretName := include "cpro.server.server.secret" . }}
+{{ $_ := set . "secretName" $secretName }}
+{{ $serviceName := printf "%s" (include "cpro.prometheus.server.fullname" . ) }}
+{{ $_ := set . "serviceName" $serviceName }}
+{{- if .Values.ha.enabled }}
+{{ $serviceNameExt := printf "%s-ext" (include "cpro.prometheus.server.fullname" . ) }}
+{{ $_ := set . "serviceNameExt" $serviceNameExt }}
+{{- end }}
+{{- include "cpro-common-lib.v4.certificate" (tuple . .Values.server "pobserve-issuer") }}
+{{- end }}
+{{- end }}
+{{- end }}

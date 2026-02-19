@@ -1,0 +1,1146 @@
+---
+# Model of configuration.
+type: object
+properties:
+    rbac:
+        description: RBAC configuration
+        type: object
+        properties:
+            rbacEnabled:
+                description: |
+                    Does your cluster have RBAC enabled?
+                type: boolean
+                default: true
+                title: RBAC Enabled
+            serviceAccountName:
+                title: Service Account Name
+                description: |
+                    Pre-Created Service Account to use instead of creating.
+                    If set, also disables creation of other RBAC resources (Role, RoleBinding)
+                type: string
+
+    unifiedLogging:
+        title: Unified logging configuration
+        description: |
+            Used to configure pod logging for generation of log messages to a syslog server.
+        type: object
+        properties:
+            extension:
+                title: Logging extensions
+                description: Map of logging extensions to add to each log message
+                type: object
+                properties:
+                #x-kubernetes-preserve-unknown-fields: true
+            syslog:
+                title: Syslog logging parameters
+                type: object
+                properties:
+                    enabled:
+                        title: Enable syslog logging?
+                        type: boolean
+                        default: false
+                    facility:
+                        title: Logging facility
+                        description: |
+                            Defines which facility will be used for sending the log message.
+                            This is a required option, otherwise the appender will be invalid.
+                        type: string
+                    host:
+                        title: Logging target host
+                        description: |
+                            Sets the appender target's host. (Domain name or IP address)
+                        type: string
+                    port:
+                        title: Logging target port
+                        description: |
+                            Sets the appender target's port.
+                        type: integer
+                    protocol:
+                        title: Logging socket protocol
+                        description: |
+                            Defines which socket protocol is used for sending the log into the
+                            target host.  Can be either UDP, TCP or SSL
+                        type: string
+                    timeout:
+                        title: Connection timeout
+                        description: |
+                            Timeout for SSL connect / handshake (milliseconds, default 1000)
+                        type: integer
+                    closeReqType:
+                        title: SSL Close Request Type
+                        description: |
+                            Defines how SSL connections are closed. Can be either GNUTLS_SHUT_RDWR (default) or GNUTLS_SHUT_WR
+                        type: string
+                        default: GNUTLS_SHUT_RDWR
+                        enum:
+                        - GNUTLS_SHUT_RDWR
+                        - GNUTLS_SHUT_WR
+                    keyStore:
+                        title: Logging authentication keystore.
+                        description: |
+                            The keystore is meant to contain your private keys and certificates,
+                            and determines which authentication credentials to send to the remote
+                            host.  Only PKCS12 file format is supported.
+                        type: object
+                        properties:
+                            secretName:
+                                title: Secret name containing key for keystore.
+                                type: string
+                            key:
+                                title: Key in secret name containing private key.
+                                type: string
+                    keyStorePassword:
+                        title: Logging authentication password.
+                        description: |
+                            Plain text password to access the keystore stored in key in the Secret named secretName.
+                        type: object
+                        properties:
+                            secretName:
+                                title: Secret name containing keystore password.
+                                type: string
+                            key:
+                                title: Key in secret name containing key.
+                                type: string
+                    trustStore:
+                        title: Logging authentication trustStore.
+                        description: |
+                            Location should point to file defined in the key in the Secret named
+                            secretName, which should be mounted in a container.
+                        type: object
+                        properties:
+                            secretName:
+                                title: Secret name containing key for trustStore.
+                                type: string
+                            key:
+                                title: Key in secret name containing private key.
+                                type: string
+                    trustStorePassword:
+                        title: Logging authentication trustStore password.
+                        description: |
+                            The trust store is meant to contain the CA certificates you are willing
+                            to trust when a remote party presents its certificate. Determines whether
+                            the remote authentication credentials (and thus the connection) should be
+                            trusted. In some cases, they can be one and the same store, although it is
+                            is often better practice to use distinct stores.
+                        type: object
+                        properties:
+                            secretName:
+                                title: Secret name containing key for trustStore.
+                                type: string
+                            key:
+                                title: Key in secret name containing private key.
+                                description: |
+                                    key in the Secret named secretName will be used as truststore file.
+                                    Only PKCS12 file format is supported.
+                                type: string
+
+    cluster:
+        description: Cluster-level configuration of the database
+        type: object
+        properties:
+            strictNodeAntiAffinity:
+                title: Pod Anti-Affinity
+                description: If strict (hard) Anti-Affinity will be configured on pods to avoid scheduling on same node.
+                type: boolean
+                default: true
+
+            imageFlavor:
+                title: CRDB Image Flavor
+                description: The image flavor (eg, rocky8) for all CRDB containers
+                type: string
+                default: rocky8
+                enum:
+                - rocky8
+                - custom
+
+            redisioImageRegistry:
+                title: Docker Registry for Redis server images
+                description: The docker image registry name
+                type: string
+                default: csf-docker-delivered.repo.cci.nokia.net
+
+            # TODO: Replace with ACL
+            #redisPassword:
+            #    title: Redis Database Password
+            #    description: The password to the database
+            #    type: string
+            #    format: password
+
+            redisioServerImageName:
+                title: Redis Server Image Name
+                description: The container image name for the Redis server
+                type: string
+                default: crdb/redisio
+
+            redisioServerImageTag:
+                title: Redis Server Image Tag
+                description: The container image tag for the Redis server
+                type: string
+                default: 6.0-4.4453
+
+            redisioServerImagePullPolicy:
+                title: Redis Server Image Pull Policy
+                description: The container image pull policy for the Redis server
+                type: string
+                default: IfNotPresent
+
+            redisioRolemonImageName:
+                title: Rolemon Image Name
+                description: The container image name for the rolemon sidecar
+                type: string
+                default: crdb/rolemon
+
+            redisioRolemonImageTag:
+                title: Rolemon Image Tag
+                description: The container image tag for the rolemon sidecar (if not specified, will use same as server)
+                type: string
+                default: ""
+
+            redisioRolemonImagePullPolicy:
+                title: Rolemon Image Pull Policy
+                description: The container image pull policy for the rolemon sidecar (if not specified, will use same as server)
+                type: string
+                default: ""
+
+            serverCount:
+                title: Redis Server Count
+                description: The number of Redis server pods
+                type: integer
+                default: 3
+                minimum: 1
+                maximum: 200
+
+            serverTerminationGracePeriod:
+                title: Termination Grace Period for server Pods (seconds)
+                type: integer
+                default: 120
+                minimum: 15
+                maximum: 7200
+
+            serverLivenessProbe:
+                title: Redis Server Liveness Probe tunings
+                description: Various parameters of the Redis server Liveness Probe
+                type: object
+                properties:
+                    initialDelaySeconds:
+                        type: integer
+                        default: 180
+                    periodSeconds:
+                        type: integer
+                        default: 10
+                    timeoutSeconds:
+                        type: integer
+                        default: 5
+                    failureThreshold:
+                        type: integer
+                        default: 6
+
+            serverReadinessProbe:
+                title: Redis Server Readiness Probe tunings
+                description: Various parameters of the Redis server Readiness Probe
+                type: object
+                properties:
+                    initialDelaySeconds:
+                        type: integer
+                        default: 10
+                    periodSeconds:
+                        type: integer
+                        default: 15
+                    timeoutSeconds:
+                        type: integer
+                        default: 1
+                    failureThreshold:
+                        type: integer
+                        default: 3
+
+            rolemonLivenessProbe:
+                title: Rolemon Liveness Probe tunings
+                description: Various parameters of the Rolemon Liveness Probe
+                type: object
+                properties:
+                    initialDelaySeconds:
+                        type: integer
+                        default: 180
+                    periodSeconds:
+                        type: integer
+                        default: 60
+                    timeoutSeconds:
+                        type: integer
+                        default: 5
+                    failureThreshold:
+                        type: integer
+                        default: 6
+
+            redisioSentinelImageName:
+                title: Redis Sentinel Image Name
+                description: The container image name for the Redis sentinel
+                type: string
+                default: crdb/redisio
+
+            redisioSentinelImageTag:
+                title: Redis Sentinel Image Tag
+                description: The container image tag for the Redis sentinel (if not specified, will use same as server)
+                type: string
+                default: ""
+
+            redisioSentinelImagePullPolicy:
+                title: Redis Sentinel Image Pull Policy
+                description: The container image pull policy for the Redis sentinel (if not specified, will use same as server)
+                type: string
+                default: ""
+
+            sentinelCount:
+                title: Redis Sentinel Count
+                description: The number of Redis sentinel pods
+                type: integer
+                default: 3
+                minimum: 1
+                maximum: 9
+
+            sentinelDownAfterMillis:
+                title: Redis Sentinel Down After Milliseconds
+                description: The number of milliseconds before Sentinel considers an unreachable server as down
+                type: integer
+                default: 5000
+                minimum: 500
+                maximum: 60000
+
+            sentinelFailoverTimeout:
+                title: Redis Sentinel Failover Timeout
+                description: The number of milliseconds allowed for Sentinel failover
+                type: integer
+                default: 30000
+                minimum: 1000
+                maximum: 600000
+
+            sentinelQuorum:
+                title: Redis Sentinel Quorum
+                description: The number of Sentinels required for quorum
+                type: integer
+                default: 2
+                minimum: 1
+                maximum: 9
+
+            sentinelParallelSyncs:
+                title: Redis Sentinel Parallel Syncs
+                description: The number of parallel syncs allowed by Sentinel
+                type: integer
+                default: 1
+                minimum: 1
+                maximum: 8
+
+            sentinelLivenessProbe:
+                title: Redis Sentinel Liveness Probe tunings
+                description: Various parameters of the Redis sentinel Liveness Probe
+                type: object
+                properties:
+                    initialDelaySeconds:
+                        type: integer
+                        default: 180
+                    periodSeconds:
+                        type: integer
+                        default: 10
+                    timeoutSeconds:
+                        type: integer
+                        default: 5
+                    failureThreshold:
+                        type: integer
+                        default: 6
+
+            sentinelReadinessProbe:
+                title: Redis Sentinel Readiness Probe tunings
+                description: Various parameters of the Redis sentinel Readiness Probe
+                type: object
+                properties:
+                    initialDelaySeconds:
+                        type: integer
+                        default: 10
+                    periodSeconds:
+                        type: integer
+                        default: 20
+                    timeoutSeconds:
+                        type: integer
+                        default: 2
+                    failureThreshold:
+                        type: integer
+                        default: 3
+
+            redisioAdminImageName:
+                title: Redis Admin Image Name
+                description: The container image name for the Redis admin Jobs
+                type: string
+                default: crdb/admin
+
+            redisioAdminImageTag:
+                title: Redis Admin Image Tag
+                description: The container image tag for the Redis admin jobs (if not specified, will use same as server)
+                type: string
+                default: ""
+
+            redisioAdminImagePullPolicy:
+                title: Redis Admin Image Pull Policy
+                description: The container image pull policy for the Redis admin jobs (if not specified, will use same as server)
+                type: string
+                default: ""
+
+            redisioAdminLivenessProbe:
+                title: Redis Admin Liveness Probe tunings
+                description: Various parameters of the Redis admin Liveness Probe
+                type: object
+                properties:
+                    initialDelaySeconds:
+                        type: integer
+                        default: 300
+                    periodSeconds:
+                        type: integer
+                        default: 10
+                    timeoutSeconds:
+                        type: integer
+                        default: 6
+                    failureThreshold:
+                        type: integer
+                        default: 6
+
+            redisioAdminReadinessProbe:
+                title: Redis Admin Readiness Probe tunings
+                description: Various parameters of the Redis admin Readiness Probe
+                type: object
+                properties:
+                    initialDelaySeconds:
+                        type: integer
+                        default: 10
+                    periodSeconds:
+                        type: integer
+                        default: 10
+                    timeoutSeconds:
+                        type: integer
+                        default: 6
+                    failureThreshold:
+                        type: integer
+                        default: 3
+
+            redisClusterEnabled:
+                title: Redis Cluster Enabled
+                description: Enable Redis Clustering? If false, Sentinel will be enabled
+                type: boolean
+                default: false
+
+            redisClusterShardCount:
+                title: Number of Shards
+                description: The number of shards to divide the database into for Redis Cluster configuration
+                type: integer
+                minimum: 3
+                maximum: 100
+                default: 3
+                activateOn:
+                - name: redisClusterEnabled
+                  values:
+                  - true
+
+            redisClusterAuditEnabled:
+                title: Cluster Audit Enabled
+                description: Enable Cluster Robustness Audit?
+                type: boolean
+                default: true
+                activateOn:
+                - name: redisClusterEnabled
+                  values:
+                  - true
+            redisClusterAuditNoActionTimer:
+                title: Cluster Audit No-Action Timer
+                description: The number of seconds to wait between subsequent corrective actions are taken by the robustness audit
+                type: integer
+                default: 300
+                activateOn:
+                - name: redisClusterEnabled
+                  values:
+                  - true
+                - name: redisClusterAuditEnabled
+                  values:
+                  - true
+            redisClusterAuditReschedLabelTimer:
+                title: Cluster Audit Reschedule Label Timer
+                description: The number of seconds to label a pod for avoidance when reschedule action taken by the robustness audit
+                type: integer
+                default: 30
+                activateOn:
+                - name: redisClusterEnabled
+                  values:
+                  - true
+                - name: redisClusterAuditEnabled
+                  values:
+                  - true
+            redisClusterAuditSlaveMovementWait:
+                title: Cluster Audit Slave Movement Timer
+                description: The number of seconds to wait for a slave to move to a new master
+                type: integer
+                default: 300
+                activateOn:
+                - name: redisClusterEnabled
+                  values:
+                  - true
+                - name: redisClusterAuditEnabled
+                  values:
+                  - true
+            redisClusterAuditSlaveMovementMode:
+                title: Cluster Audit Slave Movement Mode
+                description: The mechanism used by the robustness audit to move slave Pods away from co-located masters
+                type: string
+                default: reschedule
+                enum:
+                - reschedule
+                - reconfigure
+                activateOn:
+                - name: redisClusterEnabled
+                  values:
+                  - true
+                - name: redisClusterAuditEnabled
+                  values:
+                  - true
+
+                title: Cluster Audit Reschedule Label Timer
+                description: The number of seconds to label a pod for avoidance when reschedule action taken by the robustness audit
+                type: integer
+                default: 30
+                activateOn:
+                - name: redisClusterEnabled
+                  values:
+                  - true
+                - name: redisClusterAuditEnabled
+                  values:
+                  - true
+
+            domain:
+                title: Kubernetes cluster domain
+                description: Kubernetes cluster domain to be configured.  Defaults to standard cluster.local.
+                type: string
+                default: cluster.local
+
+
+    resources:
+        description: Resource reservations, requests and limits
+        type: object
+        properties:
+            serverRequestsMemory:
+                title: Server Memory Requests
+                description: Memory size requested for each Redis server container
+                type: string
+                default: 256Mi
+                pattern: '^([0-9]+(T|G|M)i?)$'
+            serverRequestsCpu:
+                title: Server CPU Requests
+                description: CPU requested for each Redis server container
+                type: string
+                default: 250m
+                pattern: '^([0-9]+m?)$'
+            serverRequestsEphemeral:
+                title: Server Ephemeral Storage Requests
+                description: Ephemeral Storage requested for each Redis server container
+                type: string
+                default: 1Gi
+                pattern: '^([0-9]+(T|G|M)i?)$'
+            serverLimitsMemory:
+                title: Server Memory Limits
+                description: Memory size limit for each Redis server container
+                type: string
+                default: 256Mi
+                pattern: '^([0-9]+(T|G|M)i?)$'
+            serverLimitsCpu:
+                title: Server CPU Limits
+                description: CPU limit for each Redis server container
+                type: string
+                default: 250m
+                pattern: '^([0-9]+m?)$'
+            serverLimitsEphemeral:
+                title: Server Ephemeral Storage Limits
+                description: Ephemeral Storage limit for each Redis server container
+                type: string
+                default: 1Gi
+                pattern: '^([0-9]+(T|G|M)i?)$'
+
+            rolemonRequestsMemory:
+                title: Rolemon Memory Requests
+                description: Memory size requested for each rolemon container
+                type: string
+                default: 64Mi
+                pattern: '^([0-9]+(T|G|M)i?)$'
+            rolemonRequestsCpu:
+                title: Rolemon CPU Requests
+                description: CPU requested for each rolemon container
+                type: string
+                default: 250m
+                pattern: '^([0-9]+m?)$'
+            rolemonRequestsEphemeral:
+                title: Rolemon Ephemeral Storage Requests
+                description: Ephemeral Storage requested for each rolemon container
+                type: string
+                default: 64Mi
+                pattern: '^([0-9]+(T|G|M)i?)$'
+            rolemonLimitsMemory:
+                title: Rolemon Memory Limits
+                description: Memory size limit for each rolemon container
+                type: string
+                default: 256Mi
+                pattern: '^([0-9]+(T|G|M)i?)$'
+            rolemonLimitsCpu:
+                title: Rolemon CPU Limits
+                description: CPU limit for each rolemon container
+                type: string
+                default: 250m
+                pattern: '^([0-9]+m?)$'
+            rolemonLimitsEphemeral:
+                title: Rolemon Ephemeral Storage Limits
+                description: Ephemeral Storage limit for each rolemon container
+                type: string
+                default: 64Mi
+                pattern: '^([0-9]+(T|G|M)i?)$'
+
+            sentinelRequestsMemory:
+                title: Sentinel Memory Requests
+                description: Memory size requested for each Redis sentinel container
+                type: string
+                default: 256Mi
+                pattern: '^([0-9]+(T|G|M)i?)$'
+            sentinelRequestsCpu:
+                title: Sentinel CPU Requests
+                description: CPU requested for each Redis sentinel container
+                type: string
+                default: 250m
+                pattern: '^([0-9]+m?)$'
+            sentinelRequestsEphemeral:
+                title: Sentinel Ephemeral Storage Requests
+                description: Ephemeral Storage requested for each Redis sentinel container
+                type: string
+                default: 64Mi
+                pattern: '^([0-9]+(T|G|M)i?)$'
+            sentinelLimitsMemory:
+                title: Sentinel Memory Limits
+                description: Memory size limit for each Redis sentinel container
+                type: string
+                default: 256Mi
+                pattern: '^([0-9]+(T|G|M)i?)$'
+            sentinelLimitsCpu:
+                title: Sentinel CPU Limits
+                description: CPU limit for each Redis sentinel container
+                type: string
+                default: 250m
+                pattern: '^([0-9]+m?)$'
+            sentinelLimitsEphemeral:
+                title: Sentinel Ephemeral Storage Limits
+                description: Ephemeral Storage limit for each Redis sentinel container
+                type: string
+                default: 64Mi
+                pattern: '^([0-9]+(T|G|M)i?)$'
+
+            adminRequestsMemory:
+                title: Admin Memory Requests
+                description: Memory size requested for Admin and Job containers
+                type: string
+                default: 256Mi
+                pattern: '^([0-9]+(T|G|M)i?)$'
+            adminRequestsCpu:
+                title: Admin CPU Requests
+                description: CPU requested for Admin and Job containers
+                type: string
+                default: 250m
+                pattern: '^([0-9]+m?)$'
+            adminRequestsEphemeral:
+                title: Admin Ephemeral Storage Requests
+                description: Ephemeral Storage requested for Admin and Job containers
+                type: string
+                default: 256Mi
+                pattern: '^([0-9]+(T|G|M)i?)$'
+            adminLimitsMemory:
+                title: Admin Memory Limits
+                description: Memory size limit for Admin and Job containers
+                type: string
+                default: 512Mi
+                pattern: '^([0-9]+(T|G|M)i?)$'
+            adminLimitsCpu:
+                title: Admin CPU Limits
+                description: CPU limit for Admin and Job containers
+                type: string
+                default: 250m
+                pattern: '^([0-9]+m?)$'
+            adminLimitsEphemeral:
+                title: Admin Ephemeral Storage Limits
+                description: Ephemeral Storage limit for Admin and Job containers
+                type: string
+                default: 256Mi
+                pattern: '^([0-9]+(T|G|M)i?)$'
+
+            volumeSize:
+                title: Server Volume Size
+                description: Volume size for each Redis server pod persistent storage
+                type: string
+                default: 1Gi
+                pattern: '^([0-9]+(T|G|M)i?)$'
+
+            majorRollbackDelDb:
+                description: Delete the Redis database during major Redis rollbacks.
+                type: booleen
+                default: false
+                title: Delete database on Major Rollback
+
+            serverTmpfsWorkingDir:
+                description: Use tmpfs for backing database storage instead of PVC.  Only recommended for special cases where data is required to be not stored on persistent storage mediums.  Has significant impact on potential data loss.
+                type: boolean
+                default: false
+                title: Use in-memory tmpfs for database working dir
+
+            storageClass:
+                title: Storage Class
+                description: Storage Class for persistent volumes
+                type: string
+                default: ""
+
+    cbur:
+        description: Backup configuration (CBUR)
+        type: object
+        properties:
+            cburEnabled:
+                description: Use cbur for data backup and restore?
+                type: boolean
+                default: true
+                title: CBUR Enabled
+
+            redisioCburaImageRegistry:
+                title: Docker Registry for CBURA
+                description: The docker image registry name
+                type: string
+                default: csf-docker-delivered.repo.cci.nokia.net
+                activateOn:
+                - name: cburEnabled
+                  values:
+                  - true
+
+            redisioCburaImageName:
+                title: CBURA Image Name
+                description: The container image name for the server backup sidecar
+                type: string
+                default: cbur/cbur-agent
+                activateOn:
+                - name: cburEnabled
+                  values:
+                  - true
+
+            redisioCburaImageTag:
+                title: CBURA Image Tag
+                description: The container image tag for the server backup sidecar (if not specified, will use same as server)
+                type: string
+                default: "1.1.1-alpine-6578"
+                activateOn:
+                - name: cburEnabled
+                  values:
+                  - true
+
+            redisioCburaImagePullPolicy:
+                title: CBURA Image Pull Policy
+                description: The container image pull policy for the server backup sidecar (if not specified, will use same as server)
+                type: string
+                default: ""
+                activateOn:
+                - name: cburEnabled
+                  values:
+                  - true
+
+            cburaRequestsMemory:
+                title: CBURA sidecar Memory Requests
+                description: Memory size requested for CBURA sidecar
+                type: string
+                default: 256Mi
+                pattern: '^([0-9]+(T|G|M)i?)$'
+            cburaRequestsCpu:
+                title: CBURA sidecar CPU Requests
+                description: CPU requested for CBURA sidecar
+                type: string
+                default: 250m
+                pattern: '^([0-9]+m?)$'
+            cburaRequestsEphemeral:
+                title: CBURA sidecar Ephemeral Storage Requests
+                description: Ephemeral Storage requested for CBURA sidecar
+                type: string
+                default: ""
+                pattern: '^([0-9]+(T|G|M)i?)?$'
+            cburaLimitsMemory:
+                title: CBURA sidecar Memory Limits
+                description: Memory size limit for CBURA sidecar
+                type: string
+                default: 256Mi
+                pattern: '^([0-9]+(T|G|M)i?)$'
+            cburaLimitsCpu:
+                title: CBURA sidecar CPU Limits
+                description: CPU limit for CBURA sidecar
+                type: string
+                default: 250m
+                pattern: '^([0-9]+m?)$'
+            cburaLimitsEphemeral:
+                title: CBURA sidecar Ephemeral Storage Limits
+                description: Ephemeral Storage limit for CBURA sidecar
+                type: string
+                default: ""
+                pattern: '^([0-9]+(T|G|M)i?)?$'
+
+            backup:
+                description: Automatic Backup configuration
+                type: object
+                activateOn:
+                - name: cburEnabled
+                  values:
+                  - true
+                properties:
+                    onUpgrade:
+                        title: Automatically Perform Backup on upgrade
+                        description: If set, will trigger an automatic backup (via CBUR) on upgrades (service image changed or scale performed)
+                        type: boolean
+                        default: false
+
+                    timeoutSeconds:
+                        title: Backup Timeout
+                        type: integer
+                        default: 900
+                        showInactive: true
+                        activateOn:
+                        - name: onUpgrade
+                          values:
+                          - true
+
+
+            service:
+                description: CBUR Master Service (required for auto-backup)
+                type: object
+                properties:
+                    namespace:
+                        title: CBUR Master Service Namespace
+                        type: string
+                        default: ncms
+
+                    name:
+                        title: CBUR Master Service Name
+                        type: string
+                        default: cbur-master-cbur
+
+                    protocol:
+                        title: CBUR Master Service protocol
+                        type: string
+                        default: http
+                        enum:
+                        - https
+                        - http
+
+                    url:
+                        title: CBUR Master Service URL (full)
+                        description: |
+                            If unset, will be automatically generated from protocol, name, namespace.  Can be used for
+                            providing a custom URL.
+                        type: string
+
+                    authSecret:
+                        title: Auth Secret for CBUR API
+                        description: Secret providine credentials for CBUR Master Service when auth-enabled
+                        type: string
+
+
+
+
+    metrics:
+        description: Server metrics configuration (exporter)
+        type: object
+        properties:
+            metricsEnabled:
+                description: Enable server metrics
+                type: boolean
+                default: true
+                title: Metrics Enabled
+
+            sentinelMetricsEnabled:
+                description: Enable sentinel metrics
+                type: boolean
+                default: true
+                title: Sentinel Metrics Enabled
+
+            redisioMetricsImageRegistry:
+                title: Docker Registry for metrics (redis_exporter)
+                description: The docker image registry name
+                type: string
+                default: registry1-docker-io.repo.cci.nokia.net
+                activateOn:
+                - name: metricsEnabled
+                  values:
+                  - true
+
+            redisioSentinelMetricsImageRegistry:
+                title: Docker Registry for sentinel metrics (redis_exporter)
+                description: The docker image registry name
+                type: string
+                default: registry1-docker-io.repo.cci.nokia.net
+                activateOn:
+                - name: sentinelMetricsEnabled
+                  values:
+                  - true
+
+            redisioMetricsImageName:
+                title: Redis metrics (redis_exporter) Image Name
+                description: The container image name for the Redis metrics sidecar
+                type: string
+                default: "oliver006/redis_exporter"
+                activateOn:
+                - name: metricsEnabled
+                  values:
+                  - true
+
+            redisioSentinelMetricsImageName:
+                title: Redis sentinel metrics (redis_exporter) Image Name
+                description: The container image name for the Redis sentinel metrics sidecar
+                type: string
+                default: "oliver006/redis_exporter"
+                activateOn:
+                - name: sentinelMetricsEnabled
+                  values:
+                  - true
+
+            redisioMetricsImageTag:
+                title: Redis metrics (redis_exporter) Image Tag
+                description: The container image tag for the Redis metrics sidecar
+                type: string
+                default: "v1.57.0"
+                activateOn:
+                - name: metricsEnabled
+                  values:
+                  - true
+
+            redisioSentinelMetricsImageTag:
+                title: Redis sentinel metrics (redis_exporter) Image Tag
+                description: The container image tag for the Redis sentinel metrics sidecar
+                type: string
+                default: "v1.57.0"
+                activateOn:
+                - name: sentinelMetricsEnabled
+                  values:
+                  - true
+
+            redisioMetricsImagePullPolicy:
+                title: Redis metrics (redis_exporter) Image Pull Policy
+                description: The container image pull policy for the Redis metrics sidecar
+                type: string
+                default: ""
+                activateOn:
+                - name: metricsEnabled
+                  values:
+                  - true
+
+            redisioSentinelMetricsImagePullPolicy:
+                title: Redis sentinel metrics (redis_exporter) Image Pull Policy
+                description: The container image pull policy for the Redis sentinel metrics sidecar
+                type: string
+                default: ""
+                activateOn:
+                - name: sentinelMetricsEnabled
+                  values:
+                  - true
+
+            redisioMetricsUsePodServices:
+                title: Redis metrics (redis_exporter) usePodServices
+                description: Controls Redis metrics sidecar use of pod services
+                type: string
+                default: ""
+                activateOn:
+                - name: sentinelMetricsEnabled
+                  values:
+                  - false
+
+            redisioSentinelMetricsUsePodServices:
+                title: Redis sentinel metrics (redis_exporter) usePodServices
+                description: Controls Redis sentinel metrics sidecar use of pod services
+                type: string
+                default: ""
+                activateOn:
+                - name: sentinelMetricsEnabled
+                  values:
+                  - false
+
+            dashboard:
+                description: Server metrics dashboard configuration
+                type: object
+                activateOn:
+                - name: metricsEnabled
+                  values:
+                  - true
+                properties:
+                    metricsDashboardEnabled:
+                        description: Enable server metrics dashboard
+                        type: boolean
+                        default: true
+                        title: Metrics Dashboard Enabled
+
+    istio:
+        description: Istio configuration
+        type: object
+        properties:
+            enabled:
+                description: |
+                    Does your cluster/namespace have Istio enabled?
+                type: boolean
+                default: false
+                title: Istio Enabled
+
+
+    tls:
+        description: Data-In-Flight (TLS) Configuration
+        type: object
+        properties:
+            tlsEnabled:
+                description: |
+                    Should TLS encryption be used
+                type: boolean
+                default: false
+                title: Enable TLS
+
+            threshold:
+                description: |
+                    Alarms will be issued if the certificate is about to expire
+                    in this many days
+                type: integer
+                default: 7
+                title: Expiration alarm threshold
+                activateOn:
+                - name: tlsEnabled
+                  values:
+                  - true
+
+            authClients:
+                description: |
+                    Require clients to present valid certificates for mTLS
+                type: boolean
+                default: true
+                title: Enable mTLS (Client certificates)
+                activateOn:
+                - name: tlsEnabled
+                  values:
+                  - true
+
+            serverCert:
+                title: Server-side TLS certificate
+                type: object
+                activateOn:
+                - name: tlsEnabled
+                  values:
+                  - true
+                properties:
+                    secretName:
+                        title: Secret Name for Server Certificate
+                        type: string
+                    caCert:
+                        title: Secret data key for CA Certificate for Server Certificate
+                        type: string
+                        default: ca.crt
+                    cert:
+                        title: Secret data key for Server Certificate
+                        type: string
+                        default: tls.crt
+                    key:
+                        title: Secret data key for Server Certificate Key
+                        type: string
+                        default: tls.key
+                    rolloutWait:
+                        description: |
+                            If server certificates are updated without pod restart, start
+                            a rollout in this number of seconds. 0 to disable. A threshold
+                            of 0 will also disable.
+                        title: Wait period before auto-rollout
+                        type: integer
+                        default: 900
+
+            clientCert:
+                title: Client-side TLS certificate
+                type: object
+                activateOn:
+                - name: authClients
+                  values:
+                  - true
+                properties:
+                    secretName:
+                        title: Secret Name for Client Certificate
+                        type: string
+                    caCert:
+                        title: Secret data key for CA Certificate for Client Certificate
+                        type: string
+                        default: ca.crt
+                    cert:
+                        title: Secret data key for Client Certificate
+                        type: string
+                        default: tls.crt
+                    key:
+                        title: Secret data key for Client Certificate Key
+                        type: string
+                        default: tls.key
+
+            sentinelCert:
+                title: Sentinel-side TLS certificate
+                type: object
+                activateOn:
+                - name: tlsEnabled
+                  values:
+                  - true
+                properties:
+                    secretName:
+                        title: Secret Name for Sentinel Certificate
+                        type: string
+                    caCert:
+                        title: Secret data key for CA Certificate for Sentinel Certificate
+                        type: string
+                        default: ca.crt
+                    cert:
+                        title: Secret data key for Sentinel Certificate
+                        type: string
+                        default: tls.crt
+                    key:
+                        title: Secret data key for Sentinel Certificate Key
+                        type: string
+                        default: tls.key
+
+            certMgr:
+                title: Certificate Manager
+                description: |
+                    Certificate generation using cert-manager.io
+                type: object
+                activateOn:
+                - name: tlsEnabled
+                  values:
+                  - true
+                properties:
+                    apiVersion:
+                        type: string
+                        default: "cert-manager.io/v1alpha3"
+                    duration:
+                        type: string
+                        default: 8760h
+                    renewBefore:
+                        type: string
+                        default: 360h
+                    commonName:
+                        type: string
+                    caIssuer:
+                        type: object
+                        properties:
+                            name:
+                                type: string
+                                default: ncms-ca-issuer
+                            kind:
+                                type: string
+                                default: ClusterIssuer
+                            group:
+                                type: string
+                                default: cert-manager.io
+                    dnsNames:
+                        type: array
+                        items:
+                            type: string
+                    ipAddresses:
+                        type: array
+                        items:
+                            type: string
+                    uris:
+                        type: array
+                        items:
+                            type: string

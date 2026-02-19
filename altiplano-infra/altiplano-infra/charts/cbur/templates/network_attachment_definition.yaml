@@ -1,0 +1,24 @@
+{{- if and .Values.multus.enabled (not .Values.multus.networkAttachmentName) }}
+apiVersion: "k8s.cni.cncf.io/v1"
+kind: NetworkAttachmentDefinition
+metadata:
+  name: {{ template "cbur.fullname" . }}-conf
+spec:
+  config: '{
+    "cniVersion": "{{ .Values.multus.config.cniVersion }}",
+    "name": "{{ template "cbur.fullname" . }}-conf",
+    "type": "{{ .Values.multus.config.networkType }}",
+    "master": "{{ .Values.multus.config.workerDevice }}",
+    "ipam": {
+      "type": "{{ .Values.multus.config.ipamType }}",
+      "range": "{{ .Values.multus.config.range }}",
+      {{- if and .Values.multus.config.rangeStart .Values.multus.config.rangeEnd }}
+      "range_start": "{{ .Values.multus.config.rangeStart }}",
+      "range_end": "{{ .Values.multus.config.rangeEnd }}",
+      {{- end }}
+      "routes": [
+        {{ include "cbur.multus.routes" . | trimSuffix "," }}
+      ]
+    }
+  }'
+{{- end }}

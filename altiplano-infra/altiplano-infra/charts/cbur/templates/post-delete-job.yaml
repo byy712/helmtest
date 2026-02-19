@@ -1,0 +1,66 @@
+{{- if .Values.postDeleteJob.enabled }}
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: {{ include "cbur.proxy.resourceName" (tuple . "Job" "postdeletejob") }}
+  labels:
+{{- include "cbur.proxy.commonLabels" (tuple .) | indent 4 }}
+{{- include "cbur.customLabels" (tuple .Values.job.labels .Values.global.labels) | indent 4 }}
+  annotations:
+    "helm.sh/hook-weight": "-5"
+    "helm.sh/hook": "post-delete"
+    "helm.sh/hook-delete-policy": before-hook-creation, hook-succeeded
+    {{- include "cbur.customAnnotations" (tuple .Values.job.annotations .Values.global.annotations) | indent 4 }}
+spec:
+  template:
+    metadata:
+      labels:
+{{- include "cbur.proxy.commonLabels" (tuple .) | indent 8 }}
+{{- include "cbur.customLabels" (tuple .Values.job.labels .Values.global.labels) | indent 8 }}
+      annotations:
+{{- include "cbur.customAnnotations" (tuple .Values.job.annotations .Values.global.annotations) | indent 8 }}
+        sidecar.istio.io/inject: "false"
+    spec:
+      serviceAccountName: {{ template "cbur.fullname" . }}-delete
+      restartPolicy: Never
+      terminationGracePeriodSeconds: 30
+      automountServiceAccountToken: true
+      {{- if .Values.priorityClassName }}
+      priorityClassName: {{ .Values.priorityClassName }}
+      {{- end }}
+{{ include "cbur.podSecurityContext" . | indent 6 }}
+      {{- if .Values.nodeSelectorOverride }}
+      nodeSelector:
+{{ toYaml .Values.nodeSelectorOverride | indent 8 }}
+      {{- else if .Values.nodeSelector }}
+      nodeSelector:
+{{ toYaml .Values.nodeSelector | indent 8 }}
+      {{- end }}
+    {{- with .Values.tolerations }}
+      tolerations:
+{{ toYaml . | indent 8 }}
+    {{- end }}
+      {{- if .Values.image.master.imagePullSecrets }}
+      imagePullSecrets: {{ toYaml .Values.image.master.imagePullSecrets | nindent 8 }}
+      {{- else if .Values.global.imagePullSecrets }}
+      imagePullSecrets: {{ toYaml .Values.global.imagePullSecrets | nindent 8 }}
+      {{- end }}
+      containers:
+      - name: {{ include "cbur.proxy.containerName" (tuple . "cbur-post-job") }}
+        image: {{ include "cbur.image.mapper" (tuple $ .Values.image.master .Values.internalCBURMasterRegistry) }}
+        imagePullPolicy: {{ .Values.image.master.pullPolicy | default "IfNotPresent" | quote }}
+        resources:
+{{ include "cbur.resources" (tuple . .Values.postDeleteJob.resources "200m") | indent 10 }}
+{{ include "cbur.containerSecurityContext" . | indent 8 }}
+{{ include "cbur.containerRunAsUser" . | indent 10 }}
+{{ include "cbur.containerRunAsGroup" . | indent 10 }}
+{{ include "cbur.hookpod.readOnlyRootFilesystem" . | indent 10 }}
+        command:
+        - sh
+        - "-c"
+        - |
+           source ./kube.sh
+           $KUBECTL delete secret cbur-basic-auth --namespace {{ .Release.Namespace }} --ignore-not-found
+           $KUBECTL delete secret -l cbur-auth-user --namespace {{ .Release.Namespace }} --ignore-not-found
+  backoffLimit: 0
+{{- end }}

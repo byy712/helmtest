@@ -1,0 +1,44 @@
+{{- if .Values.rbac.enabled }}
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: {{ template "cpro-grafana.testServiceAccountName" . }}
+  labels:
+    {{- include "cpro-grafana.app.labels-v3" . | nindent 4 }}
+    {{- include "cpro-grafana.labelsOrAnnotations" (tuple .Values.global.labels) | indent 4}}
+  annotations:
+{{- include "cpro-grafana.labelsOrAnnotations" (tuple .Values.global.annotations) | indent 4}}
+automountServiceAccountToken: false
+---
+kind: Role
+apiVersion: {{ template "cpro-grafana.grafanaApiVersion.role" . }}
+metadata:
+  name: {{ template "cpro-grafana.testRole" . }}
+  labels:
+    {{- include "cpro-grafana.app.labels-v3" . | nindent 4 }}
+    {{- include "cpro-grafana.labelsOrAnnotations" (tuple .Values.global.labels) | indent 4}}
+  annotations:
+{{- include "cpro-grafana.labelsOrAnnotations" (tuple .Values.global.annotations) | indent 4}}
+rules:
+- apiGroups: [""]
+  resources: ["pods"]
+  verbs: ["get", "list", "watch"]
+
+---
+kind: RoleBinding
+apiVersion: {{ template "cpro-grafana.grafanaApiVersion.roleBinding" . }}
+metadata:
+  name: {{ template "cpro-grafana.testRolebinding" . }}
+  labels:
+        {{- include "cpro-grafana.app.labels-v3" . | nindent 4 }}
+        {{- include "cpro-grafana.labelsOrAnnotations" (tuple .Values.global.labels) | indent 4}}
+  annotations:
+{{- include "cpro-grafana.labelsOrAnnotations" (tuple .Values.global.annotations) | indent 4}}
+subjects:
+- kind: ServiceAccount
+  name: {{ template "cpro-grafana.testServiceAccountName" . }}
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: {{ template "cpro-grafana.testRole" . }}
+{{- end }}

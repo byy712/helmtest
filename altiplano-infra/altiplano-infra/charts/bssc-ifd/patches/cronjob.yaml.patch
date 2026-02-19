@@ -1,0 +1,82 @@
+--- bssc-ifd-13.0.1/bssc-ifd/charts/bssc-fluentd/templates/cronjob.yaml	2024-01-17 14:04:52.486682477 +0530
++++ bssc-ifd-patch/bssc-ifd/charts/bssc-fluentd/templates/cronjob.yaml	2023-12-21 10:25:34.419914000 +0530
+@@ -0,0 +1,79 @@
++{{- if semverCompare "<1.21.0-0" .Capabilities.KubeVersion.GitVersion }}
++apiVersion: batch/v1beta1
++  {{- else }}
++apiVersion: batch/v1
++  {{- end }}
++kind: CronJob
++metadata:
++  name: {{ template "bssc-fluentd.fullname" . }}-cronjob
++  labels:
++    app: {{ template "bssc-fluentd.fullname" . }}
++    chart: {{ .Chart.Name }}-{{ .Chart.Version }}
++    release: {{ .Release.Name }}
++    heritage: {{ .Release.Service }}
++spec:
++  schedule: "{{ .Values.cronjob.schedule }}"
++  {{- with .Values.cronjob.concurrencyPolicy }}
++  concurrencyPolicy: {{ . }}
++  {{- end }}
++  {{- with .Values.cronjob.failedJobsHistoryLimit }}
++  failedJobsHistoryLimit: {{ . }}
++  {{- end }}
++  {{- with .Values.cronjob.successfulJobsHistoryLimit }}
++  successfulJobsHistoryLimit: {{ . }}
++  {{- end }}
++  {{- with .Values.cronjob.suspend }}
++  suspend: {{ . }}
++  {{- end }}
++  jobTemplate:
++    metadata:
++      name: {{ template "bssc-fluentd.fullname" . }}-cronjob
++      labels:
++        app: {{ template "bssc-fluentd.fullname" . }}
++        chart: {{ .Chart.Name }}-{{ .Chart.Version }}
++        release: {{ .Release.Name }}
++        heritage: {{ .Release.Service }}
++    spec:
++      template:
++        spec:
++          restartPolicy: Never
++          containers:
++            - name: {{ .Chart.Name }}-cronjob
++              image: {{ .Values.global.registry }}/{{.Values.fluentd.image.fnmsInitRepo}}:{{.Values.fluentd.image.fnmsInitTag}}
++              imagePullPolicy: {{.Values.fluentd.ImagePullPolicy}}
++              args: []
++              command: ["/bin/sh", "-c", "/opt/scripts/clean-pushgateway-stale-data.sh"]
++              volumeMounts:
++                - name: altiplano-config
++                  mountPath: "/opt/scripts"
++              env:
++                - name: PTS_URL
++                  {{- if .Values.fluentd.EnvVars }}
++                  value: "{{.Values.fluentd.EnvVars.PTS_URL}}"
++                  {{- else }}
++                  value: http://altiplano-pts-pushgateway:9091
++          {{- end }}
++          {{- with .Values.nodeSelector }}
++          nodeSelector:
++          {{ toYaml . | indent 12 }}
++          {{- end }}
++          {{- with .Values.affinity }}
++          affinity:
++          {{ toYaml . | indent 12 }}
++          {{- end }}
++          {{- with .Values.tolerations }}
++          tolerations:
++          {{ toYaml . | indent 12 }}
++          {{- end }}
++          securityContext:
++          {{- if ne ( toString ( .Values.fluentd.securityContext.runAsUser )) "auto" }}
++            runAsUser: {{.Values.fluentd.securityContext.runAsUser}}
++          {{- end }}
++          {{- if ne ( toString ( .Values.fluentd.securityContext.runAsGroup )) "auto" }}
++            runAsGroup: {{.Values.fluentd.securityContext.runAsGroup}}
++          {{- end }}
++          volumes:
++          - name: altiplano-config
++            configMap:
++              name: {{ .Release.Name }}-altiplano-config
++              defaultMode: 0755

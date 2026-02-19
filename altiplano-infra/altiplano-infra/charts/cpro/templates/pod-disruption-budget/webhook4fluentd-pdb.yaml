@@ -1,0 +1,18 @@
+{{- if and .Values.webhook4fluentd.enabled .Values.webhook4fluentd.pdb.enabled -}}
+apiVersion: {{ template "cpro.apiVersion.pdb" . }}
+kind: PodDisruptionBudget
+metadata:
+  labels:
+    {{- include "cpro.app.labels.v3" ( dict "root" . "context" .Values.webhook4fluentd ) | nindent 4 }}
+{{- include "cpro.labelsOrAnnotations" (tuple .Values.global.labels) | indent 4}}
+  annotations:
+{{- include "cpro.labelsOrAnnotations" (tuple .Values.global.annotations) | indent 4}}
+  name: {{ template "cpro.prometheus.webhook4fluentd.fullname" . }}
+spec:
+  {{- include "cpro.pdb-values" .Values.webhook4fluentd.pdb | indent 2}}
+  selector:
+    matchLabels:
+      app: {{ template "cpro.prometheus.name" . }}
+      component: "{{ .Values.webhook4fluentd.name }}"
+      release: {{ .Release.Name }}
+{{- end }}

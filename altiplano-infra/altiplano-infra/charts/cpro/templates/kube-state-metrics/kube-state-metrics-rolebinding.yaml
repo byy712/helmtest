@@ -1,0 +1,34 @@
+{{- if and .Values.rbac.enabled .Values.kubeStateMetrics.enabled .Values.restrictedToNamespace }}
+{{- $listNamespaces := list .Release.Namespace }}
+{{- if ne .Values.kubeStateMetrics.args.namespace "" }}
+{{- $addNamespaces := printf "%s,%s" .Values.kubeStateMetrics.args.namespace .Release.Namespace -}}
+{{- $listNamespaces =  split "," $addNamespaces  -}}
+{{- end }}
+{{ $helmList := list }}
+{{- range $key, $value := $listNamespaces -}}
+  {{- $helmList = concat (list $value) $helmList -}}
+{{- end -}}
+{{- $listNamespaces =  $helmList | uniq  -}}
+
+{{- range $watchedNamespace := $listNamespaces }}
+apiVersion: {{ template "cpro.apiVersion.roleBindingApiversion" $ }}
+kind: RoleBinding
+metadata:
+  labels:
+    {{- include "cpro.app.labels.v3" ( dict "root" $ "context" $.Values.kubeStateMetrics ) | nindent 4 }}
+{{- include "cpro.labelsOrAnnotations" (tuple $.Values.global.labels) | indent 4}}
+  name: {{ template "cpro.prometheus.kubeStateMetrics.rolebinding" $ }}
+  namespace: {{ $watchedNamespace }}
+  annotations:
+{{- include "cpro.labelsOrAnnotations" (tuple $.Values.global.annotations) | indent 4}}
+subjects:
+  - kind: ServiceAccount
+    name: {{ template "cpro.prometheus.serviceAccount.fullname" $ }}
+    namespace: {{ $.Release.Namespace }}
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: {{ template "cpro.prometheus.kubeStateMetrics.role" $ }}
+---
+{{- end }}
+{{- end }}

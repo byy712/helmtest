@@ -1,0 +1,18 @@
+{{- if and .Values.server.enabled .Values.server.pdb.enabled -}}
+apiVersion: {{ template "cpro.apiVersion.pdb" . }}
+kind: PodDisruptionBudget
+metadata:
+  labels:
+    {{- include "cpro.app.labels.v3" ( dict "root" . "context" .Values.server ) | nindent 4 }}
+{{- include "cpro.labelsOrAnnotations" (tuple .Values.global.labels) | indent 4}}
+  annotations:
+{{- include "cpro.labelsOrAnnotations" (tuple .Values.global.annotations) | indent 4}}
+  name: {{ template "cpro.prometheus.server.fullname" . }}
+spec:
+{{- include "cpro.pdb-values" .Values.server.pdb | indent 2}}
+  selector:
+    matchLabels:
+      app: {{ template "cpro.prometheus.name" . }}
+      component: "{{ .Values.server.name }}"
+      release: {{ .Release.Name }}
+{{- end }}

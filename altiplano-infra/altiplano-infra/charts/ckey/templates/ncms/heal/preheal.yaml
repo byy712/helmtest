@@ -1,0 +1,58 @@
+{{ if gt (int .Values.global.preheal ) 0 }}
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: {{ template "ckey.preHealJobName" . }}
+  labels:
+    app: {{ template "ckey.fullName" . }}
+    release: {{ .Release.Name }}
+    {{- include "ckey.customLabels" (tuple .Values.custom.job.labels .Values.global.labels ) | indent 4 }}
+    {{- include "ckey.commonLabels" . | indent 4 }}
+  annotations:
+    "helm.sh/hook-delete-policy": {{ .Values.hookDeletePolicy }}
+    {{- include "ckey.customAnnotations" (tuple .Values.custom.job.annotations .Values.global.annotations) | indent 4 }}
+spec:
+  template:
+    metadata:
+      labels:
+        altiplano-role: {{ .Values.accessRoleLabel }}
+        app: {{ template "ckey.fullName" . }}
+        release: {{ .Release.Name }}
+        {{- include "ckey.customLabels" (tuple .Values.custom.job.labels .Values.global.labels ) | indent 8 }}
+        {{- include "ckey.commonLabels" . | indent 8 }}
+      annotations:
+        sidecar.istio.io/inject: "false"
+        {{- include "ckey.customAnnotations" (tuple .Values.custom.job.annotations .Values.global.annotations) | indent 8 }}
+    spec:
+      serviceAccountName: {{ template "ckey.serviceAccountHeal" . }}
+      securityContext:
+{{ include "ckey.keycloak.securitycontext" . | indent 8 }}
+      automountServiceAccountToken: true
+      restartPolicy: Never
+      containers:
+      - name: {{ template "ckey.preHealContainerName" . }}
+        image: {{ include "ckey.container.image" (tuple $ .Values.images.kubectl .Values.internalKubectlRegistry) }}
+        imagePullPolicy: "{{ .Values.images.pullPolicy }}"
+        securityContext:
+        {{- include "ckey.container.securitycontext" . | nindent 10 }}
+        env:
+          {{- include "ckey.timezone" . | nindent 10 }}
+        command:
+        - sh
+        - -c
+        - |
+         echo 'pre heal for release: {{ .Release.Name }}'
+         kubectl delete pods -l app={{ template "ckey.chartName" . }},release={{ .Release.Name }} --namespace={{ .Release.Namespace }}
+        resources:
+{{ include "ckey.keycloak.busybox-container-resources-spec" . | indent 10 }}
+      {{- if .Values.nodeSelector }}
+      nodeSelector:
+{{ toYaml .Values.nodeSelector | indent 8 }}
+      {{- end }}
+      {{- include "ckey.imagePullSecrets" (tuple . "kubectl") | nindent 8 }}
+      {{- if .Values.tolerations }}
+      tolerations:
+{{ toYaml .Values.tolerations | indent 8 }}
+      {{- end }}
+{{ include "ckey.common.affinity" . | indent 6 }}
+{{ end }}

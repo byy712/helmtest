@@ -1,0 +1,106 @@
+{{- if and .Values.rbac.enabled (not .Values.controller.scope.enabled) -}}
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  labels:
+    app: {{ template "citm-ingress.name" . }}
+    chart: {{ .Chart.Name }}-{{ .Chart.Version }}
+    heritage: {{ .Release.Service }}
+    release: {{ .Release.Name }}
+    {{- include "citm-ingress.commonLabels" . | indent 4 }}
+  name: {{ template "citm-ingress.fullname" . }}
+rules:
+  - apiGroups:
+      - ""
+    resources:
+      - configmaps
+      - endpoints
+      - nodes
+      - pods
+      - secrets
+      - namespaces
+    verbs:
+      - list
+      - watch
+  - apiGroups:
+      - discovery.k8s.io
+    resources:
+      - endpointslices
+    verbs:
+      - list
+      - watch
+      - get
+  - apiGroups:
+      - ""
+    resources:
+      - nodes
+    verbs:
+      - get
+  - apiGroups:
+      - ""
+    resources:
+      - services
+    verbs:
+      - get
+      - list
+      - patch
+      - update
+      - watch
+  - apiGroups:
+      - extensions
+      - "networking.k8s.io"
+    resources:
+      - ingresses
+    verbs:
+      - get
+      - list
+      - watch
+  - apiGroups:
+      - ""
+    resources:
+      - events
+    verbs:
+      - create
+      - patch
+  - apiGroups:
+      - extensions
+      - "networking.k8s.io"
+    resources:
+      - ingresses/status
+    verbs:
+      - update
+  - apiGroups:
+      - "networking.k8s.io"
+    resources:
+      - ingressclasses
+    verbs:
+      - get
+      - list
+      - watch
+{{- if eq (include "citm-ingress.createPSP" .) "true" }}                                                                                                                                                        {{- if .Values.global.podSecurityPolicy.userProvided }}
+  - apiGroups:
+      - extensions
+    resourceNames:
+      - {{ template "citm-ingress.pspName" . }}
+    resources:
+      - podsecuritypolicies
+    verbs:
+      - use
+{{- else }}
+{{- if .Values.rbac.podSecurityPolicy.enabled }}
+  - apiGroups:
+      - extensions
+    resourceNames:
+  {{- if and .Values.istio.enabled (not .Values.controller.hostNetwork) }}
+      - privileged
+  {{- else }}
+      - {{ template "citm-ingress.fullname" . }}
+  {{- end }}
+    resources:
+      - podsecuritypolicies
+    verbs:
+      - use
+{{- end }}
+{{- end }}
+{{- end }}
+{{- end -}}

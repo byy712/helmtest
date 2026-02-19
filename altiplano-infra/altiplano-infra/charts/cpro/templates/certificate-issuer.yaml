@@ -1,0 +1,16 @@
+{{- if eq (include "csf-common-lib.v1.coalesceBoolean" (tuple .Values.certManager.enabled .Values.global.certManager.enabled  false)) "true" }}
+{{- if (eq (include "cpro.createSelfSignedIssuer" (tuple .)) "true") }}
+{{- $useV1alpha3 := and (.Capabilities.APIVersions.Has "cert-manager.io/v1alpha3/Certificate") (not (.Capabilities.APIVersions.Has "cert-manager.io/v1/Certificate")) }}
+{{- if $useV1alpha3 }}
+apiVersion: cert-manager.io/v1alpha3
+{{- else }}
+apiVersion: cert-manager.io/v1
+{{- end }}
+kind: Issuer
+metadata:
+  name: {{ include "csf-common-lib.v2.resourceName" (tuple . "Issuer" "pobserve-issuer") }}
+spec:
+  selfSigned: {}
+{{- end }}
+{{- end }}
+

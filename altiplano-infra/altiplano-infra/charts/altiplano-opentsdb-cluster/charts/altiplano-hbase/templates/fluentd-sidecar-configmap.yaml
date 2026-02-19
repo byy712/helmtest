@@ -1,0 +1,28 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "hbase.fullname" . }}-regionserver
+  labels:
+    {{- include "hbase.labels" . | nindent 4 }}
+data:
+  fluentd.conf: |-
+{{- if .Values.hbase.regionServer.fluentd_sidecar.fluent_conf }}
+{{ tpl .Values.hbase.regionServer.fluentd_sidecar.fluent_conf . | indent 4 }}
+{{- end }}
+
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "hbase.fullname" . }}-master
+  labels:
+    app.kubernetes.io/name: {{ include "hbase.name" . }}
+    app.kubernetes.io/component: master
+    {{- include "hbase.labels" . | nindent 4 }}
+data:
+  fluentd.conf: |-
+{{- if .Values.hbase.master.fluentd_sidecar.fluent_conf }}
+{{ tpl .Values.hbase.master.fluentd_sidecar.fluent_conf . | indent 4 }}
+{{- end }}
+
+---

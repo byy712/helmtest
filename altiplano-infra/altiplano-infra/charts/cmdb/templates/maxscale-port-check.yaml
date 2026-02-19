@@ -1,0 +1,40 @@
+{{- include "cmdb.init" . -}}
+{{/*
+*
+* A non-manifest helper to check that the configured maxscale ports
+* are consistent.
+*
+*/}}
+{{- if and (eq (include "cmdb.has_maxscale" .) "true") }}
+
+{{- /* At least one maxscale service must be enabled */ -}}
+{{- $_ := required "At least one maxscale service (rwSplit, readOnly, masterOnly) must be enabled" ((or .Values.services.mysql.rwSplit.enabled .Values.services.mysql.readOnly.enabled .Values.services.mysql.masterOnly.enabled) | ternary "ok" "") -}}
+
+{{- /* produce list of TLS and non-TLS ports defined */ -}}
+{{- $tls_ports := compact (concat (splitList "," (toString .Values.services.mysql.rwSplit.tlsPort))  (splitList "," (toString .Values.services.mysql.readOnly.tlsPort)) (splitList "," (toString .Values.services.mysql.masterOnly.tlsPort))) -}}
+{{- $notls_ports := compact (concat (splitList "," (toString .Values.services.mysql.rwSplit.nonTlsPort))  (splitList "," (toString .Values.services.mysql.readOnly.nonTlsPort)) (splitList "," (toString .Values.services.mysql.masterOnly.nonTlsPort))) -}}
+
+{{/* If:   maxscale is enabled, and
+           mariadb TLS is not enabled
+     Then: - all tlsPorts must be 0 (or empty)
+*/}}
+{{- if not (eq (include "cmdb.tls_enabled" (tuple . "mariadb")) "true") -}}
+  {{- range $tls_ports -}}
+    {{- if (gt (int .) 0) -}}
+      {{- fail "services.mysql tlsPort cannot be specified with TLS not enabled" -}}
+    {{- end -}}
+  {{- end -}}
+{{- end -}}
+
+{{/*
+  Verify uniqueness of TLS and non-TLS port list and accross lists
+*/}}
+{{- $_ := required "services.mysql tlsPort list is not unique!" (eq (len $tls_ports) (len (uniq $tls_ports))) }}
+{{- $_ := required "services.mysql nonTlsPort list is not unique!" (eq (len $notls_ports) (len (uniq $notls_ports))) }}
+{{- range $tls_ports -}}
+  {{- if and (gt (int .) 0) (has . $notls_ports) -}}
+    {{- fail (printf "services.mysql tlsPort and nonTlsPort cannot use the same port (%s)" .) -}}
+  {{- end -}}
+{{- end -}}
+
+{{- end }}

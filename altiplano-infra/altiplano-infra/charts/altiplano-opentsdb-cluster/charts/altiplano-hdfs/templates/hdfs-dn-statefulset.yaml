@@ -1,0 +1,218 @@
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: {{ include "hdfs.fullname" . }}-datanode
+  annotations:
+    checksum/config: {{ include (print $.Template.BasePath "/hadoop-configmap.yaml") . | sha256sum }}
+  labels:
+    app.kubernetes.io/name: {{ include "hdfs.name" . }}
+    app.kubernetes.io/component: datanode
+    {{- include "hdfs.labels" . | nindent 4 }}
+spec:
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: {{ include "hdfs.name" . }}
+      app.kubernetes.io/component: datanode
+      {{- include "hdfs.labels" . | nindent 6 }}
+  serviceName: {{ include "hdfs.fullname" . }}-datanode
+  replicas: {{ .Values.dataNode.replicas }}
+  template:
+    metadata:
+      labels:
+        altiplano-role: {{ .Values.dataNode.accessRoleLabel }}
+        release: "{{ .Release.Name }}"
+        app.kubernetes.io/name: {{ include "hdfs.name" . }}
+        app.kubernetes.io/component: datanode
+        {{- include "hdfs.labels" . | nindent 8 }}
+    spec:
+      {{- with .Values.dataNode.nodeSelector }}
+      nodeSelector:
+{{ toYaml . | indent 8 }}
+      {{- end }}
+      affinity:
+        podAntiAffinity:
+        {{- if eq .Values.antiAffinity "hard" }}
+          requiredDuringSchedulingIgnoredDuringExecution:
+          - topologyKey: "kubernetes.io/hostname"
+            labelSelector:
+              matchLabels:
+                app.kubernetes.io/name: {{ include "hdfs.name" . }}
+                app.kubernetes.io/component: datanode
+                {{- include "hdfs.labels" . | nindent 16 }}
+        {{- else if eq .Values.antiAffinity "soft" }}
+          preferredDuringSchedulingIgnoredDuringExecution:
+          - weight: 5
+            podAffinityTerm:
+              topologyKey: "kubernetes.io/hostname"
+              labelSelector:
+                matchLabels:
+                  app.kubernetes.io/name: {{ include "hdfs.name" . }}
+                  app.kubernetes.io/component: datanode
+                  {{- include "hdfs.labels" . | nindent 18 }}
+        {{- end }}
+      securityContext:
+        fsGroup: {{ .Values.securityContext.fsGroup | default 114 }}
+      initContainers:
+      - name: init-hdfs-datanode
+        image: {{ template "image.fullname" . }}
+        imagePullPolicy: {{ .Values.image.pullPolicy | quote }}
+        securityContext:
+          runAsUser: 1000
+          runAsGroup: 114
+        command: [ "sh", "-c", " until curl -s http://{{ .Release.Name }}-altiplano-hdfs-namenode:9870/jmx?qry=Hadoop:service=NameNode,name=NameNodeStatus | grep active; do echo `date` waiting for namenode; sleep 5; done; " ]
+      {{- if .Values.prometheus.enabled }}
+      - name: inject-exporter-jar
+        image: "{{ .Values.global.registry }}/{{ .Values.prometheus.image }}:{{ .Values.prometheus.imageTag }}"
+        securityContext:
+          runAsUser: 1000
+          runAsGroup: 114
+        env:
+          - name: SHARED_VOLUME_PATH
+            value: /jmx-exporter
+        volumeMounts:
+          - mountPath: /jmx-exporter
+            name: jmx-exporter
+      {{- end }}
+      containers:
+      - name: datanode
+        image: {{ template "image.fullname" . }}
+        imagePullPolicy: {{ .Values.image.pullPolicy | quote }}
+        securityContext:
+          runAsUser: {{ .Values.securityContext.runAsUser | default 201 }}
+          runAsGroup: {{ .Values.securityContext.runAsGroup | default 114 }}
+        command:
+           - "/bin/bash"
+           - "/tmp/hadoop-config/bootstrap.sh"
+           - "-d"
+           - "datanode"
+        resources:
+{{ toYaml .Values.dataNode.resources | indent 10 }}
+        env:
+          - name: TZ
+            {{- if .Values.timeZoneEnv}}
+            value: {{ .Values.timeZoneEnv }}
+            {{- else if .Values.global.timeZoneEnv }}
+            value: {{ .Values.global.timeZoneEnv }}
+            {{- else }}
+            value: "UTC"
+            {{- end }}
+          - name: HADOOP_HEAPSIZE
+            value: {{ .Values.dataNode.env.HADOOP_DATANODE_HEAPSIZE | quote }}
+          - name: CORE_CONF_fs_defaultFS
+            {{- if .Values.dataNode.env.DEFAULTFS }}
+            value: {{ .Values.dataNode.env.DEFAULTFS }}
+            {{- else }}
+            value: hdfs://{{ .Release.Name }}-altiplano-hdfs-namenode:{{ .Values.nameNode.port }}
+            {{- end }}
+        livenessProbe:
+          exec:
+            command: [ "sh", "-c", "curl -s -m 10 http://{{ .Release.Name }}-altiplano-hdfs-datanode:50075/jmx?qry=Hadoop:service=DataNode,name=DataNodeActivity" ]
+          initialDelaySeconds: 120
+          periodSeconds: 20
+          timeoutSeconds: 10
+          failureThreshold: 28
+        readinessProbe:
+          exec:
+            command: ["sh", "-c", "curl -s -m 10 http://{{ .Release.Name }}-altiplano-hdfs-datanode:50075/jmx?qry=Hadoop:service=DataNode,name=DataNodeActivity" ]
+          initialDelaySeconds: 15
+          periodSeconds: 5
+          timeoutSeconds: 10
+        volumeMounts:
+        - name: hadoop-config
+          mountPath: /tmp/hadoop-config
+  {{- if .Values.prometheus.enabled }}
+        - name: jmx-exporter
+          mountPath: /jmx-exporter
+        - name: exporter-config
+          mountPath: /etc/exporter
+  {{- end }}
+  {{- if .Values.persistence.dataNode.enabled }}
+        - name: dfs
+          mountPath: /dfs
+        - name: logdir
+          mountPath: /opt/hadoop/logs
+  {{- end }}
+      - name: {{ template "hdfs.name" . }}-datanode-fluentd-sidecar
+        image: "{{ .Values.global.registry }}/{{ .Values.dataNode.fluentd_sidecar.image.name }}:{{ .Values.dataNode.fluentd_sidecar.image.tag }}"
+        imagePullPolicy: {{ .Values.dataNode.fluentd_sidecar.image.pullPolicy }}
+        securityContext:
+          runAsUser: {{ .Values.dataNode.fluentd_sidecar.securityContext.runAsUser | default 1000 }}
+          runAsGroup: {{ .Values.dataNode.fluentd_sidecar.securityContext.runAsGroup | default 114 }}
+        volumeMounts:
+        - name: fluentd-config
+          mountPath: /etc/fluent/
+        {{- if .Values.dataNode.fluentd_sidecar.secrets }}
+        - name: certificates
+          mountPath: /etc/.certificates/
+        {{- end }}
+        - name: logdir
+          mountPath: /logs
+        resources:
+{{ toYaml .Values.dataNode.fluentd_sidecar.resources | indent 12 }}
+        env:
+        {{- if .Values.dataNode.fluentd_sidecar.secrets }}
+        - name: IS_USERNAME
+          valueFrom:
+            secretKeyRef:
+              key: {{ .Values.dataNode.env.secrets.IS_USERNAME }}
+              name: {{ .Values.dataNode.fluentd_sidecar.secrets.passwordSecret | quote }}
+        - name: IS_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              key: {{ .Values.dataNode.env.secrets.IS_PASSWORD }}
+              name: {{ .Values.dataNode.fluentd_sidecar.secrets.passwordSecret | quote }}
+        {{- end }}
+        - name: CONTAINER_NAME
+          valueFrom:
+            fieldRef:
+              apiVersion: v1
+              fieldPath: metadata.name
+        - name: POD_IP
+          valueFrom:
+            fieldRef:
+              fieldPath: status.podIP
+      volumes:
+      {{- if .Values.prometheus.enabled }}
+      - name: jmx-exporter
+        emptyDir: {}
+      - name: exporter-config
+        configMap:
+          name: {{ include "hdfs.fullname" . }}-exporter
+      {{- end }}
+      - name: hadoop-config
+        configMap:
+          name: {{ include "hdfs.fullname" . }}-hadoop
+      - name: logdir
+        emptyDir: {}
+      - name: fluentd-config
+        configMap:
+          name: {{ template "hdfs.name" . }}-datanode-fluentd-config
+      {{- if .Values.dataNode.fluentd_sidecar.secrets }}
+      - name: certificates
+        secret:
+          secretName: {{ (tpl .Values.dataNode.fluentd_sidecar.secrets.certSecret .) }}
+      - name: passwords
+        secret:
+          secretName: {{ (tpl .Values.dataNode.fluentd_sidecar.secrets.passwordSecret .) }}
+      {{- end }}
+  {{- if .Values.persistence.dataNode.enabled }}
+  volumeClaimTemplates:
+  - metadata:
+      name: dfs
+      labels:
+        app: {{ template "hdfs.fullname" . }}
+        release: "{{ .Release.Name }}"
+        heritage: "{{ .Release.Service }}"
+    spec:
+      accessModes: [ "ReadWriteOnce" ]
+      resources:
+        requests:
+          storage: "{{ .Values.persistence.dataNode.size }}"
+      {{- if .Values.persistence.dataNode.storageClass }}
+      {{- if (eq "-" .Values.persistence.dataNode.storageClass) }}
+      storageClassName: ""
+      {{- else }}
+      storageClassName: "{{ .Values.persistence.dataNode.storageClass }}"
+      {{- end }}
+      {{- end }}
+  {{- end }}

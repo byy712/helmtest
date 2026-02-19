@@ -1,0 +1,23 @@
+{{- include "cmdb.init" . -}}
+{{- $top := . -}}
+{{- $workload := .Values.mariadb -}}
+{{- $certManagerEnabled := (include "csf-common-lib.v1.coalesceBoolean" (tuple .Values.certManager.enabled .Values.global.certManager.enabled false)) }}
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "csf-common-lib.v3.resourceName" (tuple $top "configmap" (printf "log4cxx-%s" $workload.nameSuffix)) }}
+  labels:
+    {{- include "cmdb-mariadb.labels" (tuple $top "configmap")  | nindent 4 }}
+  annotations:
+    {{- include "cmdb-mariadb.annotations" (tuple $top "configmap")  | nindent 4 }}
+data:
+  log4cxxproperty: {{- toYaml ( include "csf-common-lib.v2.unifiedLogging.config" (tuple $top $workload $certManagerEnabled )) | indent 2 }}
+    {{- if (include "csf-common-lib.v1.unifiedLogging.isSyslogSSLEnabled" (tuple $top $workload)) }}
+    log4j.appender.rootsyslogAppender.Ssl.TimeoutMillis={{ include "cmdb-logging.syslog_timeout" (tuple $top $workload) }}
+    log4j.appender.rootsyslogAppender.Ssl.CloseRequestType={{ include "cmdb-logging.syslog_closeReqType" (tuple $top $workload) }}
+    {{- end }}
+  {{- if include "cmdb-logging.extension" (tuple $top $workload ) | fromJson }}
+  extension: |
+    {{ include "cmdb-logging.extension" (tuple $top $workload ) }}
+  {{- end }}

@@ -1,0 +1,127 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ template "altiplano-diag.fullname" . }}
+  labels:
+    app: {{ template "altiplano-diag.name" . }}
+    chart: {{ template "altiplano-diag.chart" . }}
+    release: {{ .Release.Name }}
+    heritage: {{ .Release.Service }}
+spec:
+  replicas: {{ .Values.replicaCount }}
+  selector:
+    matchLabels:
+      app: {{ template "altiplano-diag.name" . }}
+      release: {{ .Release.Name }}
+  template:
+    metadata:
+      labels:
+        app: {{ template "altiplano-diag.name" . }}
+        release: {{ .Release.Name }}
+    spec:
+      securityContext:
+        runAsNonRoot: {{ .Values.securityContext.runAsNonRoot | default true }}
+        runAsUser: {{ .Values.securityContext.runAsUser | default 1000 }}
+        runAsGroup: {{ .Values.securityContext.runAsGroup | default 1000 }}
+        fsGroup: {{ .Values.securityContext.fsGroup | default 1000 }}
+      containers:
+        - name: {{ .Chart.Name }}
+          image: {{ template "image.fullname" . }}
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          ports:
+            - name: diagport
+              containerPort: 8080
+              protocol: TCP
+            - name: https
+              containerPort: 8443
+              protocol: TCP
+            - name: udpport
+              containerPort: 6380
+              protocol: UDP
+          env:
+{{- range $name, $value := .Values.env.open }}
+            - name: {{ $name | quote }}
+              value: {{ $value | quote }}
+{{- end }}
+{{- $secret_name := include "altiplano-diag.fullname" . }}
+{{- range $name, $value := .Values.env.secrets }}
+{{- if not ( empty $value) }}
+            - name: {{ $name | quote }}
+              valueFrom:
+                secretKeyRef:
+                  name: {{ $secret_name }}
+                  key: {{ $name | quote }}
+{{- end }}
+{{- end }}
+          volumeMounts:
+{{- if .Values.persistence.enabled }}
+            - name: diag-storage
+              mountPath: /var/webdav
+{{- end }}
+          livenessProbe:
+            exec:
+              command:
+                - "bash"
+                - "-c"
+                - "if [[ -z $(ls -la /var/webdav) ]]; then exit 1; else curl -s -f -k http://localhost:8080/health; fi"
+            initialDelaySeconds: 360
+            periodSeconds: 60
+            timeoutSeconds: 5
+          readinessProbe:
+            exec:
+              command:
+                - "bash"
+                - "-c"
+                - "if [[ -z $(ls -la /var/webdav) ]]; then exit 1; else curl -s -f -k http://localhost:8080/health; fi"
+            initialDelaySeconds: 60
+            periodSeconds: 60
+            timeoutSeconds: 5
+          resources:
+{{ toYaml .Values.resources | indent 12 }}
+        {{- if .Values.cbur.enabled }}
+        # NOTE: CBUR requires hard-coded sidecar container name
+        - name: cbura-sidecar  #<---predefined sidecar name, hardcoded. If any another name used, cbur will not treat it as a valid predefined sidecar
+          image: {{ template "cbura.image.fullname" . }}
+          imagePullPolicy: {{ .Values.cbur.cbura.imagePullPolicy }}
+          resources:
+{{ toYaml .Values.cbur.cbura.resources | indent 12 }}
+          securityContext:
+            runAsUser: {{ .Values.securityContext.runAsUser | default 48 }}
+            runAsGroup: {{ .Values.securityContext.runAsGroup | default 1000 }}
+          volumeMounts:
+{{- if .Values.persistence.enabled }}
+          - mountPath: /diag-storage
+            name: diag-storage
+{{- end }}
+          {{- if .Values.cbur.persistence.cburtmp.enabled }}
+          - name: cburtmp
+            mountPath: {{ default "/tmp" .Values.cbur.persistence.cburtmp.dir }}
+          {{- end }}
+        {{- end }}  #cbur.enabled
+    {{- with .Values.nodeSelector }}
+      nodeSelector:
+{{ toYaml . | indent 8 }}
+    {{- end }}
+    {{- with .Values.affinity }}
+      affinity:
+{{ toYaml . | indent 8 }}
+    {{- end }}
+    {{- with .Values.tolerations }}
+      tolerations:
+{{ toYaml . | indent 8 }}
+    {{- end }}
+      volumes:
+        - name: diag-storage
+{{- if not .Values.persistence.enabled }}
+          emptyDir: {}
+{{- else }}
+          persistentVolumeClaim:
+            claimName: diag-pvclaim
+{{- end }}
+        - name: cburtmp
+{{- if not (.Values.cbur.enabled) }}
+          emptyDir: {}
+{{- else }}
+          persistentVolumeClaim:
+            claimName: diag-cburtmp-pvclaim
+{{- end }}

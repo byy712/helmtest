@@ -1,0 +1,53 @@
+--- ckey-12.2.0/templates/_helpers.tpl	2024-03-16 01:47:07.000000000 +0530
++++ ckey-12.2.0-nokia-patch-1/ckey/templates/_helpers.tpl	2024-04-05 19:39:08.294530411 +0530
+@@ -119,7 +119,7 @@
+ */}}
+ {{- define "ckey.getAdminPassword" -}}
+ {{- if (not .Values.secretCredentials.ckeySecret) }}
+-{{ include "ckey.generateRandomAdminPassword" . | trimPrefix "\n" }}
++{{ .Values.keycloakPassword | default (include "ckey.generateRandomAdminPassword" .) | trimPrefix "\n" }}
+ {{- else }}
+ {{- printf "******" }}
+ {{- end }}
+@@ -786,6 +786,41 @@
+ {{- end }}
+ {{- end -}}
+ 
++{{/*
++Derive the image name from three different parameters for fnms-keycloak-radius-plugin
++*/}}
++{{- define "radiusImage.fullname" -}}
++
++    {{- if not (empty .Values.radiusImage.registry) -}}
++        {{- if not (eq "-" .Values.radiusImage.registry) -}} {{ .Values.radiusImage.registry }}{{- end -}}
++    {{- else if .Values.global.registry -}} {{ .Values.global.registry }}
++    {{- end -}}
++
++    {{- if .Values.radiusImage.repository -}}
++        {{- if not (empty .Values.radiusImage.registry) -}}
++            {{- if not (eq "-" .Values.radiusImage.registry) -}}/{{- end -}}
++        {{- else if .Values.global.registry -}}/
++        {{- end -}}
++    {{ .Values.radiusImage.repository }}
++    {{- end -}}
++
++    {{- if .Values.radiusImage.tag -}}
++        {{- if .Values.radiusImage.repository -}}:
++        {{- else -}}
++            {{- if not (empty .Values.radiusImage.registry) -}}
++                {{- if not (eq "-" .Values.radiusImage.registry) -}}:{{- end -}}
++            {{- else if .Values.global.registry -}}:
++            {{- end -}}
++        {{- end -}}
++    {{ .Values.radiusImage.tag }}
++    {{- end -}}
++
++{{- end -}}
++
++{{- define "custom-user-realm-config-secret" -}}
++{{- printf "%s%s" (include "ckey.fullName" .) "-custom-user-realm-config-secret" | trunc 63 | trimSuffix "-" -}}
++{{- end -}}
++
+ {{- define "ckey.pdbValue" -}}
+ {{- if and ( and ( not (kindIs "invalid" .maxUnavailable)) ( ne ( toString ( .maxUnavailable )) "" )) ( and ( not (kindIs "invalid" .minAvailable)) ( ne ( toString ( .minAvailable )) "" )) }}
+ {{- required "Both of the values (maxUnavailable/minAvailable) are set. Only one of the values need to be set." "" }}

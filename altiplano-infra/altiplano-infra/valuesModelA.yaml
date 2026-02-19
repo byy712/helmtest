@@ -1,0 +1,346 @@
+# valuesModelA.yaml is used for,
+#  -------------------
+# | Deployment scale  |
+#  -------------------
+# | 10K subscribers   |
+#  -------------------
+# non-HA,non-slicing AAC Variant for RDOF deployment with this model requires following footprint,
+#  --------------------------------------------------
+# |   vCPU  |  Memory (GB)  | (Shared) Storage (GB)  |
+#  --------------------------------------------------
+# |    16   |     64        |           500          |
+#  --------------------------------------------------
+#
+#***The above information is for a quick reference, for more information please refer to the NOKIA documentation***
+
+tags:
+  rdof: false
+
+global:
+  clustered_opentsdb: false
+
+altiplano-indexsearch:
+  bssc-indexsearch:
+    manager:
+      resources:
+        limits:
+          cpu: "500m"
+          memory: "2Gi"
+        requests:
+          cpu: "100m"
+          memory: "1500Mi"
+      java_opts: "-Xms1g -Xmx1g -Dlog4j2.formatMsgNoLookups=true"
+
+    client:
+      resources:
+        limits:
+          cpu: "500m"
+          memory: "2Gi"
+        requests:
+          cpu: "100m"
+          memory: "1500Mi"
+      java_opts: "-Xms1g -Xmx1g -Dlog4j2.formatMsgNoLookups=true"
+
+    data:
+      resources:
+        limits:
+          cpu: "1200m"
+          memory: "6Gi"
+        requests:
+          cpu: "300m"
+          memory: "3Gi"
+      java_opts: "-Xms3g -Xmx3g -Dlog4j2.formatMsgNoLookups=true"
+
+    jobs:
+      secAdminUpgradeJob:
+        resources:
+          requests:
+            cpu: 200m
+            memory: 500Mi
+          limits:
+            cpu: 500m
+            memory: 1Gi
+
+  bssc-dashboards:
+    kibana:
+      resources:
+        limits:
+          cpu: "500m"
+          memory: "4Gi"
+        requests:
+          cpu: "500m"
+          memory: "1Gi"
+
+  bssc-indexmgr:
+    curator:
+      resources:
+        limits:
+          cpu: "120m"
+          memory: "1Gi"
+        requests:
+          cpu: "100m"
+          memory: "100Mi"
+
+  bssc-fluentd:
+    fluentd:
+      resources:
+        requests:
+          cpu: 350m
+          memory: 1Gi
+        limits:
+          cpu: 1000m
+          memory: 1500Mi
+
+altiplano-mariadb:
+  mariadb:
+    resources:
+      requests:
+        memory: 1.5Gi
+        cpu: 100m
+      limits:
+        memory: 2.5Gi
+        cpu: 1
+    metrics:
+      resources:
+        requests:
+          memory: 256Mi
+          cpu: 250m
+        limits:
+          memory: 256Mi
+          cpu: 250m
+
+altiplano-sso:
+  resources:
+    requests:
+      cpu: 500m
+      memory: 1Gi
+    limits:
+      cpu: 2
+      memory: 1500Mi
+
+altiplano-kafka:
+  LogRetentionHours: "24"
+  MessageMaxBytes: "314572800"
+  resources:
+    requests:
+      cpu: 200m
+      memory: 1Gi
+    limits:
+      cpu: 1000m
+      memory: 1500Mi
+  JmxExporter:
+    jmxResources:
+      resources:
+        requests:
+          cpu: 100m
+          memory: 100Mi
+        limits:
+          cpu: 200m
+          memory: 1Gi
+
+  ckaf-zookeeper:
+    servers: 1
+    resources:
+      requests:
+        cpu: 10m
+        memory: 1Gi
+      limits:
+        cpu: 1000m
+        memory: 2Gi
+
+    JmxExporter:
+      jmxResources:
+        resources:
+          requests:
+            cpu: 100m
+            memory: 100Mi
+          limits:
+            cpu: 200m
+            memory: 1Gi
+
+altiplano-grafana:
+  resources:
+    requests:
+      cpu: 50m
+      memory: 100Mi
+    limits:
+      cpu: 400m
+      memory: 500Mi
+
+altiplano-webdav:
+  resources:
+    requests:
+      cpu: 50m
+      memory: 100Mi
+    limits:
+      cpu: 2
+      memory: 4Gi
+
+altiplano-pts:
+  pushgateway:
+    resources:
+      limits:
+        cpu: 200m
+        memory: 200Mi
+      requests:
+        cpu: 150m
+        memory: 100Mi
+
+  kubeStateMetrics:
+    resources:
+      limits:
+        cpu: 50m
+        memory: 200Mi
+      requests:
+        cpu: 10m
+        memory: 100Mi
+
+  nodeExporter:
+    resources:
+      limits:
+        cpu: 150m
+        memory: 200Mi
+      requests:
+        cpu: 50m
+        memory: 100Mi
+
+  server:
+    strategy:
+      rollingUpdate:
+        maxSurge: 0
+        maxUnavailable: 1
+    type: RollingUpdate
+    resources:
+      limits:
+        cpu: 500m
+        memory: 5Gi
+      requests:
+        cpu: 160m
+        memory: 1Gi
+
+  configmap-reload:
+    resources:
+      limits:
+        cpu: 10m
+        memory: 32Mi
+      requests:
+        cpu: 10m
+        memory: 32Mi
+
+altiplano-redis:
+  server:
+    resources:
+      requests:
+        memory: 512Mi
+        cpu: 50m
+      limits:
+        memory: 1Gi
+        cpu: 100m
+
+    metrics:
+      resources:
+        requests:
+          memory: 64Mi
+          cpu: 50m
+        limits:
+          memory: 64Mi
+          cpu: 100m
+  admin:
+    resources:
+      requests:
+        memory: 100Mi
+        cpu: 100m
+      limits:
+        memory: 200Mi
+        cpu: 250m
+
+altiplano-opentsdb-cluster:
+  altiplano-opentsdb:
+    env:
+      open:
+        JVMARGS: "-XX:+UseG1GC -Xms1024m -Xmx1024m --add-opens java.base/java.nio=ALL-UNNAMED --add-opens java.security.jgss/sun.security.krb5=ALL-UNNAMED"
+        HBASE_OPTS_GC_SETTING: "-XX:+UseG1GC -Xms1024m -Xmx1024m"
+    resources:
+      requests:
+        cpu: 100m
+        memory: 2Gi
+      limits:
+        cpu: 2
+        memory: 4Gi
+  altiplano-hbase:
+    hbase:
+      master:
+        resources:
+          limits:
+            cpu: 1
+            memory: 2Gi
+          requests:
+            cpu: 10m
+            memory: 256Mi
+      regionServer:
+        resources:
+          limits:
+            cpu: 2
+            memory: 6Gi
+          requests:
+            cpu: 1
+            memory: 4Gi
+  altiplano-hdfs:
+    nameNode:
+      resources:
+        limits:
+          cpu: 500m
+          memory: 2Gi
+        requests:
+          cpu: 10m
+          memory: 256Mi
+    dataNode:
+      resources:
+        limits:
+          cpu: 1
+          memory: 2Gi
+        requests:
+          cpu: 100m
+          memory: 256Mi
+
+altiplano-ingress:
+  controller:
+    hostNetwork: true
+    resources:
+      requests:
+        memory: 256Mi
+        cpu: 250m
+      limits:
+        memory: 1Gi
+        cpu: 500m
+
+altiplano-opentsdb-kcproxy:
+  resources:
+    requests:
+      cpu: 10m
+      memory: 256Mi
+    limits:
+      cpu: 20m
+      memory: 512Mi
+
+altiplano-cbur:
+  resources:
+    limits:
+      cpu: 1
+      memory: 2Gi
+    requests:
+      cpu: 300m
+      memory: 1Gi
+
+  celery:
+    resources:
+      limits:
+        cpu: 1
+        memory: 3Gi
+      requests:
+        cpu: 500m
+        memory: 2Gi
+
+altiplano-installation-info:
+  installationStatus:
+    valuesModelA: installed

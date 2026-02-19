@@ -1,0 +1,288 @@
+# This values yaml support Geo redundancy without local HA
+#
+
+altiplano-mariadb:
+  #enabled: true
+  ## Cluster Type is one of master-slave, master-master, galera, simplex
+  cluster_type: "master-slave"
+
+  ## Values on how to expose services
+  services:
+
+    ##
+    ## MariaDB Master exposes the pod that is master
+    ## (only if using MaxScale and geo_redundancy.enabled)
+    ##
+    mariadb_master:
+      ## name of service.  If not set, will be <release>-mariadb-master
+      #name:
+      ## Set as NodePort to expose master externally for replication among
+      ## Datacenters
+      type: NodePort
+      ## If set to NodePort, optionally set a specific nodePort port to use
+      ## instead of having one assigned by the infrastructure.  Ignored if
+      ## not using NodePort, random assigned if commented out.
+      ## NOTE:  If assigning nodePort here, you must ensure that the port
+      ##        is not currently assigned in the assignment range.
+      nodePort: 30034
+
+    ##
+    ## Maxscale exposes the administrative REST API interface of Maxscale
+    ## (only if using MaxScale)
+    ## Enabling geo-redundancy will automatically set type to "NodePort".
+    ##
+    maxscale:
+      ## name of service.  If not set, will be <release>-maxscale
+      #name:
+      ## Set as NodePort to expose maxscale service externally
+      type: NodePort
+      port: 8989
+      ## If set to NodePort, optionally set a specific nodePort port to use
+      ## instead of having one assigned by the infrastructure.  Ignored if
+      ## not using NodePort, random assigned if commented out.
+      ## NOTE:  If assigning nodePort here, you must ensure that the port
+      ##        is not currently assigned in the assignment range.
+      nodePort: 30035
+
+  ##
+  ## Values specific to the MariaDB (server)
+  ##
+  mariadb:
+
+    tls:
+      enabled: true
+
+    ## If root user should be allowed from all hosts
+    #allow_root_all: false
+
+  ##
+  ## Values specific to the MaxScale (proxy)
+  ##
+  maxscale:
+    enabled: true
+
+    metrics:
+      enabled: true
+
+    ## use TLS/SSL for maxscale admin interface
+    tls:
+      enabled: true
+
+    fluentd_sidecar:
+
+      fluent_conf: |-
+
+        <system>
+          log_level error
+        </system>
+
+        <source>
+          @type tail
+          path /logs/datacenter-monitor.log
+          read_from_head true
+          pos_file /tmp/fluentd/datacenter-monitor-log.pos
+          keep_time_key true
+          tag nokia.logging.json
+          @label @alarm.log
+          format json
+        </source>
+        <source>
+          @type tail
+          path /logs/datacenter-monitor.log,/logs/maxscale-monitor.log
+          read_from_head true
+          pos_file /tmp/fluentd/alarmmonitor-log.pos
+          keep_time_key true
+          tag monitor.log
+          @label @all.monitor.log
+          <parse>
+            @type multi_format
+            #pattern for type "log" in datacenter-monitor.log,maxscale-monitor.log
+            <pattern>
+              format regexp
+              expression /^{([^{]*){(.*?:)"(?<message>[^}]*)"},(.*?:)"(?<container_name>[^.]*).\w*",(.*?:)"(?<process>[^,]*)",(.*?:)"(?<service>[^,]*)",(.*?:)"(?<level>[^,]*)",(.*?:)"(?<date>[^}]*)"}$/
+            </pattern>
+            #pattern for type "ALARM" in datacenter-monitor.log
+            <pattern>
+              format regexp
+              expression /^([^{]*){(.*?:)"(?<message>[^}]*)"},(.*?:)"(?<container_name>[^.]*).\w*",(.*?:)"(?<level>[^,]*)",(.*?:)"(?<process>[^,]*)",(.*?:)"(?<service>[^,]*)",(.*?:)"(?<date>[^,]*)",(.*:)"(?<type>[^}]*)"}/
+            </pattern>
+          </parse>
+        </source>
+        <source>
+          @type tail
+          path /logs/maxscale.log
+          read_from_head true
+          pos_file /tmp/fluentd/maxscale-log.pos
+          keep_time_key true
+          tag maxscale.log
+          @label @all.monitor.log
+          <parse>
+            @type multi_format
+            <pattern>
+              format regexp
+              expression /^(?<date>([^ ]* [^ ]*))\s+(?<level>[^:]*)([^ ]*)\s(?<message>[^{]*)$/
+            </pattern>
+            <pattern>
+              format regexp
+              expression /^(?<date>([^ ]* [^ ]*))\s+([^ ]*)([^{]*){(.*?:)"(?<container_name>[^.]*).\w*",(.*?:)"(?<level>[^,]*)"([^{]*){(.*?:)"(?<message>[^}]*)"},(.*?:)"(?<process>[^,]*)",(.*?:)"(?<service>[^,]*)"(.*)/
+            </pattern>
+          </parse>
+        </source>
+        <label @alarm.log>
+          <match nokia.logging.json>
+            @type rewrite_tag_filter
+            <rule>
+              key "type"
+              pattern ^(.+)$
+              tag "nokia.logging.$1"
+            </rule>
+          </match>
+          <match nokia.logging.alarm>
+            @type copy
+            <store>
+              @type stdout
+            </store>
+            <store>
+              @type kafka2
+              <format>
+                @type json
+              </format>
+              <buffer topic>
+                @type file
+                path /tmp/fluentd/kafka-buffer/nokia.logging.all.alarm
+                overflow_action drop_oldest_chunk
+                chunk_limit_size 16MB
+                chunk_limit_records 1
+                queued_chunks_limit_size  4096
+                flush_thread_count 1
+                flush_mode immediate
+                retry_wait 0s
+                retry_forever true
+                total_limit_size 50MB
+              </buffer>
+              ssl_ca_cert "/etc/.certificates/mariadb-server-trustchain-cert.pem"
+              ssl_client_cert "/etc/.certificates/mariadb-client-cert.pem"
+              ssl_client_cert_key "/etc/.certificates/mariadb-client-key.pem"
+              ssl_client_cert_key_password "/etc/.certificates/client_key_pass"
+              ssl_verify_hostname false
+              get_kafka_client_log true
+              max_send_retries 10
+              brokers "{{ .Values.maxscale.fluentd_sidecar.KAFKA_BOOTSTRAP_SERVERS }}"
+              default_topic "{{ .Values.maxscale.fluentd_sidecar.KAFKA_TOPIC }}"
+            </store>
+          </match>
+          <match nokia.logging.*>
+            @type null
+          </match>
+        </label>
+        <label @all.monitor.log>
+          <filter monitor.log>
+            @type record_transformer
+            enable_ruby true
+            <record>
+              container_ip "#{ENV['POD_IP']}"
+            </record>
+            renew_record true
+            keep_keys container_name,container_ip,date,level,message,process,service
+          </filter>
+          <filter maxscale.log>
+            @type record_transformer
+            enable_ruby true
+            <record>
+              container_name "#{ENV['CONTAINER_NAME']}"
+              container_ip "#{ENV['POD_IP']}"
+              date ${Time.strptime(record['date'], '%Y-%m-%d %H:%M:%S').strftime('%Y-%m-%dT%H:%M:%S.%LZ')}
+            </record>
+            renew_record true
+            keep_keys container_name,container_ip,date,level,message
+          </filter>
+          <match *.log>
+            @type opensearch
+            suppress_type_name true
+            reload_on_failure true
+            reconnect_on_error true
+            logstash_format true
+            type_name fluentd
+            ssl_verify false
+            ssl_version TLSv1_2
+            scheme {{ .Values.maxscale.fluentd_sidecar.IS_PROTO }}
+              host {{ .Values.maxscale.fluentd_sidecar.IS_IP }}
+              port {{ .Values.maxscale.fluentd_sidecar.IS_PORT }}
+              user "#{ENV['IS_USERNAME']}"
+              password "#{ENV['IS_PASSWORD']}"
+              ca_file "/etc/.certificates/trustchain-cert.pem"
+              <buffer>
+                @type file
+                path /tmp/fluentd/buffer_es/
+                overflow_action drop_oldest_chunk
+                chunk_limit_size 16MB
+                queued_chunks_limit_size  4096
+                flush_thread_count 5
+                flush_interval 5s
+                retry_wait 0s
+                retry_forever true
+                total_limit_size 50MB
+              </buffer>
+              time_key date
+              time_key_exclude_timestamp true
+              logstash_prefix {{ .Values.maxscale.fluentd_sidecar.LOG_INDEX_PATTERN }}
+              request_timeout 45s
+          </match>
+        </label>
+        <match **>
+          @type null
+        </match>
+
+  geo_redundancy:
+    ## Only enable geo_redundancy for multiple datacenters
+    enabled: true
+    ###### site-specific params #####
+    ## Values used to setup replication properly among sites and prevent
+    ## id generation conflicts
+    ## The (1-based) index of this site - each site much have unique indes
+    ## (Only 1 or 2 supported currently)
+    site_index: 1
+
+    ## Threshold (seconds) at which to alarm on lag between datacenters
+    lag_threshold: 30
+    ## auto_increment_increment will automatically generate consecutive numeric values each time data is inserted into the table.
+    auto_increment_increment: 1
+
+    ##
+    ## Remote Datacenter definitions
+    ## The maxscale and master definitions in this section represent the
+    ## IP and port of the associated service at the remote datacenter.
+    ## The IP:port here can be in any one of the following forms:
+    ##   IPv4:port        - IPv6 address and port
+    ##   "[IPv6]:port"    - IPv6 address and port (quotes needed)
+    ##   FQDN:port        - Fully qualified domain name and port
+    ## IPv6 will be the preferred family in a dual-stack installation,
+    ## otherwise IPv4 will be used.
+    ##
+    ###### site-specific params #####
+    ##
+    remoteSites:
+        ## Name to associate with remote datacenter
+        ## Name must consist of lower case alphanumeric characters or '-', start with an alphabetic character, and end with an alphanumeric character
+        ## Regex used for 'name' field validation is '[a-z]([-a-z0-9]*[a-z0-9])?'
+      - name: nokia-altiplano-site-2
+        ## MaxScale node at remote datacenter
+        maxscale:
+          remoteService: SITE_2_IP:30035
+        ## Master MariaDB node at remote datacenter
+        master:
+          remoteService: SITE_2_IP:30034
+
+      ## mariadb-master-remote ClusterIP for replicating to remote DC
+      ## You must set this to the original service IP assigned by kubernetes
+      ## to the mariadb-master-remote service if re-deploying charts using
+      ## preserve PVC.  If unset, the service IP will be autogenerated.
+      #master_remote_service_ip:
+
+
+altiplano-kafka-mirrormaker:
+  enabled: true
+
+altiplano-installation-info:
+  installationStatus:
+    valuesModelGeo: installed

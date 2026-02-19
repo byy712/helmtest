@@ -1,0 +1,18 @@
+{{- if eq (include "bssc-dashboards.isHpaEnabled" (tuple . .Values.dashboards)) "true" }}
+apiVersion: {{ .Capabilities.APIVersions.Has "autoscaling/v2/HorizontalPodAutoscaler" | ternary "autoscaling/v2" "autoscaling/v2beta2" }}
+kind: HorizontalPodAutoscaler
+metadata:
+  name: {{ template "bssc-dashboards.deployment.name" . }}
+  labels:
+{{- include "bssc-dashboards.commonLabels" (tuple . "dashboards") | nindent 4 }}
+{{- include "bssc-dashboards.csf-toolkit-helm.labels" (tuple .) | nindent 4 }}
+  annotations:
+{{- include "bssc-dashboards.csf-toolkit-helm.annotations" (tuple .) | nindent 4 }}
+spec:
+  scaleTargetRef:
+    apiVersion: {{ .Values.dashboards._apiVersion | default "apps/v1" }}
+    kind: Deployment
+    name: {{ template "bssc-dashboards.deployment.name" . }}
+{{- include "bssc-dashboards.hpaValues" (tuple . .Values.dashboards) | indent 2 }}
+{{- end }}
+

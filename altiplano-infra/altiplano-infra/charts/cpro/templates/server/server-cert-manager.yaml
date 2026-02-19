@@ -1,0 +1,42 @@
+{{- if and (eq (include "csf-common-lib.v1.coalesceBoolean" (tuple .Values.server.tls.enabled .Values.tls.enabled .Values.global.tls.enabled .Values.server.tls_auth_config.tls.enabled false)) "true") (eq (include "csf-common-lib.v1.isEmptyValue" .Values.server.tls.secretRef.name) "true") ( eq (include "csf-common-lib.v1.coalesceBoolean" (tuple .Values.certManager.enabled .Values.global.certManager.enabled false)) "true" ) .Values.server.enabled }}
+{{- if .Values.server.certificate.enabled }}
+apiVersion: {{ template "cpro.apiVersion.certManagerApiversion" . }}
+kind: Certificate
+metadata:
+  name: {{ template "cpro.certManagerConfig.resourceName" . }}
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "cpro.app.labels.v3" ( dict "root" . "context" .Values.server ) | nindent 4 }}
+    {{- include "cpro.labelsOrAnnotations" (tuple .Values.global.labels) | indent 4}}
+  annotations:
+{{- include "cpro.labelsOrAnnotations" (tuple .Values.global.annotations) | indent 4}}
+spec:
+  secretName: {{ template "cpro.certManagerConfig.secretName" . }}
+  duration: {{ .Values.certManagerConfig.duration }}
+  renewBefore: {{ .Values.certManagerConfig.renewBefore }}
+{{- include "cpro.prometheus.certManagerConfig.keySize" . | nindent 2}}
+# commonName seems to be deprecated. To be removed ?
+# https://cert-manager.io/docs/usage/certificate/
+# The use of the common name field has been deprecated since 2000 and is discouraged from being used
+{{- if .Values.certManager.servername }}
+  commonName: {{ .Values.certManager.servername }}
+{{- end }}
+  dnsNames:
+{{- if .Values.certManagerConfig.dnsNames }}
+{{ toYaml .Values.certManagerConfig.dnsNames | indent 2 }}
+{{- else }}
+  - ""
+{{- end }}
+{{- if .Values.certManagerConfig.ipAddresses }}
+  ipAddresses:
+{{ toYaml .Values.certManagerConfig.ipAddresses | indent 2 }}
+{{- end }}
+  usages:
+    - server auth
+    - client auth
+  issuerRef:
+    name: {{ coalesce .Values.certManagerConfig.issuerRef.name .Values.certManager.issuerRef.name .Values.global.certManager.issuerRef.name (include "csf-common-lib.v2.resourceName" (tuple . "Issuer" "pobserve-issuer")) }}
+    kind: {{ coalesce .Values.certManagerConfig.issuerRef.kind  .Values.certManager.issuerRef.kind .Values.global.certManager.issuerRef.kind "Issuer"}}
+    group: {{ coalesce .Values.certManagerConfig.issuerRef.group .Values.certManager.issuerRef.group .Values.global.certManager.issuerRef.group "cert-manager.io"}}
+{{- end }}
+{{- end }}

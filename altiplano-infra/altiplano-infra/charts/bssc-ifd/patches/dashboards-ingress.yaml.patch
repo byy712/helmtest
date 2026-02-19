@@ -1,0 +1,35 @@
+--- bssc-ifd-13.0.1/bssc-ifd/charts/bssc-dashboards/templates/dashboards-ingress.yaml	2023-12-06 18:41:43.000000000 +0530
++++ bssc-ifd-patch/bssc-ifd/charts/bssc-dashboards/templates/dashboards-ingress.yaml	2023-12-20 16:01:12.761856000 +0530
+@@ -1,17 +1,31 @@
+ {{- if .Values.ingress.enabled }}
+ ---
++{{- $ingressControllerType := .Values.global.INGRESS_CONTROLLER_TYPE }}
++{{- $url := .Values.dbobaseurl.url }}
++{{- $cg := "" }}
++{{- if eq ($ingressControllerType | toString) "nginxinc"}}
++  {{ $cg = "" }}
++{{- else }}
++  {{- $cg = .Values.dbobaseurl.cg }}
++{{- end }}
+ apiVersion: {{ template "bssc-dashboards.apiVersionNetworkingK8sIoV1orNetworkingK8sIoV1Beta1" . }}
+ kind: Ingress
+ metadata:
+   annotations:
+ {{- include "bssc-dashboards.csf-toolkit-helm.annotations" (tuple .) | nindent 4 }}
++{{- if eq ($ingressControllerType | toString) "nginxinc" }}
++{{- with .Values.nginxIncIngress.annotations }}
++{{ toYaml . | indent 4 }}
++{{- end }}
++{{- else }}
+ {{- with .Values.ingress.annotations }}
+ {{ toYaml . | indent 4 }}
+ {{- end }}
++{{- end }}
+   {{- if .Values.ingress.name }}
+   name: {{ .Values.ingress.name }}
+   {{- else }}
+-  name: "{{ printf "%s-%s-%.0f" .Release.Namespace .Release.Name .Values.dashboards.port}}"
++  name: "{{ printf "%s.%s.%.0f" .Release.Namespace .Release.Name .Values.dashboards.port}}"
+   {{- end }}
+   namespace: {{ .Release.Namespace }}
+   labels:

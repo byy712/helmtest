@@ -1,0 +1,84 @@
+<?xml version="1.0"?>
+<?xml-stylesheet type="text/xsl" href="configuration.xsl"?>
+<configuration>
+    <property><name>dfs.datanode.use.datanode.hostname</name><value>false</value></property>
+    <property><name>dfs.client.use.datanode.hostname</name><value>false</value></property>
+    <property><name>dfs.datanode.data.dir</name><value>file:///dfs/data</value>
+    <description>DataNode directory</description>
+    </property>
+
+    {{- if .Values.global.namenodeHAEnabled }}
+    <property>
+        <name>dfs.nameservices</name>
+        <value>altiplano-hdfs</value>
+    </property>
+    <property>
+        <name>dfs.ha.namenodes.altiplano-hdfs</name>
+        <value>nn0,nn1</value>
+    </property>
+    <property>
+        <name>dfs.namenode.rpc-address.altiplano-hdfs.nn0</name>
+        <value>{{ template "namenode-svc-0" . }}:8020</value>
+    </property>
+    <property>
+        <name>dfs.namenode.rpc-address.altiplano-hdfs.nn1</name>
+        <value>{{ template "namenode-svc-1" . }}:8020</value>
+    </property>
+    <property>
+        <name>dfs.namenode.http-address.altiplano-hdfs.nn0</name>
+        <value>{{ template "namenode-svc-0" . }}:9870</value>
+    </property>
+    <property>
+        <name>dfs.namenode.http-address.altiplano-hdfs.nn1</name>
+        <value>{{ template "namenode-svc-1" . }}:9870</value>
+    </property>
+    <property>
+        <name>dfs.namenode.shared.edits.dir</name>
+        <value>qjournal://{{ template "journalnode-quorum" . }}/altiplano-hdfs</value>
+    </property>
+    <property>
+        <name>dfs.ha.automatic-failover.enabled</name>
+        <value>true</value>
+    </property>
+    <property>
+        <name>dfs.ha.fencing.methods</name>
+        <value>shell(/bin/true)</value>
+    </property>
+    <property>
+        <name>dfs.journalnode.edits.dir</name>
+        <value>/dfs/journal</value>
+    </property>
+    <property>
+        <name>dfs.client.failover.proxy.provider.altiplano-hdfs</name>
+        <value>org.apache.hadoop.hdfs.server.namenode.ha.ConfiguredFailoverProxyProvider</value>
+    </property>
+    {{- end }}
+    <property>
+    <name>dfs.namenode.name.dir</name>
+    <value>file:///dfs/name</value>
+    <description>NameNode directory for namespace and transaction logs storage.</description>
+    </property>
+    <property>
+        <name>dfs.datanode.http.address</name>
+        <value>0.0.0.0:50075</value>
+    </property>
+    <property>
+    <name>dfs.namenode.datanode.registration.ip-hostname-check</name>
+    <value>false</value>
+    </property>
+
+    <!-- Bind to all interfaces -->
+    <property>
+    <name>dfs.namenode.rpc-bind-host</name>
+    <value>0.0.0.0</value>
+    </property>
+    <property>
+    <name>dfs.namenode.servicerpc-bind-host</name>
+    <value>0.0.0.0</value>
+    </property>
+    <!-- /Bind to all interfaces -->
+    {{- range $key, $value := index .Values.conf "hdfsSite" }}
+    <property><name>{{ $key }}</name><value>{{ $value }}</value></property>
+    {{- end }}
+
+</configuration>

@@ -1,0 +1,79 @@
+{
+  "version": 5,
+  "index_patterns": ["--LOG_INDEX_PATTERN---*"],
+  "settings": {
+    "index": {
+      "number_of_shards": 1,
+      "number_of_replicas": "--NUMBER_OF_REPLICAS--",
+      "highlight" : {
+        "max_analyzed_offset" : "10000000"
+      },
+      "allocation": {
+        "max_retries": 15
+      }
+    },
+    "analysis": {
+      "analyzer": {
+        "path-analyzer": {
+          "type": "custom",
+          "tokenizer": "path-tokenizer"
+        }
+      },
+      "tokenizer": {
+        "path-tokenizer": {
+          "type": "path_hierarchy",
+          "delimiter": "."
+        }
+      }
+    }
+  },
+  "mappings": {
+      "properties": {
+        "device_id": {
+          "type": "keyword",
+          "index": true
+        },
+        "container_name": {
+          "type": "keyword",
+          "index": true
+        },
+        "container_id": {
+          "type": "keyword",
+          "index": true
+        },
+        "category": {
+          "type": "keyword",
+          "index": true
+        },
+        "application": {
+          "type": "keyword",
+          "index": true
+        },
+        "message": {
+            "type": "text",
+            "fields": {
+                "keyword": {
+                    "type": "keyword",
+                    "ignore_above": 256
+                }
+            }
+        },
+        "protocol_session_id": {
+          "type": "keyword",
+          "index": true
+        },
+        "protocol_message_id": {
+          "type": "keyword",
+          "index": true
+        },
+        "intent_type": {
+          "type": "keyword",
+          "index": true
+        },
+        "target": {
+          "type": "keyword",
+          "index": true
+        }
+      }
+  }
+}

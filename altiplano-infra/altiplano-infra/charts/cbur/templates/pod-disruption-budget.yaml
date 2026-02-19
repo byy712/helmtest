@@ -1,0 +1,44 @@
+{{- if .Values.pdb -}}
+{{- if .Values.pdb.enabled -}}
+{{- $new := dict (include "cbur.proxy.resourceName" (tuple . "Deployment")) (include "cbur.fullname" . ) }}
+{{- if .Values.direct_redis.enabled }}
+{{- $new := set $new (include "cbur.proxy.resourceName" (tuple . "Deployment" "mycelery")) (printf "%s-%s" (include "cbur.fullname" .) "mycelery") }}
+{{- end }}
+{{- if .Values.k8swatcher.enabled }}
+{{- $new := set $new (include "cbur.proxy.resourceName" (tuple . "Deployment" "k8swatcher")) (printf "%s-%s" (include "cbur.fullname" .) "k8swatcher") }}
+{{- end }}
+{{- if .Values.avamar.enabled }}
+{{- $new := set $new (include "cbur.proxy.resourceName" (tuple . "Deployment" "avamar")) (printf "%s-%s" (include "cbur.fullname" .) "avamar") }}
+{{- end }}
+{{- range $key, $val := $new}}
+---
+apiVersion: {{ $.Capabilities.APIVersions.Has "policy/v1/PodDisruptionBudget" | ternary "policy/v1" "policy/v1beta1" }}
+kind: PodDisruptionBudget
+metadata:
+  name: {{ $key }}-pdb
+  labels:
+    {{- include "cbur.proxy.commonLabels" (tuple $) | indent 4 }}
+    {{- include "cbur.customLabels" (tuple $.Values.global.labels) | indent 4 }}
+    app: {{ $val }}
+    release: {{ $.Release.Name }}
+  annotations:
+    {{- include "cbur.customAnnotations" (tuple $.Values.global.annotations) | indent 4 }}
+spec:
+  {{- if and (kindIs "float64" $.Values.pdb.minAvailable) (not $.Values.pdb.minAvailable) }}
+  minAvailable: {{ $.Values.pdb.minAvailable }}
+  {{- else if not $.Values.pdb.minAvailable }}
+  minAvailable: 1
+  {{- else if (kindIs "string" $.Values.pdb.minAvailable) }}
+  minAvailable: {{ $.Values.pdb.minAvailable | quote }}
+  {{- else }}
+  minAvailable: {{ $.Values.pdb.minAvailable }}
+  {{- end }}
+  selector:
+    matchLabels:
+      app: {{ $val }}
+      app.kubernetes.io/name: "{{ template "cbur.name" $ }}"
+      app.kubernetes.io/instance: "{{ $.Release.Name }}"
+      app.kubernetes.io/component: "LifecycleAndConfiguration"
+{{- end }}
+{{- end -}}
+{{- end -}}

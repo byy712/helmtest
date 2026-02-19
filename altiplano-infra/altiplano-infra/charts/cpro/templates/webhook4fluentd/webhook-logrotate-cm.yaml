@@ -1,0 +1,61 @@
+{{- $webhooksyslogEnabled := eq (include "csf-common-lib.v1.coalesceBoolean" (tuple .Values.webhook4fluentd.unifiedLogging.syslog.enabled .Values.global.unifiedLogging.syslog.enabled false )) "true" }}
+{{- if and .Values.webhook4fluentd.enabled (or $webhooksyslogEnabled .Values.webhook4fluentd.unifiedLogging.extension .Values.global.unifiedLogging.extension) }}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ template "cpro-common-lib-v1.ConfigmapName" (dict "name" "webhooklogrotatecm" "root" .) }}
+  labels:
+    {{- include "cpro.labelsOrAnnotations" (tuple .Values.global.labels) | indent 4}}
+  annotations:
+{{- include "cpro.labelsOrAnnotations" (tuple .Values.global.annotations) | indent 4}}
+data:
+  logrotate.conf: |
+    /var/log/webhook4fluentd/*.log {
+       missingok
+       rotate 5
+       compress
+       notifempty
+       delaycompress
+       copytruncate
+       size 10M
+       }
+  rotate.sh: |
+    #!/bin/bash
+    #set -x
+    : "${ROTATE_CONFIG:=/logRotate/logrotate.conf}"
+    : "${ROTATESTATE:=/var/log/webhook4fluentd/logrotate-state}"
+    : "${ROTATE_INTERVAL=15m}"
+    if [[ ! -s "${ROTATE_CONFIG}" ]];
+    then
+       echo "${ROTATE_CONFIG} does not exist "
+       sleep 3
+       exit 1
+    fi
+    if [[ ! -s "${ROTATESTATE}" ]];
+    then
+       echo "${ROTATESTATE} does not exist, create it "
+       touch ${ROTATESTATE}
+       if [[ "${?}" != 0 ]]; 
+       then
+          echo "failure to create state file ${ROTATESTATE}"
+          sleep 3
+          exit 1
+       fi
+       chmod 600 ${ROTATESTATE}
+       if [[ "${?}" != 0 ]];
+       then 
+          echo "failure to set mode ${ROTATESTATE} to 600, just ignore"
+       fi
+    fi
+    while :
+    do
+      logrotate ${ROTATE_CONFIG} --state ${ROTATESTATE} --verbose
+      if [[ "${?}" != 0 ]];
+      then
+         echo "rotate failure"
+         sleep 3
+         exit 1
+      fi
+      sleep "${ROTATE_INTERVAL}"
+    done
+{{- end }}

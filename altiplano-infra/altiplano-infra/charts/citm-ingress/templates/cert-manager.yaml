@@ -1,0 +1,160 @@
+{{- if and (eq (include "citm-ingress.getCertificate" (tuple  . "streamSSLCertificate" )) "no_certificate")  (eq (include "citm-ingress.getCertificate" (tuple  . "sslCertificate" )) "no_certificate") }}
+{{- if and (contains "true" (include "citm-ingress.isCertManagerEnabled" .)) (contains "enabled" (include "citm-ingress.isCertManagerEnabled" .)) }}
+{{- if .Values.controller.certificate.api }}
+apiVersion: {{ .Values.controller.certificate.api }}
+{{- else }}
+apiVersion: {{ template "citm-ingress.certificateVersion" . }}
+{{- end }}
+kind: Certificate
+metadata:
+  {{- if .Values.controller.certificate.secretName }}
+  name: {{ .Values.controller.certificate.secretName }}
+  {{- else }}
+  name: tls-{{ template "citm-ingress.fullname" . }}
+  {{- end }}
+  namespace: {{ .Release.Namespace }}
+  labels:
+    app: {{ template "citm-ingress.name" . }}
+    chart: "{{ .Chart.Name }}-{{ .Chart.Version }}"
+    release: "{{ .Release.Name }}"
+    heritage: "{{ .Release.Service }}"
+    {{- include "citm-ingress.commonLabels" . | indent 4 }}
+spec:
+  {{- if .Values.controller.certificate.secretName }}
+  secretName: {{ .Values.controller.certificate.secretName }}
+  {{- else }}
+  secretName: tls-{{ template "citm-ingress.fullname" . }}
+  {{- end }}
+  duration: {{ .Values.controller.certificate.duration }}
+  renewBefore: {{ .Values.controller.certificate.renewBefore }}
+# commonName seems to be deprecated. To be removed ?
+# https://cert-manager.io/docs/usage/certificate/
+# The use of the common name field has been deprecated since 2000 and is discouraged from being used
+{{- if .Values.controller.certificate.commonName }}
+  commonName: {{ .Values.controller.certificate.commonName }}
+{{- end }}
+{{- if .Capabilities.APIVersions.Has "cert-manager.io/v1/Certificate" }}
+  privateKey:
+    size: {{ .Values.controller.certificate.privateKey.size }}
+    rotationPolicy: {{ .Values.controller.certificate.privateKey.rotationPolicy }}
+    encoding: {{ .Values.controller.certificate.privateKey.encoding }}
+    algorithm:  {{ .Values.controller.certificate.privateKey.algorithm }}
+{{- if .Values.controller.certificate.subject }}
+  subject:
+{{ toYaml .Values.controller.certificate.subject | indent 2 }}
+{{- end }}
+{{- else }}
+  privateKey:
+    rotationPolicy: {{ .Values.controller.certificate.privateKey.rotationPolicy }}
+  keyEncoding: {{ .Values.controller.certificate.privateKey.encoding }}
+  keyAlgorithm: {{ .Values.controller.certificate.privateKey.algorithm }}
+  keySize: {{ .Values.controller.certificate.privateKey.size }}
+  organization:
+  {{- range .Values.controller.certificate.organization }}
+    - {{ . }}
+  {{- end }}
+{{- end }}
+  dnsNames:
+{{- if .Values.controller.certificate.dnsNames }}
+{{ toYaml .Values.controller.certificate.dnsNames | indent 2 }}
+{{- if .Values.controller.certificate.commonName }}
+  - {{ .Values.controller.certificate.commonName }}
+{{- end }}
+{{- else }}
+  - {{ template "citm-ingress.fullname" . }}.{{ .Release.Namespace }}
+  - {{ template "citm-ingress.fullname" . }}.{{ .Release.Namespace }}.svc
+  - {{ template "citm-ingress.fullname" . }}.{{ .Release.Namespace }}.svc.{{ .Values.controller.clusterDomain }}
+{{- end }}
+{{- if .Values.controller.certificate.usages }}
+  usages:
+{{ toYaml .Values.controller.certificate.usages | indent 2 }}
+{{- else }}
+  usages:
+  - server auth
+{{- end }}
+{{- if .Values.controller.certificate.uris }}
+  uris:
+{{ toYaml .Values.controller.certificate.uris | indent 2 }}
+{{- end }}
+{{- if .Values.controller.certificate.ipAddresses }}
+  ipAddresses:
+{{ toYaml .Values.controller.certificate.ipAddresses | indent 2 }}
+{{- else }}
+  ipAddresses:
+    - "127.0.0.1"
+    - "::1"
+{{- end }}
+    {{- if not (eq (include "citm-ingress.getCertManagerIssuer" .) "false") }}
+{{ include "citm-ingress.getCertManagerIssuer" . }}
+    {{- else }}
+  issuerRef:
+    name: {{ template "citm-ingress.fullname" . }}-issuer
+    kind: Issuer
+    group: cert-manager.io
+    {{- end }}
+{{- else if and (contains "true" (include "citm-ingress.isCertManagerEnabled" .)) (contains "used" (include "citm-ingress.isCertManagerEnabled" .)) }}
+{{- if .Values.certManager.api }}
+apiVersion: {{ .Values.certManager.api }}
+{{- else }}
+apiVersion: {{ template "citm-ingress.certificateVersion" . }}
+{{- end }}
+kind: Certificate
+metadata:
+  name: tls-{{ template "citm-ingress.fullname" . }}
+  namespace: {{ .Release.Namespace }}
+  labels:
+    app: {{ template "citm-ingress.name" . }}
+    chart: "{{ .Chart.Name }}-{{ .Chart.Version }}"
+    release: "{{ .Release.Name }}"
+    heritage: "{{ .Release.Service }}"
+    {{- include "citm-ingress.commonLabels" . | indent 4 }}
+spec:
+  secretName: tls-{{ template "citm-ingress.fullname" . }}
+  duration: {{ .Values.certManager.duration }}
+  renewBefore: {{ .Values.certManager.renewBefore }}
+# commonName seems to be deprecated. To be removed ?
+# https://cert-manager.io/docs/usage/certificate/
+# The use of the common name field has been deprecated since 2000 and is discouraged from being used
+{{- if .Values.certManager.servername }}
+  commonName: {{ .Values.certManager.servername }}
+{{- end }}
+{{- if .Capabilities.APIVersions.Has "cert-manager.io/v1/Certificate" }}
+  privateKey:
+    size: {{ .Values.certManager.keySize }}
+  subject:
+    organizations:
+    {{- range .Values.certManager.organization }}
+      - {{ . }}
+    {{- end }}
+{{- else }}
+  keySize: {{ .Values.certManager.keySize }}
+  organization:
+  {{- range .Values.certManager.organization }}
+    - {{ . }}
+  {{- end }}
+{{- end }}
+  dnsNames:
+{{- if .Values.certManager.dnsNames }}
+{{ toYaml .Values.certManager.dnsNames | indent 2 }}
+{{- if .Values.certManager.servername }}
+  - {{ .Values.certManager.servername }}
+{{- end }}
+{{- else }}
+{{- if .Values.certManager.servername }}
+  - {{ .Values.certManager.servername }}
+{{- else }}
+  - ""
+{{- end }}
+{{- end }}
+{{- if .Values.certManager.ipAddresses }}
+  ipAddresses:
+{{ toYaml .Values.certManager.ipAddresses | indent 2 }}
+{{- end }}
+  issuerRef:
+    name: {{ .Values.certManager.issuerRef.name }}
+    # We can reference ClusterIssuers by changing the kind here.
+    # The default value is Issuer (i.e. a locally namespaced Issuer)
+    kind: {{ .Values.certManager.issuerRef.kind }}
+    group: {{ .Values.certManager.issuerRef.group }}
+{{- end }}
+{{- end }}

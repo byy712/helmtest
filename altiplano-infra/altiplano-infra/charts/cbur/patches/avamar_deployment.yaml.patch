@@ -1,0 +1,10 @@
+--- /home/zafeiri/cbur-charts/cbur-1.17.0/cbur/templates/avamar_deployment.yaml	2024-03-28 20:26:14.000000000 +0530
++++ /home/zafeiri/cbur-charts/cbur-1.17.0-nokia-patch-1/cbur/templates/avamar_deployment.yaml	2024-03-29 18:42:30.000000000 +0530
+@@ -34,6 +34,7 @@
+     metadata:
+       name: {{ include "cbur.proxy.resourceName" (tuple . "Deployment" "avamar") }}
+       labels:
++        altiplano-role: {{ .Values.accessRoleLabel }}
+         heritage: {{ .Release.Service }}
+         app: {{ template "cbur.fullname" . }}-avamar
+         release: {{ .Release.Name }}

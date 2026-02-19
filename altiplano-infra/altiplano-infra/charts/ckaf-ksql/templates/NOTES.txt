@@ -1,0 +1,11 @@
+This chart installs Confluent KSQL Server.
+
+https://docs.confluent.io/current/ksql/docs
+
+Please refer to templates/queries.sql for more.
+
+1. Get the application URL by running these commands:
+  export POD_NAME=$(kubectl get pods --namespace {{ .Release.Namespace }} -l "app={{ template "ckaf-ksql.name" . }},release={{ .Release.Name }}" -o jsonpath="{.items[0].metadata.name}")
+  
+2. kubectl port-forward $POD_NAME 8080:{{ .Values.servicePort }}
+

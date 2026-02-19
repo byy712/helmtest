@@ -1,0 +1,43 @@
+{{- if and .Values.server.enabled .Values.server.cbur.enabled }}
+apiVersion: {{ template "cpro.apiVersion.brpolicyapiversion" . }}
+kind: BrPolicy
+metadata:
+  name: 
+    {{- if .Values.ha.enabled }}
+    {{ template "cpro.prometheus.server.StsName" . }}
+    {{- else }}
+    {{ template "cpro.prometheus.server.DeploymentName" . }}
+    {{- end }}
+  labels:
+    {{- include "cpro.app.labels.v3" ( dict "root" . "context" .Values.server ) | nindent 4 }}
+{{- include "cpro.labelsOrAnnotations" (tuple .Values.global.labels) | indent 4}}
+  annotations:
+{{- include "cpro.labelsOrAnnotations" (tuple .Values.global.annotations) | indent 4}}
+spec:
+  selector:
+    matchLabels:
+      app: {{ template "cpro.prometheus.name" . }} #<--unique label of pod that identify the pods of deployment and statefulset
+      component: {{ .Values.server.name }}
+      release: {{ .Release.Name }}
+  volumes:
+  - storage-volume #<---volume name you want to backup. NOTE: not mount path
+  backend:
+    mode: {{ .Values.server.cbur.backendMode }}
+  autoEnableCron: {{ .Values.server.cbur.autoEnableCron | default false }}
+  autoUpdateCron: {{ .Values.server.cbur.autoUpdateCron | default false }}
+  cronSpec: '{{ .Values.server.cbur.cronJob }}'
+  {{- if and (hasKey .Values.server.cbur "dataEncryptionEnable")}}
+  dataEncryption:
+    enable: {{ .Values.server.cbur.dataEncryptionEnable }}
+    secret: {{ .Values.server.cbur.dataEncryptionSecretName | default "" | quote }}
+  {{- end }}
+{{- if .Values.ha.enabled }}
+  k8sType: statefulset
+  brOption: {{ .Values.server.cbur.brOption }}
+{{- else }}
+  k8sType: deployment
+{{- end }}
+  maxiCopy: {{ .Values.server.cbur.maxCopy }}
+  waitPodStableSeconds: {{ .Values.server.cbur.waitPodStableSeconds }}
+  ignoreFileChanged: {{ .Values.server.cbur.ignoreFileChanged }}
+{{- end }}

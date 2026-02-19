@@ -1,0 +1,127 @@
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ template "crmq.fullname" . }}
+  labels:
+    app: {{ template "crmq.name" . }}
+    chart: {{ template "crmq.chart" .  }}
+    release: "{{ .Release.Name }}"
+    heritage: "{{ .Release.Service }}"
+    {{- include "crmq.commonLabels" . | indent 4 }}
+    {{- include "csf-common-lib.v1.customLabels" (tuple .Values.global.labels) | indent 4 }}
+  annotations:
+    {{- include "csf-common-lib.v1.customAnnotations" (tuple .Values.global.annotations) | indent 4 }}
+spec:
+  {{ include "crmq.dualStack.config" . | indent 2 }}
+  type: ClusterIP
+  clusterIP: None
+  ports:
+  - name: tcp-epmd
+    port: 4369
+    targetPort: tcp-epmd
+  - name: tcp-dist
+    port: 25672
+    targetPort: tcp-dist
+  - name: tcp-erlang
+    port: 35672
+    targetPort: tcp-erlang
+  {{- if and .Values.rabbitmq.management.enabled .Values.ingress.enabled }}
+  - name: tcp-stats
+    port: {{ .Values.rabbitmq.management.port }}
+    targetPort: tcp-stats
+  {{- end }}
+  {{- if .Values.rabbitmq.amqpSvc }}
+  {{- if or (not .Values.rabbitmq.tls.enabled) .Values.rabbitmq.enablePlainTextPort }}
+  - name: tcp-amqp
+    port: {{ .Values.rabbitmq.amqpPort }}
+    targetPort: tcp-amqp
+  {{- end }}
+  {{- end }}
+  {{- if .Values.rabbitmq.tls.enabled }}
+  - name: tcp-server-ssl
+    port: {{ .Values.rabbitmq.tls.ssl_port }}
+    targetPort: tcp-server-ssl
+  {{- end }}
+  selector:
+    app: {{ template "crmq.name" . }}
+    release: "{{ .Release.Name }}"
+---
+apiVersion: v1
+kind: Service
+metadata:
+  {{- if .Values.svcName }}
+  name: {{ .Values.svcName }}
+  {{- else }}
+  name: {{ template "crmq.fullname" . }}-ext
+  {{- end }}
+  labels:
+    app: {{ template "crmq.name" . }}
+    chart: {{ template "crmq.chart" .  }}
+    release: "{{ .Release.Name }}"
+    heritage: "{{ .Release.Service }}"
+    {{- include "crmq.commonLabels" . | indent 4 }}
+    {{- include "csf-common-lib.v1.customLabels" (tuple .Values.global.labels) | indent 4 }}
+  annotations:
+    {{- include "csf-common-lib.v1.customLabels" (tuple .Values.svcAnnotations .Values.svcPrometheusAnnotations .Values.global.annotations) | indent 4 }}
+spec:
+  {{ include "crmq.dualStack.config" . | indent 2 }}
+  type: {{ .Values.serviceType }}
+  ports:
+  {{- if .Values.rabbitmq.amqpSvc }}
+  - name: tcp-amqp
+    port: {{ .Values.rabbitmq.amqpPort }}
+    targetPort: tcp-amqp
+    {{- if .Values.rabbitmq.nodePort }}
+    nodePort: {{ .Values.rabbitmq.nodePort }}
+    {{- end }}
+  {{- end }}
+
+  {{- if and (not .Values.ingress.enabled) .Values.rabbitmq.management.enabled }}
+  - name: tcp-stats
+    port: {{ .Values.rabbitmq.management.port }}
+    targetPort: tcp-stats
+    {{- if .Values.rabbitmq.management.nodePort }}
+    nodePort: {{ .Values.rabbitmq.management.nodePort }}
+    {{- end }}
+  {{- end }}
+
+  {{- if .Values.rabbitmq.prometheus.enabled }}
+  - name: tcp-prometheus
+    port: {{ .Values.rabbitmq.prometheus.port }}
+    targetPort: tcp-prometheus
+    {{- if .Values.rabbitmq.prometheus.nodePort }}
+    nodePort: {{ .Values.rabbitmq.prometheus.nodePort }}
+    {{- end }}
+  {{- end }}
+
+  {{- if .Values.rabbitmq.tls.enabled }}
+  - name: tcp-server-ssl
+    port: {{ .Values.rabbitmq.tls.ssl_port }}
+    targetPort: tcp-server-ssl
+    {{- if .Values.rabbitmq.tls.nodePort }}
+    nodePort: {{ .Values.rabbitmq.tls.nodePort }}
+    {{- end }}
+  {{- end }}
+
+
+  {{- if .Values.rabbitmq.mqtt.enabled }}
+  - name: tcp-mqtttcp
+    port: {{ .Values.rabbitmq.mqtt.DefaultTcpPort }}
+    targetPort: tcp-mqtttcp
+    {{- if .Values.rabbitmq.mqtt.tcpNodePort }}
+    nodePort: {{ .Values.rabbitmq.mqtt.tcpNodePort }}
+    {{- end }}
+  {{- if .Values.rabbitmq.mqtt.enabledSsl }}
+  - name: tcp-mqttssl
+    targetPort: tcp-mqttssl
+    port: {{ .Values.rabbitmq.mqtt.DefaultSslPort }}
+    {{- if .Values.rabbitmq.mqtt.sslNodePort }}
+    nodePort: {{ .Values.rabbitmq.mqtt.sslNodePort }}
+    {{- end }}
+  {{- end }}
+  {{- end }}
+
+  selector:
+    app: {{ template "crmq.name" . }}
+    release: "{{ .Release.Name }}"

@@ -1,0 +1,113 @@
+{{- include "cmdb.init" . -}}
+{{- if and (eq (include "cmdb.has_maxscale" .) "true") .Values.geo_redundancy.enabled }}
+{{- $service_value := .Values.services.mariadb_master }}
+{{- $service_name := $service_value.name | default (printf "%s-mariadb-master" (include "cmdb.fullname" .)) }}
+{{- $mtls_mode := include "cmdb.istio_mtls_mode" . }}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ $service_name }}
+  labels:
+    {{- include "cmdb-mariadb.labels" (tuple . "service") | nindent 4 }}
+    {{- include "cmdb.get_mtls_labels" . | nindent 4 }}
+  annotations:
+    {{- include "cmdb-mariadb.annotations" (tuple . "service")  | nindent 4 }}
+spec:
+  type: {{ eq $service_value.type "NodePort" | ternary "NodePort" "ClusterIP" }}
+  {{- include "cmdb.dual-stack" (tuple . .Values.services.mariadb_master) | nindent 2 }}
+  ports:
+  - name: tcp-mysql
+    port: {{ $service_value.port }}
+    targetPort: tcp-mysql
+    {{- if and (eq $service_value.type "NodePort") ($service_value.nodePort) }}
+    nodePort: {{ $service_value.nodePort }}
+    {{- end }}
+  selector:
+    {{- include "cmdb-mariadb.selector_labels" . | nindent 4 }}
+    type: mariadb
+    mariadb-master: "yes"
+
+{{- if .Values.istio.enabled }}
+{{- if semverCompare "<1.5" (toString .Values.istio.version) }}
+---
+apiVersion: "authentication.istio.io/v1alpha1"
+kind: "Policy"
+metadata:
+  name: {{ $service_name }}-mlts-authn
+  labels:
+    {{- include "cmdb-mariadb.labels" (tuple . "policy") | nindent 4 }}
+  annotations:
+    {{- include "cmdb-mariadb.annotations" (tuple . "policy") | nindent 4 }}
+spec:
+  targets:
+  - name: {{ $service_name }}
+  peers:
+  - mtls:
+      mode: {{ $mtls_mode }}
+{{- end }}
+---
+apiVersion: networking.istio.io/v1beta1
+kind: DestinationRule
+metadata:
+  name: {{ $service_name }}-mlts-dr
+  labels:
+    {{- include "cmdb-mariadb.labels" (tuple . "destinationrule") | nindent 4 }}
+  annotations:
+    {{- include "cmdb-mariadb.annotations" (tuple . "destinationrule") | nindent 4 }}
+spec:
+  host: {{ $service_name }}
+  trafficPolicy:
+    tls:
+      mode: ISTIO_MUTUAL
+{{- end }}
+
+
+{{- /*******************************************
+     * ConfigMap for port-based Ingress (CITM) *
+     *******************************************/}}
+{{- if eq $service_value.type "IngressConfigMap" }}
+---
+{{- /* Check Required Values */}}
+{{- $cm_prefix := required "services.mariadb_master.citmIngress.configMapName is required when type: IngressConfigMap" $service_value.citmIngress.configMapName }}
+{{- $ingress_port := required "services.mariadb_master.citmIngress.port is required when type: IngressConfigMap" $service_value.citmIngress.port }}
+{{- $port_config := (list $service_value.port (default "" $service_value.citmIngress.keywords)) | join ":"  | trimSuffix ":" }}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ $cm_prefix }}-{{ $service_name }}
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "cmdb-mariadb.labels" (tuple . "configmap") | nindent 4 }}
+  annotations:
+    {{- include "cmdb-mariadb.annotations" (tuple . "configmap") | nindent 4 }}
+data:
+  "{{ $ingress_port }}": "{{ .Release.Namespace }}/{{ $service_name }}:{{ $port_config }}"
+
+{{- /******************************************************
+     * TransportIngress for port-based Ingress (CSFP/NCS) *
+     ******************************************************/}}
+{{- else if eq $service_value.type "TransportIngress" }}
+---
+{{- if (not (.Capabilities.APIVersions.Has "csf.nokia.com/v1/TransportIngress")) }}
+  {{- $err := required "Missing environment dependency.  TransportIngress CRD must be defined when type: TransportIngress." .err }}
+{{- end }}
+{{- /* Check Required Values */}}
+{{- $ingress_port := required "services.mariadb_master.csfTransportIngress.port is required when type: TransportIngress" $service_value.csfTransportIngress.port }}
+apiVersion: "csf.nokia.com/v1"
+kind: TransportIngress
+metadata:
+  name: {{ $service_value.csfTransportIngress.name | default $service_name }}
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "cmdb-mariadb.labels" (tuple . "transportingress") | nindent 4 }}
+  annotations:
+    {{- include "cmdb-mariadb.annotations" (tuple . "transportingress") | nindent 4 }}
+spec:
+  port: {{ $ingress_port }}
+  targetPort: {{ $service_value.port }}
+  targetService: {{ $service_name }}
+  protocol: TCP
+{{- end }}
+
+{{- end }}

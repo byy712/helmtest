@@ -1,0 +1,41 @@
+{{- if and (.Values.rbac.enabled) (.Values.nodeExporter.enabled) (.Values.rbac.scc.create) }}
+apiVersion: {{ template "cpro.prometheus.apiVersion.scc" . }}
+kind: SecurityContextConstraints
+metadata:
+  labels:
+    {{- include "cpro.app.labels.v3" ( dict "root" . "context" .Values.nodeExporter ) | nindent 4 }}
+{{- include "cpro.labelsOrAnnotations" (tuple .Values.global.labels) | indent 4}}
+  name: {{ template "cpro.prometheus.nodeexporter.psporsccname" . }}
+  annotations:
+{{- include "cpro.labelsOrAnnotations" (tuple .Values.global.annotations) | indent 4}}
+allowHostDirVolumePlugin: true
+allowHostIPC: false
+allowHostNetwork: true
+allowHostPID: true
+allowHostPorts: true
+allowPrivilegeEscalation: true
+allowPrivilegedContainer: true
+allowedCapabilities:
+{{- if .Values.nodeExporter.containerSecurityContext }}
+{{ toYaml .Values.nodeExporter.containerSecurityContext.capabilities.add }}
+{{- end }}
+defaultAddCapabilities: null
+{{$data := dict "securitycontext" .Values.nodeExporter.podSecurityContext.seccompProfile "ctx" . }}
+{{- include "cpro.nodeExporterScc" $data }}
+fsGroup:
+  type: RunAsAny
+groups: []
+priority: null
+readOnlyRootFilesystem: true
+requiredDropCapabilities: null
+runAsUser:
+  type: MustRunAsRange
+seLinuxContext:
+  type: RunAsAny
+supplementalGroups:
+  type: RunAsAny
+users:
+- system:serviceaccount:{{ .Release.Namespace }}:{{ template "cpro.prometheus.node.serviceAccountName" . }}
+volumes:
+- '*'
+{{- end }}

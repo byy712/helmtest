@@ -1,0 +1,294 @@
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: {{ template "ckaf-kafka.postUpgradeJobName" . }}
+  labels:
+{{ include "ckaf-kafka.commonLabels" . | indent 4 }}
+{{- include "csf-common-lib.v1.customLabels" (tuple .Values.global.labels) | indent 4 }}
+    app: {{ .Chart.Name }}
+    release: {{ .Release.Name | quote }}
+    heritage: {{ .Release.Service | quote }}
+  annotations:
+    seccomp.security.alpha.kubernetes.io/allowedProfileNames: {{ .Values.global.seccompAllowedProfileNames }}
+    seccomp.security.alpha.kubernetes.io/defaultProfileName: {{ .Values.global.seccompDefaultProfileName }}
+    "helm.sh/hook": post-upgrade
+    "helm.sh/hook-delete-policy": before-hook-creation,hook-succeeded
+    "helm.sh/hook-weight": "-5"
+{{- include "csf-common-lib.v1.customAnnotations" (tuple .Values.global.annotations) | indent 4 }}
+spec:
+  template:
+    metadata:
+      labels:
+        altiplano-role: {{ .Values.accessRoleLabel }}
+        app: {{ .Chart.Name }}
+{{ include "ckaf-kafka.commonLabels" . | indent 8 }}
+{{- include "csf-common-lib.v1.customLabels" (tuple .Values.global.labels) | indent 8 }}
+      annotations:
+        sidecar.istio.io/inject: "false"
+{{- include "csf-common-lib.v1.customAnnotations" (tuple .Values.global.annotations) | indent 8 }}
+    spec:
+      {{- if .Values.kafkaNodeSelector.enable }}
+      nodeSelector:
+{{ toYaml .Values.kafkaNodeSelector.nodeLabel | indent 8 }}
+      {{- end }}
+      {{- include "ckaf-kafka.tolerations" . | indent 6 }}
+      {{- if .Values.global.rbac.enabled }}
+      serviceAccountName: {{ template "ckaf-kafka.serviceAccountName" . }}
+      {{- end }}
+      automountServiceAccountToken: true
+      {{- if eq .Values.security.enabled true }}
+      securityContext:
+        {{- if ( ne ( toString ( .Values.security.runAsUser )) "auto" ) }}
+        runAsUser: {{ .Values.security.runAsUser }}
+        {{- end }}
+        runAsNonRoot: true
+        {{- if ( ne ( toString (.Values.security.fsGroup)) "auto" ) }}
+        fsGroup: {{ .Values.security.fsGroup }}
+        {{- end }}
+        {{- if eq (include "ckaf-kafka.renderSeccompProfile" .) "true" }}
+        seccompProfile:
+          type: {{ .Values.security.seccompProfile.type }}
+        {{- end }}
+      {{- end }}
+      {{- if  coalesce .Values.imagePullSecrets .Values.global.imagePullSecrets }}
+      imagePullSecrets:
+        - name: {{ coalesce .Values.imagePullSecrets .Values.global.imagePullSecrets }}
+      {{- end }}
+      restartPolicy: Never
+      containers:
+      - name: {{ template "ckaf-kafka.postUpgradeJobContainerName" . }}
+        {{- if eq .Values.global.flatRegistry true }}
+        image: "{{ .Values.global.registry }}/{{ .Values.kubectlImageName }}:{{ .Values.kubectlTag }}"
+        {{- else }}
+        image: "{{ coalesce .Values.global.registry3 .Values.global.registry }}/{{ include "ckaf-kafka.kubectlImageRepo"  . }}:{{ .Values.kubectlTag }}"
+        {{- end }}
+        imagePullPolicy: IfNotPresent
+        {{- if eq .Values.security.enabled true }}
+        securityContext:     
+          runAsNonRoot: true
+          readOnlyRootFilesystem: {{ .Values.security.readOnlyRootFilesystem }}
+          {{- if ( ne ( toString ( .Values.security.runAsUser )) "auto" ) }}
+          runAsUser: {{ .Values.security.runAsUser }}
+          {{- end }}
+          {{- if .Values.security.runAsGroup }}
+          runAsGroup: {{ .Values.security.runAsGroup }}
+          {{- end }}
+          allowPrivilegeEscalation: false
+          {{- if eq (include "ckaf-kafka.renderSeccompProfile" .) "true" }}
+          seccompProfile:
+            type: {{ .Values.security.seccompProfile.type }}
+          {{- end }}
+          privileged: false
+          capabilities:
+            drop: ["ALL"]
+        {{- end }}
+        resources:
+{{- include "ckaf-kafka.getResources" (tuple . .Values.jobResources "1") | indent 10 }}
+        env:
+        - name: TZ
+          value: {{ template "ckaf-kafka.timeZoneEnv" . }}
+        command:
+        - bash
+        - -c
+        - |
+          echo "Kafka upgrade changes have been sucessfully applied" 
+          echo "Kafka post-upgrade job in progress..."
+          {{if .Values.enable_upgrade_hook}}
+          b=$(echo {{ .Values.imageTag }} | tr '-' '\n')
+          image_version=$(echo "${b[1]}")
+          echo "image version: = ${image_version}"
+          curr_image=$(echo {{ .Values.upgrade.CURRENT_KAFKA_VERSION }})
+          echo "curent image version: = ${curr_image}"
+          if  [ "${image_version}" != "${curr_image}" ]
+          then
+               KF_COUNT={{ .Values.Replicas }}
+               echo "UPDATED_KF_COUNT = ${KF_COUNT}"
+               for (( i=0; i<${KF_COUNT}; i++ ));do
+               kubectl exec {{ template "ckaf-kafka.statefulset" . }}-$i -c {{ template "ckaf-kafka.containerName" . }}  -- sed -i 's/inter.broker.protocol.version={{ .Values.upgrade.CURRENT_KAFKA_VERSION }}/inter.broker.protocol.version=${image_version}/g'  /etc/kafka/server.properties
+               done;
+          fi
+          # Since previous ckaf kafka charts doesn't have pre-rollback.yaml
+          {{- if .Values.global.prepareRollback }}
+          kubectl delete statefulset --cascade=false --namespace {{ .Release.Namespace }} -l app={{ .Chart.Name }},release={{ .Release.Name }}
+          {{- end }} # .Values.global.prepareRollback
+          
+          {{- end }} # .Values.enable_upgrade_hook
+          echo "Kafka post-upgrade job completed."
+          echo "To monitor the status of the Kafka pods "
+          echo "kubectl get pods --namespace {{ .Release.Namespace }} -l app={{ .Chart.Name }},release={{ .Release.Name }}"
+
+
+
+---
+# scale feature support via upgrade hooks.
+{{ if .Values.global.enable_scale_via_upgrade }}
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: {{ template "ckaf-kafka.postUpgradeScaleJobName" . }}
+  labels:
+{{ include "ckaf-kafka.commonLabels" . | indent 4 }}
+{{- include "csf-common-lib.v1.customLabels" (tuple .Values.global.labels) | indent 4 }}
+    app: {{ .Chart.Name }}
+    release: {{ .Release.Name | quote }}
+    heritage: {{ .Release.Service | quote }}
+  annotations:
+    seccomp.security.alpha.kubernetes.io/allowedProfileNames: {{ .Values.global.seccompAllowedProfileNames }}
+    seccomp.security.alpha.kubernetes.io/defaultProfileName: {{ .Values.global.seccompDefaultProfileName }}
+    "helm.sh/hook": post-upgrade
+    "helm.sh/hook-delete-policy": before-hook-creation,hook-succeeded
+    "helm.sh/hook-weight": "-5"
+{{- include "csf-common-lib.v1.customAnnotations" (tuple .Values.global.annotations) | indent 4 }}
+spec:
+  # retry limit for the pod
+  backoffLimit: 1
+  template:
+    metadata:
+      labels:
+        altiplano-role: {{ .Values.accessRoleLabel }}
+        app: {{ .Chart.Name }}
+{{ include "ckaf-kafka.commonLabels" . | indent 8 }}
+{{- include "csf-common-lib.v1.customLabels" (tuple .Values.global.labels) | indent 8 }}
+      annotations:
+        sidecar.istio.io/inject: "false"
+{{- include "csf-common-lib.v1.customAnnotations" (tuple .Values.global.annotations) | indent 8 }}
+    spec:
+      {{- if .Values.kafkaNodeSelector.enable }}
+      nodeSelector:
+{{ toYaml .Values.kafkaNodeSelector.nodeLabel | indent 8 }}
+      {{- end }}
+      {{- include "ckaf-kafka.tolerations" . | indent 6 }}
+      {{- if .Values.global.rbac.enabled }}
+      serviceAccountName: {{ template "ckaf-kafka.serviceAccountName" . }}
+      {{ end }}
+      automountServiceAccountToken: true
+      {{- if eq .Values.security.enabled true }}
+      securityContext:
+        {{- if ( ne ( toString ( .Values.security.runAsUser )) "auto" ) }}
+        runAsUser: {{ .Values.security.runAsUser }}
+        {{- end }}
+        runAsNonRoot: true
+        {{- if ( ne ( toString (.Values.security.fsGroup)) "auto" ) }}
+        fsGroup: {{ .Values.security.fsGroup }}
+        {{- end }}
+        {{- if eq (include "ckaf-kafka.renderSeccompProfile" .) "true" }}
+        seccompProfile:
+          type: {{ .Values.security.seccompProfile.type }}
+        {{- end }}
+      {{- end }}
+      {{- if  coalesce .Values.imagePullSecrets .Values.global.imagePullSecrets }}
+      imagePullSecrets:
+        - name: {{ coalesce .Values.imagePullSecrets .Values.global.imagePullSecrets }}
+      {{- end }}
+      restartPolicy: Never
+      containers:
+      - name: {{ template "ckaf-kafka.postUpgradeScaleJobContainerName" . }}
+        {{- if eq .Values.global.flatRegistry true }}
+        image: "{{ .Values.global.registry }}/{{ .Values.kubectlImageName }}:{{ .Values.kubectlTag }}"
+        {{- else }}
+        image: "{{ coalesce .Values.global.registry3 .Values.global.registry }}/{{ include "ckaf-kafka.kubectlImageRepo" . }}:{{ .Values.kubectlTag }}"
+        {{- end }}
+        imagePullPolicy: IfNotPresent
+        {{- if eq .Values.security.enabled true }}
+        securityContext:        
+          runAsNonRoot: true
+          readOnlyRootFilesystem: {{ .Values.security.readOnlyRootFilesystem }}
+          {{- if ( ne ( toString ( .Values.security.runAsUser )) "auto" ) }}
+          runAsUser: {{ .Values.security.runAsUser }}
+          {{- end }}
+          {{- if .Values.security.runAsGroup }}
+          runAsGroup: {{ .Values.security.runAsGroup }}
+          {{- end }}
+          allowPrivilegeEscalation: false
+          {{- if eq (include "ckaf-kafka.renderSeccompProfile" .) "true" }}
+          seccompProfile:
+            type: {{ .Values.security.seccompProfile.type }}
+          {{- end }}
+          privileged: false
+          capabilities:
+            drop: ["ALL"]
+        {{- end }}
+        env:
+          - name: OLD_REPLICA_COUNT
+            valueFrom:
+              configMapKeyRef:
+                name: {{ template "ckaf-kafka.name" . }}-replicas
+                key: replicas
+          - name: TZ
+            value: {{ template "ckaf-kafka.timeZoneEnv" . }}
+        resources:
+{{- include "ckaf-kafka.getResources" (tuple . .Values.jobResources "1") | indent 10 }}
+        command:
+        - bash
+        - -c
+        - |
+          echo "Kafka upgrade changes have been sucessfully applied"
+          echo "Kafka post-upgrade job in progress..."
+          newReplicaCount={{ .Values.Replicas }}
+          if [ "$newReplicaCount" -eq "$OLD_REPLICA_COUNT" ]
+          then
+            echo "Old and new kafka broker replica counts are same. Nothing to do."
+          # scale in case
+          elif [ "$newReplicaCount" -lt "$OLD_REPLICA_COUNT" ]
+          then
+            echo "Postscalein in progress"
+            if  [[ {{ .Values.Replicas | quote }} -eq "0" ]]; then
+              echo "Replicas set to 0, PVC would not be deleted."
+              echo "exiting postscalein."
+              printf -v cmdata "data:\n   replicas:  \"$newReplicaCount\""
+              kubectl patch configmap {{ template "ckaf-kafka.name" . }}-replicas -n {{ .Release.Namespace }}  --type merge -p "$cmdata"
+              exit 0
+            else
+              rc=$(kubectl exec {{ template "ckaf-kafka.statefulset" . }}-0 -c {{ template "ckaf-kafka.containerName" . }} -- bash -c "if [[ -f /var/lib/kafka/data/donotdeletepvc ]]; then echo "true" ; else echo "false"; fi" |tr -d "\r")
+              if [[ {{ .Values.safeScale }} -eq false && "$rc" == true ]]; then
+                echo "Replication factor of one or more topics is greater than the number of brokers that is scaled to."
+                echo "PVC wouldnt be deleted."
+                # deleting the file which was created in pre scalein.
+                kubectl exec {{ template "ckaf-kafka.statefulset" . }}-0 -c {{ template "ckaf-kafka.containerName" . }} -- bash -c "rm -rf /var/lib/kafka/data/donotdeletepvc"
+                # update the config map with the latest kafka cluster size.
+                printf -v cmdata "data:\n   replicas:  \"$newReplicaCount\""
+                kubectl patch configmap {{ template "ckaf-kafka.name" . }}-replicas -n {{ .Release.Namespace }}  --type merge -p "$cmdata"
+                exit 0
+              else
+                echo "Scaling in the kafka cluster"
+                # clean up the pvcs of the old brokers.
+                # get the list of pvcs owned by the release.
+                listOfPvcs=`kubectl get pvc -l app={{ .Chart.Name }},release={{ .Release.Name }} -n={{ .Release.Namespace }} | awk '{print $1}'`
+                for i in ${listOfPvcs};do
+                  pvcOrdinality=${i##*-}
+                  # delete pvc having ordinality greater than the new cluster size
+                  if ((${pvcOrdinality} >= ${newReplicaCount}));then
+                    echo "Deleting kafka pvc: ${i}"
+                    kubectl delete pvc ${i} --namespace {{ .Release.Namespace }}
+                  fi
+                done
+              fi
+            fi
+          # scale out case
+          else
+            echo "Kafka cluster scaled out. Reassigning the partitions!"
+            # prepare the broker ids of new cluster
+            for (( i=0; i<${newReplicaCount}; i++ ));do
+              brokerid=$(kubectl exec {{ template "ckaf-kafka.statefulset" . }}-$i -c {{ template "ckaf-kafka.containerName" . }} -n {{ .Release.Namespace }} -- cat /var/lib/kafka/data/topics/meta.properties |grep broker.id | sed -e 's/broker.id=//')
+              brokers=${brokers}${brokerid}","
+            done
+           
+            # trigger reassign partitions
+            echo "updated brokers : ${brokers}"
+            kubectl exec {{ template "ckaf-kafka.statefulset" . }}-0 -c {{ template "ckaf-kafka.containerName" . }} -n {{ .Release.Namespace }} -- sh /etc/kafka/ckaf-reassign-partitions --bootstrap-server  "{{ template "ckaf-kafka.statefulset" . }}-0.{{ template "ckaf-kafka.statefulset" . }}-headless.{{ template "ckaf-kafka.namespace" . }}.svc.{{ .Values.clusterDomain }}:{{ .Values.KafkaPort }}" --broker ${brokers} --topic all --throttle {{ .Values.throttle | int  }}
+            RC=$?
+            if [[ $RC != 0 ]];
+            then 
+              exit 1 
+            fi
+          fi
+          
+          # update the config map with the latest kafka cluster size.
+          printf -v cmdata "data:\n   replicas:  \"$newReplicaCount\""
+          kubectl patch configmap {{ template "ckaf-kafka.name" . }}-replicas -n {{ .Release.Namespace }}  --type merge -p "$cmdata"
+          echo "Kafka post-upgrade job completed..."
+          echo "To monitor the status of the Kafka pods "
+          echo "kubectl get pods --namespace {{ .Release.Namespace }} -l app={{ .Chart.Name }},release={{ .Release.Name }}"
+
+{{- end }}
+---

@@ -1,0 +1,3 @@
+{{- if eq (include "ckaf-ksql.PspCreation" .) "true" }}
+{{ include "ckaf-ksql.istio.psp" . }}
+{{- end }}

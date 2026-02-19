@@ -1,0 +1,30 @@
+{{- include "bssc-fluentd.isCertManagerEnable" . }}
+
+Fluentd is deployed as {{ .Values.fluentd.kind  }}
+
+Below command can be used to get fluentd pods deployed:
+kubectl get pods --namespace {{ .Release.Namespace }} -l app.kubernetes.io/instance={{ .Release.Name }},app.kubernetes.io/name={{ default .Chart.Name .Values.nameOverride }},app.kubernetes.io/component=fluentd,role=fluentd-logprocessor
+
+Fluentd configuration is stored as configmap in {{ .Release.Namespace }} namespace.
+kubectl get cm --namespace {{ .Release.Namespace }} -l app.kubernetes.io/instance={{ .Release.Name }},app.kubernetes.io/name={{ default .Chart.Name .Values.nameOverride }},app.kubernetes.io/component=fluentd
+
+{{- if .Values.fluentd.service.enabled }}
+
+Promethues service is enabled and metrics scrape port is {{ .Values.fluentd.service.metricsPort }} port
+kubectl get svc --namespace {{ .Release.Namespace }} -l app.kubernetes.io/instance={{ .Release.Name }},app.kubernetes.io/name={{ default .Chart.Name .Values.nameOverride }},app.kubernetes.io/component=fluentd,role=prometheus-svc
+
+{{- end }}
+
+{{- if .Values.fluentd.forward_service.enabled }}
+
+Fluentd forward service is enabled on {{ .Values.fluentd.forward_service.port }} port
+kubectl get svc --namespace {{ .Release.Namespace }} -l app.kubernetes.io/instance={{ .Release.Name }},app.kubernetes.io/name={{ default .Chart.Name .Values.nameOverride }},app.kubernetes.io/component=fluentd,role=forward-svc
+
+{{- end }}
+
+{{- if eq $.isCertManagerEnabled "true" }}
+  {{- if not .Values.fluentd.sensitiveInfoInSecret.enabled }}
+
+WARNING: certManager will not be used in this deployment as it has been enabled without enabling sensitiveInfoInSecret. 
+  {{- end }}
+{{- end }}

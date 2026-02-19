@@ -1,0 +1,88 @@
+--- /home/zafeiri/cbur-charts/cbur-1.17.0/cbur/templates/deployment_k8swatcher.yaml	2024-03-28 20:26:14.000000000 +0530
++++ /home/zafeiri/cbur-charts/cbur-1.17.0-nokia-patch-1/cbur/templates/deployment_k8swatcher.yaml	2024-03-29 19:04:55.000000000 +0530
+@@ -30,6 +30,7 @@
+     metadata:
+       name: {{ include "cbur.proxy.resourceName" (tuple . "Deployment" "k8swatcher") }}
+       labels:
++        altiplano-role: {{ .Values.accessRoleLabel }}
+         heritage: {{ .Release.Service }}
+         app: {{ template "cbur.fullname" . }}-k8swatcher
+         release: {{ .Release.Name }}
+@@ -193,6 +194,48 @@
+             failureThreshold: 30
+           resources:
+ {{ include "cbur.resources" (tuple . .Values.k8swatcher.resources "500m") | indent 12 }}
++        - name: {{ include "cbur.proxy.containerName" (tuple . "cbur") }}-k8swatcher-fluentd-sidecar
++          image: "{{ .Values.global.registry }}/{{ .Values.k8swatcher_fluentd_sidecar.image.name }}:{{ .Values.k8swatcher_fluentd_sidecar.image.tag }}"
++          imagePullPolicy: {{ .Values.k8swatcher_fluentd_sidecar.image.pullPolicy }}
++          securityContext:
++            readOnlyRootFilesystem: true
++            runAsUser: 1000
++            runAsGroup: {{ .Values.securityContext.runAsGroup }}
++            runAsNonRoot: {{ .Values.securityContext.runAsNonRoot }}
++          resources:
++{{ toYaml .Values.k8swatcher_fluentd_sidecar.resources | indent 12 }}
++          env:
++          {{- if .Values.k8swatcher_fluentd_sidecar.secrets }}  
++          - name: IS_USERNAME
++            valueFrom:
++              secretKeyRef:
++                key: {{ .Values.env.secrets.IS_USERNAME }}
++                name: {{ .Values.k8swatcher_fluentd_sidecar.secrets.passwordSecret | quote }}
++          - name: IS_PASSWORD
++            valueFrom:
++              secretKeyRef:
++                key: {{ .Values.env.secrets.IS_PASSWORD }}
++                name: {{ .Values.k8swatcher_fluentd_sidecar.secrets.passwordSecret | quote }}  
++          {{- end}}
++          - name: CONTAINER_NAME
++            valueFrom:
++              fieldRef:
++                apiVersion: v1
++                fieldPath: metadata.name
++          - name: MY_POD_IP
++            valueFrom:
++              fieldRef:
++                fieldPath: status.podIP
++          volumeMounts:
++          - name: tmp
++            mountPath: /tmp
++          - name: fluentd-config
++            mountPath: /etc/fluent/
++          - name: certificates
++            mountPath: /etc/.certificates/
++          - name: tmpemptydirvolume
++            mountPath: /logs
++            subPath: cbur-log   
+     {{- if .Values.nodeSelectorOverride }}
+       nodeSelector:
+ {{ toYaml .Values.nodeSelectorOverride | indent 8 }}
+@@ -220,6 +263,8 @@
+         {{- if .Values.istio.enabled }}
+ {{ include "cbur.istiocheckvolume" . | indent 8  }}
+         {{- end }}
++        - name: tmp
++          emptyDir: {}
+         {{- if eq (include "cbur.proxy.coalesceBoolean" (tuple .Values.tls.enabled .Values.global.tls.enabled false)) "true" }}
+         {{- if .Values.tls.clientSecretRef.credentialName }}
+         - name: "certs"
+@@ -235,6 +280,19 @@
+             secretName: {{ template "cbur.fullname" . }}-client-srt
+         {{- end  }}
+         {{- end  }}
++        {{- if .Values.k8swatcher_fluentd_sidecar.secrets }}
++        - name: certificates
++          secret:
++            secretName: {{ (tpl .Values.k8swatcher_fluentd_sidecar.secrets.certSecret .) }}
++        - name: passwords
++          secret:
++            secretName: {{ (tpl .Values.k8swatcher_fluentd_sidecar.secrets.passwordSecret .) }}
++        {{- end}}
++        - name: fluentd-config
++          configMap:
++            name: {{ include "cbur.proxy.resourceName" (tuple . "Deployment" "k8swatcher") }}-fluentd-config
++        - name: logs
++          emptyDir: {}
+ {{ include "cbur.tmpemptydirvolume" . | indent 8  }}
+             sizeLimit: {{ index .Values.k8swatcher.resources.limits "ephemeral-storage" | quote }}
+ {{- end }}

@@ -1,0 +1,6 @@
+dependencies:
+- name: csf-common-lib
+  repository: ""
+  version: 1.13.0
+digest: sha256:3dabca3224b541a853cbe4523dbcaaf12d5d79681d2f8b4e6a2676961938a567
+generated: "2024-02-07T10:49:35.349071048Z"

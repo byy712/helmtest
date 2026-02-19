@@ -1,0 +1,1270 @@
+# nginx configuration
+
+# Image Registry
+global:
+  # This registry is used for all container images
+  registry:
+  
+  # Set flatRegistry to true to use images from registries with a flat structure. 
+  # If enabled, any subpaths in the image repository name (separated by /) would be skipped and only its last part would be used. Please ensure that all the images are available in the docker registry in the expected flat structure.
+  flatRegistry: false
+
+  # limit the length of podNamePrefix i.e 30 characters
+  disablePodNamePrefixRestrictions: false
+  # podNamePrefix should not exceed 30 characters
+  podNamePrefix:
+  # containerNamePrefix should not exceed 34 characters
+  containerNamePrefix:
+  # -- Timezone Name to be used by the pods 
+  timeZoneEnv: ""
+  # -- Deprecated, use timeZoneEnv instead of this
+  timeZoneName: ""
+  priorityClassName: ""
+  # Global Custom Labels
+  labels: {}
+  # -- Required to  add image from the private registry
+  # Visit  https://kubernetes.io/docs/concepts/containers/images/#specifying-imagepullsecrets-on-a-pod
+  # The secret should be in the same namespace.
+  # imagePullSecrets:
+  #  - name: secret-name
+  imagePullSecrets: []
+  podSecurityPolicy:
+    # +--------------------------------------------------------------------------------------------------------------------------------+
+    # | pspName is the name of the psp to be used for the roles & rolebindings. If 'userProvided' is set to true, then rbac role will  |
+    # | Following are the possible combinations and behavior based on the combination                                                  |
+    # | userProvided: false  pspName: blank ---> Helm Chart will create PSP                                                            |
+    # | userProvided: false  pspName: some value ---> Helm Chart will create PSP                                                       |
+    # | userProvided: true   pspName: blank ---> pspName can not be blank , if blank chart installation fails                          |
+    # | userProvided: true   pspName: some value ---> PSP mentioned in the pspName would be used                                       |
+    # +--------------------------------------------------------------------------------------------------------------------------------+
+    userProvided: false
+    pspName:
+  ipFamilyPolicy:
+  ipFamilies: []
+  dualStack:
+    enabled: false       #DEPRECATED: Use global.ipFamilyPolicy and global.ipFamilies
+    ipFamilyPolicy:      #DEPRECATED: Use global.ipFamilyPolicy
+    ipFamilies: []       #DEPRECATED: Use global.ipFamilies
+
+  # +--------------------------------------------------------------------------------------------------------------------+
+  # | To set the security context to the pod/containers, all of them are integers unless specified as "auto"             |
+  # | Set this to "auto" so K8s will assign userId/groupid to the container and fsgroup to the pod                       |
+  # | !!! NOTE : runAsGroup is only for victor-job, and if runAsUser is set to "auto" then this needs to "auto" as well  |
+  # +--------------------------------------------------------------------------------------------------------------------+
+  securityContext:
+    runAsUser: 1000
+    runAsGroup:  1000
+    fsGroup: 1000
+  hpa:
+    enabled: false
+  ephemeralVolume:
+    generic:
+      enabled: false
+  unifiedLogging:	
+    syslog:	
+      enabled: false
+      # TLS over TCP can be enabled by providing tls-secret name in syslog.tls.secretRef.name
+      host: ""
+      port: ""
+      protocol: ""
+      # +------------------------------------------------------------------------------------------------------+
+      # | Input TLS Secret (Required only if the logs has to be sent over TCP+TLS                              |
+      # | will be mounted in directory /<Values.controller.unifiedLogging.syslog.rsyslog.dir>/certs/)          |
+      # | !!! NOTE : secret needs to be in same namespace where CITM will be installed !!!                     |
+      # |                                                                                                      |
+      # | tls:                                                                                                 |
+      # |   secretRef:                                                                                         |
+      # |        name: -----> Secret name, pointing to a Secret object                                         |
+      # | !!! Secret key names mapping. If the provided Secret is of type `kubernetes.io/tls'                  |
+      # | then key names do not need to be changed. !!!                                                        |
+      # |     keyNames:                                                                                        |
+      # |       caCrt: ----> Name of Secret key, which contains CA certificate. Default value is "ca.crt".     |
+      # |       tlsKey: ---> Name of Secret key, which contains TLS key. Default value is "tls.key".           |
+      # |       tlsCrt: ---> Name of Secret key, which contains TLS certificate. Default value is "tls.crt".   |
+      # +------------------------------------------------------------------------------------------------------+
+      tls:
+        secretRef:
+          # -- TLS secret name
+          name:
+          # -- TLS secret custom keys
+          keyNames:
+            caCrt: "ca.crt"
+            tlsKey: "tls.key"
+            tlsCrt: "tls.crt"
+    # +-------------------------------------------------------------------------------------------------+
+    # | -- extension that will be added to logs. Added ONLY when Harmonized logging is enabled.         |
+    # |    Will be added to logFormats.logFormatUpstream, logFormats.logFormatStream                    |
+    # |    Ex :                                                                                         |
+    # |         extension:                                                                              |
+    # |             ns_uuid : "CITM_G_333"                                                              |
+    # |             cnf_uuid : "CNF_G_666"                                                              |
+    # |             cnfc_uuid : "NFC_G_999"                                                             |
+    # +-------------------------------------------------------------------------------------------------+
+    extension: {}
+
+# Registry of the citm image
+internalCitmRegistry: "csf-docker-candidates.repo.cci.nokia.net"
+# Registry of the citm rsyslog image
+internalRsyslogClientRegistry: "csf-docker-candidates.repo.cci.nokia.net"
+
+# +-------------------+
+# | FOR COMMON LABELS |
+# +-------------------+
+component: "MessagingAndProtocols"
+managedBy: "helm"
+partOf: "citm"
+
+imageFlavor: 
+
+controller:
+  name: controller
+  imageRepo: citm
+  imageName: citm-nginx-ingress
+  imageTag: 1.24.0-1.3.1-1.2.0  #For k8s < 1.21 use 1.24.0-1.2.1-1.2.0-v1.3.1
+  #if left empty root level image flavor will be considered. Available option "rocky8". Workload level has higher precedence
+  imageFlavor:
+  imagePullPolicy: IfNotPresent
+
+  # -- Required to  add image from the private registry
+  # Visit  https://kubernetes.io/docs/concepts/containers/images/#specifying-imagepullsecrets-on-a-pod
+  # The secret should be in the same namespace.
+  # imagePullSecrets:
+  #  - name: secret-name
+  imagePullSecrets: []
+
+  config: {}
+
+  # Required for use with CNI based kubernetes installations (such as ones set up by kubeadm),
+  # since CNI and hostport don't mix yet. Can be deprecated once https://github.com/kubernetes/kubernetes/issues/23920
+  # is merged
+  hostNetwork: true
+
+  # See https://kubernetes.io/docs/concepts/services-networking/dns-pod-service/
+  #
+  # DNS policies can be set on a per-pod basis. Currently Kubernetes supports the following pod-specific DNS policies. These policies are specified in the dnsPolicy field of a Pod Spec.
+  # "Default": The Pod inherits the name resolution configuration from the node that the pods run on. See related discussion for more details.
+  # "ClusterFirst": Any DNS query that does not match the configured cluster domain suffix, such as "www.kubernetes.io", is forwarded to the upstream nameserver inherited from the node. Cluster administrators may have extra stub-domain and upstream DNS servers configured. See related discussion for details on how DNS queries are handled in those cases.
+  # "ClusterFirstWithHostNet": For Pods running with hostNetwork, you should explicitly set its DNS policy "ClusterFirstWithHostNet".
+  # "None": It allows a Pod to ignore DNS settings from the Kubernetes environment. All DNS settings are supposed to be provided using the dnsConfig field in the Pod Spec. See Pod's DNS config subsection below.
+  #
+  # Default ingress controller use hostnetwork, so default set to ClusterFirstWithHostNet
+  dnsPolicy: ClusterFirstWithHostNet
+
+  # See https://kubernetes.io/docs/concepts/services-networking/dns-pod-service/#pod-dns-config
+  #
+  # Pod's DNS Config allows users more control on the DNS settings for a Pod.
+  # The dnsConfig field is optional and it can work with any dnsPolicy settings. However, when a Pod's dnsPolicy is set to "None", the dnsConfig field has to be specified.
+  # Below are the properties a user can specify in the dnsConfig field:
+  #
+  # nameservers: a list of IP addresses that will be used as DNS servers for the Pod. There can be at most 3 IP addresses specified. When the Pod's dnsPolicy is set to "None", the list must contain at least one IP address, otherwise this property is optional. The servers listed will be combined to the base nameservers generated from the specified DNS policy with duplicate addresses removed.
+  # searches: a list of DNS search domains for hostname lookup in the Pod. This property is optional. When specified, the provided list will be merged into the base search domain names generated from the chosen DNS policy. Duplicate domain names are removed. Kubernetes allows for at most 6 search domains.
+  # options: an optional list of objects where each object may have a name property (required) and a value property (optional). The contents in this property will be merged to the options generated from the specified DNS policy. Duplicate entries are removed.
+  dnsConfig:
+
+  # Sets the addresses on which the server will accept requests instead of *. It should be noted that these addresses must exist in
+  # the runtime environment or the controller will crash loop except if securityContextPrivileged set to true.
+  bindAddress: ""
+
+  # Sets the addresses on which the server will accept requests for metrics and healthz check. Default is env.POD_IP,127.0.0.1,::1
+  statusBindAddress: "env.POD_IP,127.0.0.1,::1"
+
+  # enable "reuseport" option of the "listen" directive for nginx
+  reusePort: true
+
+  # disable Ipv4  for nginx
+  disableIvp4: # DO NOT USE THIS, this can be true/false and is deprecated from 22.03, please use disableIpv4
+  disableIpv4: false
+
+  # disable Ipv6  for nginx
+  disableIvp6: # DO NOT USE THIS, this can be true/false and is deprecated from 22.03, please use disableIpv6
+  disableIpv6: false
+
+  # activate http2 on http plain text
+  enableHttp2OnHttp: false
+
+  # Disable listening on http port ?
+  disableHttpPortListening: false
+
+  # Disable root and alias directive 
+  disableRootAliasDirective: true
+
+  # Required to bind to an IP address that are nonlocal
+  # set securityContext to Privileged
+  securityContextPrivileged: false
+
+  # Required to start nginx worker process as root (default nginx)
+  workerProcessAsRoot: false
+
+  # This will be applied only on NCS cluster and will be ignored on other cloud env.
+  # Note: sysctl rules will be applied on nodes selected using controller.nodeSelector if provided
+  # sysctlRules
+  # Exemple
+  # sysctlRules:
+  #   - "fs.file-max=100000"
+  #   - "vm.swappiness=1"
+  #   - "net.core.rmem_max=16777216"
+  #   - "net.core.wmem_max=16777216"
+  sysctlRules:
+
+
+  # set http-redirect-code (default 308)
+  httpRedirectCode: ""
+
+  # Required only if defaultBackend.enabled = false
+  # Must be <namespace>/<service_name>
+  defaultBackendService: "kube-system/default-http-backend"
+
+  # Optionally specify the secret name for default SSL certificate
+  # Must be <namespace>/<secret_name> (namespace have to be specified, even if same than pod)
+  # See also certManager
+  defaultSSLCertificate: ""
+
+  # +-------------------------------------------------------------------------------------------+
+  # | Optionally specify the defaultSSLCertificate secret custom key names                      |
+  # +-------------------------------------------------------------------------------------------+
+  defaultSSLCertificateTLS:
+    keyNames:
+       caCrt: "ca.crt"
+       tlsKey: "tls.key"
+       tlsCrt: "tls.crt"
+
+  # +-------------------------------------------------------------------------------------------+
+  # | Optionally specify the secret name for default Stream SSL certificate                     |
+  # | Must be <namespace>/<secret_name> (namespace have to be specified, even if same than pod) |
+  # | Certs created by certManager can also be used by enabling certManager                     |
+  # +-------------------------------------------------------------------------------------------+
+  defaultStreamSSLCertificate: ""
+
+  # +-------------------------------------------------------------------------------------------+
+  # | Optionally specify the defaultStreamSSLCertificate secret custom key names                |
+  # +-------------------------------------------------------------------------------------------+
+  defaultStreamSSLCertificateTLS:
+    keyNames:
+       caCrt: "ca.crt"
+       tlsKey: "tls.key"
+       tlsCrt: "tls.crt"
+
+  # If a ingress certificate is not found, use default certificate. Set this to false if you want to respond with HTTP 403 (access denied) instead of using default certificate
+  allowCertificateNotFound: true
+
+  # If a ingress certificate is present and invalid, use default certificate. Set this to false if you want to respond with HTTP 403 (access denied) instead of using default certificate
+  allowInvalidCertificate: true
+
+  # set to true to have all config map starting with this name udp-services-configmap, whatever the namespace will be added
+  # default false
+  UdpServiceConfigMapNoNamespace: false
+
+  # set to true to have all config map starting with this name tcp-services-configmap, whatever the namespace will be added
+  # default false
+  TcpServiceConfigMapNoNamespace: false
+
+  # use-calico-cni-workload-endpoint
+  # Supported values for use-calico-cni-workload-endpoint are:
+  # not-used: this feature is not used by Ingress controller (default)
+  # v1: ingress controller will use calico V1 api
+  # v3: ingress controller will use calico V3 api
+  CalicoVersion: ""
+
+  # Override NGINX default template
+  # configMapName: configMap containing a custom nginx template
+  # configMapKey: configMap key containing the nginx template
+  customTemplate:
+    configMapName: ""
+    configMapKey: ""
+
+  # Defines if on UDP/TCP service, request are forwarded to k8s service instead of backends. Needed for Istio
+  serviceOnStream:
+    enable: false
+
+  # When using pattern config map for stream, set this to true to declare port to ingress controller service
+  dynamicUpdateServiceStream: false
+
+  # By default, create only one stream for all backends.
+  # In case of transparent proxy activated, this property is not taken into account (aka: we'll generate two different streams, one for v4 and one for v6)
+  splitIpv4Ipv6StreamBackend: false
+
+  # port for healthz endpoint. Default is to use httpPort. Overwrite this if you want another port for checking
+  healthzPort:
+
+  # Indicates the port to use for HTTP traffic (default 80)
+  httpPort: 80
+
+  # Indicates the port to use for HTTPS traffic (default 443)
+  httpsPort: 443
+
+  # Indicates if OCSP stapling should be disabled. Default false
+  disableOcspStapling: false
+
+  # Indicates ssl protocols to be used. Default TLS 1.2 and 1.3
+  sslProtocols: TLSv1.3 TLSv1.2
+
+  # Indicates ssl cipher list to be activated.
+  sslCiphers: TLS_AES_128_GCM_SHA256:TLS_AES_256_GCM_SHA384:TLS_CHACHA20_POLY1305_SHA256:ECDHE-ECDSA-AES128-GCM-SHA256:ECDHE-RSA-AES128-GCM-SHA256:ECDHE-ECDSA-AES256-GCM-SHA384:ECDHE-RSA-AES256-GCM-SHA384:ECDHE-ECDSA-CHACHA20-POLY1305:ECDHE-RSA-CHACHA20-POLY1305:DHE-RSA-AES128-GCM-SHA256:DHE-RSA-AES256-GCM-SHA384
+
+  # Default port to use internally for SSL when SSL Passthgough is enabled (default 442)
+  sslPasstroughProxyPort: 442
+
+  # When sslPasstrough is activated, split HTTPS port (TLS Termination) and PASSTHROUGH port.
+  sslPasstroughSplitPortListening: false
+
+  # Indicates the TCP port to use for exposing the nginx status page (default 18080) and healthz
+  statusPort: 18080
+
+  # Enables or disables TLS for statusPort.
+  disableTlsForStatusPort: false
+
+  # force httpPort & httpsPort to values of forcePortHttp and forcePortHttps
+  forcePort: false
+
+  # http port when forcePort is activated
+  forcePortHttp: 80
+
+  # https port when forcePort is activated
+  forcePortHttps: 443
+
+  # use clusterDomain for accessing svc
+  clusterDomain: cluster.local
+
+  # Election ID to use for status update
+  electionID: "{{namespace}}-{{name}}-ingress-controller-leader"
+
+  # Name of the ingress class to route through this controller
+  # This will be used when kubernetes.io/ingress.class deprecated annotation is provided in ingress resource
+  ingressClass: nginx
+
+  # Process Ingress objects without ingressClass annotation/ingressClassName field
+  # Overrides value for --watch-ingress-without-class flag of the controller binary
+  # Defaults to true
+  watchIngressWithoutClass: true
+
+  # Process IngressClass per name (additionally as per spec.controller)
+  ingressClassByName: false
+
+  # This section refers to the creation of the IngressClass resource
+  # IngressClass resources are supported since k8s >= 1.18 and preferred to ingressClass annotation since k8s >= 1.19
+  # +--------------------------------------------------------------------------------------------------------------------+
+  # |if ingressClassResource.enabled == true:                                                                            |
+  # |   1) chart will create an ingressClass resource with name `ingressClassResource.name` and controller value         |
+  # |      of the ingressClass will be `ingressClassResource.controllerValue`                                            |
+  # |   2) chart will create a citm-ingres-controller pod using the controllerValue specified                            |
+  # |      in `ingressClassResource.controllerValue` as an argument at startup.                                          |
+  # |   3) Make the ingressClass resource as default or not based on `ingressClassResource.default`                      |
+  # |else:                                                                                                               |
+  # |   1) User needs to make sure the `ingressClassResource.controllerValue` refers to the                              |
+  # |      controller value of an existing ingressClass                                                                  |
+  # |   2) Chart will not create ingressClass resource                                                                   |
+  # |   3) Chart will create a citm-ingres-controller pod using the controllerValue specified                            |
+  # |      in `ingressClassResource.controllerValue` as an argument at startup.                                          |
+  # +--------------------------------------------------------------------------------------------------------------------+
+  ingressClassResource:
+    name: nginx
+    enabled: false
+    default: false
+    controllerValue: "k8s.io/ingress-nginx"
+    # Parameters is a link to a custom resource containing additional
+    # configuration for the controller. This is optional if the controller does not require extra parameters.
+    parameters: {}
+
+# List of namespace where presence of lua code in Snippet need to be checked. Default is empty (no check)
+  snippetNamespaceAllowed:
+
+  # Set of LUA methods to check. If found in lua snippet code, annotation is ignored
+  deniedInSnippetCode: "access_by_lua body_filter_by_lua content_by_lua header_filter_by_lua init_by_lua init_worker_by_lua log_by_lua rewrite_by_lua set_by_lua"
+
+  # Snippet for global configuration
+  # mainSnippet:     Adds custom configuration to the main section of the nginx configuration.
+  # httpSnippet:     Adds custom configuration to the http section of the nginx configuration.
+  # serverSnippet:   Adds custom configuration to all the servers in the nginx configuration.
+  # locationSnippet: Adds custom configuration to all the locations in the nginx configuration.
+  #
+  # +-------------------------------------------------------------------------------------------+
+  # | streamSnippet: Adds custom configuration to the stream section of the nginx configuration |
+  # | Below are the defualt values, any stream level ssl key-value can be added                 |
+  # +-------------------------------------------------------------------------------------------+
+  streamSnippet: |
+    ssl_protocols TLSv1.3 TLSv1.2;
+    ssl_session_cache shared:StreamSSL:10m;
+    ssl_session_timeout 10m;
+    ssl_session_tickets off;
+    ssl_ciphers 'TLS_AES_128_GCM_SHA256:TLS_AES_256_GCM_SHA384:TLS_CHACHA20_POLY1305_SHA256:ECDHE-ECDSA-AES128-GCM-SHA256:ECDHE-RSA-AES128-GCM-SHA256:ECDHE-ECDSA-AES256-GCM-SHA384:ECDHE-RSA-AES256-GCM-SHA384:ECDHE-ECDSA-CHACHA20-POLY1305:ECDHE-RSA-CHACHA20-POLY1305:DHE-RSA-AES128-GCM-SHA256:DHE-RSA-AES256-GCM-SHA384';
+    ssl_prefer_server_ciphers on;
+    ssl_ecdh_curve auto;
+
+  # Enabled common labels (Refer to HBP guide HBP-Kubernetes.html#common-labels)
+  commonLabels: true
+
+  # +------------------------------------------+
+  # | Controller Custom Labels                 |
+  # | labels:                                  |
+  # |   "environment" : "PROD"                 |
+  # +------------------------------------------+
+  labels: {}
+
+  # labels to add to the pod container metadata
+  podLabels: {}
+  #  key: value
+
+  # Allows customization of the external service
+  # the ingress will be bound to via DNS
+  publishService:
+    enabled: false
+    # Allows overriding of the publish service to bind to
+    # Must be <namespace>/<service_name>
+    pathOverride: ""
+
+  # Limit the scope of the controller
+  scope:
+    enabled: false
+    namespace: {{namespace}}   # defaults to .Release.Namespace
+
+  # Configure the location of your etcd cluster
+  etcd:
+    enabled: false
+    etcd_endpoints: ""
+    ETCD_CA_CERT: "/etc/etcd/ssl/ca.pem"
+    ETCD_CLIENT_CERT: "/etc/etcd/ssl/etcd-client.pem"
+    ETCD_CLIENT_KEY: "/etc/etcd/ssl/etcd-client-key.pem"
+
+  # A comma-separated list of IP addresses (or subnets), requests from which have to be blocked globally.
+  # References: http://nginx.org/en/docs/http/ngx_http_access_module.html#deny
+  blockCidrs:
+
+  # A comma-separated list of IP addresses (or subnets), requests from which have to be allowed globally. When activated, all ips which are not part of this will be blocked
+  # References: http://nginx.org/en/docs/http/ngx_http_access_module.html#deny
+  whiteListCidrs:
+
+  # A comma-separated list of User-Agent, requests from which have to be blocked globally. It's possible to use here full strings and regular expressions. More details about valid patterns can be found at map Nginx directive documentation.
+  # References: http://nginx.org/en/docs/http/ngx_http_map_module.html#map
+  blockUserAgents:
+
+  # A comma-separated list of Referers, requestst from which have to be blocked globally. It's possible to use here full strings and regular expressions. More details about valid patterns can be found at map Nginx directive documentation.
+  # References: http://nginx.org/en/docs/http/ngx_http_map_module.html#map
+  blockReferers:
+
+  # Harmonized logging
+  logToJsonFormat: true
+
+  # generate systemid in json logs
+  enableSystemId: true
+
+  # +-------------------------------------------------------------------------------------------------------------------+
+  # |The default configuration uses a custom logging format to add additional                                           |
+  # |information about upstreams, response time and status                                                              |
+  # |                                                                                                                   |
+  # |Example :                                                                                                          |
+  # |logFormatUpstream: quote{"type":"log", "level":"INFO", "time":"$time_iso8601",                                     |
+  # | "timezone":"UTC", "process":"nginx", "system":"CITM Ingress Controller",                                          |
+  # |"log":{"message":"[$remote_addr] - [$remote_user] [$request] $status [$http_referer]                               |
+  # |$request_time [$proxy_upstream_name] $upstream_addr $upstream_response_time $upstream_status                       |
+  # |$req_id REACHED $ingress_name in namespace $namespace" }}                                                          |
+  # |                                                                                                                   |
+  # |Check https://kubernetes.github.io/ingress-nginx/user-guide/nginx-configuration/log-format/ for further formatting |
+  # +-------------------------------------------------------------------------------------------------------------------+
+  #
+  # ################# NOTE #############################
+  # Do not edit the "host":"$hostname" or "process":"nginx" fields in the below formats
+  logFormats:
+    logFormatUpstream: quote{\"type\":\"log\",\"level\":\"INFO\",\"facility\":\"23\",\"time\":\"$time_iso8601\",\"timezone\":\"$clog_tz\",\"process\":\"nginx\",\"system\":\"CITM Ingress Controller\",\"host\":\"$hostname\",\"log\":{\"message\":\"[$remote_addr] - [$remote_user] [$request] $status $body_bytes_sent [$http_referer] [$http_user_agent] $request_length $request_time [$proxy_upstream_name] $upstream_addr $upstream_response_length $upstream_response_time $upstream_status $req_id\"}}
+
+    logFormatStream: quote{\"type\":\"log\",\"level\":\"INFO\",\"facility\":\"23\",\"time\":\"$time_iso8601\",\"timezone\":\"$clog_tz\",\"process\":\"nginx\",\"system\":\"CITM Ingress Controller\",\"host\":\"$hostname\",\"log\":{\"message\":\"Streaming $protocol $status $bytes_sent $bytes_received $session_time $connection $remote_addr:$remote_port $upstream_addr\"}}
+
+
+
+  # DaemonSet or Deployment
+  kind: DaemonSet
+
+  # The update strategy to apply to the Deployment or DaemonSet
+  updateStrategy:
+    rollingUpdate:
+      maxUnavailable: 1
+    type: RollingUpdate
+
+  # Node tolerations for server scheduling to nodes with taints
+  # Ref: https://kubernetes.io/docs/concepts/configuration/assign-pod-node/
+  tolerations:
+    - key: 'is_edge'
+      operator: 'Equal'
+      value: 'true'
+      effect: 'NoExecute'
+
+  # Node labels for controller pod assignment
+  # Ref: https://kubernetes.io/docs/user-guide/node-selection/
+  nodeSelector: {}
+
+  # Set this to false if you do not want to run only on edge nodes
+  runOnEdge: true
+
+  # +-------------------------------------------------------------------------------------------------------------------+ 
+  # | See https://kubernetes.io/docs/concepts/scheduling-eviction/assign-pod-node/#inter-pod-affinity-and-anti-affinity | 
+  # | Node affinity. See https://kubernetes.io/docs/tasks/configure-pod-container/assign-pods-nodes-using-node-affinity/| 
+  # |                                                                                                                   | 
+  # |   Example - 1 : Pod anti-affinity rule as "HARD"                                                                  | 
+  # |   affinity:                                                                                                       | 
+  # |     podAntiAffinity:                                                                                              | 
+  # |       requiredDuringSchedulingIgnoredDuringExecution:                                                             | 
+  # |         - labelSelector:                                                                                          | 
+  # |             matchExpressions:                                                                                     | 
+  # |               - key: app                                                                                          | 
+  # |                 operator: In                                                                                      | 
+  # |                 values:                                                                                           | 
+  # |                 - citm-ingress                                                                                    | 
+  # |           topologyKey: kubernetes.io/hostname                                                                     | 
+  # |         - labelSelector:                                                                                          | 
+  # |             matchExpressions:                                                                                     | 
+  # |               - key: app                                                                                          | 
+  # |                 operator: In                                                                                      | 
+  # |                 values:                                                                                           | 
+  # |                 - citm-ingress                                                                                    | 
+  # |           topologyKey: topology.kubernetes.io/zone                                                     | 
+  # |   Example - 2 : Pod anti-affinity rule as "SOFT" (default)                                                        | 
+  # |    affinity:                                                                                                      | 
+  # |      podAntiAffinity:                                                                                             | 
+  # |        preferredDuringSchedulingIgnoredDuringExecution:                                                           | 
+  # |        - weight: 100                                                                                              | 
+  # |          podAffinityTerm:                                                                                         | 
+  # |            labelSelector:                                                                                         | 
+  # |              matchExpressions:                                                                                    | 
+  # |                - key: app                                                                                         | 
+  # |                  operator: In                                                                                     | 
+  # |                  values:                                                                                          | 
+  # |                  - citm-ingress                                                                                   | 
+  # |            topologyKey: kubernetes.io/hostname                                                                    | 
+  # |        - weight: 100                                                                                              | 
+  # |          podAffinityTerm:                                                                                         | 
+  # |            labelSelector:                                                                                         | 
+  # |              matchExpressions:                                                                                    | 
+  # |                - key: app                                                                                         | 
+  # |                  operator: In                                                                                     | 
+  # |                  values:                                                                                          | 
+  # |                  - citm-ingress                                                                                   | 
+  # |            topologyKey: topology.kubernetes.io/zone                                                    | 
+  # +-------------------------------------------------------------------------------------------------------------------+
+  affinity:
+    podAntiAffinity:
+      preferredDuringSchedulingIgnoredDuringExecution:
+      - podAffinityTerm:
+          labelSelector:
+            matchExpressions:
+              - key: app
+                operator: In
+                values:
+                - citm-ingress
+          topologyKey: kubernetes.io/hostname
+        weight: 100
+
+  # Note: If kubernetes version is equal to 1.16 or 1.17, you must enable the EvenPodsSpread feature gate
+  # and then set evenPodSpreadEnabled to true.
+  # Ref: https://kubernetes.io/docs/reference/command-line-tools-reference/feature-gates/
+  evenPodSpreadEnabled: false
+
+  # topologySpreadConstraints allow control of how pods are spread across
+  # cluster among failure-domains such as regions, zones, nodes, and other
+  # user-defined topology domains. This can help to achieve high availability
+  # as well as efficient resource utilization.
+  # The following attributes can be defined here:
+  # maxSkew           - Describes the degree to which pods may be unevenly distributed. It must be greater than zero.
+  # topologyKey       - The key of node labels.
+  # whenUnsatisfiable - [optional] Indicates how to deal with a Pod if it doesn't satisfy the spread constraint. Defaults to DoNotSchedule.
+  #   If autoGenerateLabelSelector is set to true and labelSelector key is omitted in <topologySpreadConstraint parameters
+  #       then .spec.topologySpreadConstraints[*].labelSelector is automatically generated.
+  #   If labelSelector key defined in <topologySpreadConstraint parameters>
+  #      then .spec.topologySp
+  # labelSelector     - [optional] specify labels to find the matching pods
+  # NOTE: Pod labels will be defaulted by the chart, if not specified here.
+  # Ref: https://kubernetes.io/docs/concepts/workloads/pods/pod-topology-spread-constraints/
+  # example-1: Single Pod Topology Constraints
+  # topologySpreadConstraints:
+  #   - maxSkew: 1
+  #     topologyKey: zone
+  #     whenUnsatisfiable: DoNotSchedule
+  #     autoGenerateLabelSelector: boolean
+  #     labelSelector:
+  #       matchLabels:
+  #         app: citm-ingress
+  # example-2: Multiple Pod Topology Constraints
+  # topologySpreadConstraints:
+  #   - maxSkew: 1
+  #     topologyKey: zone
+  #     whenUnsatisfiable: DoNotSchedule
+  #     labelSelector:
+  #       matchLabels:
+  #         app: citm-ingress
+  #   - maxSkew: 1
+  #     topologyKey: node
+  #     whenUnsatisfiable: DoNotSchedule
+  #     labelSelector:
+  #       matchLabels:
+  #         app: citm-ingress
+
+  topologySpreadConstraints: []
+
+  # Annotations to be added to controller pods
+  podAnnotations: {}
+
+  replicaCount: 1
+
+  probe:
+    enabled: true
+    startup:
+	  path: /healthz
+	  # startupProbe requires at least K8S 1.18 (BCMT20.06)
+	  delay: 10
+	  # periodSeconds
+	  period: 10
+	  # failureThreshold
+	  maxfailure: 6
+	liveness:
+	  path: /healthz
+	  # If K8S 1.18+, then initialDelaySeconds is forced to 0 since startupProbe has been run
+	  # initialDelaySeconds
+	  delay: 10
+	  # periodSeconds
+	  period: 5
+	  # failureThreshold
+	  maxfailure: 5
+	readiness:
+	  path: /healthz
+	  # If K8S 1.18+, then initialDelaySeconds is forced to 0 since startupProbe has been run
+	  # initialDelaySeconds
+	  delay: 10
+	  # periodSeconds
+	  period: 5
+	  # failureThreshold
+	  maxfailure: 5
+
+
+  #Upscale or downscale pods based on metrics
+  # HPA only applied to deployment and not daemonset
+  # https://kubernetes.io/docs/tasks/run-application/horizontal-pod-autoscale-walkthrough/
+  hpa:
+    # enable or disable horizantal pod autoscaling
+    # When hpa is enabled replicaCount in deployment will be ignored if replicasManagedByHPA is set to true
+    enabled:
+    # minimum no.of pods hpa can scale down to
+    minReplicas: 1
+    # maximum no.of pods hpa can scale up to
+    maxReplicas: 3
+    predefinedMetrics:
+      enabled: True
+      averageCPUThreshold: 80
+      averageMemoryThreshold: 80
+    #behavior for scaling up and scaling down the pods when the metrics are matching
+    behavior:
+      scaleDown:
+        #policies:
+        #- type: Pods
+        #  value: 2
+        #  periodSeconds: 10
+        #- type: Percent
+        #  value: 10
+        #  periodSeconds: 10
+        #selectPolciy: Max
+        stabilizationWindowSeconds: 60
+      scaleUp:
+        policies: []
+        #- type: Pods
+        #  value: 2
+        #  periodSeconds: 10
+        #- type: Percent
+        #  value: 10
+        #  periodSeconds: 10
+        #selectPolciy: Max
+        stabilizationWindowSeconds: 15
+
+  #PodDisruptionBudget
+  #This will ensure that configured number of pods are always up and try to prevent the evictions
+  #Note: either minAvailable or maxUnavailable should be used, both should not be set at the same time
+  pdb:
+    enabled: false
+    minAvailable: 1
+    #maxUnavailable: 0
+
+  resources:
+    requests:
+      memory: {{ (resources | default("")).memory | default(model.properties.resources.properties.memory.default) }}
+      cpu: {{ (resources | default("")).cpu | default(model.properties.resources.properties.cpu.default) }}
+      ephemeral-storage: {{ (resources | default("")).ephemeral-storage | default(model.properties.resources.properties.ephemeral-storage.default) }}
+
+  # +-----------------------------------------------------------------------------------------------------+
+  # | Ref: https://kubernetes.io/docs/concepts/storage/ephemeral-volumes/                                 |
+  # +-----------------------------------------------------------------------------------------------------+
+  ephemeralVolume:
+    # +---------------------------------------------------------------------------------------------------+
+    # | Use the disk storage or in memory medium emptyDir with the size limit.                            |
+    # | As per HBP size limit set to 1Gi, using the resources.limits.ephemeral-storage                    |
+    # | this will be disabled if the ephemeralVolume.generic is enabled                                   |
+    # | !! NOTE !! medium, if blank disk storage will be used else specify "Memory" to use RAM as storage |
+    # +---------------------------------------------------------------------------------------------------+
+    emptyDir:
+      medium:
+      # sizeLimit should be <= resources.limits.ephemeral-storage
+      sizeLimit: "1Gi"
+    # +---------------------------------------------------------------------------------------------------+
+    # | Use the generic ephemeral volume instead of empty dir.                                            |
+    # | Disabled by default, enable by mentioning the storage class                                       |
+    # | size of the volume is set in resources section ephemeral-storage field                            |
+    # +---------------------------------------------------------------------------------------------------+
+    generic:
+      enabled: false
+      storageClass: ""
+      resources:
+        requests:
+          ephemeral-storage: "200Mi"
+        limits:
+          ephemeral-storage: "1Gi"
+
+  service:
+    enabled: true
+    annotations: {}
+    clusterIP: None
+
+    # -- Session Affinity to make sure that connections from a particular client are passed to the same Pod each time.
+    # Defauts to None, set it to ClientIP to configure session affinity based on the client's IP address
+    sessionAffinity:
+
+    # List of IP addresses at which the controller services are available
+    # Ref: https://kubernetes.io/docs/user-guide/services/#external-ips
+    externalIPs: []
+
+    loadBalancerIP: ""
+    loadBalancerSourceRanges: []
+
+    # Set external traffic policy to: "Local" to preserve source IP on
+    # providers supporting it
+    # Ref: https://kubernetes.io/docs/tutorials/services/source-ip/#source-ip-for-services-with-typeloadbalancer
+    externalTrafficPolicy: ""
+
+    healthCheckNodePort: 0
+   
+    ipFamilyPolicy:
+    ipFamilies: []
+
+    dualStack:
+      enabled: false                            #DEPRECATED: Use controller.service.ipFamilyPolicy and controller.service.ipFamilies
+      ipFamilyPolicy: "RequireDualStack"        #DEPRECATED: Use controller.service.ipFamilyPolicy
+
+      ipFamilies:                               #DEPRECATED: Use controller.service.ipFamilies
+        - IPv4
+        - IPv6
+	
+    targetPorts:
+      http: 80
+      https: 443
+      sslproxy: 442
+						  
+    # Supported: ClusterIP, NodePort, LoadBalancer
+    type: ClusterIP
+
+    # type: NodePort
+    # nodePorts:
+    #   http: 32080
+    #   https: 32443
+    nodePorts:
+      http: ""
+      https: ""
+      sslproxy: ""
+
+    # type: LoadBalancer
+    # nodePorts:
+    #   http: 32080
+    #   https: 32443
+    # -- Optionally disable node port allocation for a service.type:LoadBalancer (K8s >= 1.24.0)
+    # +-----------------------------------------------------------------------------------------------------------+
+    # | !!! If the upgrade is done from allocateLoadBalancerNodePorts:true to allocateLoadBalancerNodePorts:false |
+    # |     then user has to manually remove the nodeports in the service.                                        |
+    # +-----------------------------------------------------------------------------------------------------------+
+    allocateLoadBalancerNodePorts: true
+
+  # Provide ConfigMap with lua modules
+  customLuaModules:
+    enabled: false
+  #  modules:
+  #  - moduleName: paas
+  #    sourcesConfigMapName: citm-paas-module
+
+  modsecurity:
+    # set this to true if you want to activate modsecurity globally
+    enabled: false
+    # set this to true if you want to activate owasp-crs rules. See https://modsecurity.org/crs/
+    enableOwaspCrs: false
+
+  # Job cleaning
+  hook:
+    resources:
+      requests:
+        memory: 64Mi
+        cpu: 2m
+      limits:
+        memory: 1Gi
+        cpu: 500m
+    containerSecurityContext:
+      readOnlyRootFilesystem: true
+      dropCapabilities: "ALL"
+      runAsNonRoot: true
+      seccompProfile:
+        type: RuntimeDefault  # RuntimeDefault/Localhost
+        path: "" # Provide path when type is set to Localhost
+      privilegeEscalation: false
+      seLinuxOptions:
+        enabled: false
+        level: ""
+        role: ""
+        type: ""
+        user: ""
+
+  # See https://kubernetes.io/docs/concepts/configuration/pod-priority-preemption/#priorityclass
+  priorityClassName: ""
+  # Introduce a delay to the shutdown sequence to wait for the pod eviction event to propagate. Then, gracefully shutdown nginx.
+  # Check https://medium.com/codecademy-engineering/kubernetes-nginx-and-zero-downtime-in-production-2c910c6a5ed8
+  gracefulShutdownSleepSeconds: 5
+
+  # +-----------------------------------------------------------------------------------------------------------------------------------------+
+  # | preStop command to be executed before the graceful shutdown                                                                             |
+  # | preStop:                                                                                                                                |
+  # |   command: |-                                                                                                                           |
+  # |     set -x; sleep 10;                                                                                                                   | 
+  # |     BIN_DIR="/usr/sbin/";                                                                                                               |
+  # |     NGINX_BIN="nginx";                                                                                                                  |
+  # |     NGINX_BIN_ABS="${BIN_DIR}${NGINX_BIN}";                                                                                             |
+  # |     NGINX_CONF_FILE="nginx.conf";                                                                                                       |
+  # |     NGINX_CONF_ABS="${CITM_INGRESS_CONFIG_DIR}/${NGINX_CONF_FILE}";                                                                     |
+  # |     echo "<--- FROM VALUES --->";                                                                                                       |
+  # |     echo "Nginx Binary               : $NGINX_BIN";                                                                                     |
+  # |     echo "Nginx Binary Absolute Path : $NGINX_BIN_ABS";                                                                                 |
+  # |     echo "Nginx Conf File            : $NGINX_CONF_FILE";                                                                               |
+  # |     echo "Nginx Conf Absolute Path   : $NGINX_CONF_ABS";                                                                                |
+  # |     $NGINX_BIN_ABS -c $NGINX_CONF_ABS -s quit;                                                                                          |
+  # |     while pidof $NGINX_BIN; do sleep 1; done;                                                                                           |
+  # +-----------------------------------------------------------------------------------------------------------------------------------------+
+  preStop:
+    command: ""
+
+  terminationGracePeriodSeconds : 60
+
+  # +-----------------------------------------------------------------------------------------------------------------------------------------+
+  # |Kubernetes retrieves termination messages from the termination message file specified in the terminationMessagePath field of a container,|
+  # |Users can set the terminationMessagePolicy filed of a Container for further customization                                                |
+  # |(ref https://kubernetes.io/docs/tasks/debug-application-cluster/determine-reason-pod-failure/#customizing-the-termination-message)       |
+  # +-----------------------------------------------------------------------------------------------------------------------------------------+
+  terminationMessagePath: "/nginx-config/termination-log"
+  terminationMessagePolicy: "FallbackToLogsOnError"
+
+  # +------------------------------------------------------------------------------------------------+
+  # |If job pods are failing  repeatedly, the Job will keep creating new pods forever, by default.   |
+  # |Set Time in seconds after which no more pods will be created, and existing pods will be deleted.|
+  # |And the job will have status with reason: DeadlineExceeded.                                     |
+  # |Default value is 300 seconds.                                                                   |
+  # +------------------------------------------------------------------------------------------------+
+  activeDeadlineSeconds: 300
+
+  # +--------------------------------------------------------------------------------------------------------------------+
+  # | To ensure logs and other data are synchronized between pods and the hosted components are using the same timezone. |
+  # | Set mountHostLocaltime to false to use timeZoneEnv, timeZoneNameEnv is Deprecated.                                 |
+  # +--------------------------------------------------------------------------------------------------------------------+
+  timezone:
+    mountHostLocaltime: false
+    # -- Timezone Name to be used by the pods
+    timeZoneEnv: ""
+    # -- Deprecated, use timeZoneEnv instead of this
+    timeZoneNameEnv: ""
+
+  # +------------------------------------------------------------------------------------------------------+
+  # |                                     Syslog Configs                                                   |
+  # |                                                                                                      |
+  # | Enable the syslog.enabled flag to send the logs to remote syslog                                     |
+  # |------------------------------------------------------------------------------------------------------|
+  # |                 Logrotate Configs - used ONLY when syslog is enabled                                 |
+  # |                                                                                                      |
+  # | logrotate.conf      : How rotation will be done on the file                                          |
+  # | logrotate.cron.conf : How often should the logrotation needs to be done                              |
+  # |------------------------------------------------------------------------------------------------------|
+  # | Example : Rotate the /logRunner/logRunner.log if not empty by copying into new file and truncate the |
+  # |           old one, and rotate it for every 15 min                                                    |
+  # |                                                                                                      |
+  # | logrotate:                                                                                           |
+  # |    conf: |                                                                                           |
+  # |      /logRunner/logRunner.log {                                                                      |
+  # |       missingok                                                                                      |
+  # |       rotate 12                                                                                      |
+  # |       size 100K                                                                                      |
+  # |       maxage 366                                                                                     |
+  # |       copytruncate                                                                                   |
+  # |       compress                                                                                       |
+  # |       delaycompress                                                                                  |
+  # |       notifempty                                                                                     |
+  # |       create 640                                                                                     |
+  # |      }                                                                                               |
+  # |    cron:                                                                                             |
+  # |      conf: |                                                                                         |
+  # |         # must be ended with a new line "LF" (Unix) and not "CRLF" (Windows)                         |
+  # |         */15 *  *  *  * /usr/sbin/logrotate -vf /logrotate.conf  --state /logRunner/logrotate-state  |
+  # |         # # An empty line is required at the end of this file for a valid cron file.                 |
+  # +------------------------------------------------------------------------------------------------------+
+
+  unifiedLogging:
+    syslog:
+      enabled:
+      # TLS over TCP can be enabled by providing tls-secret name in syslog.tls.secretRef.name
+      host: ""
+      port: ""
+      protocol: ""
+      # +------------------------------------------------------------------------------------------------------+
+      # | Input TLS Secret (Required only if the logs has to be sent over TCP+TLS                              |
+      # | will be mounted in directory /<Values.controller.unifiedLogging.syslog.rsyslog.dir>/certs/)          |
+      # | !!! NOTE : secret needs to be in same namespace where CITM will be installed !!!                     |
+      # |                                                                                                      |
+      # | tls:                                                                                                 |
+      # |   secretRef:                                                                                         |
+      # |        name: -----> Secret name, pointing to a Secret object                                         |
+      # | !!! Secret key names mapping. If the provided Secret is of type `kubernetes.io/tls'                  |
+      # | then key names do not need to be changed. !!!                                                        |
+      # |     keyNames:                                                                                        |
+      # |       caCrt: ----> Name of Secret key, which contains CA certificate. Default value is "ca.crt".     |
+      # |       tlsKey: ---> Name of Secret key, which contains TLS key. Default value is "tls.key".           |
+      # |       tlsCrt: ---> Name of Secret key, which contains TLS certificate. Default value is "tls.crt".   |
+      # +------------------------------------------------------------------------------------------------------+
+      tls:
+        secretRef:
+          # -- TLS secret name
+          name:
+          # -- TLS secret custom keys
+          keyNames:
+            caCrt: "ca.crt"
+            tlsKey: "tls.key"
+            tlsCrt: "tls.crt"
+
+      # Where do you want your logs should be wriiten.
+      logRunner:
+         dir: "/logRunner"
+         file: "logRunner.log"
+
+      # How should the logrotate be done.
+      logrotate:
+         dir: "/logRotate"       # Logrotate and Crontab file's directory
+         file: "logrotate.conf"  # Logrotate configuration file name
+         conf: |
+           /logRunner/logRunner.log {
+            missingok
+            rotate 12
+            size 100M
+            maxage 366
+            copytruncate
+            compress
+            delaycompress
+            notifempty
+            create 640
+           }
+         # How often your logrotation should be done.
+         cron:
+           file: "logrotate-cron.conf"  # Crontab file name
+           # Default crontab is to run everyday at 23:00 hrs. It will echo "Running CRON to Logrotate" to pod logs and does the logrotate.
+           conf: |
+             0 23 * * * echo "Running CRON to Logrotate" > /proc/1/fd/1 2>/proc/1/fd/2
+             0 23 * * * /usr/sbin/logrotate -vf /logRotate/logrotate.conf  --state /logRunner/logrotate-state
+         supercronic:
+           output_file: "/proc/1/fd/1"
+           error_file: "/proc/1/fd/1"
+
+      rsyslog:
+
+         # +------------------------------ RSYSLOG CLIENT GLOBAL CONFIGURATION ------------------------------+
+         # | Ex:                                                                                             |
+         # |                                                                                                 |
+         # | globalCustomConfigs: |                                                                          |
+         # |    global(DefaultNetstreamDriver="gtls"                                                         |
+         # |    DefaultNetstreamDriverKeyFile="/tmp/certs/tls.key"                                           |
+         # |    DefaultNetstreamDriverCertFile="/tmp/certs/tls.crt"                                          |
+         # |    )                                                                                            |
+         # |                                                                                                 |
+         # | Other gobal configuration can be provided here                                                  |
+         # +-------------------------------------------------------------------------------------------------+
+
+         globalCustomConfigs:
+
+         # +------------------------------ RSYSLOG CLIENT CONFIGURATION ------------------------------+
+
+         dir: "/rsyslog"
+         file: "rsyslog.conf"
+
+         # Input Conf
+         inputExtraArgs: |
+            Tag="citm-imfile"
+            reopenOnTruncate="on"
+         inputCustomConfigs:
+
+         # Actions(Output) Conf.
+         actionsExtraArgs:
+         actionsCustomConfigs:
+
+         rsyslogTLSExtraArgs: |
+            StreamDriver="gtls"
+            StreamDriverMode="1"
+            StreamDriverAuthMode="x509/certvalid"
+            action.resumeRetryCount="100"
+            action.resumeInterval="60"
+            queue.type="linkedList"
+            queue.size="100000"
+            queue.filename="q_log_to_rsyslog"
+            queue.maxfilesize="100m"
+            queue.maxdiskspace="500m"
+            queue.saveonshutdown="on"
+
+         # Unified logging ( Fomatting your logs )
+         unifiedLoggingFormatExtraArgs:
+         unifiedLoggingCustomConfigs:
+
+         # +------------------------------------------------------------------------------------------+
+
+
+         # +-------------------------- RSYSLOG CLIENT SIDECAR CONFIGURATION --------------------------+
+
+         imageRepo: citm
+         imageName: citm-rsyslog-client
+         imageTag: 1.2.0
+         #if left empty root level image flavor will be considered. Available option "rocky8". Workload level has higher precedence
+         imageFlavor:
+
+         # -- Timezone Name to be used by the ryslog client container 
+         timeZoneEnv: ""
+
+         # Rsyslog Client Process Args
+         extraArgs:
+
+         # Rsyslog Client Container Conf
+         securityContext:
+           runAsUser: 1000
+           readOnlyRootFilesystem: true
+
+         containerSecurityContext:
+           dropCapabilities: "ALL"
+           runAsNonRoot: true
+           seccompProfile:
+             type: RuntimeDefault  # RuntimeDefault/Localhost
+             path: "" # Provide path when type is set to Localhost
+           privilegeEscalation: false
+           seLinuxOptions:
+             enabled: false
+             level: ""
+             role: ""
+             type: ""
+             user: ""
+
+         resources:
+           requests:
+             memory: 256Mi
+             cpu: 250m
+             ephemeral-storage: "250Mi"
+           limits:
+             memory: 1Gi
+             cpu: 500m
+             ephemeral-storage: "1Gi"
+
+         # +-----------------------------------------------------------------------------------------------------+
+         # | Ref: https://kubernetes.io/docs/concepts/storage/ephemeral-volumes/                                 |
+         # +-----------------------------------------------------------------------------------------------------+
+         ephemeralVolume:
+           # +---------------------------------------------------------------------------------------------------+
+           # | Use the disk storage or in memory medium emptyDir with the size limit.                            |
+           # | As per HBP size limit set to 1Gi, using the ephemeral-storage.emptyDir.sizeLimit                  |
+           # | this will be disabled if the ephemeralVolume.generic is enabled                                   |
+           # | !! NOTE !! medium, if blank disk storage will be used else specify "Memory" to use RAM as storage |
+           # +---------------------------------------------------------------------------------------------------+
+           emptyDir:
+             medium:
+             # sizeLimit should be <= syslog.resources.limits.ephemeral-storage
+             sizeLimit: "1Gi"
+           # +---------------------------------------------------------------------------------------------------+
+           # | Use the generic ephemeral volume instead of empty dir.                                            |
+           # | Disabled by default, enable by mentioning the storage class                                       |
+           # +---------------------------------------------------------------------------------------------------+
+           generic:
+             enabled: false
+             storageClass: ""
+             resources:
+               requests:
+                 ephemeral-storage: "200Mi"
+               limits:
+                 ephemeral-storage: "1Gi"
+
+         probe:
+           enabled: true
+           startup:
+             command: ["/bin/bash", "-c", "ps -ef | grep rsyslog"]
+             # startupProbe requires at least K8S 1.18 (BCMT20.06)
+             delay: 10
+             # periodSeconds
+             period: 10
+             # failureThreshold
+             maxfailure: 6
+           liveness:
+             command: ["/bin/bash", "-c", "ps -ef | grep rsyslog"]
+             # If K8S 1.18+, then initialDelaySeconds is forced to 0 since startupProbe has been run
+             # initialDelaySeconds
+             delay: 10
+             # periodSeconds
+             period: 5
+             # failureThreshold
+             maxfailure: 5
+           readiness:
+             command: ["/bin/bash", "-c", "ps -ef | grep rsyslog"]
+             # If K8S 1.18+, then initialDelaySeconds is forced to 0 since startupProbe has been run
+             # initialDelaySeconds
+             delay: 10
+             # periodSeconds
+             period: 5
+             # failureThreshold
+             maxfailure: 5
+         # +------------------------------------------------------------------------------------------+
+
+    # +-------------------------------------------------------------------------------------------------+
+    # | -- extension that will be added to logs. Added ONLY when Harmonized logging is enabled.         |
+    # |    Will be added to logFormats.logFormatUpstream, logFormats.logFormatStream                    |
+    # |    Ex :                                                                                         |
+    # |         extension:                                                                              |
+    # |             ns_uuid : "CITM_G_333"                                                              |
+    # |             cnf_uuid : "CNF_G_666"                                                              |
+    # |             cnfc_uuid : "NFC_G_999"                                                             |
+    # +-------------------------------------------------------------------------------------------------+
+    extension: {}
+
+# +--------------------------------------------------------------------------------------------------------------------+
+# | To set the security context to the pod/containers, all of them are integers unless specified as "auto"             |
+# | Set this to "auto" so K8s will assign userId/groupid to the container and fsgroup to the pod                       |
+# | !!! NOTE : runAsGroup is only for victor-job, and if runAsUser is set to "auto" then this needs to "auto" as well  |
+# +--------------------------------------------------------------------------------------------------------------------+
+securityContext:
+  runAsUser: 1000
+  runAsGroup:  1000 
+  fsGroup: 1000 
+  readOnlyRootFilesystem: true
+  seccompProfile:
+    type: RuntimeDefault  # RuntimeDefault/Localhost
+    path: "" # Provide path when type is set to Localhost
+  seLinuxOptions:
+    enabled: false
+    level: ""
+    role: ""
+    type: ""
+    user: ""
+
+certManager:
+  used: false
+  duration: "8760h" # 365d
+  renewBefore: "360h" # 15d
+  keySize: "2048"
+  # if api is left empty it will be picked up by the chart during run time
+  api: 
+  organization:
+    - Nokia
+  dnsNames:
+  ipAddresses:
+  issuerRef:
+    name: ncms-ca-issuer
+    # We can reference ClusterIssuers by changing the kind here.
+    # The default value is Issuer (i.e. a locally namespaced Issuer)
+    kind: ClusterIssuer
+    group: cert-manager.io
+
+# Enable RBAC as per https://github.com/kubernetes/ingress/tree/master/examples/rbac/nginx and https://github.com/kubernetes/ingress/issues/266
+rbac:
+  enabled: true
+  serviceAccountName: default
+  podSecurityPolicy:
+    enabled: true
+    annotations:
+      seccomp.security.alpha.kubernetes.io/allowedProfileNames: '*'
+  bindCapability:
+    enabled: true
+
+istio:
+  enabled: false
+  version: "1.17.2"
+  # Whether istio cni is enabled in the environment.
+  cni:
+    enabled: false
+    # MTLS section of configuration.
+  mtls:
+    #Is strict MTLS enabled in the environment.
+    enabled: true
+  # Should allow mutual TLS as well as clear text for your deployment.
+  permissive: true
+  # sidecar injection
+  sidecarInjection: "true"
+
+# TCP service key:value pairs
+# Ref: https://github.com/kubernetes/contrib/tree/master/ingress/controllers/nginx/examples/tcp
+tcp: {}
+#  8080: "default/example-tcp-svc:9000"
+# Force TCP key:value pairs
+forceTcp: {}
+# Example :
+# tcp:
+#    "2020": "default/tcpserver2018:2018"
+# forceTcp:
+#    "2022": "default/tcpserver2018:2018"
+
+
+# UDP service key:value pairs
+# Ref: https://github.com/kubernetes/contrib/tree/master/ingress/controllers/nginx/examples/udp
+udp: {}
+#  53: "kube-system/kube-dns:53"
+# Force UDP key:value pairs
+forceUdp: {}
+# Example :
+# udp:
+#    "2020": "default/udpserver2018:2018"
+# forceUdp:
+#    "2022": "default/udpserver2018:2018"
+
+# do we force https on all ingress resources
+httpsForAllServers: false
+
+defaultBackend:
+  # If false, controller.defaultBackendService must be provided
+  enabled: true
+  serviceName: "{{namespace}}/{{name}}-default404"
+
+# The name of the secret that contains the grafana credentials
+grafanaSecret:
+
+# URL and port of the grafana server/service, without 'http://'
+# Example: 127.0.0.1:3000
+grafanaURL:
+# -- Protocol to be used with grafanaURL
+grafanaProtocol: "https"
+
+grafanaTools:
+  overwriteDashboard: true
+  resources:
+    requests:
+      memory: 64Mi
+      cpu: 2m
+    limits:
+      memory: 1Gi
+      cpu: 500m
+  containerSecurityContext:
+    readOnlyRootFilesystem: true
+    dropCapabilities: "ALL"
+    runAsNonRoot: true
+    seccompProfile:
+      type: RuntimeDefault  # RuntimeDefault/Localhost
+      path: "" # Provide path when type is set to Localhost
+    privilegeEscalation: false
+    seLinuxOptions:
+      enabled: false
+      level: ""
+      role: ""
+      type: ""
+      user: ""
+
+# Set this to true if you want to have metrics. See CITM guide on Metrics
+metrics: false
+
+# For helm test and hook
+tests:
+  skipTest: false
+  hookDeletePolicy: "before-hook-creation, hook-succeeded"
+  numberOfRetry: 10
+  delaySecondsBetweenRetry: 5
+  # Extra options for the curl command. Examples: "--connect-timeout 60 -v", "-vL", "-v -L"
+  curlExtraOpts: "--connect-timeout 60"

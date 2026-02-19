@@ -1,0 +1,28 @@
+{{- include "crdb-redisio.init" . -}}
+{{/*
+*
+* A non-manifest helper to check that the values for a cluster are
+* valid.  This prevents performing an upgrade of a chart to an invalid
+* cluster configuration.
+*
+*/}}
+
+{{- if .redis_cluster -}}
+
+{{- if .sentinel_enabled -}}
+{{- fail (printf "sentinel.enabled should be set to false when cluster.enabled") -}}
+{{- end -}}
+
+{{- if not (ge (int .Values.cluster.shardSize | default 2) 1) }}
+{{- fail (printf "cluster.shardSize (%d) not allowed, cannot be less than 1" (int .Values.cluster.shardSize)) -}}
+{{- end -}}
+
+{{- if not (ge (int .Values.cluster.shardCount) 3) }}
+{{- fail (printf "cluster.shardCount (%d) not allowed, cannot be less than 3" (int .Values.cluster.shardCount)) -}}
+{{- end -}}
+
+{{- if gt (mul (int .Values.cluster.shardSize | default 2) (int .Values.cluster.shardCount)) (int .Values.server.count) }}
+{{- fail (printf "Insufficient server.count (%d) to support cluster.shardCount (%d) with cluster.shardSize (%d)" (int .Values.server.count) (int .Values.cluster.shardCount) (int .Values.cluster.shardSize | default 2)) -}}
+{{- end -}}
+
+{{- end -}}

@@ -1,0 +1,172 @@
+{{- include "cmdb.init" . -}}
+{{- if .Values.istio.enabled  }}
+{{- $createPspForIstio := and (not .Values.istio.cni.enabled) .Values.rbac.psp.create (.Capabilities.APIVersions.Has "policy/v1beta1/PodSecurityPolicy") }}
+{{- $createSccForIstio := and (not .Values.istio.cni.enabled) .Values.rbac.scc.create (.Capabilities.APIVersions.Has "security.openshift.io/v1") }}
+{{- $mtls_mode := include "cmdb.istio_mtls_mode" . }}
+{{- if $createPspForIstio }}
+# --------------------------------------------------
+#  Istio PSP RBAC:
+#    - all statefulsets, deployments
+#    - all jobs with istio sidecar injection
+# --------------------------------------------------
+---
+apiVersion: policy/v1beta1
+kind: PodSecurityPolicy
+metadata:
+  name: {{ template "cmdb.fullname" . }}-istio
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "cmdb-admin.labels" (tuple . "podsecuritypolicy") | nindent 4 }}
+  annotations:
+    seccomp.security.alpha.kubernetes.io/allowedProfileNames: '*'
+    {{- include "cmdb-admin.annotations" (tuple . "podsecuritypolicy") | nindent 4 }}
+spec:
+  allowPrivilegeEscalation: true
+  runAsUser:
+    rule: MustRunAsNonRoot
+  seLinux:
+    rule: RunAsAny
+  fsGroup:
+    rule: RunAsAny
+  supplementalGroups:
+    rule: RunAsAny
+  allowedCapabilities:
+  - 'NET_ADMIN'
+  - 'NET_RAW'
+  requiredDropCapabilities:
+  - ALL
+  volumes:
+  - configMap
+  - downwardAPI
+  - emptyDir
+  - persistentVolumeClaim
+  - secret
+{{- end }}
+
+{{- if $createSccForIstio }}
+# --------------------------------------------------
+#  Istio SCC RBAC:
+#    - all statefulsets, deployments
+#    - all jobs with istio sidecar injection
+# --------------------------------------------------
+---
+apiVersion: security.openshift.io/v1
+kind: SecurityContextConstraints
+metadata:
+  name: {{ template "cmdb.fullname" . }}-istio
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "cmdb-admin.labels" (tuple . "securitycontextconstraints") | nindent 4 }}
+  annotations:
+    {{- include "cmdb-admin.annotations" (tuple . "securitycontextconstraints") | nindent 4 }}
+allowedCapabilities:
+- 'NET_ADMIN'
+- "NET_RAW"
+allowHostDirVolumePlugin: false
+allowHostIPC: false
+allowHostNetwork: false
+allowHostPID: false
+allowHostPorts: false
+allowPrivilegedContainer: false
+readOnlyRootFilesystem: false
+fsGroup:
+  type: MustRunAs
+runAsUser:
+  type: MustRunAsRange
+seLinuxContext:
+  type: RunAsAny
+supplementalGroups:
+  type: MustRunAs
+volumes:
+- configMap
+- downwardAPI
+- emptyDir
+- persistentVolumeClaim
+- secret
+{{- end }}
+
+# --------------------------------------------------
+#  Istio ServiceAccount, Role, Rolebinding:
+#  Create only if required
+# --------------------------------------------------
+{{- if or $createPspForIstio $createSccForIstio }}
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: {{ template "cmdb.fullname" . }}-istio
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "cmdb-mariadb.labels" (tuple . "serviceaccount") | nindent 4 }}
+  annotations:
+    {{- include "cmdb-mariadb.annotations" (tuple . "serviceaccount") | nindent 4 }}
+automountServiceAccountToken: true
+
+---
+kind: Role
+apiVersion: rbac.authorization.k8s.io/v1
+metadata:
+  name: {{ template "cmdb.fullname" . }}-istio
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "cmdb-mariadb.labels" (tuple . "role") | nindent 4 }}
+  annotations:
+    {{- include "cmdb-mariadb.annotations" (tuple . "role") | nindent 4 }}
+rules:
+{{- if $createPspForIstio }}
+- apiGroups: ["extensions"]
+  resourceNames: ["{{ template "cmdb.fullname" . }}-istio"]
+  resources: ["podsecuritypolicies"]
+  verbs: ["use"]
+{{- end }}
+{{- if $createSccForIstio }}
+- apiGroups: ["security.openshift.io"]
+  resourceNames: ["{{ template "cmdb.fullname" . }}-istio"]
+  resources: ["securitycontextconstraints"]
+  verbs: ["use"]
+{{- end }}
+---
+kind: RoleBinding
+apiVersion: rbac.authorization.k8s.io/v1
+metadata:
+  name: {{ template "cmdb.fullname" . }}-istio
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "cmdb-mariadb.labels" (tuple . "rolebinding") | nindent 4 }}
+  annotations:
+    {{- include "cmdb-mariadb.annotations" (tuple . "rolebinding") | nindent 4 }}
+subjects:
+- kind: ServiceAccount
+  name: {{ template "cmdb.fullname" . }}-istio
+  namespace: {{ .Release.Namespace }}
+  apiGroup: ""
+roleRef:
+  kind: Role
+  name: {{ template "cmdb.fullname" . }}-istio
+  apiGroup: rbac.authorization.k8s.io
+{{- end }}
+
+{{- if semverCompare ">=1.5" (toString .Values.istio.version ) }}
+# --------------------------------------------------
+#  PeerAuthentication
+#   - older versions of Istio (<1.5)
+# --------------------------------------------------
+---
+apiVersion: "security.istio.io/v1beta1"
+kind: "PeerAuthentication"
+metadata:
+  name: {{ template "cmdb.fullname" . }}-mlts-authn
+  labels:
+    {{- include "cmdb-mariadb.labels" (tuple . "peerauthentication")  | nindent 4 }}
+  annotations:
+    {{- include "cmdb-mariadb.annotations" (tuple . "peerauthentication")  | nindent 4 }}
+spec:
+  selector:
+    matchLabels:
+      app: {{ template "cmdb.fullname" .}}
+      {{- include "cmdb.get_mtls_labels" . | nindent 6 }}
+  mtls:
+    mode: {{ $mtls_mode }}
+{{- end }}
+
+{{- end }}

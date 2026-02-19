@@ -1,0 +1,18 @@
+#variabes used component will have .Values.kubeStateMetrics data(yaml)
+##certificateName with be name of certificate created
+##secretName will be the name of secret created
+##the above variables are used in the cpro.certmanager.template
+{{- if and (.Values.pushgateway.enabled) (eq (include "csf-common-lib.v1.coalesceBoolean" (tuple .Values.pushgateway.tls.enabled .Values.tls.enabled .Values.global.tls.enabled .Values.pushgateway.tls_auth_config.tls.enabled false)) "true") (eq (include "csf-common-lib.v1.isEmptyValue" .Values.pushgateway.tls.secretRef.name) "true") (eq .Values.pushgateway.tls_auth_config.tls.externalSecret "") }}
+{{- if eq (include "csf-common-lib.v1.coalesceBoolean" (tuple .Values.certManager.enabled .Values.global.certManager.enabled true)) "true" }}
+{{- if .Values.pushgateway.certificate.enabled }}
+{{ $_ := set . "component" .Values.pushgateway }}
+{{ $certificateName := include "cpro.pushgateway.client.resourceName" . }}
+{{ $_ := set . "certificateName" $certificateName }}
+{{ $secretName := include "cpro.pushgateway.client.secret" . }}
+{{ $_ := set . "secretName" $secretName }}
+{{ $serviceName := printf "%s" (include "cpro.prometheus.pushgateway.fullname" . ) }}
+{{ $_ := set . "serviceName" $serviceName }}
+{{- include "cpro-common-lib.v4.certificate" (tuple . .Values.pushgateway "pobserve-issuer") }}
+{{- end }}
+{{- end }}
+{{- end }}

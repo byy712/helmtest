@@ -1,0 +1,12 @@
+{{- if .Release.IsUpgrade }}
+{{- $pvcname := (lookup "v1" "PersistentVolumeClaim" .Release.Namespace (include "cpro-grafana.fullname" .)) }}
+{{- if $pvcname }}
+{{- $hbplabel := (lookup "v1" "PersistentVolumeClaim" .Release.Namespace (include "cpro-grafana.fullname" .)).metadata.labels.helmbp }}
+{{- if $hbplabel }}
+{{- $hbplabel }}
+{{- else }}
+{{- end }}
+{{- end }}
+{{- else }}
+{{- printf "newhbp3" }}
+{{- end -}}

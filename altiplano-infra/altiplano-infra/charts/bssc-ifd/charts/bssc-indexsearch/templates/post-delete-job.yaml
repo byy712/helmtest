@@ -1,0 +1,227 @@
+{{- if ( .Values.rbac.enabled  ) }}
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: {{ include "bssc-indexsearch.fullname" . |trunc ((sub .Values.customResourceNames.resourceNameLimit 7)|int) }}-del-sa
+  namespace: "{{.Release.Namespace}}"
+  labels:
+{{- include "bssc-indexsearch.commonLabels" (tuple .) | nindent 4 }}
+{{- include "bssc-indexsearch.csf-toolkit-helm.labels" (tuple .) | nindent 4 }}
+  annotations:
+{{- include "bssc-indexsearch.csf-toolkit-helm.annotations" (tuple .) | nindent 4 }}
+    "helm.sh/hook": post-delete
+    "helm.sh/hook-weight": "-8"
+    "helm.sh/hook-delete-policy": before-hook-creation, hook-succeeded
+    seccomp.security.alpha.kubernetes.io/allowedProfileNames: {{ .Values.global.seccompAllowedProfileNames }}
+    seccomp.security.alpha.kubernetes.io/defaultProfileName: {{ .Values.global.seccompDefaultProfileName }}
+automountServiceAccountToken: false
+---
+kind: RoleBinding
+apiVersion: {{ template "bssc-indexsearch.apiVersionRbacAuthorizatioK8sIoV1Beta1orV1" . }}
+metadata:
+  name: {{ template "bssc-indexsearch.fullname" . }}-del-rb
+  namespace: "{{.Release.Namespace}}"
+  labels:
+{{- include "bssc-indexsearch.commonLabels" (tuple .) | nindent 4 }}
+{{- include "bssc-indexsearch.csf-toolkit-helm.labels" (tuple .) | nindent 4 }}
+  annotations:
+{{- include "bssc-indexsearch.csf-toolkit-helm.annotations" (tuple .) | nindent 4 }}
+    "helm.sh/hook": post-delete
+    "helm.sh/hook-weight": "-7"
+    "helm.sh/hook-delete-policy": before-hook-creation, hook-succeeded
+    seccomp.security.alpha.kubernetes.io/allowedProfileNames: {{ .Values.global.seccompAllowedProfileNames }}
+    seccomp.security.alpha.kubernetes.io/defaultProfileName: {{ .Values.global.seccompDefaultProfileName }}
+
+subjects:
+- kind: ServiceAccount
+  name: {{ include "bssc-indexsearch.fullname" . |trunc ((sub .Values.customResourceNames.resourceNameLimit 7)|int) }}-del-sa
+  namespace: "{{.Release.Namespace}}"
+  apiGroup: ""
+roleRef:
+  kind: Role
+  name: {{ template "bssc-indexsearch.fullname" . }}-del-role
+  apiGroup: ""
+
+---
+kind: Role
+apiVersion: {{ template "bssc-indexsearch.apiVersionRbacAuthorizatioK8sIoV1Beta1orV1" . }}
+metadata:
+  namespace: "{{.Release.Namespace}}"
+  name: {{ template "bssc-indexsearch.fullname" . }}-del-role
+  labels:
+{{- include "bssc-indexsearch.commonLabels" (tuple .) | nindent 4 }}
+{{- include "bssc-indexsearch.csf-toolkit-helm.labels" (tuple .) | nindent 4 }}
+  annotations:
+{{- include "bssc-indexsearch.csf-toolkit-helm.annotations" (tuple .) | nindent 4 }}
+    "helm.sh/hook": post-delete
+    "helm.sh/hook-weight": "-8"
+    "helm.sh/hook-delete-policy": before-hook-creation, hook-succeeded
+    seccomp.security.alpha.kubernetes.io/allowedProfileNames: {{ .Values.global.seccompAllowedProfileNames }}
+    seccomp.security.alpha.kubernetes.io/defaultProfileName: {{ .Values.global.seccompDefaultProfileName }}
+
+rules:
+- apiGroups:
+  - ""
+  resources:
+{{- if .Values.persistence.auto_delete }}
+  - persistentvolumeclaims
+{{- end }}
+  - configmaps
+  - secrets
+  - pods
+  verbs:
+  - delete
+  - get
+  - list
+- apiGroups:
+  - batch
+  resources:
+  - jobs
+  verbs:
+  - get
+  - list
+  - delete
+{{- end }}
+---
+{{- if .Values.persistence.auto_delete }}
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: {{ template "bssc-indexsearch.delete.pvcJob.name" . }}
+  labels:
+{{- include "bssc-indexsearch.commonLabels" (tuple .) | nindent 4 }}
+{{- include "bssc-indexsearch.csf-toolkit-helm.labels" (tuple . .Values.custom.hookJobs.job.labels) | indent 4 }}
+  annotations:
+    "helm.sh/hook-weight": "-6"
+    "helm.sh/hook": post-delete
+    "helm.sh/hook-delete-policy": before-hook-creation, hook-succeeded
+    seccomp.security.alpha.kubernetes.io/allowedProfileNames: {{ .Values.global.seccompAllowedProfileNames }}
+    seccomp.security.alpha.kubernetes.io/defaultProfileName: {{ .Values.global.seccompDefaultProfileName }}
+{{- include "bssc-indexsearch.csf-toolkit-helm.annotations" (tuple . .Values.custom.hookJobs.job.annotations) | indent 4 }}
+spec:
+  template:
+    metadata:
+      labels:
+        altiplano-role: {{ .Values.accessRoleLabel }}
+{{- include "bssc-indexsearch.commonLabels" (tuple .) | nindent 8 }}
+{{- include "bssc-indexsearch.csf-toolkit-helm.labels" (tuple . .Values.custom.hookJobs.pod.labels) | indent 8 }}    
+      annotations:
+        sidecar.istio.io/inject: "false"
+{{- include "bssc-indexsearch.csf-toolkit-helm.annotations" (tuple . .Values.custom.hookJobs.pod.annotations) | indent 8 }}
+    spec:
+      serviceAccountName: {{ template "bssc-indexsearch.delServiceAccount.name" . }}
+      automountServiceAccountToken: true
+      {{- if .Values.jobs.affinity }}
+      affinity:
+{{ toYaml .Values.jobs.affinity | indent 8 }}
+      {{- end }}
+      {{- if .Values.jobs.nodeSelector }}
+      nodeSelector:
+{{ toYaml .Values.jobs.nodeSelector | indent 8 }}
+      {{- end }}
+      {{- if .Values.jobs.tolerations }}
+      tolerations:
+{{ toYaml .Values.jobs.tolerations | indent 8 }}
+      {{- end }}    
+      restartPolicy: Never
+      securityContext:
+{{ include "bssc-indexsearch.pod.securityContext" . | indent 8 }}
+      {{- with or .Values.imagePullSecrets .Values.global.imagePullSecrets }}
+      imagePullSecrets:
+{{- toYaml . | nindent 8 }}
+      {{- end }}
+      containers:
+      - name: {{ template "bssc-indexsearch.delete.pvcContainer.name" .}}
+        image: {{ include "bssc-indexsearch.registry" (tuple .Values .Values.internalToolsRegistry) }}/{{ include "bssc-indexsearch.imageRepositoryPath" (tuple .Values.global.flatRegistry .Values.kubectl.image.repo) }}:{{ (include "bssc-indexsearch.imageTag" (tuple .Values.kubectl.image.tag .Values.kubectl.image.supportedImageFlavor .Values .Values.kubectl .Values.kubectl.image )) }}
+        imagePullPolicy: {{.Values.manager.ImagePullPolicy}}
+        env:
+        - name: TZ
+          value: {{ or .Values.timezone.timeZoneEnv .Values.global.timeZoneEnv "UTC" | quote }}
+        volumeMounts:
+        securityContext:
+{{ include "bssc-indexsearch.container.securityContext" . | indent 10 }}
+        resources:
+{{ include "bssc-indexsearch.resources" (tuple . .Values.jobs.hookJobs.resources "120m") | indent 10 }}
+        command:
+        - sh
+        - "-c"
+        - |
+          kubectl delete pvc --namespace {{ .Release.Namespace }} -l 'app.kubernetes.io/instance={{ .Release.Name }},app.kubernetes.io/name={{ default .Chart.Name .Values.nameOverride }},app.kubernetes.io/component in ({{ .Values.manager.name}}, {{ .Values.data.name}})'
+{{- end }}
+---
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: {{ template "bssc-indexsearch.cleanUpJob.name" . }}
+  labels:
+{{- include "bssc-indexsearch.commonLabels" (tuple .) | nindent 4 }}
+{{- include "bssc-indexsearch.csf-toolkit-helm.labels" (tuple . .Values.custom.hookJobs.job.labels) | indent 4 }}
+  annotations:
+    "helm.sh/hook-weight": "-6"
+    "helm.sh/hook": post-delete
+    "helm.sh/hook-delete-policy": before-hook-creation, hook-succeeded
+    seccomp.security.alpha.kubernetes.io/allowedProfileNames: {{ .Values.global.seccompAllowedProfileNames }}
+    seccomp.security.alpha.kubernetes.io/defaultProfileName: {{ .Values.global.seccompDefaultProfileName }}
+{{- include "bssc-indexsearch.csf-toolkit-helm.annotations" (tuple . .Values.custom.hookJobs.job.annotations) | indent 4 }}
+spec:
+  template:
+    metadata:
+      labels:
+{{- include "bssc-indexsearch.commonLabels" (tuple .) | nindent 8 }} 
+{{- include "bssc-indexsearch.csf-toolkit-helm.labels" (tuple . .Values.custom.hookJobs.pod.labels) | indent 8 }}
+      annotations:
+        sidecar.istio.io/inject: "false"
+{{- include "bssc-indexsearch.csf-toolkit-helm.annotations" (tuple . .Values.custom.hookJobs.pod.annotations) | indent 8 }}
+    spec:
+      serviceAccountName: {{ template "bssc-indexsearch.delServiceAccount.name" . }}
+      automountServiceAccountToken: true
+      {{- if .Values.jobs.affinity }}
+      affinity:
+{{ toYaml .Values.jobs.affinity | indent 8 }}
+      {{- end }}
+      {{- if .Values.jobs.nodeSelector }}
+      nodeSelector:
+{{ toYaml .Values.jobs.nodeSelector | indent 8 }}
+      {{- end }}
+      {{- if .Values.jobs.tolerations }}
+      tolerations:
+{{ toYaml .Values.jobs.tolerations | indent 8 }}
+      {{- end }}    
+      restartPolicy: Never
+      securityContext:
+{{ include "bssc-indexsearch.pod.securityContext" . | indent 8 }}
+      {{- with or .Values.imagePullSecrets .Values.global.imagePullSecrets }}
+      imagePullSecrets:
+{{- toYaml . | nindent 8 }}
+      {{- end }}
+      containers:
+      - name: {{ template "bssc-indexsearch.cleanUpContainer.name" . }}
+        image: {{ include "bssc-indexsearch.registry" (tuple .Values .Values.internalToolsRegistry) }}/{{ include "bssc-indexsearch.imageRepositoryPath" (tuple .Values.global.flatRegistry .Values.kubectl.image.repo) }}:{{ (include "bssc-indexsearch.imageTag" (tuple .Values.kubectl.image.tag .Values.kubectl.image.supportedImageFlavor .Values .Values.kubectl .Values.kubectl.image )) }}
+        imagePullPolicy: {{.Values.manager.ImagePullPolicy}}
+        env:
+        - name: TZ
+          value: {{ or .Values.timezone.timeZoneEnv .Values.global.timeZoneEnv "UTC" | quote }}
+        volumeMounts:
+        securityContext:
+{{ include "bssc-indexsearch.container.securityContext" . | indent 10 }}
+        resources:
+{{ include "bssc-indexsearch.resources" (tuple . .Values.jobs.hookJobs.resources "120m") | indent 10 }}
+        command:
+        - sh
+        - "-c"
+        - |
+          # Helm-hook-delete policy of pre/post upgrade jobs has been made user configurable. If user has modified it to retain the jobs even on hook-succeeded, these jobs should be deleted on deletion of the helm release. Following code is added to handle this job deletion.
+          kubectl delete job --namespace {{ .Release.Namespace }} {{ template "bssc-indexsearch.preUpgradeJob.name" . }} --ignore-not-found=true
+          kubectl delete pod {{ template "bssc-indexsearch.helmTestPod.name" . }} --namespace {{ .Release.Namespace }} --ignore-not-found=true
+          kubectl delete cm {{ template "bssc-indexsearch.fullname" . }}-upg-sec  --namespace {{ .Release.Namespace }} --ignore-not-found=true
+          kubectl delete job {{ template "bssc-indexsearch.preHealJob.name" . }} --namespace {{ .Release.Namespace }} --ignore-not-found=true
+          {{- if and ( .Values.indexsearch.nodeCrt.certificate.enabled ) ( .Values.indexsearch.nodeCrt.certificate.secretName ) }}
+          kubectl delete secret {{ .Values.indexsearch.nodeCrt.certificate.secretName }}  --ignore-not-found=true
+          {{- end }}
+          {{- if and ( .Values.indexsearch.adminCrt.certificate.enabled ) ( .Values.indexsearch.adminCrt.certificate.secretName ) }}
+          kubectl delete secret {{ .Values.indexsearch.adminCrt.certificate.secretName }}  --ignore-not-found=true
+          {{- end }}
+          kubectl delete secret {{ template "bssc-indexsearch.fullname" . }}-clientcert {{ template "bssc-indexsearch.fullname" . }}-nodecert {{ .Release.Name }}-bssc-ifd-cert-for-dashboards --namespace {{ .Release.Namespace }}  --ignore-not-found=true
+          kubectl delete cm {{ template "bssc-indexsearch.fullname" . }}-osinstalled --namespace {{ .Release.Namespace }}  --ignore-not-found=true
+          kubectl delete job {{ template "bssc-indexsearch.preRollbackJob.name" . }} --namespace {{ .Release.Namespace }} --ignore-not-found=true
+---

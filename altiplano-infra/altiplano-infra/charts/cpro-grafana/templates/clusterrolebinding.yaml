@@ -1,0 +1,19 @@
+{{- if and .Values.rbac.enabled (not .Values.restrictedToNamespace) }}
+apiVersion: {{ template "cpro-grafana.grafanaApiVersion.clusterRoleBinding" . }}
+kind: ClusterRoleBinding
+metadata:
+  name: {{ include "csf-common-lib.v1.resourceName" (tuple . "ClusterRoleBinding" (printf "%s-grafanacrb" .Release.Namespace)) }} 
+  labels:
+    {{- include "cpro-grafana.app.labels-v3" . | nindent 4 }}
+    {{- include "cpro-grafana.labelsOrAnnotations" (tuple .Values.global.labels) | indent 4}}
+  annotations:
+{{- include "cpro-grafana.labelsOrAnnotations" (tuple .Values.global.annotations) | indent 4}}
+subjects:
+  - kind: ServiceAccount
+    name: {{ template "cpro-grafana.serviceAccountName" . }}
+    namespace: {{ .Release.Namespace }}
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: {{ template "cpro-grafana.clusterRole" . }}
+{{- end }}

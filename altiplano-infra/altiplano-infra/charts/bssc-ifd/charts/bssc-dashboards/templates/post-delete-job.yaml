@@ -1,0 +1,139 @@
+{{- if ( .Values.rbac.enabled  ) }}
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: {{ include "bssc-dashboards.fullname" . |trunc ((sub .Values.customResourceNames.resourceNameLimit 7)|int) }}-del-sa
+  namespace: "{{.Release.Namespace}}"
+  labels:
+{{- include "bssc-dashboards.commonLabels" (tuple .  "dashboards" ) | indent 4 }}
+{{- include "bssc-dashboards.csf-toolkit-helm.labels" (tuple .) | nindent 4 }}
+  annotations:
+{{- include "bssc-dashboards.csf-toolkit-helm.annotations" (tuple .) | nindent 4 }}
+    "helm.sh/hook": post-delete
+    "helm.sh/hook-weight": "-8"
+    "helm.sh/hook-delete-policy": before-hook-creation, hook-succeeded
+    seccomp.security.alpha.kubernetes.io/allowedProfileNames: {{ .Values.global.seccompAllowedProfileNames }}
+    seccomp.security.alpha.kubernetes.io/defaultProfileName: {{ .Values.global.seccompDefaultProfileName }}
+automountServiceAccountToken: false
+---
+kind: RoleBinding
+apiVersion: {{ template "bssc-dashboards.apiVersionRbacAuthorizatioK8sIoV1Beta1orV1" . }}
+metadata:
+  name: {{ template "bssc-dashboards.fullname" . }}-del-rb
+  namespace: "{{.Release.Namespace}}"
+  labels:
+{{- include "bssc-dashboards.commonLabels" (tuple .  "dashboards" ) | indent 4 }}
+{{- include "bssc-dashboards.csf-toolkit-helm.labels" (tuple .) | nindent 4 }}
+  annotations:
+{{- include "bssc-dashboards.csf-toolkit-helm.annotations" (tuple .) | nindent 4 }}
+    "helm.sh/hook": post-delete
+    "helm.sh/hook-weight": "-7"
+    "helm.sh/hook-delete-policy": before-hook-creation, hook-succeeded
+    seccomp.security.alpha.kubernetes.io/allowedProfileNames: {{ .Values.global.seccompAllowedProfileNames }}
+    seccomp.security.alpha.kubernetes.io/defaultProfileName: {{ .Values.global.seccompDefaultProfileName }}
+
+subjects:
+- kind: ServiceAccount
+  name: {{ include "bssc-dashboards.fullname" . |trunc ((sub .Values.customResourceNames.resourceNameLimit 7)|int) }}-del-sa
+  namespace: "{{.Release.Namespace}}"
+  apiGroup: ""
+roleRef:
+  kind: Role
+  name: {{ template "bssc-dashboards.fullname" . }}-del-role
+  apiGroup: ""
+
+---
+kind: Role
+apiVersion: {{ template "bssc-dashboards.apiVersionRbacAuthorizatioK8sIoV1Beta1orV1" . }}
+metadata:
+  namespace: "{{.Release.Namespace}}"
+  name: {{ template "bssc-dashboards.fullname" . }}-del-role
+  labels:
+{{- include "bssc-dashboards.commonLabels" (tuple .  "dashboards" ) | indent 4 }}
+{{- include "bssc-dashboards.csf-toolkit-helm.labels" (tuple .) | nindent 4 }}
+  annotations:
+{{- include "bssc-dashboards.csf-toolkit-helm.annotations" (tuple .) | nindent 4 }}
+    "helm.sh/hook": post-delete
+    "helm.sh/hook-weight": "-8"
+    "helm.sh/hook-delete-policy": before-hook-creation, hook-succeeded
+    seccomp.security.alpha.kubernetes.io/allowedProfileNames: {{ .Values.global.seccompAllowedProfileNames }}
+    seccomp.security.alpha.kubernetes.io/defaultProfileName: {{ .Values.global.seccompDefaultProfileName }}
+
+rules:
+- apiGroups:
+  - ""
+  resources:
+  - secrets
+  - pods
+  verbs:
+  - delete
+{{- end }}
+---
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: {{ template "bssc-dashboards.deleteJob.name" . }}
+  labels:
+{{- include "bssc-dashboards.csf-toolkit-helm.labels" (tuple . .Values.dashboards.custom.hookJobs.job.labels) | indent 4}}
+{{- include "bssc-dashboards.commonLabels" (tuple .  "dashboards" ) | indent 4 }}
+  annotations:
+    "helm.sh/hook-weight": "-6"
+    "helm.sh/hook": post-delete
+    "helm.sh/hook-delete-policy": before-hook-creation, hook-succeeded
+    seccomp.security.alpha.kubernetes.io/allowedProfileNames: {{ .Values.global.seccompAllowedProfileNames }}
+    seccomp.security.alpha.kubernetes.io/defaultProfileName: {{ .Values.global.seccompDefaultProfileName }}
+{{- include "bssc-dashboards.csf-toolkit-helm.annotations" (tuple . .Values.dashboards.custom.hookJobs.job.annotations) | indent 4}}
+spec:
+  template:
+    metadata:
+      labels:
+        altiplano-role: {{ .Values.accessRoleLabel }}
+{{- include "bssc-dashboards.csf-toolkit-helm.labels" (tuple . .Values.dashboards.custom.hookJobs.pod.labels) | indent 8}}
+{{- include "bssc-dashboards.commonLabels" (tuple .  "dashboards" ) | indent 8 }}
+      annotations:
+        sidecar.istio.io/inject: "false"
+{{- include "bssc-dashboards.csf-toolkit-helm.annotations" (tuple . .Values.dashboards.custom.hookJobs.pod.annotations) | indent 8}}
+    spec:
+      serviceAccountName: {{ template "bssc-dashboards.delServiceAccount.name" . }}
+      automountServiceAccountToken: true
+      {{- if .Values.jobs.affinity }}
+      affinity:
+{{ toYaml .Values.jobs.affinity | indent 8 }}
+      {{- end }}
+      {{- if .Values.jobs.nodeSelector }}
+      nodeSelector:
+{{ toYaml .Values.jobs.nodeSelector | indent 8 }}
+      {{- end }}
+      {{- if .Values.jobs.tolerations }}
+      tolerations:
+{{ toYaml .Values.jobs.tolerations | indent 8 }}
+      {{- end }}
+      restartPolicy: Never
+      {{- with or .Values.dashboards.imagePullSecrets .Values.imagePullSecrets .Values.global.imagePullSecrets }}
+      imagePullSecrets:
+{{- toYaml . | nindent 8 }}
+      {{- end }}
+      securityContext:
+{{ include "bssc-dashboards.pod.securityContext" . | indent 8 }}
+      containers:
+      - name: {{ template "bssc-dashboards.deleteJob.container.name" . }}
+        image: {{ include "bssc-dashboards.registry" (tuple .Values .Values.internalToolsRegistry) }}/{{ include "bssc-dashboards.imageRepositoryPath" (tuple .Values.global.flatRegistry .Values.kubectl.image.repo) }}:{{ include "bssc-dashboards.imageTag" (tuple .Values.kubectl.image.tag .Values.kubectl.image.supportedImageFlavor .Values .Values.kubectl .Values.kubectl.image) }}
+        imagePullPolicy: {{.Values.dashboards.ImagePullPolicy}}
+        securityContext:
+{{ include "bssc-dashboards.container.securityContext" . | indent 10 }}
+        env:
+        - name: TZ
+          value: {{ or .Values.timezone.timeZoneEnv .Values.global.timeZoneEnv "UTC" | quote }}
+        resources:
+{{ include "bssc-dashboards.resources" (tuple . .Values.jobs.hookJobs.resources "120m") | indent 10 }}
+        command:
+        - sh
+        - "-c"
+        - |
+          kubectl delete pod {{ template "bssc-dashboards.helmTestPod.name" . }} --namespace {{ .Release.Namespace }} --ignore-not-found=true
+          kubectl delete secret {{ template "bssc-dashboards.fullname" . }}-certmgr --namespace {{ .Release.Namespace }} --ignore-not-found=true
+          {{- if and ( .Values.dashboards.certificate.enabled ) ( .Values.dashboards.certificate.secretName ) }}
+          kubectl delete secret {{ .Values.dashboards.certificate.secretName }} --namespace {{ .Release.Namespace }} --ignore-not-found=true
+          {{- end }}
+---
+

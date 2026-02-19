@@ -1,0 +1,280 @@
+{{- if .Values.indexmgr.enabled }}
+{{- include "bssc-indexmgr.syslogValues" . }}
+{{- include "bssc-indexmgr.syslogTlsValues" . }}
+{{- include "bssc-indexmgr.istio.initIstio" . }}
+# This condition is to ensure sensitiveInfoInSecret flag is enabled when security is enabled.
+{{- include "bssc-indexmgr.securityPrereqCheck" . }}
+{{- include "bssc-indexmgr.isCertManagerEnable" . }}
+{{- include "bssc-indexmgr.supportedImageFlavor" . }}
+apiVersion: {{ template "bssc-indexmgr.apiVersionBatchV1Beta1orBatchV1" .}}
+kind: CronJob
+metadata:
+  name:  {{ include "bssc-indexmgr.job.name" . }}
+  labels:
+{{- include "bssc-indexmgr.commonLabels" (tuple .  "indexmgr" ) | indent 4 }}
+{{- include "bssc-indexmgr.csf-toolkit-helm.labels" (tuple . .Values.indexmgr.custom.cronjob.labels) | indent 4}}
+    role: indexmanager
+  annotations:
+    seccomp.security.alpha.kubernetes.io/allowedProfileNames: {{ .Values.global.seccompAllowedProfileNames }}
+    seccomp.security.alpha.kubernetes.io/defaultProfileName: {{ .Values.global.seccompDefaultProfileName }}
+{{- include "bssc-indexmgr.csf-toolkit-helm.annotations" (tuple . .Values.indexmgr.custom.cronjob.annotations) | indent 4}}
+spec:
+  schedule: "{{ .Values.indexmgr.schedule }}"
+{{- if .Values.indexmgr.jobSpec}}
+{{ toYaml .Values.indexmgr.jobSpec | trim | indent 2 }}
+{{- end }}
+  jobTemplate:
+   metadata:
+     annotations:
+{{- include "bssc-indexmgr.csf-toolkit-helm.annotations" (tuple . .Values.indexmgr.custom.pod.annotations) | indent 7}}
+     labels:
+{{- include "bssc-indexmgr.commonLabels" (tuple .  "indexmgr" ) | nindent 7 }}
+{{- include "bssc-indexmgr.csf-toolkit-helm.labels" (tuple . .Values.indexmgr.custom.cronjob.labels) | indent 7}}
+       role: indexmanager
+   spec:
+{{- if .Values.indexmgr.jobTemplateSpec}}
+{{ toYaml .Values.indexmgr.jobTemplateSpec | trim | indent 4 }}
+{{- end }}
+    template:
+     metadata:
+       labels:
+{{- include "bssc-indexmgr.commonLabels" (tuple .  "indexmgr" ) | nindent 9 }}
+{{- include "bssc-indexmgr.csf-toolkit-helm.labels" (tuple . .Values.indexmgr.custom.pod.labels) | indent 9}}
+         role: indexmanager
+       annotations:
+         sidecar.istio.io/inject: "{{ $.istio.enabled }}"
+{{- include "bssc-indexmgr.csf-toolkit-helm.annotations" (tuple . .Values.indexmgr.custom.pod.annotations) | indent 9}}
+     spec:
+      {{- if .Values.indexmgr.priorityClassName }}
+      priorityClassName: {{ .Values.indexmgr.priorityClassName | quote }}
+      {{- else if .Values.global.priorityClassName }}
+      priorityClassName: {{ .Values.global.priorityClassName | quote }}
+      {{- end }}
+      securityContext:
+{{- include "bssc-indexmgr.pod.securityContext" . | indent 8 }}
+      serviceAccountName: {{ template "bssc-indexmgr.serviceAccount.name" . }}
+      {{- if .Values.indexmgr.unifiedLogging.enabled }}
+      shareProcessNamespace: true
+      {{- end }}
+      {{- if ($.istio.enabled) }}
+      automountServiceAccountToken: true
+      {{- else }}
+      automountServiceAccountToken: false
+      {{- end }}
+      {{- if .Values.affinity }}
+      affinity:
+{{ toYaml .Values.affinity | indent 8 }}
+      {{- end }}
+      {{- if .Values.nodeSelector }}
+      nodeSelector:
+{{ toYaml .Values.nodeSelector | indent 8 }}
+      {{- end }}
+      {{- if .Values.tolerations }}
+      tolerations:
+{{ toYaml .Values.tolerations | indent 8 }}
+      {{- end }}
+      {{- with or .Values.indexmgr.imagePullSecrets .Values.imagePullSecrets .Values.global.imagePullSecrets }}
+      imagePullSecrets:
+{{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- if (.Values.security.enable) }}
+      {{- if eq (tpl (.Values.security.sensitiveInfoInSecret.enabled | toString ) .) "true" }}
+      initContainers:
+      - name : {{ template "bssc-indexmgr.initContainer.name" . }}
+        image: {{ include "bssc-indexmgr.registry" (tuple .Values .Values.internalInitRegistry) }}/{{ .Values.indexmgr.image.initRepo }}:{{ .Values.indexmgr.image.initTag }}
+        command: ['sh', '-c', "/etc/initContainerMount/encrypt.sh"]
+        securityContext:
+{{- include "bssc-indexmgr.container.securityContext" . | indent 10 }}
+        resources:
+{{ include "bssc-indexmgr.resources" (tuple . .Values.indexmgr.init_resources "100m") | indent 10 }}
+        env:
+        - name: TZ
+          value: {{ or .Values.timezone.timeZoneEnv .Values.global.timeZoneEnv "UTC" | quote }}
+        volumeMounts:
+        - name: shared-volume
+          mountPath: "/etc/sharedMount/"
+        - name: indexmgr-passwordsecret
+          mountPath: "/etc/initContainerMount/passwords"
+        - name: indexmgr-certsecrets
+          mountPath: "/etc/initContainerMount/secrets"
+        {{- if and (eq $.isCertManagerEnabled "true") (.Values.indexmgr.certificate.enabled) (not $.istio.enabled) ( not .Values.security.sensitiveInfoInSecret.ca_certificate) }}
+        - name: cert-manager-secret
+          mountPath: "/etc/initContainerMount/certManagerSecret"
+        {{- end }}
+        - name: indexmgr-configs
+          mountPath: "/etc/initContainerMount/config"
+      {{- end }}
+      {{- end }}
+      containers:
+      - name: {{ template "bssc-indexmgr.container.name" . }}
+        image: {{ include "bssc-indexmgr.registry" (tuple .Values .Values.internalAppRegistry) }}/{{.Values.indexmgr.image.repo}}:{{ include "bssc-indexmgr.imageTag" (tuple .Values.indexmgr.image.tag $.commonSupportedImageFlavor .Values .Values.indexmgr .Values.indexmgr.image ) }}
+        imagePullPolicy: {{ .Values.indexmgr.ImagePullPolicy }}
+        env:
+         {{- if $.istio.enabled }}
+         - name: "ISTIO_ENABLED"
+           value: "true"
+         - name: "ISTIO_HEALTHCHK_PORT"
+           value: {{ $.istio.envoy.healthCheckPort | quote }}
+         - name: "ISTIO_ENVOY_PROXY_WAIT_TIMEOUT"
+           value: {{ $.istio.envoy.waitTimeout | quote }}
+         - name: "ISTIO_STOP_PORT"
+           value: {{ $.istio.envoy.stopPort | quote }}
+         {{- end }}
+         - name: "STOP_FOLLOWER_REPLICATED_INDICES"
+           value: "{{ .Values.crossClusterReplication.stopReplicationFollowerIndices }}"
+         - name: "SENSITIVE_INFO_IN_SECRETS"
+           value: {{ (tpl (.Values.security.sensitiveInfoInSecret.enabled | toString ) .) | quote }}
+         - name: TZ
+           value: {{ or .Values.timezone.timeZoneEnv .Values.global.timeZoneEnv "UTC" | quote }}
+         - name: UNIFIED_LOGGING
+           value: "{{ .Values.indexmgr.unifiedLogging.enabled }}"
+         {{- if .Values.indexmgr.unifiedLogging.enabled }}
+         - name: FLUENTD_TERMINATION_DELAY
+           value: "{{ .Values.indexmgr.unifiedLogging.fluentdTerminationDelay }}"
+         {{- end }}
+        securityContext:
+{{- include "bssc-indexmgr.container.securityContext" . | indent 10 }}
+        args:
+        - --config
+        - /etc/sharedMount/curator.yml
+        - /etc/sharedMount/actions.yml
+        resources:
+{{ include "bssc-indexmgr.resources" (tuple . .Values.indexmgr.resources "120m") | indent 10 }}
+        volumeMounts:
+        {{- if .Values.indexmgr.unifiedLogging.enabled }}
+        - name: indexmgr-logs
+          mountPath: "/tmp"
+        {{- end }}
+        {{- if .Values.crossClusterReplication.stopReplicationFollowerIndices }}
+        - name: dryrun-logs
+          mountPath: "/tmp/dryrun-logs"
+        {{- end }}
+        {{- if not .Values.security.enable }}
+        - mountPath: /etc/sharedMount
+          name: indexmgr-configs
+          readOnly: true
+        {{- else }}
+        - name: shared-volume
+          mountPath: "/etc/sharedMount/"
+        {{- end }}
+      {{- if .Values.indexmgr.unifiedLogging.enabled }}
+      - name: {{ template "bssc-indexmgr.unifiedLoggingContainer.name" . }}
+        image: {{ include "bssc-indexmgr.registry" (tuple .Values .Values.internalFluentdSidecarRegistry) }}/{{.Values.indexmgr.unifiedLogging.imageRepo}}:{{ include "bssc-indexmgr.imageTag" (tuple .Values.indexmgr.unifiedLogging.imageTag $.commonSupportedImageFlavor .Values .Values.indexmgr .Values.indexmgr.unifiedLogging ) }}
+        imagePullPolicy: {{ .Values.indexmgr.unifiedLogging.imagePullPolicy }}
+        resources:
+{{ include "bssc-indexmgr.resources" (tuple . .Values.indexmgr.unifiedLogging.resources "50m") | indent 10 }}
+        command: ['bash', '-c', "/opt/scripts/fluentd-sidecar-entrypoint.sh"]
+        securityContext:
+{{ include "bssc-indexmgr.container.securityContext" . | indent 10 }}
+        env:
+          {{- if .Values.indexmgr.unifiedLogging.enabled }}
+          - name: EXTENSION_FIELDS
+            value: {{ or .Values.indexmgr.unifiedLogging.extension .Values.global.unifiedLogging.extension | toJson | quote }}
+          {{- end }}
+          - name: NAMESPACE
+            valueFrom:
+              fieldRef:
+                fieldPath: metadata.namespace
+          - name: "ISTIO_ENABLED"
+            value: "{{ $.istio.enabled }}"
+          - name: TZ
+            value: {{ or .Values.timezone.timeZoneEnv .Values.global.timeZoneEnv "UTC" | quote }}
+          - name: TMPDIR
+            value: /tmp/fluentd-tmp-sidecar
+        {{- if .Values.indexmgr.unifiedLogging.env }}
+{{ toYaml .Values.indexmgr.unifiedLogging.env | indent 10 }}
+        {{- end }}
+          - name: "MAIN_CONTAINER_NAME"
+            value: {{ template "bssc-indexmgr.container.name" . }}
+          - name: "CONTAINER_NAME"
+            value: {{ template "bssc-indexmgr.unifiedLoggingContainer.name" . }}
+        volumeMounts:
+        - name: "indexmgr-logs"
+          mountPath: "/tmp"
+        - name: "unified-logging-conf"
+          mountPath: "/etc/fluent/"
+          {{- if $.syslogEnabled }}
+            {{- if and (default "" $.syslogSecretName) (default "" $.syslogSecretKey) }}
+        - name: syslog-secret
+          mountPath: "/etc/fluent/certs"
+            {{- end }}
+          {{- end }}
+      {{- end }}
+
+
+      volumes:
+      - name: indexmgr-configs
+        configMap:
+       {{- if empty .Values.indexmgr.configMaps.preCreatedConfigmap }}
+          name: {{ template "bssc-indexmgr.fullname" . }}
+       {{- else }}
+          name: {{ .Values.indexmgr.configMaps.preCreatedConfigmap }}
+       {{- end }}
+          items:
+          - key: curator.yml
+            path: curator.yml
+          - key: actions.yml
+            path: actions.yml
+      {{- if .Values.crossClusterReplication.stopReplicationFollowerIndices }}
+      - name: dryrun-logs
+        emptyDir:
+          sizeLimit: {{ default "10Mi"  .Values.emptyDirSizeLimit.dryrunLogs }}
+      {{- end }}
+      {{- if .Values.indexmgr.unifiedLogging.enabled }}
+      - name: unified-logging-conf
+        configMap:
+          name: {{ template "bssc-indexmgr.unifiedLogging.configMap.name" . }}
+      # indexmgr-logs mounted as a emptyDir for indexmgr to write and store its logs
+      - name: indexmgr-logs
+        emptyDir:
+          sizeLimit: {{ default "100Mi"  .Values.emptyDirSizeLimit.indexmgrLogs }}
+        {{- if $.syslogEnabled }}
+          {{- if and (default "" $.syslogSecretName) (default "" $.syslogSecretKey) }}
+      - name: syslog-secret
+        secret:
+          secretName: {{ $.syslogSecretName }}
+          items:
+          - key: {{ $.syslogSecretKey }}
+            path: syslogRootCaPem
+          {{- end }}
+        {{- end }}
+      {{- end }}
+      {{- if .Values.security.enable }}
+      {{- if eq (tpl (.Values.security.sensitiveInfoInSecret.enabled | toString ) .) "true" }}
+      - name: shared-volume
+        emptyDir:
+          sizeLimit: {{ default "10Mi"  .Values.emptyDirSizeLimit.sharedVolume }}
+      - name: indexmgr-passwordsecret
+        secret:
+          secretName: {{ .Values.security.sensitiveInfoInSecret.credentialNamePassword }}
+          items:
+          - key: {{ .Values.security.sensitiveInfoInSecret.indexmgrIsUsername }}
+            path: .indexmgrIsUsername
+          - key: {{ .Values.security.sensitiveInfoInSecret.indexmgrIsPassword }}
+            path: .indexmgrIsPassword
+            {{- if not $.istio.enabled }}
+              {{- if .Values.security.sensitiveInfoInSecret.ca_certificate }}
+      - name: indexmgr-certsecrets
+        secret:
+          secretName: {{ .Values.security.sensitiveInfoInSecret.credentialNameCert }}
+          items:
+          - key: {{ .Values.security.sensitiveInfoInSecret.ca_certificate }}
+            path: .ca_certificate
+              {{- else }}
+                {{- if eq $.isCertManagerEnabled "true" }}
+                   {{- if .Values.indexmgr.certificate.enabled }}
+      - name: cert-manager-secret
+        secret:
+          secretName: {{ .Values.indexmgr.certificate.secretName | default (printf "%s-certmgr" (include "bssc-indexmgr.fullname" .)) }}
+          items:
+          - key: ca.crt
+            path: .ca_certificate
+                    {{- end }}
+                {{- end }}
+               {{- end }}
+            {{- end }}
+      {{- end }}
+      {{- end }}
+      restartPolicy: Never
+{{- end }}
+

@@ -1,0 +1,118 @@
+{{- if .Values.logSidecar.enabled }} 
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ .Release.Name }}-sidecar-configmap
+  namespace: {{ .Release.Namespace }}
+data:
+  fluent-bit.conf: |-
+    [SERVICE]
+        Flush               5
+        Daemon              Off
+        Log_Level           info
+        Parsers_File        parsers.conf
+
+    [INPUT]
+        Name                tail
+        Tag                 appslogs
+        Path                {{ .Values.logSidecar.logPath }}/*.log
+        {{- if .Values.logSidecar.logExcludePath }}
+        Exclude_Path        {{ .Values.logSidecar.logExcludePath }}
+        {{- end }}
+        Path_Key            log_file
+        Multiline           On
+        Multiline_Flush     5
+        Parser_Firstline    csfRabbitmqLogs
+        Mem_Buf_Limit       5MB
+        Skip_Long_Lines     On
+        
+{{- if .Values.logSidecar.stdout }}
+
+    [OUTPUT]
+        Name                stdout
+        Match               *
+{{- end }}    
+{{- if .Values.logSidecar.logsToFile }}  
+    
+    [OUTPUT]
+        Name file
+        Match *
+        Path /opt/nsp/fluentbit/log/{{ .Release.Name }}.log
+{{- end }}  
+
+{{- if .Values.logSidecar.fluentd.host }}
+    {{- if .Values.logSidecar.logsToFluentd }}     
+    [OUTPUT]
+        Name          forward
+        Match         appslogs
+        Host          {{ .Values.logSidecar.fluentd.host }}
+        Port          {{ .Values.logSidecar.fluentd.port }}
+        Retry_Limit   2
+    {{- end }}
+{{- end  }}  
+
+{{- if or (.Values.logSidecar.logsToFluentd) (.Values.logSidecar.logsToSplunk) (.Values.logSidecar.logsToElastic) }}  
+    [FILTER]
+        Name         modify
+        Match        appslogs
+        Condition Key_Does_Not_Exist AppName
+        Set AppName  csf-rabbitmq
+{{- end }}
+
+{{- if .Values.logSidecar.logsToElastic }}
+
+    [OUTPUT]
+        Name                es
+        Match               appslogs
+        Host                {{ .Values.logSidecar.elastic.host }}
+        Port                {{ .Values.logSidecar.elastic.port }}
+        Index               {{ .Values.logSidecar.elastic.index }}
+        Type                csf-rabbitmq
+        Logstash_Format     On
+        Retry_Limit         2
+        Time_Key            @datetime
+        Logstash_Prefix     csf-rabbitmq-logs
+        {{- if .Values.logSidecar.elastic.tls }}
+        tls                 On
+        tls.verify          On
+        tls.ca_file         /opt/nsp/os/ssl/internal_ca_cert.pem
+        tls.crt_file        /opt/nsp/os/ssl/certs/nsp/nsp_internal.pem
+        tls.key_file        /opt/nsp/os/ssl/nsp_internal.key
+        {{- end }}
+        
+{{- end }}
+{{- if .Values.logSidecar.logsToSplunk }}    
+
+    [OUTPUT]
+        Name                splunk
+        Match               appslogs
+        Host                {{ .Values.logSidecar.splunk.host }}
+        Port                {{ .Values.logSidecar.splunk.port }}
+        {{- if .Values.logSidecar.splunk.token }}
+        Splunk_Token        {{ .Values.logSidecar.splunk.token }}
+        {{- end }}
+        Splunk_Send_Raw     {{ .Values.logSidecar.splunk.sendRaw }}
+        TLS                 Off
+        TLS.Verify          Off
+        {{- if eq .Values.logSidecar.splunk.tls true}}
+        TLS                 On
+        {{- end }}
+        {{- if eq .Values.logSidecar.splunk.tlsVerify true}}
+        TLS.Verify          On
+        {{- end }}
+        
+        {{- if .Values.logSidecar.splunk.k8sHost }}
+    [FILTER]
+        Name                modify
+        Match               appslogs
+        Add nspHost         {{ .Values.logSidecar.splunk.k8sHost }}        
+        {{- end }}
+{{- end }}
+
+  parsers.conf: |
+    [PARSER]
+        Name   csfRabbitmqLogs
+        Format regex
+        Regex  {{ .Values.logSidecar.logParseRegexCsfRabbitmqLogs }}
+        Time_Key time
+{{- end }}        

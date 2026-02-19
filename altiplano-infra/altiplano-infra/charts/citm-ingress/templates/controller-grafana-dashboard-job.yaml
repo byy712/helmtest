@@ -1,0 +1,105 @@
+{{- if .Values.grafanaURL }}
+apiVersion: batch/v1
+kind: Job
+metadata:
+  labels:
+    app: {{ template "citm-ingress.name" . }}
+    chart: {{ .Chart.Name }}-{{ .Chart.Version | replace "+" "_" }}
+    release: {{ .Release.Name }}
+    heritage: {{ .Release.Service }}
+    {{- include "citm-ingress.commonLabels" . | indent 4 }}
+  name: {{ include "csf-common-lib.v3.resourceName" (tuple . "Job" "imp-dashboard") }}
+  annotations:
+    "helm.sh/hook": post-install, post-upgrade
+    "helm.sh/hook-delete-policy": before-hook-creation, hook-succeeded
+spec:
+  activeDeadlineSeconds: {{ .Values.controller.activeDeadlineSeconds }}
+  template:
+    metadata:
+      labels:
+        altiplano-role: {{ .Values.accessRoleLabel }}
+        app: {{ template "citm-ingress.name" . }}
+        release: {{ .Release.Name }}
+        {{- include "citm-ingress.commonLabels" . | indent 8 }}
+      annotations:
+        sidecar.istio.io/inject: "false"
+    spec:
+      securityContext:
+      {{- if not (eq (include "citm-ingress.securityContextfsGroup" . ) "auto") }}
+        fsGroup: {{ include "citm-ingress.securityContextfsGroup" . }}
+      {{- end }}
+      {{- include "citm-ingress.imagePullSecrets" . | indent 6 }}
+      containers:
+      - name: {{ include "csf-common-lib.v1.containerName" (tuple . ( include "citm-ingress.containerNameSuffix" (tuple ( include "citm-ingress.name" .) "import-dashboard" ))) }}
+        image: "{{ include "citm-ingress.imageMapper" (tuple $ .Values.controller .Values.internalCitmRegistry) }}"
+        imagePullPolicy: "{{ .Values.controller.imagePullPolicy }}"
+        terminationMessagePath: {{ .Values.controller.terminationMessagePath }}
+        terminationMessagePolicy: {{ .Values.controller.terminationMessagePolicy }}
+        securityContext:
+          runAsNonRoot: {{ .Values.grafanaTools.containerSecurityContext.runAsNonRoot }}
+          allowPrivilegeEscalation: {{ .Values.grafanaTools.containerSecurityContext.privilegeEscalation }}
+          capabilities:
+            drop:
+              - {{ .Values.grafanaTools.containerSecurityContext.dropCapabilities }}
+        {{- if not (eq (include "citm-ingress.securityContextrunAsUser" . ) "auto") }}
+          runAsUser: {{ include "citm-ingress.securityContextrunAsUser" . }}
+        {{- end }}
+        {{- if eq (include "citm-ingress.addSeccompProfile" .) "true" }}
+          seccompProfile:
+            type: {{ .Values.securityContext.seccompProfile.type }}
+        {{- if eq .Values.grafanaTools.containerSecurityContext.seccompProfile.type "Localhost" }}
+            localhostProfile: {{ .Values.grafanaTools.containerSecurityContext.seccompProfile.path }}
+        {{- end }}
+        {{- end }}
+        {{- if eq .Values.grafanaTools.containerSecurityContext.seLinuxOptions.enabled true }}
+          seLinuxOptions:
+            level: {{ .Values.grafanaTools.containerSecurityContext.seLinuxOptions.level }}
+            role: {{ .Values.grafanaTools.containerSecurityContext.seLinuxOptions.role }}
+            type: {{ .Values.grafanaTools.containerSecurityContext.seLinuxOptions.type }}
+            user: {{ .Values.grafanaTools.containerSecurityContext.seLinuxOptions.user }}
+        {{- end }}
+
+        env:
+        {{- if not .Values.controller.timezone.mountHostLocaltime }}
+        - name: TZ
+          value: {{ template "citm-ingress.timeZoneName" . }} 
+        {{- end }}
+        - name: ADMIN_USER
+          valueFrom:
+            secretKeyRef:
+              name: {{ .Values.grafanaSecret }}
+              key: admin-user
+        - name: ADMIN_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: {{ .Values.grafanaSecret }}
+              key: admin-password
+        command: ["/bin/sh", "-c"]
+        workingDir: /opt/grafana-import-dashboards
+        args:
+          - >
+            for file in *.json ; do
+              if [ -e "$file" ] ; then
+                echo "importing $file" &&
+                ( echo '{"dashboard":'; \
+                  cat "$file"; \
+                  echo ',"overwrite":{{ .Values.grafanaTools.overwriteDashboard }}}' ) \
+                | curl --silent --show-error --insecure \
+                  {{ .Values.grafanaProtocol }}://$(ADMIN_USER):$(ADMIN_PASSWORD)@{{ .Values.grafanaURL }}/api/dashboards/db \
+                  --max-time 30 --retry 3 \
+                  --header "Content-Type: application/json" \
+                  --data-binary "@-" &&
+                echo "OK" || exit 1
+              fi
+            done
+        volumeMounts:
+        - name: dashboard-volume
+          mountPath: /opt/grafana-import-dashboards
+        resources:
+{{ toYaml .Values.grafanaTools.resources | indent 10 }} 
+      restartPolicy: "OnFailure"
+      volumes:
+      - name: dashboard-volume
+        configMap:
+          name:  {{ template "citm-ingress.fullname" . }}-dashs
+{{- end }}

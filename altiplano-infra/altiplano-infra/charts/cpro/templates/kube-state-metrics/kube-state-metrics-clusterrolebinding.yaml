@@ -1,0 +1,19 @@
+{{- if and (.Values.rbac.enabled) (not .Values.restrictedToNamespace) (.Values.kubeStateMetrics.enabled) }}
+apiVersion: {{ template "cpro.apiVersion.clusterRoleBinding" . }}
+kind: ClusterRoleBinding
+metadata:
+  labels:
+    {{- include "cpro.app.labels.v3" ( dict "root" . "context" .Values.kubeStateMetrics ) | nindent 4 }}
+{{- include "cpro.labelsOrAnnotations" (tuple .Values.global.labels) | indent 4}}
+  name: {{ template "cpro.prometheus.kubeStateMetrics.clusterrolebinding" . }}
+  annotations:
+{{- include "cpro.labelsOrAnnotations" (tuple .Values.global.annotations) | indent 4}}
+subjects:
+  - kind: ServiceAccount
+    name: {{ template "cpro.prometheus.serviceAccount.fullname" . }}
+    namespace: {{ .Release.Namespace }}
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name:  {{ template "cpro.prometheus.kubeStateMetrics.clusterrole" . }}
+{{- end }}

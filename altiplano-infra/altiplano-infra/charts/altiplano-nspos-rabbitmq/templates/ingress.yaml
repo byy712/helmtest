@@ -1,0 +1,81 @@
+{{- if and .Values.ingress.enabled .Values.rabbitmq.management.enabled }}
+{{- $hasIngressV1 := .Capabilities.APIVersions.Has "networking.k8s.io/v1/Ingress" }}
+{{- if $hasIngressV1 }}
+apiVersion: networking.k8s.io/v1
+{{- else }}
+apiVersion: extensions/v1beta1
+{{- end }}
+kind: Ingress
+metadata:
+  name: "{{ template "crmq.fullname" . }}"
+  labels:
+    app: {{ template "crmq.name" . }}
+    chart: {{ template "crmq.chart" .  }}
+    release: "{{ .Release.Name }}"
+    heritage: "{{ .Release.Service }}"
+    {{- include "crmq.commonLabels" . | indent 4 }}
+    {{- include "csf-common-lib.v1.customLabels" (tuple .Values.global.labels) | indent 4 }}    
+  annotations:
+    {{- include "csf-common-lib.v1.customAnnotations" (tuple .Values.ingress.annotations .Values.global.annotations) | indent 4 }}
+    kubernetes.io/ingress.class: "nginx"
+    nginx.ingress.kubernetes.io/service-upstream: "true"
+    nginx.ingress.kubernetes.io/upstream-vhost: {{ template "crmq.fullname" . }}.{{ .Release.Namespace }}.svc.cluster.local
+    {{- if .Values.ingress.path }}
+    nginx.ingress.kubernetes.io/rewrite-target: /
+    {{- end }}
+    nginx.ingress.kubernetes.io/backend-protocol: "HTTPS"
+    {{- if .Values.ingress.tlsSecret }}
+    nginx.ingress.kubernetes.io/secure-backends: "true"
+    {{- end }}
+    {{- if and ( .Values.ingress.sslPassThrough ) (and (not .Values.ingress.certmanager.used ) (not .Values.ingress.clientAuth.enabled)) }}
+    nginx.ingress.kubernetes.io/ssl-passthrough: "true"
+    {{- end }}
+    nginx.ingress.kubernetes.io/configuration-snippet: |
+      rewrite ^ $request_uri;
+      {{- if .Values.ingress.path }}
+      rewrite ^({{ .Values.ingress.path }})$ $1/ permanent;
+      rewrite "(?i){{ .Values.ingress.path }}(/|$)(.*)" /$2 break;
+      {{- else }}
+      rewrite ^(/{{ template "crmq.name" . }})$ $1/ permanent;
+      rewrite "(?i)/{{ template "crmq.name" . }}(/|$)(.*)" /$2 break;
+      {{- end }}
+      return 400;
+    {{- range $key, $value := .Values.ingress.annotations }}
+    {{ $key }}: {{ $value | quote }}
+    {{- end }}
+spec:
+  rules:
+  {{- if .Values.ingress.hostName }}
+  - host: {{ .Values.ingress.hostName }}
+    http:
+  {{- else }}
+  - http:
+  {{- end }}
+    {{- if $hasIngressV1 }}
+      paths:
+        - path : /{{ template "crmq.name" . }}
+          pathType: {{ .Values.ingress.pathType }}
+          backend:
+            service:
+              name: {{ template "crmq.fullname" . }}
+              port:
+                number: {{ .Values.rabbitmq.management.port }}
+    {{- else }}
+      paths:
+        - path: /{{ template "crmq.name" . }}
+          
+          backend:
+            serviceName: {{ template "crmq.fullname" . }}
+            servicePort: {{ .Values.rabbitmq.management.port }}
+    {{- end }}
+{{- if .Values.ingress.certmanager.used }}
+  tls:
+  {{- if  .Values.ingress.hostName }}
+  - hosts:
+    - {{ .Values.ingress.hostName }}
+    secretName: {{  .Values.ingress.tlsSecret }}
+    {{- else}}
+    - secretName: {{ .Values.ingress.tlsSecret }}
+    {{- end }}
+{{- end }}
+{{- end }}

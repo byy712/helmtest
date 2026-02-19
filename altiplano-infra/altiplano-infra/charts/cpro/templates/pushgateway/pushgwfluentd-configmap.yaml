@@ -1,0 +1,94 @@
+{{- $pushgwsyslogEnabled := eq (include "csf-common-lib.v1.coalesceBoolean" (tuple .Values.pushgateway.unifiedLogging.syslog.enabled .Values.global.unifiedLogging.syslog.enabled false )) "true" }}
+{{- if and .Values.pushgateway.enabled (or $pushgwsyslogEnabled .Values.pushgateway.unifiedLogging.extension .Values.global.unifiedLogging.extension) }}
+{{- include "cpro-common-lib.v1.syslog" ( dict "root" . "context" .Values.pushgateway) }}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ template "cpro-common-lib-v1.ConfigmapName" (dict "name" "pushgwfluentdcm" "root" .) }}
+  labels:
+    {{- include "cpro.labelsOrAnnotations" (tuple .Values.global.labels) | indent 4}}
+  annotations:
+{{- include "cpro.labelsOrAnnotations" (tuple .Values.global.annotations) | indent 4}}
+data:
+  fluentd.conf: |
+    <system>
+      <log>
+        format json
+        time_format %Y-%m-%dT%H:%M:%S%z
+      </log>
+    </system>
+    <source>
+      @type tail
+      path /var/log/pushgateway/*.log
+      pos_file /var/log/pushgateway/fluent-pushgateway.pos
+      read_from_head true
+      tag pushgateway-main-container-logs
+      <parse>
+        @type json
+      </parse>
+    </source>
+    <filter pushgateway-main-container-logs>
+      @type record_transformer
+      enable_ruby true
+      renew_record true
+      <record>
+        log ${ { message: record["msg"] }}
+        type "log"
+        level ${ record["level"] }
+        system ${ ENV["SYSTEM"] }
+        systemid ${ ENV["SYSTEMID"] }
+        host ${ ENV["PODNAME"]}.${ ENV["RELEASE_NAMESPACE"] || '' }
+        timezone ${ ENV["TZ"] }
+        time ${ record["ts"] }
+        extension ${require 'json';record.merge(JSON.parse(ENV["EXTENSION_FIELDS"]))}
+      </record>
+      remove_keys $.extension.@timestamp,$.extension.msg,$.extension.ts,$.extension.level
+    </filter>
+    <match pushgateway-main-container-logs >
+      @type rewrite_tag_filter
+      <rule>
+        key level
+        pattern (?i)alert
+        tag alert.${tag}
+      </rule>
+      <rule>
+        key level
+        pattern .+
+        tag notice.${tag}
+      </rule>
+    </match>
+    <match notice.** alert.** >
+        @type copy
+        <store>
+          @type stdout
+          <format>
+            @type json
+          </format>
+        </store>
+        {{- if $pushgwsyslogEnabled }}
+        <store>
+          @type remote_syslog
+          host {{ tpl $.syslog.host . }}
+          port {{ tpl ($.syslog.port | quote) . }}
+          {{- if or (eq (tpl $.syslog.protocol . | lower) "tcp") (eq (tpl $.syslog.protocol . | lower) "ssl") }}
+          protocol tcp
+          {{- else }}
+          protocol udp
+          {{- end }}
+          {{- if tpl (default "" $.syslog.facility) . }}
+          facility {{ tpl $.syslog.facility . | lower }}
+          {{- end }}
+          severity ${tag[0]}
+          <format>
+            @type json
+          </format>
+        {{- if and (tpl (default "" $.syslog.tls.secretRef.name) .) (tpl (default "" $.syslog.tls.secretRef.keyNames.caCrt) .) }}
+          tls true
+          ca_file /etc/fluent/certs/syslogRootCaPem
+          {{- end }}
+          <buffer tag>
+          </buffer>
+        </store>
+        {{- end }}
+    </match>
+{{- end }}

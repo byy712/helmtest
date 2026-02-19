@@ -1,0 +1,27 @@
+{{- include "cpro-grafana.istio.grafanaInitIstio" . }}
+{{- if and ($.istio.enabled) (eq $.istio.version "1.4") }}
+apiVersion: "authentication.istio.io/v1alpha1"
+kind: "Policy"
+metadata:
+  labels:
+    {{- include "cpro-grafana.app.labels-v3" . | nindent 4 }}
+    {{- include "cpro-grafana.labelsOrAnnotations" (tuple .Values.global.labels) | indent 4}}
+  annotations:
+{{- include "cpro-grafana.labelsOrAnnotations" (tuple .Values.global.annotations) | indent 4}}
+  name: {{ template "cpro-grafana.fullname" . }}
+  namespace: "{{.Release.Namespace}}"
+spec:
+  targets:
+  - name: {{ template "cpro-grafana.service.name" . }}
+  - name: {{ template "cpro-grafana.istioDestinationRule" . }}
+  {{- if and .Values.sane .Values.sane.enabled }}
+  - name: {{ include "cpro-grafana.saneIngressName" . }}
+  {{- end}}
+  peers:
+  - mtls:
+{{- if and ($.istio.mtls.enabled) (not $.istio.permissive) }}
+      mode: STRICT
+{{- else }}
+      mode: PERMISSIVE
+{{- end }}
+{{- end }}

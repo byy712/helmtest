@@ -1,0 +1,30 @@
+dependencies:
+  - name: altiplano-opentsdb
+    repository: http://127.0.0.1:30879
+    version: 24.6.1-REL-0256
+    condition: altiplano-opentsdb.enabled,global.altiplano-opentsdb.enabled
+    tags:
+      - altiplano-opentsdb
+      - infra
+  - name: altiplano-opentsdb
+    repository: http://127.0.0.1:30879
+    version: 24.6.1-REL-0256
+    alias: altiplano-opentsdb-av
+    condition: altiplano-opentsdb-av.enabled
+    tags:
+      - altiplano-opentsdb-av
+      - infra
+  - name: altiplano-hdfs
+    repository: http://127.0.0.1:30879
+    version: 24.6.1-REL-0256
+    condition: altiplano-hdfs.enabled,global.altiplano-hdfs.enabled,global.clustered_opentsdb
+    tags:
+      - altiplano-hdfs
+      - infra
+  - name: altiplano-hbase
+    repository: http://127.0.0.1:30879
+    version: 24.6.1-REL-0256
+    condition: altiplano-hbase.enabled,global.altiplano-hbase.enabled,global.clustered_opentsdb
+    tags:
+      - altiplano-hbase
+      - infra

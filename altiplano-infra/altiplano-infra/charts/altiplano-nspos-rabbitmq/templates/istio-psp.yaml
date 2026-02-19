@@ -1,0 +1,31 @@
+{{- if and (eq .Values.rbac.enabled true) ( eq (include "crmq.createPsp" .) "true" ) }}
+{{- if and (eq .Values.istio.enabled true) (eq .Values.istio.cni.enabled false)}}
+apiVersion: {{ template "crmq.PSPVersion" . }}
+kind: PodSecurityPolicy
+metadata:
+  name: {{ template "crmq.fullname" . }}-psp
+  labels:
+    {{- include "crmq.commonLabels" . | indent 4 }} 
+    {{- include "csf-common-lib.v1.customLabels" (tuple .Values.global.labels) | indent 4 }}
+  annotations:
+    seccomp.security.alpha.kubernetes.io/allowedProfileNames: '*'
+    {{- include "csf-common-lib.v1.customAnnotations" (tuple .Values.global.annotations) | indent 4 }}
+spec:
+  seLinux:
+    rule: RunAsAny
+  runAsUser:
+    rule: RunAsAny
+  supplementalGroups:
+    rule: RunAsAny
+  fsGroup:
+    rule: RunAsAny
+  volumes:
+  - '*'
+  allowPrivilegeEscalation: true
+  allowedCapabilities:
+  - 'NET_ADMIN'
+  - 'NET_RAW'
+  requiredDropCapabilities:
+  - ALL
+{{- end }}
+{{- end }}

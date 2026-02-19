@@ -1,0 +1,36 @@
+
+Database connection
+===================
+The Redis database can be accessed within this K8s cluster at the following URI:
+{{ include "crdb-redisio.db.uri" . }}
+
+To connect to the database
+===========================
+1. Run a pod that you can use as a client
+    kubectl run {{ include "csf-common-lib.v3.resourceName" (tuple . "pod" "client") }} \
+      --rm --tty -i --image {{ (include "crdb-redisio.server.image" . | fromYaml).image }} \
+      --command -- bash
+
+2. Connect using the redis-cli
+    redis-cli [addl_opts] -u {{ include "crdb-redisio.db.uri" . }}
+
+{{- if .Values.admin.debug }}
+
+Debug information
+=================
+To run an admin pod for debugging
+    kubectl run {{ include "csf-common-lib.v3.resourceName" (tuple . "pod" "admin-debug") }} \
+      --rm --tty -i --image {{ (include "crdb-redisio.admin.image" . | fromYaml).image }} \
+      {{ if .Values.rbac.enabled }}--serviceaccount={{ include "csf-common-lib.v3.resourceName" (tuple . "serviceaccount") }} \{{- end }}
+      --command -- sh
+{{ end -}}
+
+{{- if and .redis_cluster (eq (int .Values.cluster.shardSize) 1) -}}
+
+!!! WARNING !!!
+=================
+Clustering is enabled with a sub-optimal minimum shard size (cluster.shardSize=1) that does not provide fault tolerance.  Failure or restart of a single pod may cause a full cluster failure.
+{{ end -}}
+
+{{- include "crdb-redisio.cbur-size-check" . -}}
+{{- include "crdb-redisio.secrets-prev-check" . -}}

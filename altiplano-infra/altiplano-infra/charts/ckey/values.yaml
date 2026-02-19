@@ -1,0 +1,1204 @@
+#------------------------------------------------------------------------------
+# KEYCLOAK values
+#------------------------------------------------------------------------------
+
+global:
+  registry:
+  # If flatRegistry is set to true, 'imageRepo' parameter in all container will be ignored
+  flatRegistry: true
+
+  # Default Option : If rbac.enabled is true and no serviceAccountName is specified then internally 10 service accounts (with corresponding roles having minimum required privilege) and role binding are created by this chart.
+  # Option 1 (1 external service account) : If rbac.enabled is false and an external serviceAccount is specified in serviceAccountName then this external serviceAccount is used during deployment.
+  # Option 2 (10 external service accounts) : If rbac.enabled is false and no serviceAccountName is specified but instead external service accounts are specified for the 9 service accounts --
+    # 1. statefulServiceAccountName
+    # 2. masterRealmServiceAccountName
+    # 3. deletionServiceAccountName
+    # 4. healingServiceAccountName
+    # 5. brHookServiceAccountName
+    # 6. isuServiceAccountName
+    # 7. populateSecretAdminPasswordServiceAccountName
+    # 8. resourceWatcherServiceAccountName
+    # 9. createOCPInternalCertificateSecretServiceAccountName
+    # 10. preUpgradeServiceAccountName
+  # Then these external service accounts will be used during deployment to run their corresponding task.
+  # Ensure either only ServiceAccountName is specified or the 8 service accounts are specified, if external service accounts are to be used during deployment. Do not specify external service accounts for both.
+  serviceAccountName: ""
+
+  #If external service accounts are specified below, these external service accounts will be used during deployment to run their corresponding task.
+  #1. Service Account to run Stateful set and istio tasks
+  statefulServiceAccountName: ""
+  #2. Service Account to run Master realm configuration tasks
+  masterRealmServiceAccountName: ""
+  #3. Service Account to run Deletion tasks in Keycloak deployment
+  deletionServiceAccountName: ""
+  #4. Service Account to run Healing (pre heal and post heal) task
+  healingServiceAccountName: ""
+  #5. Service Account to run backup restore task
+  brHookServiceAccountName: ""
+  #6. Service Account to run ISU rollback task
+  isuServiceAccountName: ""
+  #7. Service Account to populate admin password in secret
+  populateSecretAdminPasswordServiceAccountName: ""
+  #8. Service Account to run resource Watcher job
+  resourceWatcherServiceAccountName: ""
+  #9. Service Account to run a Job which creates ocp specific internal secret
+  createOCPInternalCertificateSecretServiceAccountName: ""
+  #10. Service Account to run Deletion tasks in Keycloak deployment
+  preUpgradeServiceAccountName: ""
+
+  ## Parameters to skip execution of CKEY heal jobs. Set value to 1 to skip the job
+  preheal: 0
+  postheal: 0
+
+  # If Istio version is greater than or equal to 1.5, the Policy resource will be replaced by PeerAuthentication resource
+  # Istio version follow format "X.Y"
+  istioVersion: "1.12"
+
+  # Set this flag to true if podNamePrefix should not be truncated. Default value will be false
+  disablePodNamePrefixRestrictions: false
+
+  # Set to true to enable cpu.limits
+  # When set to true, User needs to provide values for limits in cpu
+  enableDefaultCpuLimits: false
+
+
+  # podNamePrefix is the prefix to add to all pod (sts, job) resources
+  podNamePrefix: ""
+  # containerNamePrefix is the prefix to add to all pod containers
+  containerNamePrefix: ""
+
+  # Global annotations for all objects
+  annotations: {}
+
+  # Global labels for all objects
+  labels: {}
+
+  # To change global timezone for all containers if not already set,
+  # set TZ environment variable in the container (eg, America/Chicago or GST-6)
+  # Default will be "UTC"
+  timeZoneEnv:
+
+  # Global priority indicates the importance of a Pod relative to other Pods.
+  # If a Pod cannot be scheduled, the scheduler tries to preempt (evict) lower
+  # priority Pods to make scheduling of the pending Pod possible.
+  # Service's priorityClassName has higher precedence than this globle scope one.
+  priorityClassName:
+
+  #ipFamilyPolicy:  SingleStack | PreferDualStack | RequireDualStack
+  ipFamilyPolicy:
+  # ipFamilies: ["IPv4"] | ["IPv6"] | ["IPv4","IPv6"] | ["IPv6","IPv4"]
+  ipFamilies: []
+
+  hpa:
+    #enabled value left empty intentionally, default value is False
+    enabled:
+
+  # Global Unified Logging Configuration
+  # Here unified logging can be configured at the global level.
+  unifiedLogging:
+    extension: {}
+    syslog:
+      #Enable/disable syslog feature. Default value disabled
+      enabled:
+      # log4j.appender.${APPENDER_ID}.Facility:
+      facility:
+      # log4j.appender.${APPENDER_ID}.syslogHost (or Host, which is a short version of the syslogHost)
+      host:
+      # log4j.appender.${APPENDER_ID}.syslogPort (or Port, which is a short version of the syslogPort)
+      port:
+      #log4j.appender.${APPENDER_ID}.protocol
+      protocol:
+      #log4j.appender.${APPENDER_ID}.Ssl.KeyStore.location
+      #Location should point to file defined in the 'key' in the Secret named 'secretName'
+      #Secret named 'secretName' should be mounted in a container
+      keyStore:
+        secretName:
+        key:
+      #log4j.appender.${APPENDER_ID}.Ssl.KeyStore.passwordFile
+      #Location should point to file defined in the 'key' in the Secret named 'secretName'
+      #Secret named 'secretName' should be mounted in a container
+      keyStorePassword:
+        secretName:
+        key:
+      #log4j.appender.${APPENDER_ID}.Ssl.TrustStore.location
+      #Location should point to file defined in the 'key' in the Secret named 'secretName'
+      #Secret named 'secretName' should be mounted in a container
+      trustStore:
+        secretName:
+        key:
+      #log4j.appender.${APPENDER_ID}.Ssl.TrustStore.passwordFile
+      #Location should point to file defined in the 'key' in the Secret named 'secretName'
+      #Secret named 'secretName' should be mounted in a container
+      trustStorePassword:
+        secretName:
+        key:
+
+  certManager:
+    enabled:
+
+  # Secrets to pull images from private repositories
+  imagePullSecrets: []
+
+#Takes precedence over the global flag
+disablePodNamePrefixRestrictions:
+
+# Registry of the Kubectl image
+internalKubectlRegistry: csf-docker-delivered.repo.cci.nokia.net
+
+# Registry of the Cbur image
+internalCburRegistry: csf-docker-delivered.repo.cci.nokia.net
+
+# Registry for keycloak container image
+internalKeycloakRegistry: csf-docker-delivered.repo.cci.nokia.net
+
+# Registry for keycloak python image
+internalKeycloakPyRegistry: csf-docker-delivered.repo.cci.nokia.net
+
+# Registry for custom provider image
+internalCustomProviderRegistry: csf-docker-delivered.repo.cci.nokia.net
+
+## Docker images
+images:
+  pullPolicy: IfNotPresent
+  # Keycloak pod image
+  keycloak:
+    imageRepo:
+    imageName: keycloak/ckey-quarkus
+    imageTag: 23.0.7-1-3073
+    imagePullSecrets: []
+  cbur:
+    imageRepo:
+    imageName: cbur/cbur-agent
+    imageTag: 1.1.1-alpine-6578
+    imagePullSecrets: []
+  # Kubectl pod image (used in jobs)
+  kubectl:
+    imageRepo:
+    imageName: tools/kubectl
+    imageTag: 1.28.7-rocky8-nano-20240301
+    imagePullSecrets: []
+  # Resource Watcher Job image
+  resourceWatcherJob:
+    imageRepo:
+    imageName: keycloak/keycloak-py
+    imageTag: 1.1.1-78
+    imagePullSecrets: []
+  # MasterRealmConfig Job image
+  masterRealmConfigJob:
+    imageRepo:
+    imageName: keycloak/keycloak-py
+    imageTag: 1.1.1-78
+    imagePullSecrets: []
+
+
+# Set to true to enable cpu.limits
+# When set to true, User needs to provide values for limits in cpu
+enableDefaultCpuLimits:
+
+
+## Set podManagementPolicy parameter for CKEY pods to control pod start behaviour on deployment.
+# 'OrderedReady' - pods will start sequentially.
+# 'Parallel' - all pods will start in parallel(Default)
+podManagementPolicy: Parallel
+
+## unifiedLogging is used to configure pod logging for generation of log
+## messages to a syslog server.
+unifiedLogging:
+  ## map of logging extension to add to each log message
+  extension: {}
+  ## Extensions could be provided through a json file using this configmap
+  extensionConfigMap:
+  ## All of Log4j2 configuration could be provided using this configMap
+  customLog4jConfigMap:
+
+  ## Syslog logging parameters
+  syslog:
+    # enable syslog logging (disabled by default)
+    enabled:
+    # Defines which facility will be used for sending the log message.
+    # This is a required option, otherwise the appender will be invalid.
+    facility:
+    # Sets the appender target's host. (Domain name or IP address)
+    host:
+    # Sets the appender target's port.
+    port:
+    # Defines which socket protocol is used for sending the log into the
+    # target host.  Can be either UDP, TCP or SSL.  Defaults to UDP.
+    protocol:
+    #log4j.appender.${APPENDER_ID}.Ssl.KeyStore.location
+    #Location should point to file defined in the 'key' in the Secret named 'secretName'
+    #Secret named 'secretName' should be mounted in a container
+    keyStore:
+      secretName:
+      key:
+    #log4j.appender.${APPENDER_ID}.Ssl.KeyStore.passwordFile
+    #Location should point to file defined in the 'key' in the Secret named 'secretName'
+    #Secret named 'secretName' should be mounted in a container
+    keyStorePassword:
+      secretName:
+      key:
+    #log4j.appender.${APPENDER_ID}.Ssl.TrustStore.location
+    #Location should point to file defined in the 'key' in the Secret named 'secretName'
+    #Secret named 'secretName' should be mounted in a container
+    trustStore:
+      secretName:
+      key:
+    #log4j.appender.${APPENDER_ID}.Ssl.TrustStore.passwordFile
+    #Location should point to file defined in the 'key' in the Secret named 'secretName'
+    #Secret named 'secretName' should be mounted in a container
+    trustStorePassword:
+      secretName:
+      key:
+
+  ## Logging JVM configuration
+  #Introducing -Djdk.internal.httpclient.disableHostnameVerification=true to disable the hostname verification as we encountered "No name matching localhost found\njavax.net.ssl.SSLHandshakeException: No name matching localhost found"
+  loggingJavaOpts: "-Djdk.internal.httpclient.disableHostnameVerification=true "
+  logLevel: "INFO"
+  kcLog: "gelf"
+
+# Enable automountServiceAccountToken in CKEY statefulset. Set to true if you are
+# adding extension which requires access to kubernetes API
+# Service account token is required when Istio is enabled. Below automountServiceAccountToken flag will be discarded when Istio is enabled.
+automountServiceAccountToken: false
+
+# Replaced old parameter global.rbac.enable by rbac.enabled in chart ckey-9.9.0
+rbac:
+  enabled: true
+
+## Cluster domain (tail end of the hostname, e.g. ...namespace.svc.cluster.local)
+clusterDomain: "cluster.local"
+
+accessRoleLabel: internal-access
+## Common k8s label settings https://kubernetes.io/docs/concepts/overview/working-with-objects/common-labels/
+# Set to false to exclude common labels
+commonLabels: true
+# Value for app.kubernetes.io/managed-by label
+managedBy: "Helm"
+# Value for app.kubernetes.io/part-of label
+partOf: "ckey"
+
+# If release name contains "ckey", Helm will remove "ckey" from the k8s resource names
+# Ex: Release name "thang-ckey" will become "thang"
+removeChartNameFromResourceName: false
+
+# Priority class name for statefulset
+priorityClassName:
+
+# Number of Keycloak pods
+replicaCount: 2
+replicasManagedByHpa: False
+
+#ipFamilyPolicy:  SingleStack | PreferDualStack | RequireDualStack
+ipFamilyPolicy:
+# ipFamilies: ["IPv4"] | ["IPv6"] | ["IPv4","IPv6"] | ["IPv6","IPv4"]
+ipFamilies: []
+# - IPv4
+# - IPv6
+
+## Custom annotations and labels
+custom:
+  # For statefull set
+  statefulset:
+    annotations: {}
+    labels: {}
+  # For pods in statefulset
+  pod:
+    annotations: {}
+    labels: {}
+  # For all jobs
+  job:
+    annotations: {}
+    labels: {}
+
+## Pods security context
+securityContext:
+  runAsUser: 1000
+  runAsGroup: 1000
+  fsGroup: 1000
+  runAsNonRoot: true
+  supplementalGroups:
+  seccompProfile:
+    type: RuntimeDefault
+
+# To set securityContext field for CKEY container manifest use containerSecurityContext
+containerSecurityContext:
+  allowPrivilegeEscalation: false
+  readOnlyRootFilesystem: true
+  capabilities:
+    drop:
+      - ALL
+
+hostAliases: []
+#     - ip: ""
+#       hostnames:
+#       - ""
+
+
+#------------------------------------------------------------------------------
+## Secrets
+#------------------------------------------------------------------------------
+# If the following secrets left empty, CKEY chart will use its own secrets with default values.
+# As a security best practice, it is recommended to use pre-created secrets.
+#
+# Note: If you change secret for running CKEY it won't be applied to pods till pods are restarted. To automate this process you need to
+# enable ResourceWatcher job and label custom secrets by 'app' label. See CKEY documentation for more information.
+#------------------------------------------------------------------------------
+#
+# Examples to create those secrets:
+#
+# 1) ckeySecret: holds Keycloak admin user and password
+#     kubectl create secret generic ckey-secret --from-literal=keycloak-admin-user=$KEYCLOAK_ADMIN_USERNAME --from-literal=keycloak-admin-password=$KEYCLOAK_ADMIN_PASSWORD -n $NAMESPACE
+#     default values: keycloak-admin-user=admin and keycloak-admin-password=<randomly generated>
+#
+# 2) dbSecret: holds database password
+#     kubectl create secret generic db-secret --from-literal=db-password=$DB_PASSWORD -n $NAMESPACE
+#     default values: db-password=r00tr00t
+#
+# 3) keystoreSecret: holds the Keycloak's server TLS certificate
+#     Name of secret for Keycloak keystore. Contains one of:
+#     - private/public certificate pair (fields tls.key, tls.crt, keycloak-java-keystore-password)
+#         kubectl create secret generic keystore-secret --from-file=tls.key --from-file=tls.crt --from-literal=keycloak-java-keystore-password="$keystore_pwd" -n "$namespace"
+#     - pre-created jks file with certificates (field keycloak.jks, keycloak-java-keystore-password) along with its password
+#         kubectl create secret generic keystore-secret --from-file=keycloak.jks --from-literal=keycloak-java-keystore-password="$keystore_pwd" -n "$namespace"
+#     default value: If this secret is not set and CertManager is not used, a default self-signed certificate will be used.
+#
+# 4) truststoreSecret: holds TLS certificates to connect to external services (database, LDAP, IDP).
+#     Contains file: client_keystore.jks and field: keycloak-java-client-truststore-password
+#      kubectl create secret generic truststore-secret --from-file=client_keystore.jks --from-literal=keycloak-java-client-truststore-password="$keystore_pwd" -n "$namespace"
+#      default values: None
+#
+# 5) spiSecret: holds the client certificates of the spi you are trying to connect in mTLS mode.
+#    contains fields: spi_keystore.jks and spi-keystore-password
+#    kubectl create secret generic spi-secret --from-file=spi_keystore.jks --from-literal=spi-keystore-password="$spi_keystore_pwd" -n "$namespace"
+#
+# 6) dbKeystoreSecret: holds the client certficates of DB if you are trying to connect in mTLS mode.
+#    contains fields: db_keystore.jks and db-keystore-password
+#    kubectl create secret generic db-keystore --from-file=db_keystore.jks --from-literal=db-keystore-password="$db_keystore_pwd" -n "$namespace"
+#
+# Note: If you want to use Keycloak's TLS certificate defined in keystoreSecret for the purpose of DB mTLS,
+# repeat the same secret name in parameter dbKeystoreSecret.
+#
+# 7) zeroTrustMetricSecret: it holds the ENV variables ZERO_TRUST_METRIC_OIDC_ENDPOINT and EXPECTED_AUDIENCE which are required to enable zero trust metric endpoint authentication.
+#
+#    kubectl create secret generic metrics-secret --from-literal=aud="$expected-audience" --from-literal=oidc_endpoint="$oidc-well-known-configuration-endpoint" -n "$namespace"
+#
+# 8) rabbitMqPushEventListenerSecret: It holds a configuration file for rabbitMqServer.
+#    contains field: push-listener-registry.json
+#    kubectl create secret generic rabbit --from-file=push-listener-registry.json -n "$namespace"
+#
+secretCredentials:
+  ckeySecret:
+  dbSecret:
+  keystoreSecret:
+  dbKeystoreSecret:
+  spiSecret:
+  truststoreSecret:
+  zeroTrustMetricSecret:
+  rabbitMqPushEventListenerSecret:
+
+# Option to decide whether to repopulate admin password field in secret upon Helm upgrade/rollback
+repopulateSecretAdminPasswordField: true
+
+## Database information (all items below are mandatory)
+# dbVendor maps to Keycloak parameter KC_DB. See keycloak documentation for other values (e.g. mysql, oracle).
+base64DBPassword: keycloak
+dbVendor: mariadb
+dbName: db4keycloak
+dbUser: keycloak
+# Address of a database server. Typical value is a service name of CMDB
+dbAddress:
+dbPort: 3306
+jdbcParams: ?autoReconnect=true
+jksPassword: keycloak
+## Keycloak Port Information
+httpsPort: 8443
+httpPort:
+
+## Termination grace period (in seconds).  Defaults to 30 seconds.
+terminationGracePeriodSecondsForSSO: 30
+
+## Infinispan Cluster ports, ref - https://infinispan.org/docs/stable/titles/embedding/embedding.html#jgroups-system-properties_cluster-transport
+# Internal TCP port for infinispan service
+jgroupsTCPBindPort: 7800
+# The port through which JGroup determines failure
+jgroupsFDPort: 57800
+
+
+## Type of CKEY service.
+# Allowed values: ClusterIP/NodePort/LoadBalancer/ExternalName/empty.
+serviceType: ClusterIP
+
+## ClusterIp of CKEY service
+# Allowed values: empty/None/IP address
+serviceClusterIp:
+
+## SessionAffinity Options
+# Allowed values: ClientIP/None
+# ClientIP: Pass all the connection from particular client to the same pod each time
+# CKEY recommend ClientIP for better performance and to avoid any abrupt session termination
+serviceSessionAffinity: ClientIP
+
+## Enable Keycloak Database Health End Point. Possible values are true/false.
+# Default value set is true. EndPoint can be accessed at https://<KEYCLOAK_URL>/health/ready
+# https://<KEYCLOAK_URL>/health/  && https://<KEYCLOAK_URL>/health/live
+kcHealthcheckEndpointEnabled: true
+
+## Enable Keycloak Quarkus Metrics EnPoint. Possible values are true/false.
+# DefaultValue is True. Can be accessed at https://<KEYCLOAK_URL>/metrics
+kcMetricsEndpointEnabled: true
+
+## Alarms configuration
+# Number of days before certificate expired to raise the alarm
+certExpiryAlarmPeriod: 10
+# How often to check database connection in ms
+dbAlarmCheckPeriod: 30000
+# Database Alarm Initial Delay in seconds
+databaseAlarmInitialDelay: 240
+
+## LDAP Alarm Configuration
+ldapalarm:
+  enabled: true
+  # LDAP Alarm Initial Delay in seconds
+  ldapAlarmInitialDelay: 240
+  #Provide a new realm value only master realm is removed.
+  realm: "master"
+
+# To change default container time zone. E.g. to see different time in a log.
+# By setting docker env variable TZ. Example values: America/New_York or GST-10
+timeZone:
+  timeZoneEnv:
+
+# k8s Node selector
+# List of labels in form of key-value pairs. Should match corresponding labels on k8s nodes.
+# E.g. {mylabel1: 'true', mylabel2: 'true'}
+# If you are installing cmdb as subchart add labels to nodeSelector parameter in cmdb.mariadb section
+nodeSelector: {}
+hostAliases: []
+
+# Node Affinity rules
+# If enabled set required affinity for specified key / value
+nodeAffinity:
+  enabled: false
+  key: is_worker
+  value: true
+
+# Node Antiaffinity rules
+# If enabled set preferred antiaffinity to deploy pods across zones and hostnames
+# DEPRECATION NOTICE: Below flag is deprecated, and will be removed in the next major release
+nodeAntiAffinity:
+  enabled: true
+
+## Toleration rules to schedule pods on selected k8s nodes.
+# Uncomment this block and set required rules
+# tolerations:
+#   - key: 'is_control'
+#     operator: 'Equal'
+#     value: 'true'
+#     effect: 'NoExecute'
+#   - key: 'is_edge'
+#     operator: 'Equal'
+#     value: 'true'
+#     effect: 'NoExecute'
+#   - key: 'is_storage'
+#     operator: 'Equal'
+#     value: 'true'
+#     effect: 'NoExecute'
+
+## Resources and Limits for Keycloak pods
+resources:
+  requests:
+    memory: 1024Mi
+    cpu: 500m
+#As we have emptyDir usage for readOnlyRootFilesystem set to true ephemeral storage should be explicitly set
+    ephemeral-storage: 1Gi
+  limits:
+    memory: 2048Mi
+    cpu:
+    ephemeral-storage: 1Gi
+
+
+##Memory Allocation in percentage for Keycloak and Uninfied Logger from the helm resources specified above (2048Mi) ; For Unified Logger 204m and for Keycloak 1638m is the maximum memory allocated
+memoryFactorForKeycloak: 0.8
+memoryFactorForUnifiedLogger: 0.1
+
+## Kubernetes probe parameters
+# Startup probe - Executed first and succeed when pod started
+# Readiness probe - Starting after startup probe. Set pod to ready state and allows traffic go to the pod.
+# Liveness probe - Restart pod when failing
+#
+# InitialDelaySeconds - How long to wait to start probe. Readiness and Liveness probs count starts after startup probe succeed
+# TimeoutSeconds - Time after which probe is timing out
+# ProbePeriodSeconds - How often to perform the probe
+# FailureThreshold - How many times probe should fail in a row to fail this check
+probeDelays:
+  startupProbeInitialDelaySeconds: 1
+  startupProbeTimeoutSeconds: 1
+  startupProbePeriodSeconds: 2
+  startupProbeFailureThreshold: 600
+
+  readinessProbeInitialDelay: 1
+  readinessProbeTimeoutSeconds: 1
+  readinessProbePeriodSeconds: 2
+  readinessProbeFailureThreshold: 1
+
+  livenessProbeInitialDelay: 1
+  livenessProbeTimeoutSeconds: 1
+  livenessProbePeriodSeconds: 15
+  livenessProbeFailureThreshold: 5
+
+## In-Service upgrade configuration
+isuUpgrade:
+  enabled: true
+  # URL Pattern that prevents Keycloak from blocking requests during in-service upgrade
+  excludeCheckPattern: ".*/(authenticate|token).*"
+  # Enable trace logging for isu upgrade jobs
+  traceLogging: false
+  # Number of temporary pods while main CKEY pods are upgrading.
+  # Not recommended set it to 1. It will cause service interruption during the upgrade.
+  tmpPodsReplicaCount: 2
+  # Configuration for CBUR
+  cbur:
+    # CBUR host for ISU job to call backup API
+    host: http://cbur-master-cbur.ncms.svc:80
+    # If CBUR is enabled with CKEY authentication, we need CBUR user credentials to trigger backup for ISU rollback
+    username:
+    passwordSecret:
+      name:
+      attribute:
+  # Indicate whether ISU should also backup/restore Keycloak data inside database
+  preserveBackupRestoreMechanism: false
+  # This flag is used to enable/disble cbur backup during In-service upgrade/rollback configuration
+  #Default value of 'cburBackup' is set to true
+  #If set to false older Keycloak couldn't work with newer version of database schema. If rollback to previous major version  done without restoring matching database backup it may cause Keycloak malfunctioning (not all but many of Keycloak major u  pgrades includes database schema changes).
+  cburBackup:
+    enabled: True
+  # This flag is used to control the creation of temporary database that gets created for isu statefulset pods.
+  # Default value of 'dbSwitching is set to true
+  # If set to false it will disable blue-green upgrade/rollback. It is much lighter on resources and faster but service will  be interrupted.Also will cause automatic stateful set deletion before upgrade and rollback which may be useful if upgrade   includes incompatible helm changes.
+  dbSwitching:
+    enabled: True
+
+certManager:
+  enabled: False
+
+tls:
+  # Set useCaCert to True if you want to avoid the --insecure flag (which ignores the ca cert validation) in curl requests to keycloak.
+  # This value is ignored if the certManager is enabled and ca.crt will be used in curl requests.
+  useCaCert: False
+  # Provide the caCert in base64 encoded format in any of the below scenarios otherwise --insecure will be used for the curl requests:
+  # 1. keycloakKeystore.keystoreSecret is provided
+  # 2. useCaCert flag is enabled
+  caCert:
+  # Enable the certManager for the auto management of the keycloak certs.
+  certManager:
+    enabled: False
+    #When ckey server in configured in re-encrypt or edge mode, as part of ingress certificate has to be provided which is used between external ckey client(E.g web browser) and ingress service. Such ingress can be created through citm or istio. Regarding certificate creation in ingress there can be 3 scenarios - 1. User uses custom external certificate 2. CertManager generates certificate. 3. No external certificate (In this case ingress itself inject its own certificate). Following parameter "isTlsExternalCertViaCertManager" is used to control situation 2 as mentioned above. If certManager is set to true && isTlsExternalCertViaCertManager is true certManager will inject secret which ingress (citm or istio) will use towards external world..
+    # Below flag should not be enabled for istio.
+    isTlsExternalCertViaCertManager: false
+    caIssuer:
+      # If the `Issuer` name is not specified, a self-signed `Issuer` will be created automatically.
+      name:
+      kind: "ClusterIssuer"
+      group: "cert-manager.io"
+    duration: 8760h # 1 year
+    renewBefore: 360h # 15 days
+    # Not needed in internall communication
+    subject:
+    # It has been deprecated since 2000 and is discouraged from being used. `dnsNames` are used instead.
+    commonName:
+    # If `usages` is not specified, the following will be used:
+    # - server auth
+    # - client auth
+    usages:
+    # If `dnsNames` is not specified then the following internal names will be used:
+    # - localhost
+    # - <service name>.<namespace>
+    # - <service name>.<namespace>.svc
+    # - <service name>.<namespace>.svc.<cluster domain>
+    # If ssl passthrough is used on the Ingress object,
+    # then dnsNames should be set to external DNS names.
+    dnsName1:
+    dnsName2:
+    uris:
+    # If ipAddresses not specified then the following internal local IPs will be used:
+    # - "127.0.0.1"
+    # - "::1"
+    ipAddresses:
+    privateKey:
+      algorithm:
+      encoding:
+      size:
+      # Rotation of a key pair, when certificate is refreshed is recommended from a security point of view
+      rotationPolicy: Always
+
+# ---------------------------------------------------------------------
+# Expose all realms metrics to a single endpoint.
+#
+# prometheus.io/scrape - Allow CPRO's service discovery to scrape from
+#                        this service. Accepted values: "true" or "false"
+# prometheus.io/path   - The single endpoint for CPRO to scrape from.
+#                        Despite containing a realm name, it collects
+#                        metric from all realms. If master realm is
+#                        inacessible, then replace master with any other
+#                        realm in the CKEY instance.
+# promotheus.io/scheme - This parameter specifies the expected protocol(scheme)
+#                        for scraping metrics from a target in prometheus.
+# uriMetricsEnabled    - enables the API metrics. Consolidated sample Metric:
+#                        keycloak_response_total{code="200",method="GET",resource="realms,realms/master/metrics",} 1.0
+# uriMetricsDetailed   - enables the output of detailed API call. Sample Metric:
+#                        keycloak_request_duration_bucket{code="200",method="POST",resource="realms,realms/master/protocol/openid-connect",uri="realms/master/protocol/openid-connect/token",le="30000.0",} 1.0
+# ---------------------------------------------------------------------
+metric:
+  annotations:
+    prometheus.io/scrape: "false"
+    # replace httpRelativePath with full path
+    prometheus.io/path: "<httpRelativePath>/realms/master/metrics"
+    prometheus.io/scheme: "http"
+  uriMetricsEnabled: true
+  uriMetricsDetailed: false
+  # To scrape the metrics from httpPort enable httpPortEnabled flag and set httpPort value.
+  scrapeMetricsOnHttpPort: false
+
+# Preserve backup PVC on delete?
+preserve_keycloak_pvc: false
+
+## Resources and limits for job's pods
+initBusyBoxContainer:
+  resources:
+    requests:
+      memory: 256Mi
+      cpu: 250m
+      ephemeral-storage: 1Gi
+    limits:
+      memory: 256Mi
+      cpu:
+      ephemeral-storage: 1Gi
+
+## Allows the specification of additional environment variables for Keycloak
+extraEnv: |
+  # List of allowed TLS ciphers.
+  # - name: KC_HTTPS_CIPHER_SUITES
+  #   value: "TLS_ECDHE_RSA_WITH_AES_256_GCM_SHA384,TLS_AES_256_GCM_SHA384,TLS_CHACHA20_POLY1305_SHA256"
+  # List of supported TLS versions by Keycloak. Possible values: "TLSv1.3" TLSv1.2" "TLSv1.2,TLSv1.3". Default value is "TLSv1.3" which allows TLS 1.2 and 1.3 protocols.
+  # - name: KC_HTTPS_PROTOCOLS
+  #   value: "TLSv1.3"
+
+# Refer https://www.keycloak.org/server/reverseproxy for more details on kcProxy
+# If passthrough is used in ingress set kcProxy="passthrough"
+# If re-encrypt is used in ingress set kcProxy="reencrypt"
+kcProxy: "reencrypt"
+
+# Refer https://www.keycloak.org/server/hostname for more detail about kcHost
+# kcHostName: "K8S_INTERNAL_SERVICE" # it will set KC_HOSTNAME and KC_HOSTNAME_ADMIN as service name of ckey.
+kcHostName: ""
+
+## Appends the customJavaOpts string to Keycloak JAVA_OPTS_APPEND
+# E.g. -Dkeycloak.profile.feature.scripts=enabled
+customJavaOpts: ""
+
+## Name of ConfigMap with Keycloak cache configuration xml
+# Field name should be: custom_cache_config.xml. Example of ConfihMap creation:
+# kubectl create cm custom-cache-conf --from-file=./custom_cache_config.xml -n my-namespace
+cacheConfigMap:
+
+## Value of Java command line parameter -Djgroups.dns.query needed for cache stack 'kubernetes'
+# If empty will be set to FQDN of ckey headless service
+# To not set this use value NOT-SET
+kcJgroupsDnsQuery:
+
+## Type of Keycloak cache stack.
+# If empty will be set to 'not-set'
+# Available default stack is "kubernetes"
+# Default cache stack chart takes is custom provided from team which has capabilities of Kubernetes stack with TLS configurations enabled
+kcCacheStack:
+
+# hook-delete-policy for jobs except secret cleanup job
+hookDeletePolicy: "before-hook-creation, hook-succeeded"
+
+## Configuration for master realm configuration job - post install job for hardening master realm
+masterRealmConfigurationJob:
+  # If set to false, the job will not run and all the values in this section will not be used.
+  enabled: true
+  # The job will have status with reason: DeadlineExceeded. No more pods will be created, and existing pods will be deleted after this timeout.
+  jobActiveDeadline: 300
+  # Below parameter will specify the number of retries before considering a Job as failed
+  jobBackOffLimit: 6
+  # This variable is needed when setting the passwordExpiry policy for the first time. If you set this to false, you will be required to manually update your password through the admin console.
+  overwritePasswordTimestamp: true
+  # Forgot Password Option
+  enableForgotPassword: true
+  # Brute Force Detection for Master realm
+  enableBruteForceProtection: true
+  # If the option below is set to true, the password policies that will be set are the following:
+  ### password expiry: 90 days
+  ### minimum length: 8
+  ### special charaters(minimum): 1
+  ### upper case characters(minimum): 1
+  ### lower case characters (minimum): 1
+  ### password history (not recently used): 3
+  ### password blacklist: linux.words from /opt/keycloak/standalone/data/password-blacklists
+  overwritePasswordPolicies: true
+
+  # Enable Login and Adminevents on master realm
+  enableLoginEvents: true
+  enableAdminEvents: true
+
+  # Set expiration time of Login and Admin events in a database in minutes. Events older that this time will be
+  # automatically deleted from the database. If value is empty the expiration time won't be set.
+  loginEventsExpiration: "129600"
+  adminEventsExpiration: "1576800"
+
+  # SSL by default for all
+  enableSSLRequireForAll: true
+  # Set Nokia Login theme
+  setNokiaLoginTheme: true
+
+## Resource watcher job will restart Keycloak pods on changes in labelled secrets and config maps
+resourceWatcherJob:
+  # If set to false, the job will not run
+  enabled: false
+
+## Custom script to run before starting Keycloak servers
+customPreStartScript: |-
+
+## Command line for Keycloak start command kc.sh. E.g. "start-dev". If empty "start" will be used.
+kcshCommandLine:
+
+## Push Event Listener
+# There are 2 ways to provide configuration for push event listener:
+# 1. Put it directly to notificationReceiverList field. In this case config map will be created automatically
+#    and managed by helm. To update configuration you need to use helm upgrade command.
+# 2. Manually create config map with push listener configuration and put name of this config map to pushConfigMapName field.
+#    This config map will not be managed by helm. You can change it any time and it shortly be reflected on a pod.
+# NOTE: User can only use either of the above instance for providing configuration for push event listener. Both cannot be used together.
+# For rabbitMqPushEventListener, if the configuration contains sensitive information like userid and password, the same must be passed through 'secretCredentials.rabbitMqPushEventListenerSecret"
+pushEventListenerData:
+  pushConfigMapName:
+  notificationReceiverList:
+
+genericEventListenerData:
+  notificationReceiverList:
+
+## Customizable login banner messages. Login banner is used to show last user login time.
+loginBannerTitle: "Login Banner"
+loginBannerWelcomeFirstNameMessage: "Welcome, {0}."
+loginBannerWelcomeUsernameMessage: "Welcome, {0}."
+loginBannerPreviousSuccessMessage: "Your last successful login was on {0}."
+loginBannerFailedLoginCounterMessage: "Failed login attempts after last successful login"
+loginBannerMainMessage: "You are about to access a private system. This system is for the use of authorized users only. All connections are logged. Any unauthorized access or access attempts may be punishable to the fullest extent possible under the applicable local legislation."
+loginBannerAcceptMessage: "OK"
+
+## PodDisruptionBudget for ckey pods.
+# One of the values minAvailable or maxUnavailable should be set to number of pods or percentage
+# find more details in thsi doc: https://kubernetes.io/docs/tasks/run-application/configure-pdb/
+# e.g. minAvailable: 50% OR maxUnavailable: 3
+pdb:
+  enabled: false
+  minAvailable:
+  maxUnavailable:
+
+#------------------------------------------------------------------------------
+# Topology Spread Constraints
+#------------------------------------------------------------------------------
+#
+# topologySpreadConstraints allows to control of how pods are spread across
+# cluster among failure-domains such as regions, zones, nodes, and other
+# user-defined topology domains. This can help to achieve high availability
+# as well as efficient resource utilization.
+# The following attributes can be defined here:
+#   maxSkew           - Describes the degree to which pods may be unevenly distributed. It must be greater than zero.
+#   topologyKey       - The key of node labels.
+#   whenUnsatisfiable - [optional] Indicates how to deal with a Pod if it doesn't satisfy the spread constraint. Defaults to DoNotSchedule. Options : DoNotSchedule or ScheduleAnyway.
+#   labelSelector     - [optional] Define labels to find the matching pods
+#  NOTE: Pod labels will be defaulted by the chart, if not specified here.
+# Ref: https://kubernetes.io/docs/concepts/workloads/pods/pod-topology-spread-constraints/
+# example-1: Single Pod Topology Constraints
+# topologySpreadConstraints:
+#   - maxSkew: 1
+#     topologyKey: zone
+#     whenUnsatisfiable: DoNotSchedule
+#     labelSelector:
+#       matchLabels:
+#         app: ckey
+#         release: <release-name>
+# example-2: Multiple Pod Topology Constraints
+# topologySpreadConstraints:
+#   - maxSkew: 1
+#     topologyKey: zone
+#     whenUnsatisfiable: DoNotSchedule
+#     labelSelector:
+#       matchLabels:
+#         app: ckey
+#         release: <release-name>
+#   - maxSkew: 1
+#     topologyKey: node
+#     whenUnsatisfiable: DoNotSchedule
+#     labelSelector:
+#       matchLabels:
+#         app: ckey
+#         release: <release-name>
+#    - maxSkew: 1
+#      topologyKey: topology.kubernetes.io/zone
+#      whenUnsatisfiable: ScheduleAnyway
+topologySpreadConstraints:
+
+
+#------------------------------------------------------------------------------
+# Pod Anti Affinity
+#------------------------------------------------------------------------------
+# podAntiAffinity:
+#     zone:
+#     #Possible options: soft/hard/none
+#       type:
+#       topologyKey: "topology.kubernetes.io/zone"
+#     node:
+#     #Possible options: soft/hard/none
+#       type:
+#       topologyKey: "kubernetes.io/hostname"
+#     customRules:
+#       #- type: soft/hard (by default soft)
+#       #  topologyKey:
+#       #  weight: 100 (by default 100)
+#       #  autoGenerateLabelSelector: true
+#       #  labelSelector: <pod labels> (none by default)
+#       #  namespaceSelector: <namespace labels> (none by default)
+#       #  namespaces:
+
+podAntiAffinity:
+  zone:
+    type:
+    topologyKey: "topology.kubernetes.io/zone"
+  node:
+    type:
+    topologyKey: "kubernetes.io/hostname"
+
+
+
+#------------------------------------------------------------------------------
+# Horizontal Pod Autoscaler
+#------------------------------------------------------------------------------
+#
+# Automatically scales the number of Pods in a replication controller, deployment, replica set or stateful set
+# based on observed CPU utilization (or, with beta support, on some other, application-provided metrics).
+#
+# minReplicas (int) -> Minimum number of pods to be available in Statefulset/Deployment -- Configured default value 1
+# maxReplicas (int) -> Max number of pods to be available in Statefulset/Deployment -- Configured default value 2
+# averageCPUThreshold (int) -> Avg CPU Threshold across pods in Sts/Deployment for HPA to perform scale up/down -- configured default value 80%
+# averageMemoryThreshold (int) -> Avg Memory Threshold across pods in Sts/Deployment for HPA to perform scale up/down -- configured default value 80%
+#
+# By default, The kubelets on the nodes have the capability to provide CPU and Memory metrics of the pods.
+# Customers can configure HPA based on custom/external metrics (provided they have deployed their own metric server), in hpa.metrics section.
+# Below is the hpa.metrics example assuming the metrics "packets-per-second" on Pods, and "requests-per-second" on Ingress are available.
+#
+# hpa:
+#   metrics:
+#    - type: Pods
+#      pods:
+#        metric:
+#          name: packets-per-second
+#        target:
+#          type: AverageValue
+#          averageValue: 1k
+#    - type: Object
+#      object:
+#        metric:
+#          name: requests-per-second
+#        describedObject:
+#          apiVersion: networking.k8s.io/v1beta1
+#          kind: Ingress
+#          name: main-route
+#        target:
+#          type: Value
+#          value: 10k
+#
+# More details on HPA at https://kubernetes.io/docs/tasks/run-application/horizontal-pod-autoscale-walkthrough/
+hpa:
+  # enabled value left empty intentionally, default value is False
+  enabled:
+  minReplicas: 1
+  maxReplicas: 2
+  predefinedMetrics:
+    enabled: True
+    averageCPUThreshold: 80
+    averageMemoryThreshold: 80
+  behavior:
+  metrics:
+
+#------------------------------------------------------------------------------
+# ISTIO values (only used if enabled: true)
+#------------------------------------------------------------------------------
+rollme:
+  enabled: false
+istio:
+  # Preferred way of setting Istio version is by using "global.istioVersion". If that is not possible, using "istio.version" is an acceptable alternative
+  # For example:
+  # version: 1.12
+  enabled: false
+  cni:
+    enabled: false
+  # DEPRECATION NOTICE: Below flag is deprecated, and will be removed in the next major release
+  mtls:
+    enabled: true
+  # DEPRECATION NOTICE: Below flag is deprecated, and will be removed in the next major release
+  permissive: false
+  resources:
+    requests:
+      memory:
+      cpu:
+    limits:
+      memory:
+      cpu:
+  # Either sharedHTTPGateway or gateways should be added, both cannot be added at same time
+  # When sharedHTTPGateway is enabled it cannot be in passthrough mode
+  sharedHttpGateway:
+    # This section instructs the chart to reuse an already existing gateway for http/https purposes.
+    # This is applicable if you already have a gateway on the same hostname listening on 80/443.
+    # Namespace where the existing gateway object exists.
+    namespace:
+    # Name of the gateway object.
+    name:
+  prefixReleaseNameForGatewayName: true
+  # DEPRECATION NOTICE: Below flag is deprecated, and will be removed in the next major release
+  createDrForClient: false
+  # This is optional flag.
+  # The name of the secret that holds the TLS certs for the client including the CA certificates. The secret (of type generic)should contain the following keys and values: key: <privateKey>, cert: <clientCert>, cacert: <CACertificate>.
+  # If not provided then Destination rule will not verify the signature and hostname of ckey server public cert(like curl -k)
+  drCredentialName:
+  # Configuration option to add Destination Rule's other traffic policies.
+  # Refer - https://istio.io/latest/docs/reference/config/networking/destination-rule/#TrafficPolicy
+  # User can configure any of the traffic policies except portLevelSettings as it's automatically set with user configuration of other related parameters.
+  drTrafficPolicy:
+    # Session cookie name should be set to AUTH_SESSION_ID as suggested by Opensource
+    # Reference - https://www.keycloak.org/server/reverseproxy#_enable_sticky_sessions
+    loadBalancer:
+      consistentHash:
+        httpCookie:
+          name: AUTH_SESSION_ID
+  # Below flags will determine which routes to be created in the Virtual Service
+  # Either HTTPS or HTTP Virtual service can be set to true (not both of them can be set to true at the same time)
+  # isVirtualServiceRequiredForHTTP flag can only be set if gateway mode is simple/mutual. In passthrough mode, exposing http based VS will raise security concern
+  isVirtualServiceRequiredForHTTPS: true
+  isVirtualServiceRequiredForHTTP: false
+  # Current version of CKEY supports only one dedicated gateway.
+  # More than gateway is defined will result in helm failure
+  gateways:
+    - name: ckey-gw
+      enabled: false
+      labels: {}
+      annotations: {}
+      ingressPodSelector:
+        istio: ingressgateway
+        # add more key value pairs following yaml syntax similar as below
+        # key1: value1
+        # key2: value2
+      port: 443
+      # Protocol to be used for the port(TLS/TCP/HTTP/HTTPS). TLS/HTTPS will need the optional tls section to be filled.
+      protocol: HTTPS
+      # It can be a YAML array of host names.
+      # It is recomended to follow istio best practice guide for configuring hosts - https://istio.io/latest/docs/ops/best-practices/security/#avoid-overly-broad-hosts-configurations
+      # Chart default hosts is configured '*' for gateways because in EKS when load balancers is in front of Istio, it will not forward the SNI information(hostname) to the Istio ingress gateway when the communication is TLS. Due to this, getting 503 gateway error.
+      # Fix for this is to disable the SNI matching by keeping hosts of gateway to '*'. Reference - https://istio.io/latest/docs/ops/common-problems/network-issues/#configuring-sni-routing-when-not-sending-sni
+      hosts:
+        - "*"
+      tls:
+        # This optional flag is only applicable for an HTTP port to force a redirection to HTTPS.
+        redirect: false
+        # Mode can be SIMPLE / MUTUAL / PASSTHROUGH/ ISTIO_MUTUAL and it is exactly as per ISTIO documentation.
+        mode: SIMPLE
+        # The name of the kubernetes secret, in the namespace to be used for TLS traffic between web-browser and istio-gateway, if not provided,
+        # Istio-gateway will use it's default private key and public cert.
+        credentialName:
+        # Istio TLS has many other attributes and configurations. If for some reason none of the above fits your
+        # needs , then use this section to configure as per istio docs. Anything under here will be directly moved
+        # under TLS section of gateway definition.
+        custom: {}
+
+    # IMPORTANT: Binding multiple gateways or hosts to one VirtualService can behave unaccordingly.
+    # It is recommended to keep one host and one gateway to one virtual service
+  virtualService:
+    # Provide existing gateways for CKEY Virtual Service to bind to.
+    # If shared gateway is available, CKEY VirtualService will only use shared gateway.
+    gateways: []
+    # Hosts should be configured mandatorily.
+    hosts:
+      - ckey.io
+    # DEPRECATION NOTICE: Below flag is deprecated, and will be removed in the next major release
+    tls:
+      port: 443
+
+
+#------------------------------------------------------------------------------
+# CBUR values (only used if enabled: true)
+#
+# If you are using depended CMDB chart (cmdb.enabled=true) set cbur values
+# in cmdb section too.
+#------------------------------------------------------------------------------
+cbur:
+  enabled: true
+  brPolicyWeight: 5
+  cronSpec: "0 0 * * *"
+  maxiCopy: 5
+  terminationGracePeriodSecondsForBackup: 30
+  backendMode: local
+  # Ignore file changes during building tarball for target app's volumes.
+  ignoreFileChanged: true
+  # Set below parameters to true for auto enabling cron job
+  autoEnableCron: false
+  # Set autoUpdateCron to true if cronjob should be automatically deleted/updated based on autoEnableCron or cronJob parameters
+  autoUpdateCron: false
+  # Set CBUR api version
+  apiVersion:
+
+  securityContext:
+    allowPrivilegeEscalation: false
+    readOnlyRootFilesystem: true
+    runAsUser: 1000
+    runAsGroup: 1000
+    seccompProfile:
+      type: RuntimeDefault
+    capabilities:
+      drop:
+        - ALL
+
+  backupStorage:
+    size: 400Mi
+    class: ""
+
+  resources:
+    requests:
+      memory: 256Mi
+      cpu: 250m
+      ephemeral-storage: 1Gi
+    limits:
+      memory: 256Mi
+      cpu:
+      ephemeral-storage: 1Gi
+
+  # If enabled automatically restart ckey pods after restore.
+  # Required BCMT 20.03 or higher and CBUR restore plugin 20.03 or higher
+  brHookPostRestore:
+    enable: false
+    weight: 5
+    timeout: 600
+
+# Custom providers to be installed
+# If global.registry is defined that registry will be used for customProvider image.
+# If global.registry is not defined then global.internalKeycloakRegistry will be used for customProvider image.
+# Complete documentation can be found in Gitlab
+# customProviders:
+#   - type: extension-jar
+#     configMap: sample-hot-module-configMap
+#     useGlobalRegistry: false
+#     resources:
+#       - sample-jar
+#   - type: extension-jar
+#     image: sample-hot-module-image
+customProviders:
+
+#customProviders image pull secret section
+customImagePullSecrets:
+  imagePullSecrets: []
+
+## To expose admin url, We need to specify the EDGE url, This effects only the admin UI.
+# In Non-Istio environments, frontendURL could be either https://<EDGENODE-IP> or https://<Ingress-HostName>
+# In Istio environments, provide frontendURL as https://<virtualServiceHostName>:<Ingress-GW-Tls-Port>
+# Command to find ingress gw tls port - kubectl -n istio-system get svc -l app=istio-ingressgateway -ojsonpath='{.items[0].spec.ports[?(@.name=="https")].nodePort}'
+frontendURL: ""
+
+## httpRelativePath will be added to server FQDN to access WebSSO.
+# By default it set to /access. WebSSO will be accessible on URL like <service-name>/access
+# or <edge-node-ip>/access.
+httpRelativePath: "/access"
+
+#------------------------------------------------------------------------------
+# Keycloak Ingress
+#------------------------------------------------------------------------------
+ingress:
+  # If true, Keyclock Ingress will be created
+  enabled: true
+  ingressClassName:
+
+  # The keycloak service port to use with ingress
+  keycloakServicePort: 8443
+
+  ## Keycloak Ingress annotations
+  ##
+  annotations:
+    # Session cookie name should be set to AUTH_SESSION_ID as suggested by Opensource
+    # Reference - https://www.keycloak.org/server/reverseproxy#_enable_sticky_sessions
+    nginx.ingress.kubernetes.io/affinity: "cookie"
+    nginx.ingress.kubernetes.io/session-cookie-name: "AUTH_SESSION_ID"
+  ## Keyclock Ingress hostnames
+  ## May be provided if Ingress is enabled
+  ##
+  # hosts:
+  #   - "ckey.io"
+
+  ## Keyclock Ingress TLS configuration
+  ## Secrets must be manually created in the namespace
+  ##
+  # tls:
+  #   - secretName: keyclock-server-tls
+  #     hosts:
+  #       - "ckey.io"
+
+  # allowedPath set to / is backward compatibility behavior.
+  # In order to harden the security, customers could restrict the access on Ingress to /js, /realms and /resources paths as recommended at https://www.keycloak.org/server/reverseproxy#_exposed_path_recommendations
+  allowedPaths:
+    - path: "/"
+      type: Prefix
+#    - path: "/js/"
+#      type: Prefix
+#    - path: "/realms/"
+#      type: Prefix
+#    - path: "/resources/"
+#      type: Prefix
+#    - path: "/robots.txt"
+#      type: Exact
+
+# ---------------------------------------------------------------------
+# Optionally, control the naming for resources. The default naming is
+# in the deployedHelmName-ChartName format.
+#
+# nameOverride     - This replaces the value in ChartName.
+# fullnameOverride - Replace the entire name with the supplied value.
+#                    This is useful to yield predictable service names.
+# ---------------------------------------------------------------------
+nameOverride:
+fullnameOverride:
+
+# ---------------------------------------------------------------------
+# Keycloak Geo Redundancy
+# ---------------------------------------------------------------------
+geoRedundancy:
+  enabled: false
+  service:
+    # Currently, ckey support only nodePort for gr cross-site connectivity
+    type: nodePort
+    # Internal infinispan-Relay TCP port for GR cross-site connectivity
+    jgroupsTCPPort: 7900
+    # External infinispan-Relay TCP port for infinispan service to connect with cross dc
+    jgroupsExternalTCPPort: 30556
+
+    
+radiusImage:
+  repository: fnms-keycloak-radius-plugin
+  tag: nokia-5.0.12
+  providerVersion:
+  pullPolicy: IfNotPresent
+env:
+  secrets:
+certificates:
+  secrets:
+    altiplano_keystore_secrets: altiplano-keystore-secrets
+  
+fluentd_sidecar:
+  image:
+    name: "fnms-fluent"
+    tag: "nokia-3.1.6"
+    pullPolicy: IfNotPresent
+init:
+  image:
+    name: "fnms-init-container"
+    tag: "nokia-1.0.7"
+    pullPolicy: IfNotPresent

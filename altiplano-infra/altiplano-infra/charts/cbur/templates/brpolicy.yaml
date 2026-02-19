@@ -1,0 +1,39 @@
+{{- if or .Values.backup_self.enabled .Values.preUpgradeJob.backup.enabled }}
+apiVersion: "cbur.csf.nokia.com/v1"
+kind: BrPolicy
+metadata:
+  {{- if .Values.direct_redis.enabled }}
+  name: {{ include "cbur.proxy.resourceName" (tuple . "Deployment" "mycelery") }}
+  {{- else  }}
+  name: {{ include "cbur.proxy.resourceName" (tuple . "Deployment") }}
+  {{- end }}
+  labels:
+  {{- include "cbur.proxy.commonLabels" (tuple .) | indent 4 }}
+  {{- include "cbur.customLabels" (tuple .Values.global.labels) | indent 4 }}
+  annotations:
+  {{- include "cbur.customAnnotations" (tuple .Values.global.annotations) | indent 4 }}
+    "helm.sh/hook-weight": "0"
+    "helm.sh/hook": "pre-upgrade,pre-rollback,post-install,post-upgrade"
+    "helm.sh/hook-delete-policy": before-hook-creation,hook-failed
+spec:
+  {{- with .Values.backup_self.volumes}}
+  volumes:
+{{ toYaml . | indent 4 }}
+  {{- end }}
+  {{- if and .Release.IsUpgrade (not (contains "cbur-backup-cluster" (join "," .Values.backup_self.volumes))) .Values.k8swatcher.enabled .Values.k8swatcher.clusterBrEnabled }}
+    {{ toString "- cbur-backup-cluster" }}
+  {{- end }}
+  backend:
+    mode: {{ .Values.backup_self.backend_mode }}
+    is_cburm: true
+  cronSpec: {{ quote .Values.backup_self.cronSpec }}
+  maxiCopy: {{ .Values.backup_self.maxiCopy }}
+  k8sType: deployment
+  hooks:
+  - name: {{ include "cbur.proxy.containerName" (tuple . "cbur") }}
+    commands:
+      preBackupCmd: []
+      postBackupCmd: []
+      preRestoreCmd: []
+      postRestoreCmd: []
+{{- end }}

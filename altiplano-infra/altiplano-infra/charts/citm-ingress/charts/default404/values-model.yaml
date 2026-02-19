@@ -1,0 +1,33 @@
+# values-model.yaml
+
+type: object
+properties:
+    replica:
+        description: |
+            Replica for deployment
+        type: object
+        properties:
+            replicaCount:
+                description: |
+                    Number of PODs to deploy
+                type: integer
+                default: 1
+                minimum: 1
+    resources:
+        description: |
+            Model of configuration required to request new instances
+                 of citm-default-backend module
+        type: object
+        properties:
+          memory:
+            title: Memory
+            description: |
+              Max memory size reserved for a service
+              type: string
+              default: 64Mi
+          cpu:
+            title: CPU
+            description: |
+              Max CPU resource reserved for a service
+              type: string
+              default: 10m

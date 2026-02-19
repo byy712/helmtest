@@ -1,0 +1,1691 @@
+rbac:
+  enabled: true
+  pspUseAppArmor: false
+  #Grafana does not require any extra privileges other than what is available under restricted psp.
+  #only in the istio.cni disabled case istio needs NET_ADMIN and NET_RAW capabilities which are not enabled by defalut in any psp. So, Grafana chart creates PSP with these privileges.
+  #By defalut psp.create would be false, when Grafana needs to be installed in istio.cni disabled environment set psp.create to true
+  #When Grafana is installed in openshift set psp.create to false
+
+  # policy/v1beta1/PodSecurityPolicy is deprecated in kubernetes v1.21+, unavailable in kubernetes v1.25+.
+  # Do NOT set psp.create to true in kubernetes >= 1.25
+  psp:
+    create: false
+    annotations:
+      seccomp.security.alpha.kubernetes.io/allowedProfileNames: "*"
+      seccomp.security.alpha.kubernetes.io/defaultProfileName: runtime/default
+serviceAccountName:
+
+## prefix to be used when mounting the grafana.cmdb and grafana.security
+## default values is "/secrets"
+secretPathPrefix: "/secrets"
+
+# Used when HA is enabled. Default value is 2
+replicas: 2
+
+accessRoleLabel: internal-access
+
+#Root Level Image Flavor
+# Supported image flavors are rocky8-python3.8, rocky8. Below is the example
+imageFlavor: 
+
+# Image Flavor Policy can be configured as "BestMatch" or "Strict". Default is Best Match
+imageFlavorPolicy: 
+
+# There are 2 update strategies available - Rolling Update (default) and OnDelete.
+# User can further configure Rolling Updates as required
+updateStrategy: {}
+#  type: RollingUpdate
+#  rollingUpdate:
+#    partition: 0
+
+
+restrictedToNamespace: true
+deployOnCompass: false
+
+deploymentStrategy: Recreate
+
+# Previous charts doesn't add podNamePrefix when nameOverride OR fullnameOverride was set
+# set usePodNamePrefixAlways to true as part of fresh installation to add podNamePrefix in all cases
+# usePodNamePrefixAlways should not be changed as part of upgrade
+usePodNamePrefixAlways: false
+#nameOverride: ""
+#fullnameOverride: ""
+
+# Precedence  grafana.tls.enabled -> tls.enabled -> global.tls.enabled
+tls:
+  enabled: 
+
+global:
+# registry repo is used to pull all the container images. global.registry will also support <registry>/<repository path>
+  registry:
+  vault:
+    enabled: false
+# If global.flatRegistry is set to true, then <repository path> in all container images will be skipped
+  flatRegistry: false
+## timeZone priority order is
+## 1. timeZone.timeZoneEnv
+## 2. global.timeZoneEnv
+## Incase if timeZoneName is given instead of timeZoneEnv, it would be honoured too.
+## 1. timeZoneName
+## 2. global.timeZoneName
+## If both timeZoneName and  timeZoneEnv are defined then timeZoneEnv will be given preference.
+  timeZoneName: "UTC"
+  timeZoneEnv: ""
+  annotations: {}
+  labels: {}
+# set  unifiedLogging.syslog.enabled to true to forward logs to rsyslog
+# grafana.unifiedLogging.syslog.enabled will take precedence than global.unifiedLogging.syslog.enabled
+  unifiedLogging:
+    # Enable sylog to true for sending logs to syslog. Default value is False
+    syslog:
+      enabled: False
+      facility:
+      host:
+      port:
+     # ssl,tcp and udp are the supprted in protocol field. if protocol is ssl then please configure the secret and provide secret name under tls section
+      protocol:
+      tls:
+        secretRef:
+      # Secret name, pointing to a Secret object of type `kubernetes.io/tls`
+          name:
+           # Secret key names mapping
+           # If the provided Secret is of type `kubernetes.io/tls', then key names do not need to be changed.
+          keyNames:
+           # Name of Secret key, which contains CA certificate
+            caCrt: "ca.crt"
+    extension: {}
+    #extension:
+    #   VM_Name: abc
+    #   VM_UUID: 123
+
+  hpa:
+    #enabled value left empty intentionally, default value is False
+    enabled:
+# Define serviceAccount name for grafana at global level.
+## serviceAccount priority order is
+## 1. serviceAccountName
+## 2. global.seviceAccountName
+## 3. If we are not using customized resources set rbac.enabled to true then resources will be created on helm install
+## 4. If both serviceAccounts are not set and rbac.ebabled is set to false then default serviceAccount will be used
+
+  ##precedence order
+  #certManager.enabled --> global.certManager.enabled
+  certManager:
+    enabled: true
+    issuerRef:
+      name:
+      kind: "Issuer"
+      group: "cert-manager.io"
+  serviceAccountName:
+## istio verion in X.Y format eg 1.4/1.5/1.6/1.7
+  istioVersion: "1.11"
+  #if disablePodNamePrefixRestrictions is true, then podnameprefix length will not restricted to 30. root level has more precedence over global level
+  disablePodNamePrefixRestrictions:
+  podNamePrefix: ""
+   ## containerNamePrefix maximum length is 34 characters according to the HBP
+  containerNamePrefix: ""
+
+  ##Configuration for priority class
+  ## https://kubernetes.io/docs/concepts/scheduling-eviction/pod-priority-preemption/#pod-priority
+  ## priority class should be created before installing the chart
+  priorityClassName:
+
+  ## Supported Flavors: rocky8, rocky8-python3.8, rocky8-jre17
+  imageFlavor:
+  imageFlavorPolicy: BestMatch
+
+  # For IPv4 and IPv6 dual stack support
+  # ipFamilyPolicy:  SingleStack | PreferDualStack | RequireDualStack
+  ipFamilyPolicy:
+  # ipFamilies: ["IPv4"] | ["IPv6"] | ["IPv4","IPv6"] | ["IPv6","IPv4"]
+  ipFamilies: []
+  # - IPv4
+  # - IPv6
+
+  ##Ephemeral volumes are designed for such that they exists with Pod's lifetime and get created and deleted along with the Pod.
+  #Work load level ephemeral volume shall have precedence over global.
+  ephemeralVolume:
+    enabled:
+
+## Optionally specify an array of imagePullSecrets.
+## Secrets must be manually created in the namespace.
+## ref: https://kubernetes.io/docs/tasks/configure-pod-container/pull-image-private-registry/
+  imagePullSecrets:
+#    - name: myRegistrKeySecretName
+# +----------------------------------------------------------------------------------------------------------------------------+
+# | If set to true, container will use default CPU limits(Eg: 100m) . Also user can configure the cpu value to custom value    |
+# | If set to false, container will run without CPU limits set                                                                 |
+# | Either enableDefaultCpuLimits true or false If user configure limit.cpu in resource section, it will be considered         |
+# | NOTE: enableDefaultCpuLimits takes precedence over the global.enableDefaultCpuLimits                                       |
+# +----------------------------------------------------------------------------------------------------------------------------+
+  enableDefaultCpuLimits: false
+
+  # Precedence  grafana.tls.enabled -> tls.enabled -> global.tls.enabled
+  tls:
+    enabled: true
+
+# intGrafanaReg repo is used to pull cpro-grafana image
+intCproGrafanaReg: "csf-docker-delivered.repo.cci.nokia.net"
+# intGrafanaKiwiReg repo is used to pull cpro-grafana-kiwigrid image
+intGrafanaKiwiReg: "csf-docker-delivered.repo.cci.nokia.net"
+# intGrafanaUtilReg repo is used to pull cpro-grafana-utility image
+intGrafanaUtilReg: "csf-docker-delivered.repo.cci.nokia.net"
+# intRestapiReg repo is used to pull Restapi image
+intGrafanaSaneReg: "csf-docker-delivered.repo.cci.nokia.net"
+# intKubectlReg repo is used to pull kubectl image
+intKubectlReg: "csf-docker-delivered.repo.cci.nokia.net"
+# intCburReg repo is used to pull cbur image
+intCburReg: "csf-docker-delivered.repo.cci.nokia.net"
+# intLFluentdReg repo is used to pull fluentd image
+intFluentdReg: "csf-docker-delivered.repo.cci.nokia.net"
+# intLogrotateReg repo is used to pull logrotate image
+intLogrotateReg: "csf-docker-delivered.repo.cci.nokia.net"
+
+
+# workload level scope.
+# workload level scope takes precedence over global level scope.
+#ipFamilyPolicy:  SingleStack | PreferDualStack | RequireDualStack
+ipFamilyPolicy:
+#ipFamilies: ["IPv4"] | ["IPv6"] | ["IPv4","IPv6"] | ["IPv6","IPv4"]
+ipFamilies: []
+
+partOf: ""
+managedBy: ""
+clusterDomain: cluster.local
+timeZone:
+  timeZoneEnv: ""
+
+
+#Kubernetes retrieves termination messages from the termination message file specified in the terminationMessagePath.
+##The default terminationMessagepath is "/dev/termination-log"
+terminationMessagePath: "/dev/termination-log"
+## User can opt for File or FallbackToLogsOnError for the terminarionMessagePolicy
+## File is the default value for the terminationMessagePolicy
+## By setting the terminationMessagePolicy to "FallbackToLogsOnError", you can tell Kubernetes to use the last chunk of container log output if the termination message file is empty and the container exited with an error.
+terminationMessagePolicy: "File"
+
+disablePodNamePrefixRestrictions:
+
+
+##Configuration for priority class
+## https://kubernetes.io/docs/concepts/scheduling-eviction/pod-priority-preemption/#pod-priority
+## priority class should be created before installing the chart
+priorityClassName:
+
+custom:
+  pod:
+    annotations:
+      seccomp.security.alpha.kubernetes.io/allowedProfileNames: runtime/default
+      seccomp.security.alpha.kubernetes.io/defaultProfileName: runtime/default
+    apparmorAnnotations:
+      apparmor.security.beta.kubernetes.io/allowedProfileNames: runtime/default
+      apparmor.security.beta.kubernetes.io/defaultProfileName: runtime/default
+    labels: {}
+
+  grafanaSts:
+    annotations: {}
+    labels: {}
+
+name: grafana
+appTitle: "Performance Monitoring"
+
+HA:
+  enabled: false
+
+init:
+  image:
+    name: fnms-init-container
+    tag: nokia-1.0.2
+    pullPolicy: IfNotPresent
+
+# +---------------------------------------------------------------------------------------------------------------------------+
+# | If set to true, container will use default CPU limits(Eg: 100m) . Also user can configure the cpu value to custom value   |
+# | If set to false, container will run without CPU limits set.                                                               |
+# | Either enableDefaultCpuLimits true or false If user configure limit.cpu in resource section, it will be considered        |
+# | NOTE: Takes precedence over global.enableDefaultCpuLimits, if empty global.enableDefaultCpuLimits will be used            |
+# +---------------------------------------------------------------------------------------------------------------------------+
+enableDefaultCpuLimits: false
+
+## Configure PodDisruptionBudget here
+## See `kubectl explain poddisruptionbudget.spec` for more
+## ref: https://kubernetes.io/docs/tasks/run-application/configure-pdb/
+## Note: specify only one of maxUnavailable and minAvailable in a single PodDisruptionBudget.
+##       minAvailable or maxUnavailable values can be either an absolute number(1) or a percentage(50%).
+pdb:
+  enabled: false
+  # minAvailable: 1
+  maxUnavailable: 0
+image:
+  distro:
+    imageRepo: cpro/grafana-registry1/cpro-grafana
+    imageTag: 2.0.4-10.2.1-163
+    __defaultFlavor: distroless
+    imagePullPolicy: IfNotPresent
+  utility:
+    imageRepo: cpro/grafana-registry1/cpro-grafana-util
+    imageTag: 3.0.4-163
+    imagePullPolicy: IfNotPresent
+    # Do not change the below and __defaultFlavor values
+    __defaultFlavor: rocky8
+  python:
+    imageRepo: cpro/grafana-registry1/cpro-grafana-kiwigrid
+    imageTag: 3.0.4-1.25.2-163
+    imagePullPolicy: IfNotPresent
+    # Do not change the below parameters starting with __
+    __defaultFlavor: rocky8-python3.8
+
+
+#In OpenShift, runAsUser and fsGroup should be configured as null. Example to configure them as null is as follows:
+##securityContext:
+##  runAsUser:
+##  fsGroup:
+#  fsGroup: 65534
+#  supplementalGroups: [65534]
+  #seLinuxOptions:
+  #  level: ""
+  #  role: ""
+  #  type: ""
+  #  user: ""
+securityContext:
+  runAsNonRoot: true
+  runAsUser: 65534
+  fsGroup: 65534
+  supplementalGroups: [65534]
+  seccompProfile:
+    type: RuntimeDefault
+containerSecurityContext:
+  readOnlyRootFilesystem: true
+  allowPrivilegeEscalation: false
+  capabilities:
+    drop:
+      - ALL
+seLinuxOptions:
+  enabled: false
+  level: ""
+  role: ""
+  type: ""
+  user: ""
+
+helmDeleteImage:
+  imageFlavor:
+  imageFlavorPolicy:
+  imagerocky:
+    imageRepo: tools/kubectl
+    imageTag: 1.28.7-nano-20240301
+    __defaultFlavor: rocky8
+    imagePullPolicy: IfNotPresent
+  ## Once a Job reaches activeDeadlineSeconds, all of its running Pods are terminated and
+  ## the Job status will become type: Failed with reason: DeadlineExceeded
+  ## Refer more details in https://kubernetes.io/docs/concepts/workloads/controllers/job/#job-termination-and-cleanup
+  activeDeadlineSeconds: 300
+  resources:
+    limits:
+      # User can configure the cpu limits whenever user wants to limit CPU.
+      #cpu: 100m
+      memory: 100Mi
+      ephemeral-storage: "1Gi"
+    requests:
+      cpu: 50m
+      memory: 32Mi
+      ephemeral-storage: "250Mi"
+  hookWeight: -9
+
+# If container security context needs to be modified the below can be edited.
+  containerSecurityContext:
+    readOnlyRootFilesystem: true
+    allowPrivilegeEscalation: false
+    capabilities:
+      drop:
+        - ALL
+
+
+##helmtest configurations
+helmTest:
+  resources:
+    requests:
+      memory: 64Mi
+      cpu: 50m
+      ephemeral-storage: "250Mi"
+    limits:
+      memory: 128Mi
+      # User can configure the cpu limits whenever user wants to limit CPU.
+      #cpu: 100m
+      ephemeral-storage: "1Gi"
+  hookWeight: 1
+  podAnnotations: {}
+  tolerations: []
+  nodeSelector: {}
+
+  ##Configuration for priority class
+  ## https://kubernetes.io/docs/concepts/scheduling-eviction/pod-priority-preemption/#pod-priority
+  ## priority class should be created before installing the chart
+  priorityClassName:
+
+  # If container security context needs to be modified the below can be edited.
+  containerSecurityContext:
+    readOnlyRootFilesystem: true
+    allowPrivilegeEscalation: false
+    capabilities:
+      drop:
+        - ALL
+
+sqlitetomdb: false
+
+hookImage:
+  ## grafana utility image will be used
+  ## Supported Flavors: rocky8
+  imageFlavor: 
+  imageFlavorPolicy:
+
+  resources:
+    limits:
+      # User can configure the cpu limits whenever user wants to limit CPU.
+      #cpu: 500m
+      memory: 1Gi
+      ephemeral-storage: "1Gi"
+    requests:
+      cpu: 100m
+      memory: 128Mi
+      ephemeral-storage: "250Mi"
+
+mdbToolImage:
+## grafana utility image will be used
+  ## supported Image flavors (rocky8)
+  imageFlavor:
+  imageFlavorPolicy:
+  ## Once a Job reaches activeDeadlineSeconds, all of its running Pods are terminated and
+  ## the Job status will become type: Failed with reason: DeadlineExceeded
+  ## Refer more details in https://kubernetes.io/docs/concepts/workloads/controllers/job/#job-termination-and-cleanup
+  activeDeadlineSeconds: 300
+  resources:
+    limits:
+      # User can configure the cpu limits whenever user wants to limit CPU.
+      #cpu: 500m
+      memory: 1Gi
+      ephemeral-storage: "1Gi"
+    requests:
+      cpu: 100m
+      memory: 128Mi
+      ephemeral-storage: "250Mi"
+
+# If container security context needs to be modified the below can be edited.
+  containerSecurityContext:
+    readOnlyRootFilesystem: true
+    allowPrivilegeEscalation: false
+    capabilities:
+      drop:
+        - ALL
+
+
+
+grafanaFileMerge:
+  name: file-merge
+## grafana distro image will be used
+  ## Supported Image Flavor: distroless
+  imageFlavor:
+  imageFlavorPolicy:
+  resources:
+    limits:
+      # User can configure the cpu limits whenever user wants to limit CPU.
+      #cpu: 100m
+      memory: 200Mi
+      ephemeral-storage: "1Gi"
+    requests:
+      cpu: 10m
+      memory: 32Mi
+      ephemeral-storage: "250Mi"
+
+# If container security context needs to be modified the below can be edited.
+  containerSecurityContext:
+    readOnlyRootFilesystem: true
+    allowPrivilegeEscalation: false
+    capabilities:
+      drop:
+        - ALL
+
+## Grafana Util is Debug container image for Grafana
+grafanaUtil:
+## grafana utility image will be used
+  # supported Image Flavors rocky8
+  imageFlavor:
+  imageFlavorPolicy:
+  
+  name: util
+
+  resources:
+    limits:
+      # User can configure the cpu limits whenever user wants to limit CPU.
+      #cpu: 100m
+      memory: 200Mi
+      ephemeral-storage: "1Gi"
+    requests:
+      cpu: 10m
+      memory: 32Mi
+      ephemeral-storage: "250Mi"
+
+# If container security context needs to be modified the below can be edited.
+  containerSecurityContext:
+    readOnlyRootFilesystem: true
+    allowPrivilegeEscalation: false
+    capabilities:
+      drop:
+        - ALL
+
+
+
+pluginsSideCar:
+  ## If true, will install Alertmanager datasource plugin
+  enabled: true
+## grafana utility image will be used
+  imageFlavor:
+  imageFlavorPolicy:
+  resources:
+    limits:
+      # User can configure the cpu limits whenever user wants to limit CPU.
+      #cpu: 500m
+      memory: 1Gi
+      ephemeral-storage: "1Gi"
+    requests:
+      cpu: 100m
+      memory: 128Mi
+      ephemeral-storage: "250Mi"
+  ## Below curlOptions are to download Alertmanager datasource plugin
+  curlOptions:
+    connect_timeout: 5
+    max_time: 30
+    retry_count: 10
+
+
+
+# If container security context needs to be modified the below can be edited.
+  containerSecurityContext:
+    readOnlyRootFilesystem: true
+    allowPrivilegeEscalation: false
+    capabilities:
+      drop:
+        - ALL
+
+cbur:
+  enabled: true
+  imageFlavor:
+  imageFlavorPolicy:
+  image:
+    imageRepo: cbur/cbur-agent
+    imageTag: 1.1.1-alpine-6578
+    imagePullPolicy: IfNotPresent
+  resources:
+    limits:
+      # User can configure the cpu limits whenever user wants to limit CPU.
+      #cpu: 500m
+      memory: 500Mi
+      ephemeral-storage: "1Gi"
+    requests:
+      cpu: 100m
+      memory: 128Mi
+      ephemeral-storage: "256Mi"
+  ## not other mode allowed/supported now
+  backendMode: "local"
+  ##autoEnableCron = true indicates that the cron job is immediately scheduled when the BrPolicy is created,
+  ##while autoEnableCron = false indicates that scheduling of the cron job should be done on a subsequent backup request.
+  ##This option only works when k8swatcher.enabled is true
+  autoEnableCron: false
+  ##Indicate if subsequent update of cronjob will be done via brpoilicy update.
+  ##true means cronjob must be updated via brpolicy update,
+  ##false means cronjob must be updated via manual "helm backup -t app -a enable/disable" command.
+  autoUpdateCron: false
+  ## cronjob frequency, here means very 5 minutes of every day
+  cronJob: "*/5 * * * *"
+  ## the maximum copy you want to saved.
+  maxCopy: 5
+
+  ##The timer to wait for pods stable after backup / restore.If not set, CBUR will wait for default  800 seconds.
+  waitPodStableSeconds: 800
+
+  ## If set to true, Backup and Recovery disregards the error message: "File changed as we read it" and "File removed before we read it". when creating a tar file in the cbura sidecar. This parameter does not apply to the tar operation in cbur-master
+  ignoreFileChanged: true
+
+  ## data Encryption needs to be done on backed up data or not.
+  dataEncryptionEnable: true
+  ## CBUR will get the passphrase from the secret and use it to encrypt/decrypt the tarballs during backup/restore.
+  ## Refer to CBUR user guide for format of secret
+  dataEncryptionSecretName: ""
+
+  #hook weight for the pre backup job
+  preBackupHookWeight: "-10"
+  #duration for pre backup job, total time will be time reqired for grafana  to in in running state
+  preBackupJobTimeout: 3100
+
+  #hook weight for the post restore job
+  postRestoreHookWeight: "-10"
+  #duration for post restore job, total time will be time reqired for grafana  to in in running state
+  postRestoreJobTimeout: 3100
+
+  ### custom name to override default  pod and container name
+  ## pod and container name should be unique
+
+  ## If container security context needs to be modified the below can be edited.
+  containerSecurityContext:
+    readOnlyRootFilesystem: true
+    allowPrivilegeEscalation: false
+    capabilities:
+      drop:
+        - ALL
+
+##Ephemeral volumes are designed for such that they exists with Pod's lifetime and get created and deleted along with the Pod.
+#Work load level ephemeral volume shall have precedence over global. Example to configure ephemeralVolume is shown below.
+#  ephemeralVolume:
+#    enabled: true
+#    volumedata:
+#      storageClass: "cider-sc"
+#      accessmodes: [ "ReadWriteOnce" ]
+#      storageSize: 1Gi
+
+
+  ephemeralVolume:
+  #enabled value left empty intentionally, default value is False
+    enabled:
+    volumedata:
+      storageClass: "-"
+      accessmodes: [ "ReadWriteOnce" ]
+      storageSize: 1Gi
+
+
+customResourceNames:
+  resourceNameLimit: 63
+  grafanaPod:
+    inCntChangeDbSchema: ""
+    inCntChangeMariadbSchema: ""
+    inCntWaitforMariadb: ""
+    inCntGrafanaFileMerge: ""
+    inCntDownloadDashboard: ""
+    pluginSidecarContainer: ""
+    grafanaSidecarDashboard: ""
+    grafanaSaneAuthproxy: ""
+    grafanaMdbtool: ""
+    grafanaDatasource: ""
+    grafanaContainer: ""
+    grafanaUtil: ""
+    inCntWait4Certs2BeConsumed: ""
+    ## cbur sidecar container name should end with cbura-sidecar
+    cburaSidecarContainer: ""
+  deleteDatasourceJobPod:
+    name: ""
+    deleteDatasourceContainer: ""
+  setDatasourceJobPod:
+    name: ""
+    setDatasourceContainer: ""
+  postUpgradeJobPod:
+    name: ""
+    postUpgradeJobContainer: ""
+  postDeleteJobPod:
+    name: ""
+    deletedbContainer: ""
+  postDeleteSecretJobPod:
+    name: ""
+    deletesecretsContainer: ""
+  importDashboardJobPod:
+    name: ""
+    importDashboardJobContainer: ""
+  grafanaTestPod:
+    name: ""
+    grafanaTestContainer: ""
+
+downloadDashboardsImage:
+  enabled: false
+
+# If container security context needs to be modified the below can be edited.
+  containerSecurityContext:
+    readOnlyRootFilesystem: true
+    allowPrivilegeEscalation: false
+    capabilities:
+      drop:
+        - ALL
+
+## grafana utility image will be used
+  ##Supported IMage Flavors is rocky8
+  imageFlavor:
+  imageFlavorPolicy:
+
+## Pod Annotations
+podAnnotations: {}
+
+## Deployment annotations
+# annotations: {}
+
+## Expose the grafana service to be accessed from outside the cluster (LoadBalancer service).
+## or access it from within the cluster (ClusterIP service). Set the service type and the port to serve it.
+## ref: http://kubernetes.io/docs/user-guide/services/
+##
+
+##sensitive details in Grafana config file
+# sensitive details like username, password , token will be given in the secret format
+# please refer to the confluence page for  details  on secret format and specific name for the key.
+
+sensitiveDataSecretName: ""
+#------------------------------------------------------------------------------
+# CMDB values
+#------------------------------------------------------------------------------
+cmdb:
+  enabled: false
+  # If retain_data is true, will retain grafana data in mariadb when deleting grafana instance
+  retain_data: false
+
+## CMDB pre created secret, pre created secret create command key should match keys ca.crt, client.key and client.crt. Refer to readme
+## certsecret: "" #if the user give TLS cert and key in values.yaml
+## certsecret: "certmanager" # if the user wants to use grafana certmanager TLS certs and grafana certManager.enabled is true
+  certsecret: ""
+
+  ## cmdb sensitive data credentials to used by grafana
+  ## If configured, the chart takes care to update the grafana ini section for database user, name and host 
+  ## in the Grafana's FileProvider Pattern. (example: user = $__file{/secrets/cmdb-auth/username})
+  auth:
+    # Name of the credential which has user, password and name of db
+    # Example: If the user has pre-created a secret containing username, password and dbname with name "graf-cmdb-cred",
+    # then configure as below
+    # credentialName: "graf-cmdb-cred"
+    credentialName: ""
+    keyNames:
+      # key used to define the above secret which refers to db user
+      # if empty, then default key "username" is used
+      # Example: If user has used "myuser" as key when creating the secret, then update the username field as follows
+      # username: "myuser"
+      username: ""
+      # key used to define the above secret which refers to db password
+      # if empty, then default key "password" is used
+      # Example: If user has used "mypass" as key when creating the secret, then update the password field as follows
+      # password: "mypass"
+      password: ""
+
+service:
+  nameOverride: ""
+  type: ClusterIP
+  port: 80
+  annotations: {}
+  annotationsForScrape:
+    prometheus.io/probe: grafana
+  labels: {}
+
+ingress:
+  enabled: true
+  annotations:
+    nginx.ingress.kubernetes.io/affinity: "cookie"
+    nginx.ingress.kubernetes.io/affinity-mode: "persistent"
+    nginx.ingress.kubernetes.io/session-cookie-name: "MONITORINGCOOKIE"
+    nginx.ingress.kubernetes.io/session-cookie-samesite: "Lax"
+    nginx.ingress.kubernetes.io/session-cookie-change-on-failure: "true"
+    kubernetes.io/ingress.class: nginx
+    nginx.ingress.kubernetes.io/rewrite-target: /$1
+    ###  when ingress version is or lower than 1.14.30, use below value
+    #nginx.ingress.kubernetes.io/rewrite-target: /
+    nginx.ingress.kubernetes.io/secure-backends: "true"
+    nginx.ingress.kubernetes.io/ssl-passthrough: "true"
+    nginx.ingress.kubernetes.io/ssl-redirect: "true"
+  labels: {}
+  path: /grafana/?(.*)
+
+  #All possible allowed values for pathType is Prefix,ImplementationSpecific, Exact
+  pathType: "Prefix"
+  ###  when ingress version is or lower than 1.14.30, use below value
+  #path: /grafana
+  hosts:
+    - ""
+  tls: []
+  #  - secretName: chart-example-tls
+  #    hosts:
+  #      - chart-example.local
+
+# Below values is used only in the REGISTRY_ONLY environment. In the REGISTRY_ONLY environment, for the prometheus to scrap the metrics
+# from any workload or application, there must be a service,headless service and destinationRule must be created. This will make sure the application
+# to be included in the istio service mesh. However DestinationRule will be taken care by the createDrForClient in the istio section but for the
+# service and headless service will be taken care by the below value.
+includeWorkloadInIstioMesh: false
+
+hostAliases: []
+# hostAliases:
+# - ip: "10.99.26.136"
+#   hostnames:
+#   - "vm-10-99-26-136"
+
+
+# Root configuration for all istio level parameters.
+istio:
+  sidecar:
+    # Istio sidecar (Envoy) healthcheck port.
+    # If it is not set, then the default value is 15021, and 15020 for Istio versions prior to 1.6.
+    healthCheckPort:
+    # Istio sidecar (Envoy) admin port on which `quitquitquit` endpoint can be used to stop sidecar container.
+    stopPort: 15000
+
+  # version of istio available in the environment..
+  version: "1.11"
+  # Should istio be enabled for this deployment.
+  enabled: false
+  # Whether istio cni is enabled in the environment.
+  cni:
+    enabled: true
+  # MTLS section of configuration.
+  mtls:
+    #Is strict MTLS enabled in the environment.
+    enabled: true
+  # Should allow mutual TLS as well as clear text for your deployment.
+  permissive: false
+  # This optional flag should only be used when application was installed in istio-injection=enabled namespace, but was configured with istio.enabled=false, thus istio sidecar could not be injected into this application. Client then would need destinationRule for accessing this application
+  createDrForClient: false
+  # Optional sharedHttpGateway which should be used if you need to share a gateway.
+  sharedHttpGateway:
+    # This section instructs the chart to reuse an already existing gateway for http/https purposes.
+    # This is applicable if you already have a gateway on the same hostname listening on 80/443.
+    # Namespace where the existing gateway object exists.
+    namespace: "istio-system"
+    # Name of the gateway object.
+    name: "single-gateway-in-istio-system"
+
+  # An optional array of gateways which can be added if needed. These gateways will be created fresh in your install.
+  # NOTE: If the shared gateway is provided then the values of credentialName,mode should match the values of the shared gateway as these
+  # values will be used for configuring the VirtualService amd other resources.
+  gateways:
+    # Name of the gateway should not be changed.
+    cproGrafana:
+      # Should this be enabled or not.
+      enabled: false
+      # Optional labels to be added to gateway object.
+      labels: {}
+      # Any annotations to be added to the gateway object.
+      annotations: {}
+      # By default the chart will use label 'istio: ingressgateway' as selector which is the default one deployed in istio-system namespace.
+      # This should be the label of the istio ingressgateway pod which you want your gateway to attach to.
+      ingressPodSelector:
+        istio: ingressgateway
+      # Port number where the gateway should attach to.
+      port: 443
+      # Protocol to be used for the port(TLS/TCP/HTTP/HTTPS). TLS/HTTPS will need the optional tls section to be filled.
+      protocol: HTTPS
+      # By default the chart will use '*'. It can be a YAML array of host names.
+      host: []
+      # TLS settings for your gateway. This section is mandatory if protocol is TLS/HTTPS.
+      tls:
+      # This optional flag is only applicable for an HTTP port to force a redirection to HTTPS.
+        redirect: true
+        # Mode can be SIMPLE / MUTUAL / PASSTHROUGH/ ISTIO_MUTUAL and it is exactly as per ISTIO documentation.
+        mode: "ISTIO_MUTUAL"
+        # The name of the kubernetes secret, in the namespace to be used for TLS traffic.
+        credentialName: ""
+        # Istio TLS has many other attributes and configurations. If for some reason none of the above fits your
+        # needs , then use this section to configure as per istio docs. Anything under here will be directly moved
+        # under TLS section of gateway definition.
+        custom: {}
+  # This createKeycloakServiceEntry to be enabled and provided only when the istio is enabled.
+  createKeycloakServiceEntry:
+    enabled: false
+    extCkeyHostname: ""     # Ex. extCkeyHostname: "ckey.io"
+    # Port on which ckey is externally accessible
+    extCkeyPort: ""         # Ex. extCkeyPort: 31390
+    # Protocol on which ckey is externally accessible
+    extCkeyProtocol: "HTTPS"     # accepted values: HTTP, HTTPS
+    ## FQDN of ckey k8s service name internally accessible within k8s cluster
+    ckeyK8sSvcName: ""     # Ex. keycloak-ckey.default.svc.cluster.local
+    # Port on which ckey k8s service is accessible
+    ckeyK8sSvcPort: "8443"    # Ex. ckeyK8sSvcPort: 8443
+    hostAlias: ""       # If the host name of ckey is not resolvable then edge node ip has to be given here
+    location: "MESH_INTERNAL"       # Location specifies whether the service is part of Istio mesh or outside the mesh Ex. MESH_EXTERNAL/MESH_INTERNAL
+
+
+resources:
+  limits:
+    # User can configure the cpu limits whenever user wants to limit CPU.
+    #cpu: 500m
+    memory: 1Gi
+    ephemeral-storage: "1Gi"
+  requests:
+    cpu: 100m
+    memory: 128Mi
+    ephemeral-storage: "256Mi"
+
+## Node labels for pod assignment
+## ref: https://kubernetes.io/docs/user-guide/node-selection/
+#
+nodeSelector: {}
+
+## Tolerations for pod assignment
+## ref: https://kubernetes.io/docs/concepts/configuration/taint-and-toleration/
+##
+tolerations: []
+
+## Affinity for pod assignment
+## ref: https://kubernetes.io/docs/concepts/configuration/assign-pod-node/#affinity-and-anti-affinity
+##
+affinity: {}
+nodeAntiAffinity: hard
+
+## Enable persistence using Persistent Volume Claims
+## ref: http://kubernetes.io/docs/user-guide/persistent-volumes/
+##
+persistence:
+  enabled: true
+  ##storageClassName: default
+  accessModes:
+    - ReadWriteOnce
+  size: 1Gi
+  annotations: {}
+  # subPath: ""
+  # existingClaim:
+
+## Use an alternate scheduler, e.g. "stork".
+## ref: https://kubernetes.io/docs/tasks/administer-cluster/configure-multiple-schedulers/
+##
+# schedulerName:
+
+## Extra environment variables that will be pass onto deployment pods
+env: {}
+
+## The name of a secret in the same kubernetes namespace which contain values to be added to the environment
+## This can be useful for auth tokens, etc
+envFromSecret: ""
+
+## Additional grafana server secret mounts
+# Defines additional mounts with secrets. Secrets must be manually created in the namespace.
+# Secrets can be created manually for keycloak, grafana server & cmdb and mounted can be mounted here
+# Note: MountPath for all certificates needs to be updated in grafana_ini section (server, databases, keycloak)
+extraSecretMounts: []
+  # - name: secret-files
+  #   mountPath: /etc/secrets
+  #   secretName: grafana-secret-files
+  #   readOnly: true
+
+# Pass the plugins you want installed as a comma separated list.
+# plugins: "digrich-bubblechart-panel,grafana-clock-panel"
+plugins: ""
+
+# Pass the plugin urls as a list. the file should be in tar.gz format
+# These files should be downloaded with out needing proxy or certs
+# If there are any issues in grafana due to new plugins, then CPRO team will
+# ask these plugins to be removed during debugging.
+pluginUrls: []
+
+## Uncoment below datasources section to add alertmanager datasource.
+## Added alertmanager datasource can be modified in Grafana UI by setting the parameter editable: true
+## Datasource can also be modified through restapi requests.
+## To know more about adding multiple datasources refer to grafana official page : https://grafana.com/docs/grafana/latest/administration/provisioning/
+#
+#datasources:
+#  datasources.yaml:
+#    apiVersion: 1
+#    datasources:
+#    - name: alertmanager
+#      type: camptocamp-prometheus-alertmanager-datasource
+#      url: http://promtheus-cpro-alertmanager
+#      access: proxy
+#      isDefault: false
+#      editable: false
+
+## Configure grafana datasources
+## ref: http://docs.grafana.org/administration/provisioning/#datasources
+##
+SetDatasource:
+  ## If true, an initial Grafana Datasource will be set
+  ## Default: false
+  ##
+  enabled: true
+
+  ## Once a Job reaches activeDeadlineSeconds, all of its running Pods are terminated and
+  ## the Job status will become type: Failed with reason: DeadlineExceeded
+  ## Refer more details in https://kubernetes.io/docs/concepts/workloads/controllers/job/#job-termination-and-cleanup
+  activeDeadlineSeconds: 300
+  
+  ## Grafana Utility Image will be used
+  ## Supported Image Flavor rocky8
+  imageFlavor:
+  imageFlavorPolicy:
+
+  resources:
+    limits:
+      # User can configure the cpu limits whenever user wants to limit CPU.
+      #cpu: 200m
+      memory: 128Mi
+      ephemeral-storage: "1Gi"
+    requests:
+      cpu: 100m
+      memory: 64Mi
+      ephemeral-storage: "250Mi"
+
+  datasource:
+    ## The datasource name.
+    ## Default: default
+    name: prometheus
+
+    ## Type of datasource
+    ## Default: prometheus
+    ##
+    type: prometheus
+
+    ## The url of the datasource. To set correctly you need to know
+    ## the right datasource name and its port ahead. Check kubernetes
+    ## dashboard or describe the service should fulfill the requirements.
+    ## Synatx like `http://<release name>-<server name>:<port number>
+    ## Default: "http://limping-tiger-server"
+    ##
+    url: "http://prometheus-cpro-server"
+
+    ## The name of the database at the datasource.
+    ## Required parameter when used with elasticsearch, which refers to the index_name
+    ## Default: <empty>
+    # database:
+
+    ## Additional JSON data to be passed to the configuration of the datasource.
+    ## For any additional attributes and information https://grafana.com/docs/grafana/latest/administration/provisioning/#data-sources
+
+    ## The JSON data is passed to curl, therefore it needs proper quoting and
+    ## escaping and needs to be on a single line. For example:
+    jsonData:
+      timeInterval: 60s
+
+    ##  tlsAuth: false
+    ##  tlsAuthWithCACert: true
+
+    ## Controls whether a client verifies the server’s certificate chain and host name.
+    ##  tlsSkipVerify: true
+
+    ## <map> Fields to encrypt before storing in jsonData.
+    # secureJsonData: null
+    ##  tlsCACert: |
+
+    ## <string> Sets the database user, if necessary.
+    # user:
+
+    ## <bool> Enables basic authorization.
+    basicAuth: false
+
+    ## <string> Sets the basic authorization username.
+    # basicAuthUser:
+
+    ## <bool> Allows users to edit data sources from the
+    ## Grafana UI.
+    editable: true
+
+    ## Specify if Grafana has to go thru proxy to reach datasource
+    ## Default: proxy
+    ##
+    access: proxy
+
+    ## Specify should Grafana use this datasource as default
+    ## Default: true
+    ##
+    isDefault: true
+
+  ## Specify the job policy
+  ## Default: OnFailure
+  ##
+  restartPolicy: OnFailure
+# If container security context needs to be modified the below can be edited.
+  containerSecurityContext:
+    readOnlyRootFilesystem: true
+    allowPrivilegeEscalation: false
+    capabilities:
+      drop:
+        - ALL
+
+
+SetDashboard:
+  enabled: true
+  backoffLimit: 10
+  ## Once a Job reaches activeDeadlineSeconds, all of its running Pods are terminated and
+  ## the Job status will become type: Failed with reason: DeadlineExceeded
+  ## Refer more details in https://kubernetes.io/docs/concepts/workloads/controllers/job/#job-termination-and-cleanup
+  activeDeadlineSeconds: 900
+## When upgrade if overwrite = true, dashboards in old release will be overwrited by dashboards in new chart.
+  overwrite: true
+  tinytools:
+## grafana utility image will be used
+  imageFlavor:
+  imageFlavorPolicy:
+  resourcesTinytools:
+    limits:
+      # User can configure the cpu limits whenever user wants to limit CPU.
+      #cpu: 200m
+      memory: 128Mi
+      ephemeral-storage: "1Gi"
+    requests:
+      cpu: 100m
+      memory: 64Mi
+      ephemeral-storage: "250Mi"
+
+# If container security context needs to be modified the below can be edited.
+  containerSecurityContext:
+    readOnlyRootFilesystem: true
+    allowPrivilegeEscalation: false
+    capabilities:
+      drop:
+        - ALL
+
+## Configure grafana dashboard providers
+## ref: http://docs.grafana.org/administration/provisioning/#dashboards
+##
+dashboardProviders: {}
+#  dashboardproviders.yaml:
+#    apiVersion: 1
+#    providers:
+#    - name: 'default'
+#      orgId: 1
+#      folder: ''
+#      type: file
+#      disableDeletion: false
+#      editable: true
+#      options:
+#        path: /var/lib/grafana/dashboards
+
+## Configure grafana dashboard to import
+## NOTE: To use dashboards you must also enable/configure dashboardProviders
+## ref: https://grafana.com/dashboards
+##
+dashboards: {}
+#  some-dashboard:
+#    json: |
+#      $RAW_JSON
+#  prometheus-stats:
+#    gnetId: 2
+#    revision: 2
+#    datasource: Prometheus
+#  local-dashboard:
+#    url: https://example.com/repository/test.json
+
+livenessProbe:
+  initialDelaySeconds: 60
+  timeoutSeconds: 1
+  failureThreshold: 10
+  periodSeconds: 3
+readinessProbe:
+  initialDelaySeconds: 60
+  timeoutSeconds: 30
+  failureThreshold: 10
+  periodSeconds: 10
+
+keycloak:
+
+  ## keycloak sensitive data credentials to used by grafana
+  ## If configured, the chart takes care to update the grafana ini section for database client_id and client_secret 
+  ## in the Grafana's FileProvider Pattern. (example: user = $__file{/secrets/keycloak-auth/clientId})
+  auth:
+    # Name of the credential which has client_id and client_secret
+    # Example: If the user has pre-created a secret containing clientId and clientSecret with name "graf-keycloak-cred",
+    # then configure as below
+    # credentialName: "graf-keycloak-cred"
+    credentialName: ""
+    keyNames:
+      # key used to define the above secret which refers to client id
+      # if empty, then default key "clientId" is used
+      # Example: If user has used "myclientId" as key when creating the secret, then update the clientId field as follows
+      # clientId: "myclientId"
+      clientId: ""
+      # key used to define the above secret which refers to client secret
+      # if empty, then default key "clientSecret" is used
+      # Example: If user has used "myclientSecret" as key when creating the secret, then update the clientSecret field as follows
+      # clientSecret: "myclientSecret"
+      clientSecret: ""
+
+# Update ckeyUrl with the deployed keyclock baseurl, ex: 10.76.84.192:32443, ckey.example.com, ckeyistio.example.com:31390i(istio ingress), 10.76.84.192/ckey (ingress)
+  url: "10.76.84.192:32443"
+  protocol: https
+  contextPath: "auth"
+  realm: cpro
+## if secret is null, then keycloak use cert. If secret is not null and it is a existing secret name, then use secret.
+  cert: ""
+  secret:
+
+## please notice if use upper secret, please fill existing secret name, not base64 code.
+scheme: https
+
+grafana:
+  # Supported image flavor is rocky8-python3.8. Below is the example
+  # imageFlavor: rocky8-python3.8
+  
+  ## grafana-security sensitive data credentials to used by grafana
+  ## If configured, the chart takes care to update the grafana ini section for security admin_user and admin_password
+  ## in the Grafana's FileProvider Pattern. (example: user = $__file{/secrets/graf-security/username})
+  security:
+    # Name of the credential which has admin user and password credentials of grafana
+    # Example: If the user has pre-created a secret containing basic auth username and password with name "graf-admin-cred",
+    # then configure as below
+    # credentialName: "graf-admin-cred"
+    # Note: If set, then user needs to uncomment the grafana_ini.security.admin_user and grafana_ini.security.admin_password fields
+    credentialName: ""
+    keyNames:
+      # key used to define the above secret which refers to admin user
+      # if empty, then default key "username" is used
+      # Example: If user has used "myuser" as key when creating the secret, then update the username field as follows
+      # username: "myuser"
+      username: ""
+      # key used to define the above secret which refers to admin password
+      # if empty, then default key "password" is used
+      # Example: If user has used "mypass" as key when creating the secret, then update the password field as follows
+      # username: "mypass"
+      password: ""
+      
+  # # Any other credentials which contain the sensitivedata to be consumed by grafana.
+  # # name of the component of which the secret has to be mounted. This will be used as the name of the volume and the mount-path with prefix when mounting
+  # # When using the externalCredentials in grafana_ini, specify the sensitive data in the below format.
+  # # usage: url: $file{<.Values.secretPathPrefix>/<externalCredential-section-name>/<KeyNames-values>}
+  # # example: username: $__file{/secrets/ini-creds/url} [This is when keyNames are configured]
+  # externalCredentials:
+  #   ini-creds:
+  #     credentialName: ""
+  #     keyNames:
+  #       key1: ""
+  #       key2: ""
+
+  # Supported image flavors are rocky8, rokcy8-python3.8
+  # Note: Configure distroless in strict mode
+  imageFlavor: 
+  imageFlavorPolicy:
+
+  imagePullSecrets:
+#    - name: workloadSecretName
+
+  unifiedLogging:
+    # Enable sylog to true for sending logs to syslog. Enabled value left empty intentionally, default value is False. grafana.unifiedLogging.syslog will have priority than global.unifiedLogging.syslog
+    syslog:
+      enabled:
+      facility:
+      host:
+      port:
+     # ssl,tcp and udp are the supprted in protocol field. if protocol is ssl then please configure the secret and provide secret name under tls section
+      protocol:
+      tls:
+        secretRef:
+      # Secret name, pointing to a Secret object of type `kubernetes.io/tls`
+          name:
+           # Secret key names mapping
+           # If the provided Secret is of type `kubernetes.io/tls', then key names do not need to be changed.
+          keyNames:
+           # Name of Secret key, which contains CA certificate
+            caCrt: "ca.crt"
+    extension: {}
+    #extension:
+    #   VM_Name: abc
+    #   VM_UUID: 123
+# When replicasManagedByHpa set to True then spec.replicas field will be ignored in Deployment/StatefulSet objects. spec.replicas in Deployment/StatefulSet and spec.minReplicas in the HorizontalPodAutoscaler can interfere during the upgrade. During the upgrade of helm release which has no HPA, spec.replicas in Deployment/StatefulSet needs equal spec.minReplicas in HPA.
+  replicasManagedByHpa: False
+  _kind: StatefulSet
+  _objectNameTemplate: '{{ include "cpro-grafana.fullname" . }}'
+  hpa:
+    #enabled value left empty intentionally, default value is False
+    enabled:
+    minReplicas: 1
+    maxReplicas: 10
+    predefinedMetrics:
+      enabled: True
+      averageCPUThreshold: 80
+      averageMemoryThreshold: 80
+    behavior:
+    metrics:
+  name: grafana
+
+  # If container security context needs to be modified the below can be edited.
+  containerSecurityContext:
+    readOnlyRootFilesystem: true
+    allowPrivilegeEscalation: false
+    capabilities:
+      drop:
+        - ALL
+
+  ##workload labels & annotations
+  labels: {}
+  annotations: {}
+
+
+  ## For more info on Topology Spread Constraints ref: https://kubernetes.io/docs/concepts/scheduling-eviction/topology-spread-constraints/
+  # if labelSelector key is omitted and autoGenerateLabelSelector is set to true in a constraint block
+  # then labelSelector is automatically generated otherwise labelSelector are taken from labelSelector key
+  topologySpreadConstraints: []
+  #  - maxSkew: 1
+  #    topologyKey: topology.kubernetes.io/zone
+  #    whenUnsatisfiable: ScheduleAnyway
+  #    autoGenerateLabelSelector: True
+
+##Ephemeral volumes are designed for such that they exists with Pod's lifetime and get created and deleted along with the Pod.
+#Work load level ephemeral volume shall have precedence over global. Example to configure ephemeralVolume is shown below.
+#  ephemeralVolume:
+#    enabled: true
+#    volumedata:
+#      storageClass: "cider-sc"
+#      accessmodes: [ "ReadWriteOnce" ]
+#      storageSize: 1Gi
+
+
+  ephemeralVolume:
+  #enabled value left empty intentionally, default value is False
+    enabled:
+    volumedata:
+      storageClass: "-"
+      accessmodes: [ "ReadWriteOnce" ]
+      storageSize: 1Gi
+
+  # Precedence grafana.tls.enabled -> tls.enabled -> global.tls.enabled
+  tls:
+    enabled:
+    secretRef:
+      # Secret name, pointing to a Secret object.
+      # If empty then automatically generated secret with certificate will be used
+      name:
+      # Secret key names mapping.
+      # If the provided Secret is of type `kubernetes.io/tls', then key names do not need to be changed.
+      keyNames:
+        # Name of Secret key, which contains CA certificate
+        caCrt: "ca.crt"
+        # Name of Secret key, which contains TLS key        
+        tlsKey: "tls.key"
+        # Name of Secret key, which contains TLS certificate
+        tlsCrt: "tls.crt"
+  certificate:
+    # Certificate object is created based on the data in this section.
+    # Optional parameter
+    enabled: true
+    # workload issuRef >> certmanager.issueRef >> global.certmanager.issueRef
+    issuerRef:
+      name:
+      kind:
+      group:
+    duration: 8760h # 1 year
+    renewBefore: 360h # 15 days
+    # If left empty, it will be generated automatically.
+    secretName:
+    # Not needed in internal communication
+    subject:
+    # It has been deprecated since 2000 and is discouraged from being used for a server side certificates.
+    # `dnsNames` are used instead.
+    commonName:
+    # Usages is the set of x509 usages that are requested for the certificate.
+    # If `usages` is not specified, the following will be used:
+    # - server auth
+    # - client auth
+    usages:
+    # DNSNames is a list of DNS subjectAltNames to be set on the Certificate.
+    # If ssl passthrough is used on the Ingress object,
+    # then dnsNames should be set to external DNS names.
+    # If `dnsNames` is not specified then the following internal names will be used:
+    # - localhost
+    # - <service name>.<namespace>
+    # - <service name>.<namespace>.svc
+    # - <service name>.<namespace>.svc.<cluster domain>
+    dnsNames:
+    # URIs is a list of URI subjectAltNames to be set on the Certificate.
+    uris:
+    # IPAddresses is a list of IP address subjectAltNames to be set on the Certificate.
+    # If ipAddresses not specified then the following internal local IPs will be used:
+    # - "127.0.0.1"
+    # - "::1"
+    ipAddresses:
+    privateKey:
+      algorithm:
+      encoding:
+      size:
+      # Rotation of a key pair, when certificate is refreshed is recommended from a security point of view
+      rotationPolicy: Always
+
+
+## Grafana's primary configuration
+## NOTE: values in map will be converted to ini format
+## ref: http://docs.grafana.org/installation/configuration/
+##
+grafana_ini:
+  auth.basic:
+    enabled: true
+  auth.proxy:
+    # Defaults to false, but set to true to enable this feature
+    enabled : false
+    # HTTP Header name that will contain the username or email
+    header_name : X-WEBAUTH-USER
+    # HTTP Header property, defaults to `username` but can also be `email`
+    header_property : username
+    # Set to `true` to enable auto sign up of users who do not exist in Grafana DB. Defaults to `true`.
+    auto_sign_up : true
+    # Define cache time to live in minutes
+    # If combined with Grafana LDAP integration it is also the sync interval
+    sync_ttl : 60
+    # Limit where auth proxy requests come from by configuring a list of IP addresses.
+    # This can be used to prevent users spoofing the X-WEBAUTH-USER header.
+    # Example `whitelist = 192.168.1.1, 192.168.1.0/24, 2001::23, 2001::0/120`
+    #whitelist =
+    # Optionally define more headers to sync other user attributes
+    # Example `headers = Name:X-WEBAUTH-NAME Email:X-WEBAUTH-EMAIL Groups:X-WEBAUTH-GROUPS`
+    #headers =
+    # Check out docs on this for more details on the below setting
+    enable_login_token : false
+  paths:
+    data: /var/lib/grafana/data
+    logs: /var/log/grafana
+    plugins: /var/lib/grafana/plugins
+    provisioning: /etc/grafana/provisioning
+  analytics:
+    check_for_updates: false
+    reporting_enabled: false
+  log:
+    mode: console
+    level: INFO
+  grafana_net:
+    url: https://grafana.net
+  server:
+    protocol: https
+    http_port: 3000
+    # Minimum TLS version allowed. By default, this value is TLS1.2. Accepted values are: TLS1.2, TLS1.3. If nothing is set TLS1.2 would be taken
+    min_tls_version: "TLS1.2"
+    # when istio is enabled: root_url path and Contextroot path should match
+    root_url: "%(protocol)s://%(domain)s:%(http_port)s/grafana"
+    cert_file: /etc/grafana/ssl/tls.crt
+    cert_key: /etc/grafana/ssl/tls.key
+    #set to true when istio is enabled
+    serve_from_sub_path: true
+  #to be uncommented only when sensitive data is enabled, and to be passed as secret
+  #smtp:
+    #user: $(smtp_user)
+    #password: $(smtp_password)
+  #metrics:
+    #basic_auth_username : $(metrics-username)
+    #basic_auth_password : $(metrics-password)
+  users:
+    allow_sign_up: true
+    allow_org_create: true
+    auto_assign_org: true
+    auto_assign_org_role: Viewer
+  auth:
+    disable_login_form: false
+    disable_signout_menu: false
+    #OAuth state max age cookie duration. Defaults to 60 seconds.
+    #oauth_state_cookie_max_age is only available from Grafana v7.0+.
+    oauth_state_cookie_max_age: 600
+    # The maximum lifetime (duration) an authenticated user can be inactive before being required to login at next visit. Default is 7 days (7d). This setting should be expressed as a duration, e.g. 5m (minutes), 6h (hours), 10d (days), 2w (weeks), 1M (month). The lifetime resets at each successful token rotation.
+    login_maximum_inactive_lifetime_duration: 7d
+    # The maximum lifetime (duration) an authenticated user can be logged in since login time before being required to login. Default is 30 days (30d). This setting should be expressed as a duration, e.g. 5m (minutes), 6h (hours), 10d (days), 2w (weeks), 1M (month).
+    login_maximum_lifetime_duration: 30d
+    # How often should auth tokens be rotated for authenticated users when being active. The default is each 10 minutes.
+    # login_maximum_inactive_lifetime_duration parameter value should be greater than token_rotation_interval_minutes value.
+    token_rotation_interval_minutes: 10
+    ;signout_redirect_url: "{{ .Values.keycloak.protocol }}://{{ .Values.keycloak.url }}/{{ .Values.keycloak.contextPath }}/realms/{{ .Values.keycloak.realm }}/protocol/openid-connect/logout?post_logout_redirect_uri={{ .Values.grafana_ini.server.root_url }}"
+  auth.generic_oauth:
+    enabled: false
+    name: "{{ .Values.keycloak.realm }}"
+    client_id: grafana
+    client_secret: 1a1a7188-b5b7-4c19-8459-c45c32a64437
+    scopes: openid
+    auth_url: "{{ .Values.keycloak.protocol }}://{{ .Values.keycloak.url }}/{{ .Values.keycloak.contextPath }}/realms/{{ .Values.keycloak.realm }}/protocol/openid-connect/auth"
+    token_url: "{{ .Values.keycloak.protocol }}://{{ .Values.keycloak.url }}/{{ .Values.keycloak.contextPath }}/realms/{{ .Values.keycloak.realm }}/protocol/openid-connect/token"
+    api_url: "{{ .Values.keycloak.protocol }}://{{ .Values.keycloak.url }}/{{ .Values.keycloak.contextPath }}/realms/{{ .Values.keycloak.realm }}/protocol/openid-connect/userinfo"
+    introspect_url: "{{ .Values.keycloak.protocol }}://{{ .Values.keycloak.url }}/{{ .Values.keycloak.contextPath }}/realms/{{ .Values.keycloak.realm }}/protocol/openid-connect/token/introspect"
+    allow_sign_up: true
+    #keycloak client certificate
+    tls_client_ca: /etc/grafana/keycloak/keycloak.crt
+    tls_skip_verify_insecure: false
+    # role_attribute_path is only available from Grafana v6.5+.
+    ;role_attribute_path:
+  database:
+# If Database type is mysql and cmdb.enabled=true, value of svc of cmdb should be filled in host key)
+    type: sqlite3
+    host: grafanadb-cmdb-mysql:3306
+    name: grafana
+    user: grafana
+    password:
+    ;ssl_mode: true
+    ;ca_cert_path: /etc/grafana/cmdbtls/ca.crt
+    ;client_key_path: /etc/grafana/cmdbtls/client.key
+    ;client_cert_path: /etc/grafana/cmdbtls/client.crt
+    ;server_cert_name: grafanadb-cmdb-mysql.default.svc.cluster.local
+  #session has been removed since grafana 6.2(chart 3.0.x)
+  #session:
+    #provider:
+    #provider_config:
+    #provider: mysql
+    #provider_config: '`grafana:grafana@tcp(grafanadb-cmdb-mysql:3306)/grafana`'
+## LDAP Authentication can be enabled with the following values on grafana.ini
+## NOTE: Grafana will fail to start if the value for ldap.toml is invalid
+  # auth.ldap:
+  #   enabled: true
+  #   allow_sign_up: true
+  #   config_file: /etc/grafana/ldap.toml
+  security:
+    # to be uncommented when legacy sensitive data is enabled (.Values.sensitiveDataSecretName) or new sensitive data secret is enabled (.Values.grafana.security.credentialName)
+    # admin_user:
+    # admin_password:
+    # Set to true if you host Grafana behind HTTPS. Default is false
+    cookie_secure: false
+
+# key value pair and only key can be extraArgs values
+# extraArgs values fomat should be as shown below
+# key: value
+# key:
+extraArgs: {}
+
+## Grafana's LDAP configuration
+## Templated by the template in _helpers.tpl
+## NOTE: To enable the grafana.ini must be configured with auth.ldap.enabled
+## ref: http://docs.grafana.org/installation/configuration/#auth-ldap
+## ref: http://docs.grafana.org/installation/ldap/#configuration
+ldap:
+  # `existingSecret` is a reference to an existing secret containing the ldap configuration
+  # for Grafana in a key `ldap-toml`.
+  existingSecret: ""
+  # `config` is the content of `ldap.toml` that will be stored in the created secret
+  config: ""
+  # config: |-
+  #   verbose_logging = true
+
+  #   [[servers]]
+  #   host = "my-ldap-server"
+  #   port = 636
+  #   use_ssl = true
+  #   start_tls = false
+  #   ssl_skip_verify = false
+  #   bind_dn = "uid=%s,ou=users,dc=myorg,dc=com"
+
+## Grafana's SMTP configuration
+## NOTE: To enable, grafana.ini must be configured with smtp.enabled
+## ref: http://docs.grafana.org/installation/configuration/#smtp
+smtp:
+  # `existingSecret` is a reference to an existing secret containing the smtp configuration
+  # for Grafana in keys `user` and `password`.
+  existingSecret: ""
+
+## Sidecars that collect the configmaps with specified label and stores the included files them into the respective folders
+## Requires at least Grafana 5 to work and can't be used together with parameters dashboardProviders, datasources and dashboards
+sidecar:
+## grafana-python image will be used
+## supported flavors rocky8-python3.8
+  imageFlavor:
+  imageFlavorPolicy:
+
+  resources:
+   limits:
+     # User can configure the cpu limits whenever user wants to limit CPU.
+     #cpu: 100m
+     memory: 100Mi
+     ephemeral-storage: "1Gi"
+   requests:
+     cpu: 50m
+     memory: 50Mi
+     ephemeral-storage: "250Mi"
+  SKIP_TLS_VERIFY: false
+  enableUniqueFilenames: false
+  dashboards:
+    enabled: false
+    # label that the configmaps with dashboards are marked with
+    label: "grafana_dashboard"
+    # folder in the pod that should hold the collected dashboards
+    folder: "/home/dashboards"
+    folderAnnotation: "grafana_folderpath"
+    resource: "both"
+    level: INFO
+    # The configuration will be in the form of key-value pairs	
+    # supporting all environment variables provided by Kiwigrid.
+    config:
+    # seconds to wait before watching resources again when an error occurs
+    # Default value is 5 seconds
+    - name: ERROR_THROTTLE_SLEEP
+      value: "5"
+    #description: If specified, the sidecar will search for config-maps inside this namespace.
+    #It's also possible to specify ALL to search in all namespaces.
+    #when restrictedToNamespace flag set to true , sidecar can monitor only in particular namespace. So please provide the correct namespace value.
+    #namespace: ""
+    provider:
+      # name of the provider, should be unique
+      name: sidecarProvider
+      # orgid as configured in grafana
+      orgid: 1
+      # folder in which the dashboards should be imported in grafana
+      folder: ''
+      # type of the provider
+      type: file
+      # disableDelete to activate a import-only behaviour
+      disableDelete: false
+      # allow updating provisioned dashboards from the UI
+      allowUiUpdates: false
+      # allow Grafana to replicate dashboard structure from filesystem
+      foldersFromFilesStructure: true
+
+  datasources:
+    enabled: false
+    # label that the configmaps with datasources are marked with
+    label: grafana_datasource
+    level: INFO
+    # The configuration will be in the form of key-value pairs	
+    # supporting all environment variables provided by Kiwigrid.
+    config:
+    # seconds to wait before watching resources again when an error occurs
+    # Default value is 5 seconds
+    - name: ERROR_THROTTLE_SLEEP
+      value: "5"
+# If container security context needs to be modified the below can be edited.
+  containerSecurityContext:
+    readOnlyRootFilesystem: true
+    allowPrivilegeEscalation: false
+    capabilities:
+      drop:
+        - ALL
+
+logrotate:
+  image:
+    repo: char/char-logmanager
+    tag: 8.2310.0-1.0
+  ImagePullPolicy: "IfNotPresent"
+  resources:
+    limits:
+      # User can configure the cpu limits whenever user wants to limit CPU.
+      #cpu: "500m"
+      memory: "500Mi"
+      ephemeral-storage: "1Gi"
+    requests:
+      cpu: "200m"
+      memory: "200Mi"
+      ephemeral-storage: "200Mi"
+  containerSecurityContext:
+    readOnlyRootFilesystem: true
+    allowPrivilegeEscalation: false
+    capabilities:
+      drop:
+        - ALL
+
+fluentd:
+  image: 
+    repo: bssc-fluentd
+    tag: 1.16.2-2311.0.1
+    ImagePullPolicy: "IfNotPresent" 
+    __defaultFlavor: rocky8-jre17
+  resources:
+    limits:
+      # User can configure the cpu limits whenever user wants to limit CPU.
+      #cpu: "500m"
+      memory: "500Mi"
+      ephemeral-storage: "1Gi"
+    requests:
+      cpu: "200m"
+      memory: "200Mi"
+      ephemeral-storage: "200Mi"
+  containerSecurityContext:
+    readOnlyRootFilesystem: true
+    allowPrivilegeEscalation: false
+  # Configure runAsUser other than 65534
+    runAsUser: 65530
+    capabilities:
+      drop:
+        - ALL
+  env:
+    - name: SYSTEM
+      value: BCMT
+    - name: SYSTEMID
+      value: BCMT_ID
+
+#Custom Configuration for dnsPolicy and dnsConfig
+#dnsPolicy: "ClusterFirst"
+#dnsConfig:
+#  nameservers:
+#    - 192.0.2.1
+#  searches:
+#    - ns1.svc.cluster-domain.example
+#  options:
+#    - name: ndots
+#      value: "2"
+#    - name: edns0
+#      value: "3"
+
+
+certManager:
+  #precedence order
+  #certManager.enabled --> global.certManager.enabled
+  enabled: 
+  duration: "8760h" # 365d
+  renewBefore: "360h" # 15d
+  keySize: "2048"
+  ## This mountpath should match the location of grafana certificates in grafana_ini.server.certfile/certkey
+  mountPath: "/etc/grafana/ssl/"
+  #servername: "bcmt.domain"
+  #  # As per the tests in sandbox and environment dnsNames: localhost was sufficient for scrapping etcd metrics
+  dnsNames:
+  - localhost
+  domain:
+  #ipAddresses:
+  #  - 127.0.0.1
+  issuerRef:
+    name: 
+    # We can reference ClusterIssuers by changing the kind here.
+    # The default value is Issuer (i.e. a locally namespaced Issuer)
+    kind: 
+    group: 
+  
+  ## grafana distro image will be used
+  ## Supported Image Flavors is distroless
+  imageFlavor:
+  imageFlavorPolicy: 
+
+## checking certificates files presence and size
+  wait4Certs2BeConsumed:
+    enabled: true
+    resources:
+      limits:
+        # User can configure the cpu limits whenever user wants to limit CPU.
+        #cpu: 10m
+        memory: 32Mi
+        ephemeral-storage: "1Gi"
+      requests:
+        cpu: 10m
+        memory: 32Mi
+        ephemeral-storage: "250Mi"
+
+## fileNames list should not be empty, if fileNames are empty wait4Certs2BeConsumed init container will not be created
+    fileNames:
+    - ca.crt
+    - tls.crt
+    - tls.key
+
+# log level valid values are debug, info, error, warn
+    logLevel: info
+
+# logformat of the application. Default is logfmt. Supported values are logfmt, json
+    logFmt: "logfmt"
+
+# time to wait before exiting the program
+    timeout: 3m
+
+# If container security context needs to be modified the below can be edited.
+  containerSecurityContext:
+    readOnlyRootFilesystem: true
+    allowPrivilegeEscalation: false
+    capabilities:
+      drop:
+        - ALL

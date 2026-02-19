@@ -1,0 +1,79 @@
+{{- include "cmdb.init" . -}}
+{{ $mdb_use_tls := eq (include "cmdb.tls_enabled" (tuple . "mariadb")) "true" }}
+{{ $mxs_use_tls := eq (include "cmdb.tls_enabled" (tuple . "maxscale")) "true" }}
+{{- $root := . -}}
+
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ template "cmdb.fullname" . }}-mariadb-cluster
+  labels:
+    {{- include "cmdb-mariadb.labels" (tuple . "configmap")  | nindent 4 }}
+  annotations:
+    {{- include "cmdb-mariadb.annotations" (tuple . "configmap")  | nindent 4 }}
+data:
+  cluster.env: |-
+    CHART_VERSION={{ include "cmdb.chart-version" . }}
+    INSTALLED_CLUSTER_TYPE={{ .Values.cluster_type }}
+    MARIADB_IMAGE_SUM={{- include "cmdb-mariadb.image.sum" .}}
+    # ALERTs need to know when istio is enabled to provide TLS
+    ISTIO_ENABLED={{ .Values.istio.enabled }}
+    # when HPA enabled, CLUSTER_SIZE and MAXSCALE_SIZE represent minimum count
+    CLUSTER_SIZE={{ include "cmdb.mariadb_size" . }}
+    MAXSCALE_SIZE={{ include "cmdb.maxscale_size" . }}
+    HEURISTIC_RECOVER={{ default (eq .Values.cluster_type "galera" | ternary "rollback" "none") .Values.mariadb.heuristic_recover }}
+  {{- if ne .Values.cluster_type "galera" }}
+    DOMAIN_NAME={{ .Release.Namespace }}.svc.{{ .Values.clusterDomain }}
+  {{- end }}
+    CLEAN_LOG_INTERVAL={{ .Values.mariadb.clean_log_interval }}
+    USE_TLS={{ $mdb_use_tls }}
+  {{- if and $mdb_use_tls (or (eq (include "cmdb.mariadb_use_cmgr" .) "true") (and (ne (default "none" .Values.mariadb.tls.secretRef.name) "none") (ne (default "none" .Values.clients.mariadb.tls.secretRef.name) "none"))) }}
+    REPLICATION_SSL=on
+  {{- end }}
+  {{- if .Values.mariadb.serverIdPrefix }}
+    SERVER_ID_PREFIX={{ .Values.mariadb.serverIdPrefix }}
+  {{- end }}
+    PRESERVE_PVC={{ .Values.mariadb.persistence.preserve_pvc }}
+    NEARFULL_PERCENT={{ .Values.mariadb.persistence.nearFullPercent }}
+    FULL_PERCENT={{ .Values.mariadb.persistence.fullPercent }}
+    MAX_NODE_WAIT={{ .Values.max_node_wait }}
+    QUORUM_NODE_WAIT={{ .Values.quorum_node_wait }}
+    VOLUME_BACKUP_TYPE={{ .Values.cbur.volumeBackupType }}
+  {{- if eq (include "cmdb.has_maxscale" .) "true" }}
+    MAXSCALE_CTL_PORT={{ default 8989 .Values.services.maxscale.port | quote }}
+    {{- if $mxs_use_tls }}
+    MAXSCALE_SSL=on
+    {{- if eq (include "cmdb.maxscale_use_cmgr" .) "true" }}
+    MAXSCALE_CA_CERTIFICATE=/etc/certs/maxscale/mxs-server-ca-cert.pem
+    {{- else if ne (default "none" .Values.maxscale.tls.secretRef.name) "none" }}
+    MAXSCALE_CA_CERTIFICATE=/etc/certs/maxscale/{{ .Values.maxscale.tls.secretRef.keyNames.caCrt }}
+    {{- end }}
+    {{- end }}
+    {{- if .Values.admin.restoreServer.enabled }}
+    RS_JOIN_CLUSTER={{ default false .Values.admin.restoreServer.joinCluster }}
+    {{- end }}
+  {{- end }}
+  {{- if .Values.admin.debug }}
+    DEBUG=yes
+  {{- end }}
+  {{- if and $mdb_use_tls (gt (int .Values.clients.mariadb.tls.secretRef.threshold) 0) }}
+    CERTIFICATE_THRESHOLD={{ .Values.clients.mariadb.tls.secretRef.threshold }}
+    CERTIFICATE_POLLING={{ .Values.clients.mariadb.tls.secretRef.polling }}
+  {{- end }}
+    # environment needed to issue ALERTs
+  {{- if .Values.mariadb.metrics.enabled }}
+    MYSQLD_EXPORTER_TLS={{ include "cmdb.mariadb_use_zt_proxy" . }}
+  {{- end }}
+  {{- if .Values.maxscale.metrics.enabled }}
+    MAXCTRL_EXPORTER_TLS={{ include "cmdb.maxscale_use_zt_proxy" . }}
+  {{- end }}
+  {{- if .Values.cbur.enabled }}
+    CBURM_URL={{ include "cmdb-mariadb.cburm.url" . }}
+  {{- end }}
+  {{- range (list .Values.mariadb ((eq (include "cmdb.has_maxscale" .) "true") | ternary .Values.maxscale nil ) (( ne (.Values.cluster_type) "simplex") | ternary .Values.admin nil ))  -}}
+  {{- $workload := . -}}
+  {{- if eq (include "cmdb-logging.syslog_enabled" (tuple $root $workload)) "true" }}
+    SYSLOG_PROTOCOL_{{ $workload.nameSuffix | upper }}={{ include "cmdb-logging.syslog_protocol" (tuple $root $workload) }}
+  {{- end }}
+  {{- end }}

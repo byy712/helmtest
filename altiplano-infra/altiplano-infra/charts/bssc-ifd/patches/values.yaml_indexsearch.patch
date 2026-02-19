@@ -1,0 +1,54 @@
+--- bssc-ifd-13.0.1/bssc-ifd/charts/bssc-indexsearch/values.yaml	2023-12-06 18:41:43.000000000 +0530
++++ bssc-ifd/charts/bssc-indexsearch/values.yaml	2024-02-21 16:26:42.526298000 +0530
+@@ -104,6 +104,15 @@
+   # Set requested image Flavor Policy at global level .Supports Strict or BestMatch. It is BestMatch by default.
+   imageFlavorPolicy:
+ 
++init:
++  image:
++    name: fnms-init-container
++    tag: nokia-1.0.2
++    pullPolicy: IfNotPresent
++certificates:
++  secrets:
++    altiplano_keystore_secrets: altiplano-keystore-secrets
++    altiplano_indexsearch_certificate_secrets: altiplano-indexsearch-certificate-secrets
+ #Creating internal*Registry parameters for each image. These will be removed at the time of release in favour of global.registry
+ #Internal registry used for indexsearch image
+ internalAppRegistry:
+@@ -806,6 +815,10 @@
+   # This will delete all the previsous data stored in the persistent volume.
+   # When local storage is used it will deleted only PVC not PV.
+   auto_delete: false
++  # set enable to false if you want the backup-pvclaim PVC not create
++  # the backup-pvclaim PVC was define in shared-pvc.yaml file
++  backup:
++    enable: true
+ 
+ backup_restore:
+   ## The name of the storage class which the cluster should use for backup and restore. The storage class used for backup/restore should be shared with ReadWriteMany option.
+@@ -821,10 +834,14 @@
+   #System indices - .opendistro_security index contains the configurations for interalusers, roles, rolesmapping, tenants, config, actiongroups. kibana index contains saved index patterns/dashboard/visualizations created in Kibana. If dashboards multitenancy is enabled, there will be additional .kibana indices created for each tenant containing the saved index patterns/dashboard/visualizations of the respective tenant.
+   #When the flag is set to true, system indices content present at the time of backup will be restored. Configuration changes made after backup will be overwritten. 
+   restoreSystemIndices: false
++  # When backupGlobalState flag is set to true, existing cluster settings, templates etc will be backed up.
++  backupGlobalState: true
++  # When restoreGlobalState flag is set to true, existing cluster settings, templates etc whose names match those in the snapshot could be ovewritten.
++  restoreGlobalState: true
+   # Below path is mount path of B/R PV inside data pods. 
+   path: "indexsearch-backup"
+   
+-
++accessRoleLabel: internal-access
+ cbur:
+   enabled: false
+   #an integer. This value only applies to statefulset. The value can be 0,1 or 2.
+@@ -878,6 +895,8 @@
+     CBUR_RESTORE_SUFFIX_WITHTIME: true
+     CBUR_RESTORE_INDICES_OVERWRITE: false
+     CBUR_RESTORE_DELETE_INDICES_NOTPARTOF_RESTORE_SNAPSHOT: false
++  # Set this flag to 'true' if you want CBUR to backup indexsearch configmaps
++  backup_configmap: false
+ 
+ kubectl:
+   image:

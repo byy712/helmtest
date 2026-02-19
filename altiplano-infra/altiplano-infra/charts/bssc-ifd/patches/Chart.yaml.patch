@@ -1,0 +1,39 @@
+--- bssc-ifd-o/Chart.yaml	2023-12-06 18:41:43.000000000 +0530
++++ bssc-ifd/Chart.yaml	2024-06-20 14:55:38.169669498 +0530
+@@ -1,22 +1,26 @@
+ apiVersion: v2
+ appVersion: 2.11.0
+ dependencies:
+-- name: bssc-fluentd
++- condition: bssc-fluentd.enabled
++  name: bssc-fluentd
+   repository: https://repo.cci.nokia.net/csf-helm-stable/
+   tags:
+   - bssc-fluentd
+   version: 10.0.1
+-- name: bssc-indexsearch
++- condition: bssc-indexsearch.enabled
++  name: bssc-indexsearch
+   repository: https://repo.cci.nokia.net/csf-helm-stable/
+   tags:
+   - bssc-indexsearch
+   version: 13.0.1
+-- name: bssc-dashboards
++- condition: bssc-dashboards.enabled
++  name: bssc-dashboards
+   repository: https://repo.cci.nokia.net/csf-helm-stable/
+   tags:
+   - bssc-dashboards
+   version: 13.0.1
+-- name: bssc-indexmgr
++- condition: bssc-indexmgr.enabled
++  name: bssc-indexmgr
+   repository: https://repo.cci.nokia.net/csf-helm-stable/
+   tags:
+   - bssc-indexmgr
+@@ -33,4 +37,4 @@
+ - email: CSF-BELK@groups.nokia.com
+   name: BSSC Team
+ name: bssc-ifd
+-version: 13.0.1
++version: 13.0.1-nokia-patch-18

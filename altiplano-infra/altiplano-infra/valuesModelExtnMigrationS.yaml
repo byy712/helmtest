@@ -1,0 +1,51 @@
+# extn/valuesModelExtnMigrationS.yaml should be installed on top of valuesModelS.yaml
+# Migration Tuning for Internal use
+# Below are configuration for various infra subcharts
+
+altiplano-indexsearch:
+  bssc-indexsearch:
+    initContainer:
+      resources:
+        limits:
+          ephemeral-storage: 10Gi
+
+    manager:
+      resources:
+        limits:
+          cpu: "1"
+          ephemeral-storage: 10Gi
+          memory: "2Gi"
+        requests:
+          cpu: "500m"
+          memory: "1Gi"
+      java_opts: "-Xms1g -Xmx1g -Dlog4j2.formatMsgNoLookups=true"
+
+    data:
+      replicas: 2
+      resources:
+        limits:
+          cpu: 6
+          ephemeral-storage: 10Gi
+          memory: "14Gi"
+        requests:
+          cpu: "3"
+          memory: "10Gi"
+      java_opts: "-Xms8g -Xmx8g -Dlog4j2.formatMsgNoLookups=true"
+      processors: "8"
+
+    jobs:
+      secAdminUpgradeJob:
+        resources:
+          requests:
+            cpu: 200m
+            memory: 500Mi
+          limits:
+            cpu: 500m
+            memory: 1Gi
+
+altiplano-cbur:
+  enabled: false
+
+altiplano-installation-info:
+  installationStatus:
+    valuesModelExtnMigrationS: installed

@@ -1,0 +1,24 @@
+{{- if .Values.sidecar.dashboards.enabled }}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  labels:
+    {{- include "cpro-grafana.app.labels-v3" . | nindent 4 }}
+    {{- include "cpro-grafana.labelsOrAnnotations" (tuple .Values.global.labels) | indent 4}}
+  annotations:
+{{- include "cpro-grafana.labelsOrAnnotations" (tuple .Values.global.annotations) | indent 4}}
+  name: {{ template "cpro-grafana.configDashboards" . }}
+data:
+  provider.yaml: |-
+    apiVersion: 1
+    providers:
+    - name: '{{ .Values.sidecar.dashboards.provider.name }}'
+      orgId: {{ .Values.sidecar.dashboards.provider.orgid }}
+      folder: '{{ .Values.sidecar.dashboards.provider.folder }}'
+      type: {{ .Values.sidecar.dashboards.provider.type }}
+      disableDeletion: {{ .Values.sidecar.dashboards.provider.disableDelete }}
+      allowUiUpdates: {{ .Values.sidecar.dashboards.provider.allowUiUpdates }}
+      options:
+        foldersFromFilesStructure: {{ .Values.sidecar.dashboards.provider.foldersFromFilesStructure }}
+        path: {{ .Values.sidecar.dashboards.folder }}
+{{- end}}

@@ -1,0 +1,10 @@
+--- crdb-redisio-9.0.3-origin/templates/_labels_annotations.tpl	2024-02-07 16:28:36.000000000 +0530
++++ crdb-redisio-9.0.3-nokia-patch-1/templates/_labels_annotations.tpl	2024-03-05 16:37:20.514641156 +0530
+@@ -63,6 +63,7 @@
+ {{- define "crdb-redisio.admin.selector_labels" -}}
+ {{ include "crdb-redisio.common_labels" . }}
+ csf-subcomponent: redisio-admin
++altiplano-role: {{ toYaml .Values.custom.admin.accessRoleLabel }}
+ {{- end -}}
+ 
+ {{/* Arg: (tuple <scope> <types>...) */}}

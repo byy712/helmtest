@@ -1,0 +1,212 @@
+{{- include "cpro.istio.cproInitIstio" . }}
+{{- if .Values.webhook4fluentd.enabled -}}
+{{- include "cpro-common-lib.v1.tlsValues" ( dict "root" . "context" .Values.webhook4fluentd) }}
+{{- $syslogEnabled := eq (include "csf-common-lib.v1.coalesceBoolean" (tuple .Values.webhook4fluentd.unifiedLogging.syslog.enabled .Values.global.unifiedLogging.syslog.enabled false )) "true"  }}
+{{- $tlsEnabled := eq (include "csf-common-lib.v1.coalesceBoolean" (tuple .Values.webhook4fluentd.tls.enabled .Values.tls.enabled .Values.global.tls.enabled false)) "true" }}
+{{- include "cpro-common-lib.v1.syslog" ( dict "root" . "context" .Values.webhook4fluentd) }}
+apiVersion: {{ template "cpro.apiVersion.DeploymentAPI" . }}
+kind: Deployment
+metadata:
+  labels:
+    {{- include "cpro.labelsOrAnnotations" (tuple .Values.webhook4fluentd.labels .Values.custom.webhook4FluentdDeployment.labels .Values.global.labels) | indent 4}}
+    {{- include "cpro.app.labels.v3" ( dict "root" . "context" .Values.webhook4fluentd ) | nindent 4 }}
+  name: {{ template "cpro.prometheus.webhook4fluentd.deploymentName" . }}
+  annotations:
+{{- include "cpro.labelsOrAnnotations" (tuple .Values.webhook4fluentd.annotations .Values.custom.webhook4FluentdDeployment.annotations .Values.global.annotations) | indent 4}}
+{{- if or $syslogEnabled .Values.webhook4fluentd.unifiedLogging.extension .Values.global.unifiedLogging.extension }}
+    configmap.reloader.stakater.com/reload: "{{ template "cpro-common-lib-v1.ConfigmapName" (dict "name" "webhookfluentdcm" "root" .) }},{{ template "cpro-common-lib-v1.ConfigmapName" (dict "name" "webhooklogrotatecm" "root" .) }}"
+{{- if and $syslogEnabled (tpl (default "" $.syslog.tls.secretRef.name) .) (tpl (default "" $.syslog.tls.secretRef.keyNames.caCrt) .) }}
+    secret.reloader.stakater.com/reload: "{{ tpl $.syslog.tls.secretRef.name . }}" 
+{{- end }}
+{{- end }}
+spec:
+{{$data_csc := dict "cSecCtx" .Values.webhook4fluentd.containerSecurityContext "ctx" . }}
+{{ include "cpro.configure.progressDeadlineSeconds" ( dict "compPDSValue" .Values.webhook4fluentd.progressDeadlineSeconds "context" . ) | indent 2}}
+  replicas: {{ .Values.webhook4fluentd.replicaCount }}
+  {{- if semverCompare ">=1.16.0-0" .Capabilities.KubeVersion.GitVersion }}
+  selector:
+   matchLabels:
+    app: {{ template "cpro.prometheus.name" . }}
+    component: "{{ .Values.webhook4fluentd.name }}"
+    release: {{ .Release.Name }}
+  {{- end }}
+  template:
+    metadata:
+      annotations:
+        sidecar.istio.io/inject: "{{ $.istio.enabled }}"
+{{- if and ($.istio.enabled) ($.istio.mtls.enabled) }}
+        sidecar.istio.io/rewriteAppHTTPProbers: "true"
+{{- end }}
+{{- include "cpro.labelsOrAnnotations" (tuple .Values.webhook4fluentd.annotations .Values.webhook4fluentd.podAnnotations .Values.custom.pod.annotations .Values.global.annotations) | indent 8}}
+{{- if .Values.rbac.pspUseAppArmor }}
+{{- include "cpro.labelsOrAnnotations" (tuple .Values.custom.pod.apparmorAnnotations) | indent 8}}
+{{- end }}
+      labels:
+        {{- include "cpro.app.labels.v3" ( dict "root" . "context" .Values.webhook4fluentd ) | nindent 8 }}
+        app: {{ template "cpro.prometheus.name" . }}
+        component: "{{ .Values.webhook4fluentd.name }}"
+        release: {{ .Release.Name }}
+        {{- include "cpro.labelsOrAnnotations" (tuple .Values.webhook4fluentd.labels .Values.custom.pod.labels .Values.global.labels) | indent 8}}
+    spec:
+      {{- if $.istio.enabled }}
+      automountServiceAccountToken: true
+      {{- end }}
+      serviceAccountName: {{ template "cpro.prometheus.serviceAccountName" . }}
+      securityContext:
+      {{$data := dict "securitycontext" .Values.webhook4fluentd.securityContext "ctx" . }}
+      {{- include "cpro.securitycontext" $data | nindent 8 }}
+      {{- if .Values.seLinuxOptions.enabled }}
+        seLinuxOptions:
+          level: {{ .Values.seLinuxOptions.level }}
+          role: {{ .Values.seLinuxOptions.role }}
+          type: {{ .Values.seLinuxOptions.type }}
+          user: {{ .Values.seLinuxOptions.user }}
+      {{- end }}
+{{ include "cpro-common-lib.imagePullSecrets" (dict "workloadName" .Values.webhook4fluentd  "root" .) | indent 6 }}
+      containers:
+            {{- if or $syslogEnabled .Values.webhook4fluentd.unifiedLogging.extension .Values.global.unifiedLogging.extension }}
+        {{- include "cpro-common-lib.fluentd-v2" ( dict "root" . "context" .Values.fluentd "workload" .Values.webhook4fluentd "registry" .Values.intFluentdReg ) | nindent 8 }}
+          volumeMounts:
+            - name: logs
+              mountPath: /var/log/webhook4fluentd
+            - name: harmonized-logging-conf
+              mountPath: /etc/fluent/
+            - mountPath: /tmp
+              name: tempfolder
+             {{- if and $syslogEnabled (tpl (default "" $.syslog.tls.secretRef.name) .) (tpl (default "" $.syslog.tls.secretRef.keyNames.caCrt) .) }}
+            - mountPath: /etc/fluent/certs/
+              name: fluentd-tls
+             {{- end}}
+      {{- include "cpro-common-lib.logrotate" ( dict "root" . "context" .Values.logrotate "registry" .Values.intLogrotateReg ) | nindent 8 }}
+          volumeMounts:
+            - name: logs
+              mountPath: /var/log/webhook4fluentd
+            - name: logrotate-cronie-file
+              mountPath: /logRotate
+       {{- end }}
+        - name: {{ template "cpro.prometheus.webhook4fluentd.ContainerName" . }}
+{{- include "cpro.prometheus.distro.image" (dict "root" . "workload" .Values.webhook4fluentd "container" .Values.webhook4fluentd  ) | nindent 10}}        
+       {{- if or $syslogEnabled .Values.webhook4fluentd.unifiedLogging.extension .Values.global.unifiedLogging.extension }}
+          command: [ "/bin/klogrun" ]
+       {{- else }}
+          command: [ "/bin/webhook4fluentd" ]
+       {{- end }}
+{{- include "cpro.terminationMessage" . | nindent 10 }}
+          env:
+            {{- include "cpro.timeZoneEnvName" . | nindent 12 }}
+{{- if $.istio.enabled }}
+            - name: "ISTIO_ENABLED"
+              value: "true"
+{{- end }}  
+{{- if  and (not $.istio.enabled) ($syslogEnabled) (eq (tpl (default "" $.syslog.tls.secretRef.name) .) "") }}
+            - name: "RSYSLOG_SERVER_ALERT"
+              value: "true"
+{{- end }}
+            - name: K8S
+              value: "true"
+          args:  
+            {{- if or $syslogEnabled .Values.webhook4fluentd.unifiedLogging.extension .Values.global.unifiedLogging.extension }}
+            - -log-file=/var/log/webhook4fluentd/webhook4fluentd.log
+            - -also-stdout=true
+            - /bin/webhook4fluentd
+            - -extensions-fields={{ or .Values.webhook4fluentd.unifiedLogging.extension .Values.global.unifiedLogging.extension | toJson }}
+            {{- end }}
+            - -webhook-port={{ .Values.webhook4fluentd.service.receiverPort }}
+            - -fluentd-port={{ .Values.webhook4fluentd.fluentd.port }}
+            - -fluentd-svc={{ .Values.webhook4fluentd.fluentd.svc }}
+            - -fluentd-tag={{ .Values.webhook4fluentd.fluentd.tag }}
+            {{- if $tlsEnabled }}
+            - -webhook-tls=true
+            - -webhook-tlskey={{ .Values.webhook4fluentd.secretMountPath }}/tls.key
+            - -webhook-tlscert={{ .Values.webhook4fluentd.secretMountPath }}/tls.crt
+            - -webhook-mintlsVersion={{ .Values.webhook4fluentd.mintlsVersion }}
+            {{- end }}
+          ports:
+            - name: tcp-receiver
+              containerPort: {{ .Values.webhook4fluentd.service.receiverPort }}
+{{- include "cpro.prometheus.webhook4fluentd.probe" . | indent 10 }}
+          resources:
+{{- include "cpro-common-lib.v1.resources" ( dict "root" . "workloadresources" .Values.webhook4fluentd.resources "defaultcpulimit" "100m") | nindent 12 }}
+          volumeMounts:
+          {{- if .Values.externalCredentials }}
+          {{- include "cpro-common-lib.v1-includeExternalCredentialMounts" (dict "creds" .Values.externalCredentials "root" . ) | indent 12 }}
+          {{- end }}
+            {{- if $tlsEnabled }}
+            - name: webhookservertls
+              mountPath: {{ .Values.webhook4fluentd.secretMountPath }}
+              readOnly: true
+            {{- end }}
+       {{- if or $syslogEnabled .Values.webhook4fluentd.unifiedLogging.extension .Values.global.unifiedLogging.extension }}
+            - name: logs
+              mountPath: /var/log/webhook4fluentd
+       {{- end }}
+          securityContext:
+          {{- include "cpro.containerSecurityContext" $data_csc | nindent 12 }}
+{{$data := dict "component_pc" .Values.webhook4fluentd  "ctx" . }}
+{{- include "cpro.pod.priority.classname" $data | nindent 6 }}
+    {{- if .Values.webhook4fluentd.nodeSelector }}
+      nodeSelector:
+{{ toYaml .Values.webhook4fluentd.nodeSelector | indent 8 }}
+    {{- end }}
+    {{- if .Values.webhook4fluentd.tolerations }}
+      tolerations:
+{{ toYaml .Values.webhook4fluentd.tolerations | indent 8 }}
+    {{- end }}
+      affinity:
+      {{- include "cpro.webhook4fluentd.podAntiAffinity" . | indent 8 }}
+      {{- if .Values.server.affinity }}
+      {{- if .Values.server.affinity.podAntiAffinity }}
+{{ toYaml .Values.server.affinity.podAntiAffinity | indent 10 }}
+      {{- end }}
+      {{- if .Values.server.affinity.podAffinity }}
+        podAffinity:
+{{ toYaml .Values.server.affinity.podAffinity | indent 10 }}
+      {{- end }}
+      {{- end }}
+      {{- if .Values.webhook4fluentd.topologySpreadConstraints }}
+      topologySpreadConstraints: {{- include "cpro.topologySpreadConstraints" (tuple . .Values.webhook4fluentd) | nindent 8 }}
+      {{- end }}
+      volumes:
+      {{- if .Values.externalCredentials  }}
+      {{- include "cpro-common-lib.v1-includeExternalCredentials" (dict "creds" .Values.externalCredentials ) | indent 8 }}
+      {{- end }}
+        {{- if $tlsEnabled }}
+        - name: webhookservertls
+          secret:
+            {{- if (ne (include "csf-common-lib.v1.isEmptyValue" .Values.server.tls.secretRef.name) "true") }}
+            secretName: {{ .Values.server.tls.secretRef.name }}
+            {{- else }}
+            {{- if eq (include "csf-common-lib.v1.coalesceBoolean" (tuple .Values.certManager.enabled .Values.global.certManager.enabled false)) "true" }}
+            secretName: {{ template "cpro.webhook4fluentd.server.secretcertificate" . }}
+            {{- else }}
+            {{- required "either external secret has to be created or certmanager is to be set to true when tls is enabled" "" }}
+            {{- end }}
+            {{- end }}
+        {{- end }}
+        {{- if or $syslogEnabled .Values.webhook4fluentd.unifiedLogging.extension .Values.global.unifiedLogging.extension }}
+        - name: logs
+          emptyDir: {}
+        - name: tempfolder
+          emptyDir: {}
+        - name: harmonized-logging-conf
+          configMap:
+            name: {{ template "cpro-common-lib-v1.ConfigmapName" (dict "name" "webhookfluentdcm" "root" .) }} 
+        - name: logrotate-cronie-file
+          configMap:
+            defaultMode: 0640
+            items:
+              - key: logrotate.conf
+                path: logrotate.conf
+              - key: rotate.sh
+                path: rotate.sh
+            name: {{ template "cpro-common-lib-v1.ConfigmapName" (dict "name" "webhooklogrotatecm" "root" .) }} 
+              {{- if and $syslogEnabled (tpl (default "" $.syslog.tls.secretRef.name) .) (tpl (default "" $.syslog.tls.secretRef.keyNames.caCrt) .) }}
+        - name: fluentd-tls
+          secret:
+            secretName: {{ tpl $.syslog.tls.secretRef.name . }}
+            items:
+              - key: {{ tpl $.syslog.tls.secretRef.keyNames.caCrt . }}
+                path: syslogRootCaPem
+        {{- end }}
+        {{- end }}
+{{- end }}

@@ -1,0 +1,134 @@
+{{- include "cbur.tls" . }}
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: {{ include "cbur.proxy.resourceName" (tuple . "Job" "check-startup") }}
+  labels:
+{{- include "cbur.proxy.commonLabels" (tuple .) | indent 4 }}
+{{- include "cbur.customLabels" (tuple .Values.job.labels .Values.global.labels) | indent 4 }}
+  annotations:
+    "helm.sh/hook-weight": "1"
+    {{- if .Values.startupCheck.enabled }}
+    "helm.sh/hook": "post-install,post-upgrade,post-rollback,test-success"
+    {{- else }}
+    "helm.sh/hook": "test-success"
+    {{- end }}
+    "helm.sh/hook-delete-policy": before-hook-creation,hook-succeeded
+    {{- include "cbur.customAnnotations" (tuple .Values.job.annotations .Values.global.annotations) | indent 4 }}
+spec:
+  template:
+    metadata:
+      labels:
+{{- include "cbur.proxy.commonLabels" (tuple .) | indent 8 }}
+{{- include "cbur.customLabels" (tuple .Values.job.labels .Values.global.labels) | indent 8 }}
+      annotations:
+{{- include "cbur.customAnnotations" (tuple .Values.job.annotations .Values.global.annotations) | indent 8 }}
+        {{- if .Values.istio.enabled }}
+        sidecar.istio.io/inject: "true"
+        {{- else }}
+        sidecar.istio.io/inject: "false"
+        {{- end }}
+    spec:
+      {{- if .Values.rbac.enabled }}
+      serviceAccountName: {{ template "cbur.fullname" . }}
+      {{- else }}
+      serviceAccountName: {{ .Values.rbac.serviceAccountName }}
+      {{- end }}
+      restartPolicy: Never
+      terminationGracePeriodSeconds: 30
+      automountServiceAccountToken: true
+      {{- if .Values.priorityClassName }}
+      priorityClassName: {{ .Values.priorityClassName }}
+      {{- else if .Values.global.priorityClassName }}
+      priorityClassName: {{ .Values.global.priorityClassName | quote }}
+      {{- end }}
+{{ include "cbur.podSecurityContext" . | indent 6 }}
+      {{- if .Values.nodeSelectorOverride }}
+      nodeSelector:
+{{ toYaml .Values.nodeSelectorOverride | indent 8 }}
+      {{- else if .Values.nodeSelector }}
+      nodeSelector:
+{{ toYaml .Values.nodeSelector | indent 8 }}
+      {{- end }}
+    {{- with .Values.tolerations }}
+      tolerations:
+{{ toYaml . | indent 8 }}
+    {{- end }}
+      {{- if .Values.image.master.imagePullSecrets }}
+      imagePullSecrets: {{ toYaml .Values.image.master.imagePullSecrets | nindent 8 }}
+      {{- else if .Values.global.imagePullSecrets }}
+      imagePullSecrets: {{ toYaml .Values.global.imagePullSecrets | nindent 8 }}
+      {{- end }}
+      containers:
+      - name: {{ include "cbur.proxy.containerName" (tuple . "cbur") }}
+        image: {{ include "cbur.image.mapper" (tuple $ .Values.image.master .Values.internalCBURMasterRegistry) }}
+        imagePullPolicy: {{ .Values.image.master.pullPolicy | default "IfNotPresent" | quote }}
+        resources:
+{{ include "cbur.resources" (tuple . .Values.startupCheck.resources "200m") | indent 12 }}
+        env:
+          - name: NAME
+            value: {{ include "cbur.proxy.resourceName" (tuple . "Deployment") }}
+          {{- if .Values.direct_redis.enabled }}
+          - name: CBUR_CELERY
+            value: {{ include "cbur.proxy.resourceName" (tuple . "Deployment" "mycelery") }}
+          {{- end }}
+          {{- if .Values.k8swatcher.enabled }}
+          - name: CBUR_WATCHER
+            value: {{ include "cbur.proxy.resourceName" (tuple . "Deployment" "k8swatcher") }}
+          {{- end }}
+          {{- if .Values.avamar.enabled }}
+          - name: CBUR_AVAMAR
+            value: {{ include "cbur.proxy.resourceName" (tuple . "Deployment" "avamar") }}
+          {{- end }}
+          - name: NAMESPACE
+            value: "{{ .Release.Namespace }}"
+          - name: SERVICE_URL
+            value: {{ template "cbur.fullname" . }}.{{ .Release.Namespace }}.svc
+          {{- if .Values.istio.enabled }}
+          - name: ISTIO_ENABLED
+            value: "True"
+          {{- end }}
+          - name: CBURM_PORT
+          {{- if eq (include "cbur.proxy.coalesceBoolean" (tuple .Values.tls.enabled .Values.global.tls.enabled false)) "true" }}
+            value: "{{ .Values.tls.port }}"
+          {{- else }}
+            value: "{{ .Values.serverPort }}"
+          {{- end }}
+          - name: KUBE_VERSION
+            value: {{ include "cbur.kubeVersion" . }}
+          {{- if eq (include "cbur.proxy.coalesceBoolean" (tuple .Values.tls.enabled .Values.global.tls.enabled false)) "true" }}
+          - name: HTTPS_ENABLED
+            value: "true"
+          {{- end }}
+          {{- if .Values.direct_redis.enabled }}
+          - name: CELERY_ENABLED
+            value: "True"
+          {{- end }}
+{{ include "cbur.containerSecurityContext" . | indent 8 }}
+{{ include "cbur.hookpod.readOnlyRootFilesystem" . | indent 10 }}
+{{ include "cbur.containerRunAsUser" . | indent 10 }}
+{{ include "cbur.containerRunAsGroup" . | indent 10 }}
+        volumeMounts:
+        - name: tests
+          mountPath: /tests/
+{{ include "cbur.tmpemptydirvolumemount" . | indent 8 }}
+        command:
+        - bash
+        - -c
+        - |
+           source ./set_python_env.sh &&
+          {{- if .Values.istio.enabled }}
+           trap "python /tests/istio_exit.py" EXIT &&
+           python /tests/istio_ready.py &&
+          {{- end }}
+           source /tests/run.sh &&
+           source ./kube.sh &&
+           check_pod $NAME $CBUR_CELERY $CBUR_WATCHER $CBUR_AVAMAR &&
+           check_ready
+      volumes:
+      - name: tests
+        configMap:
+          name: "{{ .Release.Name }}-check"
+{{ include "cbur.tmpemptydirvolume" . | indent 6 }}
+          sizeLimit: {{ index .Values.startupCheck.resources.limits "ephemeral-storage" | quote }}
+  backoffLimit: 0

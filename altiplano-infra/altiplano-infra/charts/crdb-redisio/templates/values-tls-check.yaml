@@ -1,0 +1,68 @@
+{{- include "crdb-redisio.init" . -}}
+{{/*
+*
+* A non-manifest helper to check that the values for tls.* are valid.
+* This prevents performing an install/upgrade of a chart to an invalid
+* tls configuration
+*
+*/}}
+{{- $tls_ports := splitList "," .Values.services.redis.tlsPort -}}
+{{- $non_tls_ports := splitList "," .Values.services.redis.nonTlsPort -}}
+{{- $_api := "cert-manager.io/v1" -}}
+
+{{- if .server_tls -}}
+  {{- /* Check Ports when TLS-enabled */ -}}
+  {{- range $tls_ports -}}
+    {{- if le (int .) 0 -}}
+      {{- fail "services.redis.tlsPort cannot be 0 when server tls.enabled" -}}
+    {{- end -}}
+    {{- if has . $non_tls_ports -}}
+      {{- fail (printf "services.redis.tlsPort and .nonTlsPort cannot use the same port (%s)" .) -}}
+    {{- end -}}
+  {{- end -}}
+
+  {{- /* Loop on the workload Values */ -}}
+  {{- range $_n, $_v := merge (dict "server" .Values.server "sentinel" .Values.sentinel) (.client_tls | ternary .Values.clients (dict)) }}
+    {{- /* Secret Checks */ -}}
+    {{ $_errstr := printf "%s.tls.secretRef.keyNames.%%s" $_n }}
+    {{- $_ := required (printf $_errstr "caCrt") $_v.tls.secretRef.keyNames.caCrt }}
+    {{- $_ := required (printf $_errstr "tlsKey") $_v.tls.secretRef.keyNames.tlsKey }}
+    {{- $_ := required (printf $_errstr "tlsCrt") $_v.tls.secretRef.keyNames.tlsCrt }}
+
+    {{- /* CMGR Checks */ -}}
+    {{- if eq (include "csf-common-lib.v1.coalesceBoolean" (tuple $_v.certificate.enabled $.cmgr_enabled)) "true" -}}
+      {{- /* Check apiVersion exists (may require --validate on helm template, depending on release name) */ -}}
+      {{- if and (or $.Release.IsInstall $.Release.IsUpgrade) (ne $.Release.Name "test-release") (ne $.Release.Name "csf") -}}
+        {{- if not ($.Capabilities.APIVersions.Has $_api) }}
+          {{- fail (printf "certManager apiVersion [%s] - not found" $_api) }}
+        {{- end }}
+      {{- end }}
+
+      {{- /* Check addl required items */ -}}
+      {{ $_errstr := printf "%s.certificate.%%s required when cert-manager used" $_n }}
+      {{- $_ := required (printf $_errstr "duration") $_v.certificate.duration }}
+      {{- $_ := required (printf $_errstr "renewBefore") $_v.certificate.renewBefore }}
+      {{- $_ := required (printf $_errstr "issuerRef.name") $_v.certificate.issuerRef.name }}
+      {{- $_ := required (printf $_errstr "issuerRef.kind") $_v.certificate.issuerRef.kind }}
+      {{- $_ := required (printf $_errstr "issuerRef.group") $_v.certificate.issuerRef.group }}
+
+    {{- /* User-specified Secret Checks */ -}}
+    {{- else }}
+      {{ $_errstr := printf "%s.tls.secretRef.%%s required when user-defined cert Secret used" $_n }}
+      {{- $_ := required (printf $_errstr "name") $_v.tls.secretRef.name }}
+    {{- end }}
+  {{- end }}
+
+{{- else -}}
+  {{- /* Check Ports when TLS-disabled */ -}}
+  {{- range $tls_ports -}}
+    {{- if ne (int .) 0 -}}
+      {{- fail "services.redis.tlsPort must be 0 when server tls.enabled=false" -}}
+    {{- end -}}
+  {{- end -}}
+  {{- range $non_tls_ports -}}
+    {{- if le (int .) 0 -}}
+      {{- fail "services.redis.nonTlsPort must be >0 when server tls.enabled=false" -}}
+    {{- end -}}
+  {{- end -}}
+{{- end -}}

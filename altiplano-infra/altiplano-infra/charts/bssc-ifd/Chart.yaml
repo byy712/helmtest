@@ -1,0 +1,40 @@
+apiVersion: v2
+appVersion: 2.11.0
+dependencies:
+- condition: bssc-fluentd.enabled
+  name: bssc-fluentd
+  repository: https://repo.cci.nokia.net/csf-helm-stable/
+  tags:
+  - bssc-fluentd
+  version: 10.0.1
+- condition: bssc-indexsearch.enabled
+  name: bssc-indexsearch
+  repository: https://repo.cci.nokia.net/csf-helm-stable/
+  tags:
+  - bssc-indexsearch
+  version: 13.0.1
+- condition: bssc-dashboards.enabled
+  name: bssc-dashboards
+  repository: https://repo.cci.nokia.net/csf-helm-stable/
+  tags:
+  - bssc-dashboards
+  version: 13.0.1
+- condition: bssc-indexmgr.enabled
+  name: bssc-indexmgr
+  repository: https://repo.cci.nokia.net/csf-helm-stable/
+  tags:
+  - bssc-indexmgr
+  version: 10.0.1
+description: Umbrella chart to start private services of fluentd, Indexsearch cluster,
+  Dashboards GUI and Indexmgr.
+keywords:
+- Indexsearch
+- fluentd
+- Dashboards
+- Indexmgr
+- logging
+maintainers:
+- email: CSF-BELK@groups.nokia.com
+  name: BSSC Team
+name: bssc-ifd
+version: 13.0.1-nokia-patch-18

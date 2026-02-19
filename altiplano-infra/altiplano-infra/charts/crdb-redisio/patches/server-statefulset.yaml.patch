@@ -1,0 +1,24 @@
+--- crdb-redisio-9.0.3-origin/templates/server-statefulset.yaml	2024-02-07 16:28:36.000000000 +0530
++++ crdb-redisio-9.0.3-nokia-patch-1/templates/server-statefulset.yaml	2024-03-05 16:39:50.800671489 +0530
+@@ -26,6 +26,7 @@
+       labels:
+         {{- include "crdb-redisio.labels" (tuple . "server" "pod") | nindent 8 }}
+         type: server
++        altiplano-role: {{ .Values.server.accessRoleLabel }}
+         {{- if eq (int .Values.server.count) 1 }}
+         redisio_role: master
+         redisio_num_slaves: "0"
+@@ -76,6 +77,13 @@
+           name: datadir
+       {{- include "crdb-redisio.logging.vm" $top | nindent 8 }}
+       {{- end }}
++      # clean up temp file container
++      - name: {{ include "csf-common-lib.v1.containerName" (tuple . "cleanup") }}
++        {{- include "crdb-redisio.server.image" . | nindent 8 }}
++        command: [ "sh", "-c", "rm -f /redisdb/temp-*.rdb" ]
++        volumeMounts:
++        - name: datadir
++          mountPath: /redisdb
+       # Main init config container
+       - name: {{ include "csf-common-lib.v1.containerName" (tuple . "config") }}
+         {{- include "crdb-redisio.server.image" . | nindent 8 }}

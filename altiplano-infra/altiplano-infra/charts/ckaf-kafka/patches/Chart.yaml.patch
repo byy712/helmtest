@@ -1,0 +1,8 @@
+--- ckaf-kafka-o/Chart.yaml	2024-02-20 15:47:14.000000000 +0530
++++ ckaf-kafka/Chart.yaml	2024-04-22 13:03:00.766426662 +0530
+@@ -22,4 +22,4 @@
+ - email: I_CKAF@internal.nsn.com
+   name: CSF CKAF Team
+ name: ckaf-kafka
+-version: 8.0.2
++version: 8.0.2-nokia-patch-3

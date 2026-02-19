@@ -1,0 +1,18 @@
+--- cmdb-9.2.1/cmdb-original/templates/admin-event-configmap.yaml	2024-04-25 05:27:41.000000000 +0530
++++ /home/chautruo/nokia/helm-dev/altiplano-infra/charts/cmdb/templates/admin-event-configmap.yaml	2024-05-07 14:45:12.161706682 +0530
+@@ -20,3 +20,15 @@
+   {{- if .Values.admin.pwChangeSecret }}
+   pw_change_secret: {{ default "" .Values.admin.pwChangeSecret }}
+   {{- end }}
++---
++apiVersion: v1
++kind: ConfigMap
++metadata:
++  name: {{ template "cmdb.fullname" . }}-mariadb-admin-fluentd-config
++  labels:
++    {{- include "csf-common-lib.v1.commonLabels" (tuple . "configmap") | nindent 4 }}
++data:
++  fluentd.conf: |-
++{{- if .Values.admin.fluentd_sidecar.fluent_conf }}
++{{ tpl .Values.admin.fluentd_sidecar.fluent_conf . | indent 4 }}
++{{- end }}

@@ -1,0 +1,60 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ template "altiplano-backup-restore-helper.fullname" . }}
+  labels:
+    app: {{ template "altiplano-backup-restore-helper.name" . }}
+    chart: {{ template "altiplano-backup-restore-helper.chart" . }}
+    release: {{ .Release.Name }}
+    heritage: {{ .Release.Service }}
+spec:
+  strategy:
+{{ toYaml .Values.global.updateStrategy | indent 4 }}
+  replicas: {{ .Values.replicaCount }}
+  selector:
+    matchLabels:
+      app: {{ template "altiplano-backup-restore-helper.name" . }}
+      release: {{ .Release.Name }}
+  template:
+    metadata:
+      annotations:
+        kubectl.kubernetes.io/default-container: {{ .Chart.Name }}
+        kubectl.kubernetes.io/default-logs-container: {{ .Chart.Name }}
+      labels:
+        app: {{ template "altiplano-backup-restore-helper.name" . }}
+        release: {{ .Release.Name }}
+        altiplano-role: {{ .Values.accessRoleLabel }}
+    spec:
+      serviceAccountName: {{ template "altiplano-backup-restore-helper.fullname" . }}-sa
+      automountServiceAccountToken: true
+      securityContext:
+        fsGroup:
+        runAsNonRoot: {{ .Values.securityContext.runAsNonRoot | default true }}
+        runAsUser: {{ .Values.securityContext.runAsUser | default 1000 }}
+        runAsGroup: {{ .Values.securityContext.runAsGroup | default 1000 }}
+      priorityClassName:
+      containers:
+        - name: {{ .Chart.Name }}
+          image: {{ template "image.fullname" . }}
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          ports:
+          stdin: {{ .Values.stdin }}
+          tty: {{ .Values.tty }}
+          env:
+          volumeMounts:
+
+          resources:
+{{ toYaml .Values.resources | indent 12 }}
+    {{- with .Values.nodeSelector }}
+      nodeSelector:
+{{ toYaml . | indent 8 }}
+    {{- end }}
+    {{- with .Values.affinity }}
+      affinity:
+{{ toYaml . | indent 8 }}
+    {{- end }}
+    {{- with .Values.tolerations }}
+      tolerations:
+{{ toYaml . | indent 8 }}
+    {{- end }}
+      volumes:

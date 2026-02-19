@@ -1,0 +1,54 @@
+{{- if and .Values.persistence.enabled (not .Values.persistence.existingClaim) }}
+{{- if and (not .Values.sqlitetomdb) ( .Values.cmdb.enabled ) }}
+{{- else }}
+{{- $hbpcompliant := "newhbp3" }}
+{{- $prevstc := "" }}
+{{- if (not .Values.persistence.storageClassName ) }}
+{{- $hbpcompliant =  tpl (.Files.Get "config/getprevhbplabel") . }}
+{{- $prevstc =  tpl (.Files.Get "config/getprevstc") . }}
+{{- else }}
+{{- $hbpcompliant = "" }}
+{{- end }}
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: {{ template "cpro-grafana.fullname" . }}
+  labels:
+    {{- include "cpro-grafana.app.labels-v3" . | nindent 4 }}
+    {{- include "cpro-grafana.labelsOrAnnotations" (tuple .Values.global.labels) | indent 4}}
+    {{- if $hbpcompliant }}
+    helmbp: "{{ $hbpcompliant }}"
+    {{- else }}
+    {{- if .Values.persistence.storageClassName }}
+    helmoldbp: "set"
+    {{- else }}
+    helmoldbp: "old"
+    {{- end }}
+    {{- end }}
+    {{- if $prevstc }}
+    stc: "{{ $prevstc }}"
+    {{- end }}
+  annotations:
+{{- include "cpro-grafana.labelsOrAnnotations" (tuple .Values.persistence.annotations .Values.global.annotations) | indent 4}}
+spec:
+  accessModes:
+    {{- range .Values.persistence.accessModes }}
+    - {{ . | quote }}
+    {{- end }}
+  resources:
+    requests:
+      storage: {{ .Values.persistence.size | quote }}
+  {{- if .Values.persistence.storageClassName }}
+  {{- if (eq "-" .Values.persistence.storageClassName ) }}
+  storageClassName: ""
+  {{- else }}
+  storageClassName: "{{ .Values.persistence.storageClassName }}"
+  {{- end -}}
+  {{- else }}
+  {{- if $hbpcompliant }}
+  {{- else }}
+  storageClassName: {{ $prevstc }}
+  {{- end }}
+  {{- end -}}
+{{- end -}}
+{{- end -}}

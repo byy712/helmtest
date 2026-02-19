@@ -1,0 +1,118 @@
+{{- if and .Values.rbac.enabled }}
+kind: Role
+apiVersion: {{ template "crmq.rbacApiVersion" . }}
+metadata:
+  name: {{ template "crmq.fullname" . }}-endpoint-reader
+  labels:
+    app: {{ template "crmq.name" . }}
+    chart: {{ template "crmq.chart" .  }}
+    release: "{{ .Release.Name }}"
+    heritage: "{{ .Release.Service }}"
+    {{- include "crmq.commonLabels" . | indent 4 }}
+    {{- include "csf-common-lib.v1.customLabels" (tuple .Values.global.labels) | indent 4 }}
+  annotations:
+    {{- include "csf-common-lib.v1.customAnnotations" (tuple .Values.global.annotations) | indent 4 }}
+rules:
+- apiGroups: [""]
+  resources: ["endpoints"]
+  verbs: ["get"]
+---
+kind: Role
+apiVersion: {{ template "crmq.rbacApiVersion" . }}
+metadata:
+  name: {{ template "crmq.fullname" . }}-cluster-role
+  namespace: "{{.Release.Namespace}}"
+  labels:
+    app: {{ template "crmq.name" . }}
+    chart: {{ template "crmq.chart" .  }}
+    release: "{{ .Release.Name }}"
+    heritage: "{{ .Release.Service }}"
+    {{- include "crmq.commonLabels" . | indent 4 }}
+    {{- include "csf-common-lib.v1.customLabels" (tuple .Values.global.labels) | indent 4 }}
+  annotations:
+    # This is what defines this resource as a hook. Without this line, the
+    # job is considered part of the release.
+    # If there're multiple hooks, may define differnent hook-weight value.
+    "helm.sh/hook": post-delete, pre-install
+    "helm.sh/hook-weight": "-8"
+    "helm.sh/hook-delete-policy": hook-succeeded, before-hook-creation
+    {{- include "csf-common-lib.v1.customAnnotations" (tuple .Values.global.annotations) | indent 4 }}
+rules:
+- apiGroups: [""]
+{{- if and .Values.persistence.data.enabled (not .Values.persistence.reservePvc) }}
+  resources: ["persistentvolumeclaims", "serviceaccounts", "secrets"]
+{{- else }}
+  resources: ["serviceaccounts", "secrets"]
+{{- end }}
+  verbs: ["get", "list", "delete"]
+{{- if and .Values.persistence.data.enabled (not .Values.persistence.reservePvcForScalein) }}
+---
+kind: Role
+apiVersion: {{ template "crmq.rbacApiVersion" . }}
+metadata:
+  name: {{ template "crmq.fullname" . }}-scale-role
+  namespace: "{{.Release.Namespace}}"
+  labels:
+    app: {{ template "crmq.name" . }}
+    chart: {{ template "crmq.chart" .  }}
+    release: "{{ .Release.Name }}"
+    heritage: "{{ .Release.Service }}"
+    {{- include "crmq.commonLabels" . | indent 4 }}
+    {{- include "csf-common-lib.v1.customLabels" (tuple .Values.global.labels) | indent 4 }}
+  annotations:
+    {{- include "csf-common-lib.v1.customAnnotations" (tuple .Values.global.annotations) | indent 4 }}
+rules:
+- apiGroups: [""]
+  resources: ["persistentvolumeclaims"]
+  verbs: ["get", "list", "delete"]
+- apiGroups: [""]
+  resources: [ "pods", "pods/exec"]
+  verbs: ["get", "create"]
+{{- else }}
+---
+kind: Role
+apiVersion: {{ template "crmq.rbacApiVersion" . }}
+metadata:
+  name: {{ template "crmq.fullname" . }}-cluster-role-forgetnode
+  namespace: "{{.Release.Namespace}}"
+  labels:
+    app: {{ template "crmq.name" . }}
+    chart: {{ template "crmq.chart" .  }}
+    release: "{{ .Release.Name }}"
+    heritage: "{{ .Release.Service }}"
+    {{- include "crmq.commonLabels" . | indent 4 }}
+    {{- include "csf-common-lib.v1.customLabels" (tuple .Values.global.labels) | indent 4 }}
+  annotations:
+    {{- include "csf-common-lib.v1.customAnnotations" (tuple .Values.global.annotations) | indent 4 }}
+rules:
+- apiGroups: [""]
+  resources: ["persistentvolumeclaims"]
+  verbs: ["get", "list"]
+- apiGroups: [""]
+  resources: [ "pods", "pods/exec"]
+  verbs: ["get", "create"]
+{{- end }}
+---
+kind: Role
+apiVersion: {{ template "crmq.rbacApiVersion" . }}
+metadata:
+  name: {{ template "crmq.fullname" . }}-heal-role
+  namespace: "{{.Release.Namespace}}"
+  labels:
+    app: {{ template "crmq.name" . }}
+    chart: {{ template "crmq.chart" .  }}
+    release: "{{ .Release.Name }}"
+    heritage: "{{ .Release.Service }}"
+    {{- include "crmq.commonLabels" . | indent 4 }}
+    {{- include "csf-common-lib.v1.customLabels" (tuple .Values.global.labels) | indent 4 }}
+  annotations:
+    {{- include "csf-common-lib.v1.customAnnotations" (tuple .Values.global.annotations) | indent 4 }}
+rules:
+- apiGroups: ["apps"]
+  resources: ["statefulsets"]
+  verbs: ["get", "list", "patch"]
+- apiGroups: [""]
+  resources: ["pods"]
+  verbs: ["list", "delete"]
+
+{{- end }}

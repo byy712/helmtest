@@ -1,0 +1,35 @@
+{{- if .Values.cbur.enabled }}
+apiVersion: {{ template "cpro-grafana.grafanaApiVersion.brpolicy"  . }}
+kind: BrPolicy
+metadata:
+  name: {{ template "cpro-grafana.stsName" . }}
+  labels:
+    {{- include "cpro-grafana.app.labels-v3" . | nindent 4 }}
+    {{- include "cpro-grafana.labelsOrAnnotations" (tuple .Values.global.labels) | indent 4}}
+  annotations:
+    {{- include "cpro-grafana.labelsOrAnnotations" (tuple .Values.global.annotations) | indent 4}}
+spec:
+  selector:
+    matchLabels:
+      app: {{ template "cpro-grafana.name" . }}
+  k8sType: statefulset
+  volumes:
+{{- if .Values.cmdb.enabled }}
+  - appdata
+{{- else }}
+  - storage
+{{- end}}
+  backend:
+    mode: {{ .Values.cbur.backendMode }}
+  autoEnableCron: {{ .Values.cbur.autoEnableCron | default false }}
+  autoUpdateCron: {{ .Values.cbur.autoUpdateCron | default false }}
+  cronSpec: '{{ .Values.cbur.cronJob }}'
+  maxiCopy: {{ .Values.cbur.maxCopy }}
+  waitPodStableSeconds: {{ .Values.cbur.waitPodStableSeconds }}
+  ignoreFileChanged: {{ .Values.cbur.ignoreFileChanged }}
+  {{- if hasKey .Values.cbur "dataEncryptionEnable" }}
+  dataEncryption:
+    enable: {{ .Values.cbur.dataEncryptionEnable }}
+    secret: {{ .Values.cbur.dataEncryptionSecretName | default "" | quote }}
+  {{- end}}
+{{- end }}

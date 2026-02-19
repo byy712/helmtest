@@ -1,0 +1,3 @@
+{{/* Required in tests/ so that values-compat is processed before tests in this subdirectory are rendered */}}
+
+{{- include "cmdb.values-compat" . -}}

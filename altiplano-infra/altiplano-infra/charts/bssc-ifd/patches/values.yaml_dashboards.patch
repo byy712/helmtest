@@ -1,0 +1,24 @@
+--- bssc-ifd-o/charts/bssc-dashboards/values.yaml	2023-12-06 18:41:43.000000000 +0530
++++ bssc-ifd-17/charts/bssc-dashboards/values.yaml	2024-06-12 09:31:17.685015950 +0530
+@@ -125,6 +125,13 @@
+     annotations: {}
+ #User can specify the precreated SA here.
+ serviceAccountName: ""
++init:
++  image:
++    name: fnms-init-container
++    tag: nokia-1.0.2
++    pullPolicy: IfNotPresent
++
++accessRoleLabel: internal-access
+ 
+ customResourceNames:
+   #Provide lowercase alphanumeric characters, '-' or '.'
+@@ -812,6 +819,7 @@
+     keycloakRootCaPem: #secret key for keycloak rootCA pem 
+     keycloakClientId: #secret key for client id in keycloak
+     keycloakClientSecret: #secret key for client secret in keycloak
++    IngressRootCaPem:  #secret key for Ingress rootCA pem 
+     #sane:
+       #keycloak_admin_user_name: #secret key for keycloak_admin_user_name
+       #keycloak_admin_password: #secret key for keycloak_admin_password

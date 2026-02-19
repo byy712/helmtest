@@ -1,0 +1,55 @@
+# This values yaml contains the configuration for altiplano - [H]igh scale.
+#
+
+# Below are configuration for various subcharts applied on top of base such as C or F....
+#
+altiplano-alarms-indexsearch:
+  enabled: true
+  bssc-indexsearch:
+    manager:
+      resources:
+        limits:
+          cpu: "1"
+          memory: "2Gi"
+        requests:
+          cpu: "500m"
+          memory: "1Gi"
+      java_opts: "-Xms1g -Xmx1g -Dlog4j2.formatMsgNoLookups=true"
+
+    client:
+      resources:
+        limits:
+          cpu: "1"
+          memory: "10Gi"
+        requests:
+          cpu: "500m"
+          memory: "5Gi"
+      java_opts: "-Xms5g -Xmx5g -Dlog4j2.formatMsgNoLookups=true"
+      processors: "8"
+
+    data:
+      replicas: 1
+      resources:
+        limits:
+          cpu: "1"
+          memory: "10Gi"
+        requests:
+          cpu: "500m"
+          memory: "8Gi"
+      java_opts: "-Xms5g -Xmx5g -Dlog4j2.formatMsgNoLookups=true"
+      processors: "8"
+
+    jobs:
+      secAdminUpgradeJob:
+        resources:
+          requests:
+            cpu: 200m
+            memory: 500Mi
+          limits:
+            cpu: 500m
+            memory: 1Gi
+            
+altiplano-installation-info:
+  installationStatus:
+    valuesModelH: installed
+            

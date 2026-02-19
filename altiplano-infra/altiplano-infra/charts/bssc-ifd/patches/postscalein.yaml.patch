@@ -1,0 +1,10 @@
+--- bssc-ifd-13.0.1/bssc-ifd/charts/bssc-indexsearch/templates/ncms/scale/postscalein.yaml	2023-12-06 18:41:43.000000000 +0530
++++ bssc-ifd-patch/bssc-ifd/charts/bssc-indexsearch/templates/ncms/scale/postscalein.yaml	2023-12-21 09:35:28.277636000 +0530
+@@ -13,6 +13,7 @@
+   template:
+     metadata:
+       labels:
++        altiplano-role: {{ .Values.accessRoleLabel }}
+ {{- include "bssc-indexsearch.commonLabels" (tuple .) | nindent 8 }}
+ {{- include "bssc-indexsearch.csf-toolkit-helm.labels" (tuple . .Values.custom.hookJobs.pod.labels) | nindent 8 }}
+       annotations:

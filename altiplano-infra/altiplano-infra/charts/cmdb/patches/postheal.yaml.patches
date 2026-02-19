@@ -1,0 +1,10 @@
+--- cmdb-9.2.1/cmdb-original/templates/ncms/heal/postheal.yaml	2024-04-25 05:27:41.000000000 +0530
++++ cmdb-9.2.xxxxx.new/cmdb/templates/ncms/heal/postheal.yaml	2024-05-07 13:18:18.490376053 +0530
+@@ -15,6 +15,7 @@
+   template:
+     metadata:
+       labels:
++        altiplano-role: {{ .Values.accessRoleLabel }}
+         {{- include "cmdb-admin.labels" (tuple . "pod") | nindent 8 }}
+         type: admin
+         ncms-hook: postheal

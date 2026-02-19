@@ -1,0 +1,21 @@
+{{- include "bssc-dashboards.istio.initIstio" . -}}
+{{- if and (eq $.istio.createDrForClient true) (eq $.istio.enabled false) }}
+apiVersion: {{ template "bssc-dashboards.apiVersionNetworkIstioV1Alpha3orV1Beta1" . }}
+kind: DestinationRule
+metadata:
+  name: {{ template "bssc-dashboards.fullname" . }}-dbo
+  namespace: {{ .Release.Namespace }}
+  labels:
+{{- include "bssc-dashboards.commonLabels" (tuple .  "dashboards" ) | indent 4 }}
+{{- include "bssc-dashboards.csf-toolkit-helm.labels" (tuple .) | nindent 4 }}
+  annotations:
+{{- include "bssc-dashboards.csf-toolkit-helm.annotations" (tuple .) | nindent 4 }}
+spec:
+  {{- if .Values.service.name }}
+  host: {{.Values.service.name}}.{{ .Release.Namespace }}.svc.cluster.local
+  {{- else }}
+  host: {{ template "bssc-dashboards.fullname" . }}.{{ .Release.Namespace }}.svc.cluster.local
+  {{- end }}
+{{ toYaml $.istio.customDrSpecForClient | indent 2 }}
+{{- end }}
+

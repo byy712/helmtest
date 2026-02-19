@@ -1,0 +1,103 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  labels:
+    app: {{ template "citm-ingress.name" . }}
+    chart: {{ .Chart.Name }}-{{ .Chart.Version }}
+    component: "{{ .Values.controller.name }}"
+    heritage: {{ .Release.Service }}
+    release: {{ .Release.Name }}
+    {{- include "citm-ingress.commonLabels" . | indent 4 }}
+  name: {{ template "citm-ingress.fullname" . }}
+data:
+{{- if .Values.controller.mainSnippet }}
+  main-snippet: |
+{{ tpl .Values.controller.mainSnippet . | indent 4 }}
+{{- end }}
+{{- if .Values.controller.httpSnippet }}
+  http-snippet: |
+{{ tpl .Values.controller.httpSnippet . | indent 4 }}
+{{- end }}
+{{- if .Values.controller.serverSnippet }}
+  server-snippet: |
+{{ tpl .Values.controller.serverSnippet . | indent 4 }}
+{{- end }}
+{{- if .Values.controller.locationSnippet }}
+  location-snippet: |
+{{ tpl .Values.controller.locationSnippet . | indent 4 }}
+{{- end }}
+{{- if .Values.controller.streamSnippet }}
+  stream-snippet: |
+{{ tpl .Values.controller.streamSnippet . | indent 4 }}
+{{- end }}
+{{- if .Values.controller.workerProcessAsRoot }}
+  worker-process-as-root: "{{ .Values.controller.workerProcessAsRoot }}"
+{{- end }}
+{{- if (or (.Values.grafanaURL) (.Values.metrics)) }}
+  enable-vts-status: "true"
+{{- end }}
+{{- if .Values.controller.bindAddress }}
+  bind-address: "{{ .Values.controller.bindAddress }}"
+{{- end }}
+  status-bind-address: "{{ .Values.controller.statusBindAddress }}"
+  reuse-port: "{{ .Values.controller.reusePort }}"
+  disable-ipv6: {{ include "citm-ingress.disableIpv6" . | quote }}
+  disable-ipv4: {{ include "citm-ingress.disableIpv4" . | quote }}
+  enable-modsecurity: "{{ .Values.controller.modsecurity.enabled }}"
+  enable-owasp-modsecurity-crs: "{{ .Values.controller.modsecurity.enableOwaspCrs }}"
+  use-http2-on-http: "{{ .Values.controller.enableHttp2OnHttp}}"
+  disable-http-port-listening: "{{ .Values.controller.disableHttpPortListening }}"
+  disable-ocsp-stapling: "{{ .Values.controller.disableOcspStapling }}"
+{{- if eq .Values.controller.strictValidatePathType true }}
+  strict-validate-path-type: "true"
+{{- end }}
+{{- include "citm-ingress.setCertKeys" . }}
+{{- if .Values.controller.httpRedirectCode }}
+  http-redirect-code: "{{ .Values.controller.httpRedirectCode }}"
+{{- end }}
+{{- if eq .Values.controller.logToJsonFormat true }}
+  log-format-upstream: "{{ include "citm-ingress.logFormatUpstream" . }}"
+  log-format-stream: "{{ include "citm-ingress.logFormatStream" . }}"
+{{- end }}
+  clog-harmonized-enable: "{{ .Values.controller.logToJsonFormat }}"
+  enable-clog-systemid: "{{ .Values.controller.enableSystemId }}"
+  split-ipv4-ipv6-stream-backend: "{{ .Values.controller.splitIpv4Ipv6StreamBackend }}"
+  ssl-protocols: "{{ .Values.controller.sslProtocols }}"
+  ssl-ciphers: "{{ .Values.controller.sslCiphers }}"
+{{- if .Values.controller.blockCidrs }}
+  block-cidrs: {{ .Values.controller.blockCidrs }}
+{{- end }}
+{{- if .Values.controller.whiteListCidrs }}
+  white-list-cidrs: {{ .Values.controller.whiteListCidrs }}
+{{- end }}
+{{- if .Values.controller.blockUserAgents }}
+  block-user-agents: {{ .Values.controller.blockUserAgents }}
+{{- end }}
+{{- if .Values.controller.blockReferers }}
+  block-referers: {{ .Values.controller.blockReferers }}
+{{- end }}
+{{- if .Values.controller.snippetNamespaceAllowed }}
+  snippet-namespaces-allowed: {{ .Values.controller.snippetNamespaceAllowed }}
+{{- end }}
+  denied-in-snippet: "{{ .Values.controller.deniedInSnippetCode }}"
+{{- if (and (eq .Values.controller.service.type "NodePort") (not (empty .Values.controller.service.nodePorts.http))) }}
+  citm-forwarded-port-http: "{{ .Values.controller.service.nodePorts.http }}"
+{{- else }}
+  {{- if (and (not  (.Values.controller.forcePort)) (not (empty .Values.controller.httpPort))) }}
+  citm-forwarded-port-http: "{{ .Values.controller.httpPort }}"
+  {{- else }}
+  citm-forwarded-port-http: "80"
+{{- end }}
+{{- end }}
+{{- if (and (eq .Values.controller.service.type "NodePort") (not (empty .Values.controller.service.nodePorts.https))) }}
+  citm-forwarded-port-https: "{{ .Values.controller.service.nodePorts.https }}"
+{{- else }}
+  {{- if (and (not  (.Values.controller.forcePort)) (not (empty .Values.controller.httpsPort))) }}
+  citm-forwarded-port-https: "{{ .Values.controller.httpsPort }}"
+  {{- else }}
+  citm-forwarded-port-https: "443"
+{{- end }}
+{{- end }}
+{{- range $key, $value := .Values.controller.config }}
+  {{ $key }}: "{{ $value }}"
+{{- end }}

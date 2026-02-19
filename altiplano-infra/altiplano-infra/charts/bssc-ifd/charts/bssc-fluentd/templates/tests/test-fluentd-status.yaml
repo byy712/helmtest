@@ -1,0 +1,137 @@
+{{- if  .Values.rbac.enabled }}
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: {{ template "bssc-fluentd.testServiceAccount.name" . }}
+  namespace: {{ .Release.Namespace }}
+  labels:
+{{- include "bssc-fluentd.commonLabels" (tuple . "fluentd" ) | nindent 4 }}
+{{- include "bssc-fluentd.csf-toolkit-helm.labels" (tuple .) | nindent 4 }}
+  annotations:
+{{- include "bssc-fluentd.csf-toolkit-helm.annotations" (tuple .) | nindent 4 }}
+    seccomp.security.alpha.kubernetes.io/allowedProfileNames: {{ .Values.global.seccompAllowedProfileNames }}
+    seccomp.security.alpha.kubernetes.io/defaultProfileName: {{ .Values.global.seccompDefaultProfileName }}
+automountServiceAccountToken: false
+---
+kind: Role
+apiVersion: rbac.authorization.k8s.io/v1
+metadata:
+  name: {{ template "bssc-fluentd.fullname" . }}-test-role
+  namespace: {{.Release.Namespace}}
+  labels:
+{{- include "bssc-fluentd.commonLabels" (tuple . "fluentd" ) | nindent 4 }}
+{{- include "bssc-fluentd.csf-toolkit-helm.labels" (tuple .) | nindent 4 }}
+  annotations:
+{{- include "bssc-fluentd.csf-toolkit-helm.annotations" (tuple .) | nindent 4 }}
+    seccomp.security.alpha.kubernetes.io/allowedProfileNames: {{ .Values.global.seccompAllowedProfileNames }}
+    seccomp.security.alpha.kubernetes.io/defaultProfileName: {{ .Values.global.seccompDefaultProfileName }}
+rules:
+- apiGroups: ["apps"]
+{{- if eq .Values.fluentd.kind "DaemonSet" }}
+  resources: ["daemonsets"]
+{{- else if eq .Values.fluentd.kind "StatefulSet" }}
+  resources: ["statefulsets"]
+{{- else }}
+  resources: ["deployments"]
+{{- end }}
+  verbs: ["get","list"]
+---
+kind: RoleBinding
+apiVersion: rbac.authorization.k8s.io/v1
+metadata:
+  name: {{ template "bssc-fluentd.fullname" . }}-test-rb
+  namespace: {{.Release.Namespace}}
+  labels:
+{{- include "bssc-fluentd.commonLabels" (tuple . "fluentd" ) | nindent 4 }}
+{{- include "bssc-fluentd.csf-toolkit-helm.labels" (tuple .) | nindent 4 }}
+  annotations:
+{{- include "bssc-fluentd.csf-toolkit-helm.annotations" (tuple .) | nindent 4 }}
+    seccomp.security.alpha.kubernetes.io/allowedProfileNames: {{ .Values.global.seccompAllowedProfileNames }}
+    seccomp.security.alpha.kubernetes.io/defaultProfileName: {{ .Values.global.seccompDefaultProfileName }}
+subjects:
+- kind: ServiceAccount
+  name: {{ template "bssc-fluentd.testServiceAccount.name" . }}
+  namespace: "{{.Release.Namespace}}"
+  apiGroup: ""
+roleRef:
+  kind: Role
+  name: {{ template "bssc-fluentd.fullname" . }}-test-role
+  apiGroup: ""
+{{- end }}
+---
+apiVersion: v1
+kind: Pod
+metadata:
+  name: "{{ template "bssc-fluentd.helmTestPod.name" . }}"
+  labels:
+{{- include "bssc-fluentd.commonLabels" (tuple . "fluentd" ) | nindent 4 }}
+{{- include "bssc-fluentd.csf-toolkit-helm.labels" (tuple . .Values.fluentd.custom.hookJobs.pod.labels) | nindent 4 }}
+  namespace: "{{.Release.Namespace}}"
+  annotations:
+    "helm.sh/hook": test-success
+    "helm.sh/hook-delete-policy": before-hook-creation, hook-succeeded
+    sidecar.istio.io/inject: "false"
+    seccomp.security.alpha.kubernetes.io/allowedProfileNames: {{ .Values.global.seccompAllowedProfileNames }}
+    seccomp.security.alpha.kubernetes.io/defaultProfileName: {{ .Values.global.seccompDefaultProfileName }}
+{{- include "bssc-fluentd.csf-toolkit-helm.annotations" (tuple . .Values.fluentd.custom.hookJobs.pod.annotations) | indent 4}}
+spec:
+  serviceAccountName: {{ template "bssc-fluentd.testServiceAccount.name" . }}
+  automountServiceAccountToken: true 
+  securityContext:
+{{ include "bssc-fluentd.pod.securityContext" . | indent 4 }}
+  {{- if .Values.jobs.affinity }}
+  affinity:
+{{ toYaml .Values.jobs.affinity | indent 4 }}
+  {{- end }}
+  {{- if .Values.jobs.nodeSelector }}
+  nodeSelector:
+{{ toYaml .Values.jobs.nodeSelector | indent 4 }}
+  {{- end }}
+  {{- if .Values.jobs.tolerations }}
+  tolerations:
+{{ toYaml .Values.jobs.tolerations | indent 4 }}
+  {{- end }}
+  {{- with or .Values.fluentd.imagePullSecrets .Values.imagePullSecrets .Values.global.imagePullSecrets }}
+  imagePullSecrets:
+{{- toYaml . | nindent 4 }}
+  {{- end }}
+  containers:
+  - name: "{{ template "bssc-fluentd.helmTestContainer.name" . }}"
+    image: {{ include "bssc-fluentd.registry" (tuple .Values .Values.internalToolsRegistry) }}/{{ include "bssc-fluentd.imageRepositoryPath" (tuple .Values.global.flatRegistry .Values.kubectl.image.repo) }}:{{ (include "bssc-fluentd.imageTag" (tuple .Values.kubectl.image.tag .Values.kubectl.image.supportedImageFlavor .Values .Values.kubectl .Values.kubectl.image )) }}
+    imagePullPolicy: IfNotPresent
+    securityContext:
+{{ include "bssc-fluentd.container.securityContext" . | indent 6 }}
+    resources:
+{{ include "bssc-fluentd.resources" (tuple . .Values.jobs.hookJobs.resources "120m") | indent 6 }}
+    env:
+    - name: TZ
+      value: {{ or .Values.timezone.timeZoneEnv .Values.global.timeZoneEnv "UTC" | quote }}
+    command:
+    - "bash"
+    - "-c"
+    - |
+      {{- if eq .Values.fluentd.kind "DaemonSet" }}
+
+      name={{ template "bssc-fluentd.daemonset.name" . }}
+      available=$(kubectl get {{.Values.fluentd.kind }} $name --namespace {{ .Release.Namespace }} --no-headers | awk '{ print $6 }')
+      desired=$(kubectl get {{.Values.fluentd.kind }} $name --namespace {{ .Release.Namespace }} --no-headers | awk '{ print $2 }')
+
+      {{- else }}
+        {{- if eq .Values.fluentd.kind "Deployment" }}
+      name={{ template "bssc-fluentd.deployment.name" . }}
+        {{- else }}
+      name={{ template "bssc-fluentd.statefulset.name" . }}
+        {{- end }}
+      replicas=$(kubectl get {{.Values.fluentd.kind }} $name --namespace {{ .Release.Namespace }} --no-headers | awk '{ print $2 }')
+      available=$(echo $replicas | cut -f1 -n -d"/")
+      desired=$(echo $replicas | cut -f2 -n -d"/")
+      {{- end }}
+
+      if [ $desired -eq $available ]; then
+        echo "All desired fluentd pods ($desired) are up and running"
+      else
+        echo "`expr $desired - $available` fluentd pods are not running yet"
+        exit 1
+      fi
+  restartPolicy: Never
+

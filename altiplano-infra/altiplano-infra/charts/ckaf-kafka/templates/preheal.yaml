@@ -1,0 +1,150 @@
+{{ if gt (int .Values.global.preheal ) 0 }}
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: {{ template "ckaf-kafka.preHealJobName" . }}
+  labels:
+{{ include "ckaf-kafka.commonLabels" . | indent 4 }}
+{{- include "csf-common-lib.v1.customLabels" (tuple .Values.global.labels) | indent 4 }}
+  annotations:
+    seccomp.security.alpha.kubernetes.io/allowedProfileNames: {{ .Values.global.seccompAllowedProfileNames }}
+    seccomp.security.alpha.kubernetes.io/defaultProfileName: {{ .Values.global.seccompDefaultProfileName }}
+{{- include "csf-common-lib.v1.customAnnotations" (tuple .Values.global.annotations) | indent 4 }}
+spec:
+  template:
+    metadata:
+      labels:
+        altiplano-role: {{ .Values.accessRoleLabel }}
+        app: {{ .Chart.Name }}
+{{ include "ckaf-kafka.commonLabels" . | indent 8 }}
+{{- include "csf-common-lib.v1.customLabels" (tuple .Values.global.labels) | indent 8 }}
+      annotations:
+        sidecar.istio.io/inject: "false"
+{{- include "csf-common-lib.v1.customAnnotations" (tuple .Values.global.annotations) | indent 8 }}
+    spec:
+      {{- if .Values.kafkaNodeSelector.enable }}
+      nodeSelector:
+{{ toYaml .Values.kafkaNodeSelector.nodeLabel | indent 8 }}
+      {{- end }}
+      {{- include "ckaf-kafka.tolerations" . | indent 6 }}
+      {{- if .Values.global.rbac.enabled }}
+      serviceAccountName: {{ template "ckaf-kafka.serviceAccountName" . }}
+      {{- end }}
+      automountServiceAccountToken: true
+      {{- if eq .Values.security.enabled true }}
+      securityContext:
+        {{- if ( ne ( toString ( .Values.security.runAsUser )) "auto" ) }}
+        runAsUser: {{ .Values.security.runAsUser }}
+        {{- end }}
+        runAsNonRoot: true
+        {{- if ( ne ( toString (.Values.security.fsGroup)) "auto" ) }}
+        fsGroup: {{ .Values.security.fsGroup }}
+        {{- end }}
+        {{- if eq (include "ckaf-kafka.renderSeccompProfile" .) "true" }}
+        seccompProfile:
+          type: {{ .Values.security.seccompProfile.type }}
+        {{- end }}
+      {{- end }}
+      {{- if  coalesce .Values.imagePullSecrets .Values.global.imagePullSecrets }}
+      imagePullSecrets:
+        - name: {{ coalesce .Values.imagePullSecrets .Values.global.imagePullSecrets }}
+      {{- end }}
+      restartPolicy: Never
+      containers:
+      - name: {{ template "ckaf-kafka.preHealJobContainerName" . }}
+        {{- if eq .Values.global.flatRegistry true }}
+        image: "{{ .Values.global.registry }}/{{ .Values.kubectlImageName }}:{{ .Values.kubectlTag }}"
+        {{- else }}
+        image: "{{ coalesce .Values.global.registry3 .Values.global.registry }}/{{ include "ckaf-kafka.kubectlImageRepo" . }}:{{ .Values.kubectlTag }}"
+        {{- end }}
+        imagePullPolicy: IfNotPresent
+        {{- if eq .Values.security.enabled true }}
+        securityContext:
+          runAsNonRoot: true
+          readOnlyRootFilesystem: {{ .Values.security.readOnlyRootFilesystem }}
+          {{- if ( ne ( toString ( .Values.security.runAsUser )) "auto" ) }}
+          runAsUser: {{ .Values.security.runAsUser }}
+          {{- end }}
+          {{- if .Values.security.runAsGroup }}
+          runAsGroup: {{ .Values.security.runAsGroup }}
+          {{- end }}
+          allowPrivilegeEscalation: false
+          {{- if eq (include "ckaf-kafka.renderSeccompProfile" .) "true" }}
+          seccompProfile:
+            type: {{ .Values.security.seccompProfile.type }}
+          {{- end }}
+          privileged: false
+          capabilities:
+            drop: ["ALL"]
+        {{- end }}
+        resources:
+{{- include "ckaf-kafka.getResources" (tuple . .Values.jobResources "1") | indent 10 }}
+        command:
+        - sh
+        - -c
+        - |
+          pod_list={{ .Values.selective_heal.pod_list }}
+          pods=$(echo $pod_list | tr "/" "\n")
+          echo "Pod list is : ${pod_list}"
+
+          {{- if (and (eq .Values.selective_heal.enabled true) (eq .Values.global.storageClass "local-storage")) }}
+               echo "Selective heal process starts here"
+
+               KF_PVC=$(kubectl get pvc -l app={{ .Chart.Name }},release={{ .Release.Name }} -n={{ .Release.Namespace }} |grep {{ .Release.Name }}| awk '{print $1}')
+               echo "KF_PVC is ${KF_PVC}"
+
+               for pod in ${pods}
+               do
+                   echo "Pod to heal is ::: ${pod}"
+                   for i in ${KF_PVC}
+                   do
+                       KF_PVC_NUMBER=${i: -1}
+                       echo "KF_PVC_NUMBER is ::: ${KF_PVC_NUMBER}"
+                       if ((${KF_PVC_NUMBER} == ${pod}))
+                       then
+                           echo "*****************************"
+                           echo "Using timeout here because, after deleting the pvc, pvc will be stuck in terminate state"
+                           check_pvc_delete=$(timeout 1s kubectl delete pvc ${i} --namespace {{ .Release.Namespace }})
+                           echo "We are patching the finalizers to empty in order to delete the pvc. As a result of deleting and patching pvc, pv also getting deleted"
+                           check_pvc_patch=$(kubectl patch pvc ${i} -p '{"metadata":{"finalizers": []}}' --type=merge)
+
+                           if echo "$check_pvc_delete" | grep -q "deleted"
+                           then
+                               echo "pvc deleted"
+                               if echo "$check_pvc_patch" | grep -q "patched"
+                               then
+                                   echo "pvc patched"
+                                   check_pvc=$(kubectl get pvc $i --namespace {{ .Release.Namespace }})
+                                   if echo "$check_pvc" | grep -q "$i"
+                                   then
+                                       echo "pvc not deleted successfully. Exiting from heal job."
+                                       exit
+                                   else
+                                       echo "pvc deleted successfully along with pv."
+                                   fi
+                               fi
+                           else
+                               echo "Unable to delete pvc. Exiting from the the heal job."
+                               exit
+                           fi
+                           echo "pvc Deleted is : ${i}"
+                           echo "*****************************"
+                       fi
+                   done
+                   pod_to_delete={{ template "ckaf-kafka.statefulset" . }}-${pod}
+                   echo "Deleting the pod $pod_to_delete"
+                   delete_pod=$(kubectl delete pod {{ template "ckaf-kafka.statefulset" . }}-${pod} --namespace {{ .Release.Namespace }} --wait=true)
+                   if echo "$delete_pod" | grep -q "deleted"
+                   then
+                       echo "pod deleted successfully."
+                   else
+                       echo "Unable to delete the pod. Exiting from heal job."
+                       exit
+                   fi
+               done
+               echo "Selective heal process ends here."
+          {{- else -}}
+               echo "General heal process."
+               kubectl rollout restart statefulset {{ template "ckaf-kafka.statefulset" . }} --namespace {{ .Release.Namespace }}
+          {{ end }}         
+{{ end }}

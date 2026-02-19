@@ -1,0 +1,90 @@
+{{- if and .Values.server.enabled .Values.server.migrate.enabled -}}
+apiVersion: {{ template "cpro.apiVersion.jobApiversion" . }}
+kind: Job
+metadata:
+  namespace: {{ .Values.server.migrate.cbur.namespace }}
+  labels:
+    {{- include "cpro.app.labels.v3" ( dict "root" . "context" .Values.server ) | nindent 4 }}
+{{- include "cpro.labelsOrAnnotations" (tuple .Values.server.labels .Values.global.labels) | indent 4}}
+  name: {{ template "cpro.prometheus.migrate.preUpgradeJobName" . }}
+  annotations:
+{{- include "cpro.labelsOrAnnotations" (tuple .Values.server.annotations .Values.global.annotations) | indent 4}}
+    "helm.sh/hook": pre-upgrade
+    "helm.sh/hook-weight": "-5"
+    "helm.sh/hook-delete-policy": before-hook-creation, hook-succeeded
+spec:
+{{$data_csc := dict "cSecCtx" .Values.server.containerSecurityContext "ctx" . }}
+  # activeDeadlineSeconds is not set intentionaly as time taken by this job is variable.
+  #activeDeadlineSeconds: {{ default 600 .Values.server.migrate.activeDeadlineSeconds }}
+  template:
+    metadata:
+      annotations:
+        #TODO CHECK
+{{- include "cpro.labelsOrAnnotations" (tuple .Values.server.annotations .Values.custom.pod.annotations .Values.global.annotations) | indent 8}}
+{{- if .Values.rbac.pspUseAppArmor }}
+{{- include "cpro.labelsOrAnnotations" (tuple .Values.custom.pod.apparmorAnnotations) | indent 8}}
+{{- end }}
+        sidecar.istio.io/inject: "false"
+      labels:
+        {{- include "cpro.app.labels.v3" ( dict "root" . "context" .Values.server ) | nindent 8 }}
+{{- include "cpro.labelsOrAnnotations" (tuple .Values.server.labels .Values.custom.pod.labels .Values.global.labels) | indent 8}}
+    spec:
+      {{- if or .Values.serviceAccountName .Values.global.serviceAccountName }}
+      serviceAccountName: {{ template "cpro.prometheus.serviceAccountName" . }}
+      {{- else if .Values.rbac.enabled }}
+      serviceAccountName: {{ template "cpro.prometheus.serviceAccount.fullname" . }}-pre
+      {{- else }}
+      serviceAccountName: "default"
+      {{- end }}
+      securityContext:
+      {{$data := dict "securitycontext" .Values.server.migrate.securityContext "ctx" . }}
+      {{- include "cpro.securitycontext" $data | nindent 8 }}
+      {{- if .Values.seLinuxOptions.enabled }}
+        seLinuxOptions:
+          level: {{ .Values.seLinuxOptions.level }}
+          role: {{ .Values.seLinuxOptions.role }}
+          type: {{ .Values.seLinuxOptions.type }}
+          user: {{ .Values.seLinuxOptions.user }}
+      {{- end }}
+      restartPolicy: Never
+{{ include "cpro-common-lib.imagePullSecrets" (dict "workloadName" .Values.server  "root" .) | indent 6 }}
+      containers:
+        - name: {{ template "cpro.prometheus.migrate.preUpgradeContainer" . }}
+                 
+{{- include "cpro.helm.delete.image"  (dict "root" . "container" .Values.helmDeleteImage  ) | nindent 10 }}
+{{- include "cpro.terminationMessage" . | nindent 10 }}
+          env:
+            {{- include "cpro.timeZoneEnvName" . | nindent 12 }}
+          resources:
+{{- include "cpro-common-lib.v1.resources" ( dict "root" . "workloadresources" .Values.server.migrate.resources "defaultcpulimit" "200m") | nindent 12 }}
+          command: ["/bin/bash", "-c"]
+          args: ["mkdir -p /etc/migrate/repo/data/{{ .Release.Namespace }}/STATEFULSET_{{ template "cpro.prometheus.server.fullname" . }}/ && cp -r /etc/migrate/repo/data/{{ .Release.Namespace }}/DEPLOYMENT_{{ template "cpro.prometheus.server.fullname" . }}/{{ .Values.server.migrate.folderName }} /etc/migrate/repo/data/{{ .Release.Namespace }}/STATEFULSET_{{ template "cpro.prometheus.server.fullname" . }}/ && for i in /etc/migrate/repo/data/{{ .Release.Namespace }}/STATEFULSET_{{ template "cpro.prometheus.server.fullname" . }}/{{ .Values.server.migrate.folderName }}/*; do for ((j=0;j<{{ template "cpro.server.replicas" . }};j++)); do cp $i `echo $i | sed 's/_volume.tar/-'$j'_volume.tar/g'` ; done; done;"]
+          volumeMounts:
+            - name: cburvolume
+              mountPath: /etc/migrate
+          securityContext:
+         {{- include "cpro.containerSecurityContext" $data_csc | nindent 12 }}
+{{- with .Values.hooks.nodeSelector }}
+      nodeSelector:
+{{ toYaml . | indent 8 }}
+{{- end }}
+{{- with .Values.hooks.tolerations }}
+      tolerations:
+{{ toYaml . | indent 8 }}
+{{- end }}
+{{- with .Values.hooks.affinity }}
+      affinity:
+{{ toYaml . | indent 8 }}
+{{- end }}
+      volumes:
+        - name: cburvolume
+        {{- if eq .Values.server.migrate.cbur.volumeType "glusterfs" }}
+          glusterfs:
+            endpoints: {{ .Values.server.migrate.cbur.glusterfs.endpoint }}
+            path: {{ .Values.server.migrate.cbur.glusterfs.path }}
+            readOnly: false
+        {{- else }}
+          persistentVolumeClaim:
+            claimName: {{ .Values.server.migrate.cbur.otherpvc.claimName }}
+        {{- end }}
+{{- end }}

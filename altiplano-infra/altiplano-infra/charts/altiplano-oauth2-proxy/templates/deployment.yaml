@@ -1,0 +1,288 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "altiplano-oauth2-proxy.fullname" . }}
+  labels:
+    app: {{ include "altiplano-oauth2-proxy.name" . }}
+    chart: {{ include "altiplano-oauth2-proxy.chart" . }}
+    release: {{ .Release.Name }}
+    heritage: {{ .Release.Service }}
+spec:
+  strategy:
+    type: Recreate
+  replicas: {{ .Values.replicaCount }}
+  selector:
+    matchLabels:
+      app: {{ include "altiplano-oauth2-proxy.name" . }}
+      release: {{ .Release.Name }}
+  template:
+    metadata:
+      labels:
+        altiplano-role: {{ .Values.accessRoleLabel }}
+        app: {{ include "altiplano-oauth2-proxy.name" . }}
+        release: {{ .Release.Name }}
+    spec:
+    {{- if (or (.Values.global.K8S_PUBLIC_HOSTNAME) (.Values.hostAliases) (.Values.global.hostAliases)) }}
+      hostAliases:
+      {{- if .Values.global.K8S_PUBLIC_HOSTNAME }}
+      - hostnames:
+        - {{ .Values.global.K8S_PUBLIC_HOSTNAME }}
+        ip: {{ .Values.global.K8S_PUBLIC_IP }}
+      {{- end }}
+      {{- if .Values.hostAliases }}
+{{ toYaml .Values.hostAliases | indent 6 }}
+      {{- else if .Values.global.hostAliases }}
+{{ toYaml .Values.global.hostAliases | indent 6 }}
+      {{- end }}
+    {{- end }}
+      initContainers:
+        - name: init
+          image: "{{ .Values.global.registry }}/{{ .Values.init.repository }}:{{ .Values.init.tag }}"
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          command: ["sh", "-c", "until [ $ALTIPLANO_GEO_ACTIVE_SITE == true ]; do echo waiting for ALTIPLANO_GEO_ACTIVE_SITE to be true; sleep 10; done ; 
+          until curl -s -k {{ tpl (toYaml .Values.keycloakCheck) . | default "" | indent 2 }}  --connect-timeout {{.Values.timeoutSeconds}}; do echo waiting for keycloak service; sleep 10; done;
+          if [ $ALTIPLANO_VAULT_ENABLED == true ];
+          then until [[ -f '/secrets/proxy/env/updateEnv.properties' || -s '/secrets/proxy/env/updateEnv.properties' ]];
+          do echo waiting Secrets Proxy to fetch data successfully; sleep 10; java -jar /opt/init-container/scripts/secrets-proxy.jar; done; 
+          fi;"]
+          volumeMounts:
+          env:
+            - name: ALTIPLANO_GEO_ACTIVE_SITE
+              value: {{ .Values.global.ALTIPLANO_GEO_ACTIVE_SITE | quote }}
+          securityContext:
+            runAsNonRoot: {{ .Values.init.securityContext.runAsNonRoot | default true }}
+            runAsUser: {{ .Values.init.securityContext.runAsUser | default 1000 }}
+            runAsGroup: {{ .Values.init.securityContext.runAsGroup | default 1000 }}
+      containers:
+        - name: {{ .Chart.Name }}
+          image: {{ template "image.fullname" . }}
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          securityContext:
+            runAsNonRoot: {{ .Values.securityContext.runAsNonRoot | default true }}
+            runAsUser: {{ .Values.securityContext.runAsUser | default 201 }}
+            runAsGroup: {{ .Values.securityContext.runAsGroup | default 114 }}
+          ports:
+            - name: oauthproxyport
+              containerPort: 4180
+              protocol: TCP
+          args:
+            - --scope=openid
+            - --ssl-insecure-skip-verify=true
+            - --reverse-proxy=true
+            - --provider-display-name=Keycloak
+            {{- if .Values.global.K8S_PUBLIC_IP }}
+            {{- if contains ":" .Values.global.K8S_PUBLIC_IP }} # This is checking if IP address is IPv6
+            - --http-address=[::]:4180
+            {{- else }}
+            - --http-address=0.0.0.0:4180
+            {{- end }}
+            {{- end }}
+            - --email-domain=*
+            - --oidc-groups-claim={{ .Values.args.oidcGroupsClaim }}
+            - --insecure-oidc-allow-unverified-email=true
+            - --ssl-upstream-insecure-skip-verify=true
+            - --skip-provider-button=true
+            - --skip-oidc-discovery=true
+            - --skip-jwt-bearer-tokens=true
+            - --session-cookie-minimal=true
+          env:
+            - name: TZ
+              {{- if .Values.env.timeZoneEnv}}
+              value: {{ .Values.env.timeZoneEnv }}
+              {{- else if .Values.global.timeZoneEnv }}
+              value: {{ .Values.global.timeZoneEnv }}
+              {{- else }}
+              value: "UTC"
+              {{- end }}
+            - name: ALTIPLANO_GEO_ACTIVE_SITE
+              value: {{ .Values.global.ALTIPLANO_GEO_ACTIVE_SITE | quote }}
+            - name: OAUTH2_PROXY_PROVIDER
+              {{- if .Values.env.OAUTH2_PROXY_PROVIDER }}
+              value: {{ .Values.env.OAUTH2_PROXY_PROVIDER }}
+              {{- else }}
+              value: oidc
+              {{- end }}
+            - name: OAUTH2_PROXY_CLIENT_ID
+              {{- if .Values.env.OAUTH2_PROXY_CLIENT_ID }}
+              value: {{ .Values.env.OAUTH2_PROXY_CLIENT_ID }}
+              {{- else }}
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.passwordSecret }}
+                  key: "keycloak_client_id"
+              {{- end }}
+            - name: OAUTH2_PROXY_CLIENT_SECRET
+              {{- if .Values.env.OAUTH2_PROXY_CLIENT_SECRET }}
+              value: {{ .Values.env.OAUTH2_PROXY_CLIENT_SECRET }}
+              {{- else }}
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.passwordSecret }}
+                  key: "keycloak_client_secret"
+              {{- end }}
+            - name: OAUTH2_PROXY_COOKIE_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.passwordSecret }}
+                  key: "oauth2_proxy_cookie_secret"
+            - name: OAUTH2_PROXY_COOKIE_NAME
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.passwordSecret }}
+                  key: "oauth2_proxy_cookie_name"
+            - name: OAUTH2_PROXY_OIDC_ISSUER_URL
+              {{- if .Values.env.OAUTH2_PROXY_OIDC_ISSUER_URL }}
+              value: {{ (tpl .Values.env.OAUTH2_PROXY_OIDC_ISSUER_URL .) }}
+             {{- else if .Values.global.K8S_PUBLIC_HOSTNAME }}
+                {{- if .Values.global.INGRESS_CONTROLLER_HTTPSPORT }}
+              value: https://{{ .Values.global.K8S_PUBLIC_HOSTNAME }}:{{ .Values.global.INGRESS_CONTROLLER_HTTPSPORT }}/altiplano-sso/realms/{{ .Values.global.ALTIPLANO_KEYCLOAK_UI_REALM }}
+                {{- else }}
+              value: https://{{ .Values.global.K8S_PUBLIC_HOSTNAME }}/altiplano-sso/realms/{{ .Values.global.ALTIPLANO_KEYCLOAK_UI_REALM }}
+                {{- end }}
+              {{- else }}
+                {{- if .Values.global.INGRESS_CONTROLLER_HTTPSPORT }}
+              value: https://{{ .Values.global.K8S_PUBLIC_IP }}:{{ .Values.global.INGRESS_CONTROLLER_HTTPSPORT }}/altiplano-sso/realms/{{ .Values.global.ALTIPLANO_KEYCLOAK_UI_REALM }}
+                {{- else }}
+              value: https://{{ .Values.global.K8S_PUBLIC_IP }}/altiplano-sso/realms/{{ .Values.global.ALTIPLANO_KEYCLOAK_UI_REALM }}
+                {{- end }}
+              {{- end }}
+            - name: OAUTH2_PROXY_OIDC_JWKS_URL
+              {{- if .Values.env.OAUTH2_PROXY_OIDC_JWKS_URL }}
+              value: {{ (tpl .Values.env.OAUTH2_PROXY_OIDC_JWKS_URL .) }}
+             {{- else if .Values.global.K8S_PUBLIC_HOSTNAME }}
+                {{- if .Values.global.INGRESS_CONTROLLER_HTTPSPORT }}
+              value: https://{{ .Values.global.K8S_PUBLIC_HOSTNAME }}:{{ .Values.global.INGRESS_CONTROLLER_HTTPSPORT }}/altiplano-sso/realms/{{ .Values.global.ALTIPLANO_KEYCLOAK_UI_REALM }}/protocol/openid-connect/certs
+                {{- else }}
+              value: https://{{ .Values.global.K8S_PUBLIC_HOSTNAME }}/altiplano-sso/realms/{{ .Values.global.ALTIPLANO_KEYCLOAK_UI_REALM }}/protocol/openid-connect/certs
+                {{- end }}
+              {{- else }}
+                {{- if .Values.global.INGRESS_CONTROLLER_HTTPSPORT }}
+              value: https://{{ .Values.global.K8S_PUBLIC_IP }}:{{ .Values.global.INGRESS_CONTROLLER_HTTPSPORT }}/altiplano-sso/realms/{{ .Values.global.ALTIPLANO_KEYCLOAK_UI_REALM }}/protocol/openid-connect/certs
+                {{- else }}
+              value: https://{{ .Values.global.K8S_PUBLIC_IP }}/altiplano-sso/realms/{{ .Values.global.ALTIPLANO_KEYCLOAK_UI_REALM }}/protocol/openid-connect/certs
+                {{- end }}
+              {{- end }}
+            - name: OAUTH2_PROXY_LOGIN_URL
+              {{- if .Values.env.OAUTH2_PROXY_LOGIN_URL }}
+              value: {{ (tpl .Values.env.OAUTH2_PROXY_LOGIN_URL .) }}
+              {{- else if .Values.global.K8S_PUBLIC_HOSTNAME }}
+                {{- if .Values.global.INGRESS_CONTROLLER_HTTPSPORT }}
+              value: https://{{ .Values.global.K8S_PUBLIC_HOSTNAME }}:{{ .Values.global.INGRESS_CONTROLLER_HTTPSPORT }}/altiplano-sso/realms/{{ .Values.global.ALTIPLANO_KEYCLOAK_UI_REALM }}/protocol/openid-connect/auth
+                {{- else }}
+              value: https://{{ .Values.global.K8S_PUBLIC_HOSTNAME }}/altiplano-sso/realms/{{ .Values.global.ALTIPLANO_KEYCLOAK_UI_REALM }}/protocol/openid-connect/auth
+                {{- end }}
+              {{- else }}
+                {{- if .Values.global.INGRESS_CONTROLLER_HTTPSPORT }}
+              value: https://{{ .Values.global.K8S_PUBLIC_IP }}:{{ .Values.global.INGRESS_CONTROLLER_HTTPSPORT }}/altiplano-sso/realms/{{ .Values.global.ALTIPLANO_KEYCLOAK_UI_REALM }}/protocol/openid-connect/auth
+                {{- else }}
+              value: https://{{ .Values.global.K8S_PUBLIC_IP }}/altiplano-sso/realms/{{ .Values.global.ALTIPLANO_KEYCLOAK_UI_REALM }}/protocol/openid-connect/auth
+                {{- end }}
+              {{- end }}
+            - name: OAUTH2_PROXY_REDEEM_URL
+              {{- if .Values.env.OAUTH2_PROXY_REDEEM_URL }}
+              value: {{ (tpl .Values.env.OAUTH2_PROXY_REDEEM_URL .) }}
+              {{- else if .Values.global.K8S_PUBLIC_HOSTNAME }}
+                {{- if .Values.global.INGRESS_CONTROLLER_HTTPSPORT }}
+              value: https://{{ .Values.global.K8S_PUBLIC_HOSTNAME }}:{{ .Values.global.INGRESS_CONTROLLER_HTTPSPORT }}/altiplano-sso/realms/{{ .Values.global.ALTIPLANO_KEYCLOAK_UI_REALM }}/protocol/openid-connect/token
+                {{- else }}
+              value: https://{{ .Values.global.K8S_PUBLIC_HOSTNAME }}/altiplano-sso/realms/{{ .Values.global.ALTIPLANO_KEYCLOAK_UI_REALM }}/protocol/openid-connect/token
+                {{- end }}
+              {{- else }}
+                {{- if .Values.global.INGRESS_CONTROLLER_HTTPSPORT }}
+              value: https://{{ .Values.global.K8S_PUBLIC_IP }}:{{ .Values.global.INGRESS_CONTROLLER_HTTPSPORT }}/altiplano-sso/realms/{{ .Values.global.ALTIPLANO_KEYCLOAK_UI_REALM }}/protocol/openid-connect/token
+                {{- else }}
+              value: https://{{ .Values.global.K8S_PUBLIC_IP }}/altiplano-sso/realms/{{ .Values.global.ALTIPLANO_KEYCLOAK_UI_REALM }}/protocol/openid-connect/token
+                {{- end }}
+              {{- end }}
+            - name: OAUTH2_PROXY_PROFILE_URL
+              {{- if .Values.env.OAUTH2_PROXY_PROFILE_URL }}
+              value: {{ (tpl .Values.env.OAUTH2_PROXY_PROFILE_URL .) }}
+              {{- else if .Values.global.K8S_PUBLIC_HOSTNAME }}
+                {{- if .Values.global.INGRESS_CONTROLLER_HTTPSPORT }}
+              value: https://{{ .Values.global.K8S_PUBLIC_HOSTNAME }}:{{ .Values.global.INGRESS_CONTROLLER_HTTPSPORT }}/altiplano-sso/realms/{{ .Values.global.ALTIPLANO_KEYCLOAK_UI_REALM }}/protocol/openid-connect/userinfo
+                {{- else }}
+              value: https://{{ .Values.global.K8S_PUBLIC_HOSTNAME }}/altiplano-sso/realms/{{ .Values.global.ALTIPLANO_KEYCLOAK_UI_REALM }}/protocol/openid-connect/userinfo
+                {{- end }}
+              {{- else }}
+                {{- if .Values.global.INGRESS_CONTROLLER_HTTPSPORT }}
+              value: https://{{ .Values.global.K8S_PUBLIC_IP }}:{{ .Values.global.INGRESS_CONTROLLER_HTTPSPORT }}/altiplano-sso/realms/{{ .Values.global.ALTIPLANO_KEYCLOAK_UI_REALM }}/protocol/openid-connect/userinfo
+                {{- else }}
+              value: https://{{ .Values.global.K8S_PUBLIC_IP }}/altiplano-sso/realms/{{ .Values.global.ALTIPLANO_KEYCLOAK_UI_REALM }}/protocol/openid-connect/userinfo
+                {{- end }}
+              {{- end }}
+            - name: OAUTH2_PROXY_VALIDATE_URL
+              {{- if .Values.env.OAUTH2_PROXY_VALIDATE_URL }}
+              value: {{ (tpl .Values.env.OAUTH2_PROXY_VALIDATE_URL .) }}
+              {{- else if .Values.global.K8S_PUBLIC_HOSTNAME }}
+                {{- if .Values.global.INGRESS_CONTROLLER_HTTPSPORT }}
+              value: https://{{ .Values.global.K8S_PUBLIC_HOSTNAME }}:{{ .Values.global.INGRESS_CONTROLLER_HTTPSPORT }}/altiplano-sso/realms/{{ .Values.global.ALTIPLANO_KEYCLOAK_UI_REALM }}/protocol/openid-connect/userinfo
+                {{- else }}
+              value: https://{{ .Values.global.K8S_PUBLIC_HOSTNAME }}/altiplano-sso/realms/{{ .Values.global.ALTIPLANO_KEYCLOAK_UI_REALM }}/protocol/openid-connect/userinfo
+                {{- end }}
+              {{- else }}
+                {{- if .Values.global.INGRESS_CONTROLLER_HTTPSPORT }}
+              value: https://{{ .Values.global.K8S_PUBLIC_IP }}:{{ .Values.global.INGRESS_CONTROLLER_HTTPSPORT }}/altiplano-sso/realms/{{ .Values.global.ALTIPLANO_KEYCLOAK_UI_REALM }}/protocol/openid-connect/userinfo
+                {{- else }}
+              value: https://{{ .Values.global.K8S_PUBLIC_IP }}/altiplano-sso/realms/{{ .Values.global.ALTIPLANO_KEYCLOAK_UI_REALM }}/protocol/openid-connect/userinfo
+                {{- end }}
+              {{- end }}
+            - name: OAUTH2_PROXY_ALLOWED_GROUPS
+              {{- if .Values.env.OAUTH2_PROXY_ALLOWED_GROUPS }}
+              value: {{ (tpl .Values.env.OAUTH2_PROXY_ALLOWED_GROUPS .) }}
+              {{- else }}
+              value: /opentsdbadmin
+              {{- end }}
+            - name: OAUTH2_PROXY_REDIRECT_URL
+              {{- if .Values.env.OAUTH2_PROXY_REDIRECT_URL }}
+              value: {{ (tpl .Values.env.OAUTH2_PROXY_REDIRECT_URL .) }}
+              {{- else if .Values.global.K8S_PUBLIC_HOSTNAME }}
+                {{- if .Values.global.INGRESS_CONTROLLER_HTTPSPORT }}
+              value: https://{{ .Values.global.K8S_PUBLIC_HOSTNAME }}:{{ .Values.global.INGRESS_CONTROLLER_HTTPSPORT }}/oauth2/callback
+                {{- else }}
+              value: https://{{ .Values.global.K8S_PUBLIC_HOSTNAME }}/oauth2/callback
+                {{- end }}
+              {{- else }}
+                {{- if .Values.global.INGRESS_CONTROLLER_HTTPSPORT }}
+              value: https://{{ .Values.global.K8S_PUBLIC_IP }}:{{ .Values.global.INGRESS_CONTROLLER_HTTPSPORT }}/oauth2/callback
+                {{- else }}
+              value: https://{{ .Values.global.K8S_PUBLIC_IP }}/oauth2/callback
+                {{- end }}
+              {{- end }}
+            - name: OAUTH2_PROXY_UPSTREAMS
+              {{- if .Values.env.OAUTH2_PROXY_UPSTREAMS }}
+              value: {{ (tpl .Values.env.OAUTH2_PROXY_UPSTREAMS .) }}
+              {{- else }}
+              value: http://altiplano-opentsdb:4242
+              {{- end }}
+          livenessProbe:
+            exec:
+              command: [ "sh", "-c", "if (curl -s -k {{ tpl (toYaml .Values.keycloakCheck) . | default "" | indent 2 }}  --connect-timeout 5); then echo running; else echo waiting for keycloak service; fi | grep running" ]
+            initialDelaySeconds: {{ .Values.livenessProbe.initialDelaySeconds | default 360 }}
+            periodSeconds: {{ .Values.livenessProbe.periodSeconds | default 60 }}
+            failureThreshold: {{ .Values.livenessProbe.failureThreshold | default 5 }}
+            timeoutSeconds: {{ .Values.timeoutSeconds | default 10 }}
+          readinessProbe:
+            exec:
+              command: [ "sh", "-c", "if (curl -s -k {{ tpl (toYaml .Values.keycloakCheck) . | default "" | indent 2 }}  --connect-timeout 5); then echo running; else echo waiting for keycloak service; fi | grep running" ]
+            initialDelaySeconds: {{ .Values.readinessProbe.initialDelaySeconds | default 30 }}
+            periodSeconds: {{ .Values.readinessProbe.periodSeconds | default 20 }} # a smaller period ensure quick reaction, will be marked ready soon
+            failureThreshold: {{ .Values.readinessProbe.failureThreshold | default 5 }} # ensures 600 seconds of period to startup
+            timeoutSeconds: {{ .Values.timeoutSeconds | default 10 }}
+          resources:
+{{- toYaml .Values.resources | nindent 12 }}
+      volumes:
+        - name: password-secrets
+          secret:
+            secretName: {{ .Values.passwordSecret }}
+      {{- with .Values.nodeSelector }}
+      nodeSelector:
+{{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.affinity }}
+      affinity:
+{{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.tolerations }}
+      tolerations:
+{{- toYaml . | nindent 8 }}
+      {{- end }}

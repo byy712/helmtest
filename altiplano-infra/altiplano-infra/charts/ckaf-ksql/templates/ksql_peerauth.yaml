@@ -1,0 +1,22 @@
+{{- include "ckaf-ksql.istio.initIstio" . }}
+{{- if $.create_peerauth }}
+{{- if semverCompare ">1.4-0" ($.istio.version | toString) }}
+apiVersion: "security.istio.io/v1beta1"
+kind: "PeerAuthentication"
+metadata:
+  name: {{ template "ckaf-ksql.name" . }}-peerauthentication
+  labels:
+{{ include "ckaf-ksql.commonlabels" . | indent 4 }}
+{{- include "csf-common-lib.v1.customLabels" (tuple .Values.global.labels) | indent 4 }}
+  namespace: {{.Release.Namespace}}
+  annotations:
+{{- include "csf-common-lib.v1.customAnnotations" (tuple .Values.global.annotations) | indent 4 }}
+spec:
+  selector:
+    matchLabels:
+      app: {{ .Chart.Name }}
+      release: {{ .Release.Name | quote }}
+  mtls:
+    mode: {{ $.mtls_mode }}
+{{- end }}
+{{- end }}

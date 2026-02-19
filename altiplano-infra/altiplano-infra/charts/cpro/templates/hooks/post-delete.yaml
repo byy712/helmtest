@@ -1,0 +1,85 @@
+{{- if or .Values.server.enabled .Values.alertmanager.enabled .Values.nodeExporter.enabled .Values.kubeStateMetrics.enabled .Values.restserver.enabled .Values.pushgateway.enabled -}}
+apiVersion: {{ template "cpro.apiVersion.jobApiversion" . }}
+kind: Job
+metadata:
+  name: "{{ template "cpro.prometheus.hooks.postDeleteDepName" . }}"
+  labels:
+    {{- include "cpro.app.labels.v3" ( dict "root" . "context" .Values.server ) | nindent 4 }}
+{{- include "cpro.labelsOrAnnotations" (tuple .Values.alertmanager.labels .Values.global.labels) | indent 4}}
+  annotations:
+{{- include "cpro.labelsOrAnnotations" (tuple .Values.alertmanager.annotations .Values.global.annotations) | indent 4}}
+    "helm.sh/hook": post-delete
+    "helm.sh/hook-weight": "0"
+    "helm.sh/hook-delete-policy": hook-succeeded, before-hook-creation
+spec:
+{{$data_csc := dict "cSecCtx" .Values.helmDeleteImage.containerSecurityContext "ctx" . }}
+  activeDeadlineSeconds: {{ default 300 .Values.helmDeleteImage.activeDeadlineSeconds }}
+  template:
+    metadata:
+      labels:
+        {{- include "cpro.app.labels.v3" ( dict "root" . "context" .Values.server ) | nindent 8 }}
+        app: {{ template "cpro.prometheus.name" . }}
+        release: "{{ .Release.Name }}"
+{{- include "cpro.labelsOrAnnotations" (tuple .Values.alertmanager.labels .Values.custom.pod.labels .Values.global.labels) | indent 8}}
+      annotations:
+        # TODO FEATURE enable
+        sidecar.istio.io/inject: "false"
+{{- include "cpro.labelsOrAnnotations" (tuple .Values.alertmanager.annotations .Values.custom.pod.annotations .Values.global.annotations) | indent 8}}
+{{- if .Values.rbac.pspUseAppArmor }}
+{{- include "cpro.labelsOrAnnotations" (tuple .Values.custom.pod.apparmorAnnotations) | indent 8}}
+{{- end }}
+    spec:
+      restartPolicy: Never
+      automountServiceAccountToken: true
+      {{- if or .Values.serviceAccountName .Values.global.serviceAccountName }}
+      serviceAccountName: {{ template "cpro.prometheus.serviceAccountName" . }}
+      {{- else if .Values.rbac.enabled }}
+      serviceAccountName: {{ template "cpro.prometheus.server.postDelete.serviceAccount" . }}
+      {{- else }}
+      serviceAccountName: "default"
+      {{- end }}
+      securityContext:
+      {{$data := dict "securitycontext" .Values.helmDeleteImage.securityContext "ctx" . }}
+      {{- include "cpro.securitycontext" $data | nindent 8 }}
+      {{- if .Values.seLinuxOptions.enabled }}
+        seLinuxOptions:
+          level: {{ .Values.seLinuxOptions.level }}
+          role: {{ .Values.seLinuxOptions.role }}
+          type: {{ .Values.seLinuxOptions.type }}
+          user: {{ .Values.seLinuxOptions.user }}
+      {{- end }}
+{{ include "cpro.hooks.imagePullSecrets" . | indent 6 }}
+      containers:
+      - name: "{{ template "cpro.prometheus.hooks.containerName" . }}"
+      
+{{- include "cpro.helm.delete.image"  (dict "root" . "container" .Values.helmDeleteImage  ) | nindent 8 }}
+{{- include "cpro.terminationMessage" . | nindent 8 }}
+        env:
+          {{- include "cpro.timeZoneEnvName" . | nindent 10 }}
+        resources:
+{{- include "cpro-common-lib.v1.resources" ( dict "root" . "workloadresources" .Values.helmDeleteImage.resources "defaultcpulimit" "100m") | nindent 10 }}
+        command:
+        - sh
+        - -ec
+        - |
+          kubectl delete pod {{ template "cpro.prometheus.server.serverHelmTestPod" . }} {{ template "cpro.prometheus.restserver.helmTestDeploymentName" . }} --namespace {{ .Release.Namespace }} --ignore-not-found
+          {{- if or .Values.server.enabled .Values.alertmanager.enabled }}
+          {{- if and .Values.ha.enabled (not .Values.persistence.reservePvc) .Values.server.persistentVolume.enabled }}
+          kubectl delete pvc --namespace {{ .Release.Namespace }} -l release={{ .Release.Name }},app={{ template "cpro.prometheus.name" . }}
+          {{- end }}
+          {{- end }}
+        securityContext:
+          {{- include "cpro.containerSecurityContext" $data_csc | nindent 10 }}
+{{- with .Values.hooks.nodeSelector }}
+      nodeSelector:
+{{ toYaml . | indent 8 }}
+{{- end }}
+{{- with .Values.hooks.tolerations }}
+      tolerations:
+{{ toYaml . | indent 8 }}
+{{- end }}
+{{- with .Values.hooks.affinity }}
+      affinity:
+{{ toYaml . | indent 8 }}
+{{- end }}
+{{- end }}

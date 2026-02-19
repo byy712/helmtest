@@ -1,0 +1,23 @@
+{{- if .Values.global.ENABLE_KERBEROS_AUTH }}
+{{ $podName := index .Values "altiplano-kafka-mirrormaker" }}
+---
+{{- $krbConfigMapName := $podName.mirrorMakerConfig.krbConfigmapName }}
+---
+{{- $krbConfigKey := $podName.mirrorMakerConfig.KrbConfKeyName }}
+---
+{{- $krbConfigFilePath := .Values.global.krb.krbConfigFilePath }}
+---
+{{- $krb5config := (.Files.Get $krbConfigFilePath) }}
+---
+{{- if empty $krb5config }}
+{{ (required "A valid krb5.conf file must be provided in altiplano-infra/krb folder" $krb5config) }}
+{{- end }}
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ $krbConfigMapName }}
+data:
+  {{ $krbConfigKey }}: "{{ range .Files.Lines $krbConfigFilePath }}
+    {{ . | nindent 4 }}{{ end }}"
+{{- end }}

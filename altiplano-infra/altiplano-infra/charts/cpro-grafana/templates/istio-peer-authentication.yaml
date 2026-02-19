@@ -1,0 +1,24 @@
+{{- include "cpro-grafana.istio.grafanaInitIstio" . }}
+{{- if and ($.istio.enabled) (ne $.istio.version "1.4") }}
+apiVersion: "security.istio.io/v1beta1"
+kind: "PeerAuthentication"
+metadata:
+  labels:
+    {{- include "cpro-grafana.app.labels-v3" . | nindent 4 }}
+    {{- include "cpro-grafana.labelsOrAnnotations" (tuple .Values.global.labels) | indent 4}}
+  annotations:
+{{- include "cpro-grafana.labelsOrAnnotations" (tuple .Values.global.annotations) | indent 4}}
+  name: {{ template "cpro-grafana.fullname" . }}
+  namespace: "{{.Release.Namespace}}"
+spec:
+  selector:
+    matchLabels:
+      app: {{ template "cpro-grafana.name" . }}
+      release: {{ .Release.Name }}
+  mtls:
+{{- if and ($.istio.mtls.enabled) (not $.istio.permissive) }}
+    mode: STRICT
+{{- else }}
+    mode: PERMISSIVE
+{{- end }}
+{{- end }}

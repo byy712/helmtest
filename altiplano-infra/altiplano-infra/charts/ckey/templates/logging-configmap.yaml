@@ -1,0 +1,62 @@
+{{- if not .Values.unifiedLogging.customLog4jConfigMap }}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  annotations:
+    "restartOnUpdate": "true"
+    {{- include "ckey.customAnnotations" (tuple .Values.global.annotations) | indent 4 }}
+  name: {{ template "ckey.fullName" . }}-logging-configuration
+  labels:
+    app: {{ template "ckey.fullName" . }}
+    chart: "{{ .Chart.Name }}-{{ .Chart.Version }}"
+    release: "{{ .Release.Name }}"
+    heritage: "{{ .Release.Service }}"
+    {{- include "ckey.customLabels" (tuple .Values.global.labels ) | indent 4 }}
+    {{- include "ckey.commonLabels" . | indent 4 }}
+data:
+  log4cxx.property: |-
+    {{ if or .Values.global.unifiedLogging.syslog.enabled .Values.unifiedLogging.syslog.enabled }}
+    log4j.rootLogger={{ coalesce .Values.unifiedLogging.logLevel .Values.global.unifiedLogging.logLevel "INFO" }}, console, syslog
+    {{ else }}
+    log4j.rootLogger={{ coalesce .Values.unifiedLogging.logLevel .Values.global.unifiedLogging.logLevel "INFO" }}, console
+    {{ end }}
+    log4j.rootLogger.suppressFailure=TRUE
+
+    log4j.appender.console=org.apache.log4j.ConsoleAppender
+    log4j.appender.console.Layout.Type=org.apache.log4j.PatternLayout
+    log4j.appender.console.Layout.Encoding=UTF-8
+
+    {{ if or .Values.global.unifiedLogging.syslog.enabled .Values.unifiedLogging.syslog.enabled }}
+    log4j.appender.syslog=org.apache.log4j.net.SyslogAppender
+    log4j.appender.syslog.Layout.Type=org.apache.log4j.SyslogLayout
+    log4j.appender.syslog.Layout.Encoding=UTF-8
+    log4j.appender.syslog.Host={{ coalesce .Values.unifiedLogging.syslog.host .Values.global.unifiedLogging.syslog.host "localhost" }}
+    log4j.appender.syslog.Facility={{ coalesce .Values.unifiedLogging.syslog.facility .Values.global.unifiedLogging.syslog.facility "LOCAL5" }}
+    log4j.appender.syslog.Port={{ coalesce .Values.unifiedLogging.syslog.port .Values.global.unifiedLogging.syslog.port "514" }}
+    {{ $protocol := include "ckey.syslogProtocol" . }}
+    log4j.appender.syslog.protocol={{ $protocol }}
+
+    {{ if (eq $protocol "SSL") }}
+    # Keystore
+    log4j.appender.syslog.Ssl.KeyStore.type=JKS
+    {{ if or (.Values.unifiedLogging.syslog.keyStore.secretName) (.Values.global.unifiedLogging.syslog.keyStore.secretName) }}
+    log4j.appender.syslog.Ssl.KeyStore.location="/tmp/syslog-certs/keystore/keystore.jks"
+    log4j.appender.syslog.Ssl.KeyStore.passwordFile="/tmp/syslog-certs/keystore-pass/keystore.pass"
+    {{ else if .Values.secretCredentials.keystoreSecret }}
+    log4j.appender.syslog.Ssl.KeyStore.location="/tmp/opt/keycloak/certs/keycloak.jks"
+    log4j.appender.syslog.Ssl.KeyStore.passwordFile="/opt/keycloak/security/ckey-secret/keycloak-java-keystore-password"
+    {{ end }}
+
+    # Truststore
+    log4j.appender.syslog.Ssl.TrustStore.type=JKS
+    {{ if or (.Values.unifiedLogging.syslog.trustStore.secretName) (.Values.global.unifiedLogging.syslog.trustStore.secretName) }}
+    log4j.appender.syslog.Ssl.TrustStore.location="/tmp/syslog-certs/truststore/truststore.jks"
+    log4j.appender.syslog.Ssl.TrustStore.passwordFile="/tmp/syslog-certs/truststore-pass/truststore.pass"
+    {{ else if .Values.secretCredentials.truststoreSecret }}
+    log4j.appender.syslog.Ssl.TrustStore.location="/tmp/opt/keycloak/certs/client_keystore.jks"
+    log4j.appender.syslog.Ssl.TrustStore.passwordFile="/opt/keycloak/security/ckey-secret/keycloak-java-truststore-password"
+    {{ end }}
+    {{ end }}
+    {{ end }}
+
+{{ end}}

@@ -1,0 +1,67 @@
+{{- if eq (include "citm-ingress.isHPAenabled" .) "true" -}}
+{{- if eq .Values.controller.kind "Deployment" }}
+apiVersion: {{ include "citm-ingress.getAutoScalerAPI" . }}
+kind: HorizontalPodAutoscaler
+metadata:
+  labels:
+    app: {{ template "citm-ingress.name" . }}
+    chart: {{ .Chart.Name }}-{{ .Chart.Version }}
+    component: "{{ .Values.controller.name }}"
+    release: {{ .Release.Name }}
+    {{- include "citm-ingress.commonLabels" . | indent 4 }}
+  name: {{ template "citm-ingress.fullname" . }}
+spec:
+  minReplicas: {{ .Values.controller.hpa.minReplicas }}
+  maxReplicas: {{ .Values.controller.hpa.maxReplicas }}
+  {{- if or  (eq  (include "citm-ingress.getAutoScalerAPI" .) "autoscaling/v2") (eq (include "citm-ingress.getAutoScalerAPI" .) "autoscaling/v2beta2") -}}
+  {{- if .Values.controller.hpa.predefinedMetrics.enabled }}
+  metrics:
+  {{- if .Values.controller.hpa.predefinedMetrics.averageCPUThreshold }}
+  - resource:
+      name: cpu
+      target:
+        averageUtilization: {{ .Values.controller.hpa.predefinedMetrics.averageCPUThreshold }}
+        type: Utilization
+    type: Resource
+  {{- end }}
+  {{- if .Values.controller.hpa.predefinedMetrics.averageMemoryThreshold }}
+  - resource:
+      name: memory
+      target:
+        averageUtilization: {{ .Values.controller.hpa.predefinedMetrics.averageMemoryThreshold }}
+        type: Utilization
+    type: Resource
+  {{- end }}
+  {{- end }}
+  behavior:
+    scaleDown:
+      {{- if .Values.controller.hpa.behavior.scaleDown.selectPolicy }}
+      selectPolicy: {{ .Values.controller.hpa.behavior.scaleDown.selectPolicy }}
+      {{- end }}
+      {{- if .Values.controller.hpa.behavior.scaleDown.policies }}
+      policies:
+{{ toYaml .Values.controller.hpa.behavior.scaleDown.policies | indent 6}}
+      {{- end }}
+      stabilizationWindowSeconds: {{ .Values.controller.hpa.behavior.scaleDown.stabilizationWindowSeconds }}
+    scaleUp:
+      {{- if .Values.controller.hpa.behavior.scaleUp.selectPolicy }}
+      selectPolicy: {{ .Values.controller.hpa.behavior.scaleUp.selectPolicy }}
+      {{- end }}
+      {{- if .Values.controller.hpa.behavior.scaleUp.policies }}
+      policies:
+{{ toYaml .Values.controller.hpa.behavior.scaleUp.policies | indent 6}}
+      {{- end }}
+      stabilizationWindowSeconds: {{ .Values.controller.hpa.behavior.scaleUp.stabilizationWindowSeconds }}
+  {{- else }}
+  # iterating through metrics and fetching cpu utilization value
+  # autoscaling/v1 supports only cpu usage as metric
+  {{- if .Values.controller.hpa.predefinedMetrics.enabled }}
+  targetCPUUtilizationPercentage: {{ .Values.controller.hpa.predefinedMetrics.averageCPUThreshold }}
+  {{- end }}
+  {{- end }}
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: {{ include "csf-common-lib.v3.resourceName" (tuple . "Deployment") }}
+{{- end }}
+{{- end }}

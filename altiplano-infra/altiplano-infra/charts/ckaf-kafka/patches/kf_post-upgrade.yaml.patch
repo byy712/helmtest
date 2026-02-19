@@ -1,0 +1,38 @@
+--- ckaf-kafka-8.0.2-origin/templates/post-upgrade.yaml	2024-02-20 15:47:14.000000000 +0530
++++ ckaf-kafka-8.0.2-nokia-patch-1/templates/post-upgrade.yaml	2024-01-31 08:47:55.000000000 +0530
+@@ -19,6 +19,7 @@
+   template:
+     metadata:
+       labels:
++        altiplano-role: {{ .Values.accessRoleLabel }}
+         app: {{ .Chart.Name }}
+ {{ include "ckaf-kafka.commonLabels" . | indent 8 }}
+ {{- include "csf-common-lib.v1.customLabels" (tuple .Values.global.labels) | indent 8 }}
+@@ -69,6 +70,9 @@
+           {{- if ( ne ( toString ( .Values.security.runAsUser )) "auto" ) }}
+           runAsUser: {{ .Values.security.runAsUser }}
+           {{- end }}
++          {{- if .Values.security.runAsGroup }}
++          runAsGroup: {{ .Values.security.runAsGroup }}
++          {{- end }}
+           allowPrivilegeEscalation: false
+           {{- if eq (include "ckaf-kafka.renderSeccompProfile" .) "true" }}
+           seccompProfile:
+@@ -141,6 +145,7 @@
+   template:
+     metadata:
+       labels:
++        altiplano-role: {{ .Values.accessRoleLabel }}
+         app: {{ .Chart.Name }}
+ {{ include "ckaf-kafka.commonLabels" . | indent 8 }}
+ {{- include "csf-common-lib.v1.customLabels" (tuple .Values.global.labels) | indent 8 }}
+@@ -191,6 +196,9 @@
+           {{- if ( ne ( toString ( .Values.security.runAsUser )) "auto" ) }}
+           runAsUser: {{ .Values.security.runAsUser }}
+           {{- end }}
++          {{- if .Values.security.runAsGroup }}
++          runAsGroup: {{ .Values.security.runAsGroup }}
++          {{- end }}
+           allowPrivilegeEscalation: false
+           {{- if eq (include "ckaf-kafka.renderSeccompProfile" .) "true" }}
+           seccompProfile:

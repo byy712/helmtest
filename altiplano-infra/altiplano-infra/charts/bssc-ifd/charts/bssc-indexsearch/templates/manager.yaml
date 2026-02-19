@@ -1,0 +1,670 @@
+{{- include "bssc-indexsearch.istio.properties" . }}
+{{- include "bssc-indexsearch.istio.initIstio" . }}
+{{- include "bssc-indexsearch.syslogValues" . }}
+{{- include "bssc-indexsearch.syslogTlsValues" . }}
+# This condition is to ensure sensitiveInfoInSecret flag is enabled when security is enabled.
+{{- include "bssc-indexsearch.securityPrereqCheck" . }}
+{{- include "bssc-indexsearch.isCertManagerEnable" . }}
+{{- include "bssc-indexsearch.syslogSendLogsViaLog4j" . }}
+{{- include "bssc-indexsearch.ccrEnabled" . }}
+{{- include "bssc-indexsearch.supportedImageFlavor" . }}
+apiVersion: {{ template "bssc-indexsearch.apiVersionExtensionsV1Beta1orAppsV1" . }}
+kind: StatefulSet
+metadata:
+  name: {{ template "bssc-indexsearch.manager.fullname" . }}
+  labels:
+{{- include "bssc-indexsearch.commonLabels" (tuple . .Values.manager.name ) | indent 4 }}
+{{- include "bssc-indexsearch.csf-toolkit-helm.labels" (tuple . .Values.custom.manager.statefulSet.labels) | indent 4 }}
+    role: is-manager
+    source: opensearch
+  annotations:
+    seccomp.security.alpha.kubernetes.io/allowedProfileNames: {{ .Values.global.seccompAllowedProfileNames }}
+    seccomp.security.alpha.kubernetes.io/defaultProfileName: {{ .Values.global.seccompDefaultProfileName }}
+{{ include "bssc-indexsearch.stakaterReloaderAnnotation" . | indent 4 }}
+{{- include "bssc-indexsearch.csf-toolkit-helm.annotations" (tuple . .Values.custom.manager.statefulSet.annotations) | indent 4 }}
+spec:
+  serviceName: {{ include "bssc-indexsearch.fullname" . |trunc ((sub .Values.customResourceNames.resourceNameLimit 10)|int) }}-discovery
+  replicas: {{.Values.manager.replicas }}
+  podManagementPolicy: {{ .Values.manager.podManagementPolicy }}
+  selector:
+    matchLabels:
+{{- include "bssc-indexsearch.selectorLabels" (tuple . .Values.manager.name ) | indent 8 }}
+  updateStrategy:
+{{ toYaml .Values.manager.updateStrategy | indent 4 }}
+  template:
+    metadata:
+      labels:
+        altiplano-role: {{ .Values.accessRoleLabel }}
+{{- include "bssc-indexsearch.commonLabels" (tuple . .Values.manager.name ) | indent 8 }}
+{{- include "bssc-indexsearch.csf-toolkit-helm.labels" (tuple . .Values.custom.manager.pod.labels) | indent 8}}
+        role: is-manager
+        source: opensearch
+      annotations:
+        #Additional flag syslogSidecar.enabled is added at each workload level to provide an option to disable syslog for individual workload even if syslog is enabled at indexsearch level.
+        {{- if and ( $.syslogEnabled ) (eq .Values.manager.syslogSidecar.enabled true) (not ($.sendLogsViaLog4j)) }}
+        checksum/loggingconfig: {{ include (print $.Template.BasePath "/unifiedlogging_cm.yaml") . | sha256sum }}
+        {{- end }}
+        {{- if not .Values.security.sensitiveInfoInSecret.enabled }}
+        checksum/secret: {{ include (print $.Template.BasePath "/secret.yaml") . | sha256sum }}
+        {{- end }}
+        checksum/config: {{ include (print $.Template.BasePath "/extra-config.yaml") . | sha256sum }}
+        checksum/jvmoptions: {{ include (print $.Template.BasePath "/jvm-options.yaml") . | sha256sum }}
+        checksum/log4j2: {{ include (print $.Template.BasePath "/log4j2-properties-cm.yaml") . | sha256sum }}
+        sidecar.istio.io/inject: "{{ $.istio.enabled }}"
+        {{- if and ($.istio.enabled) (ne $.istioVersion "1.4") }}
+        traffic.sidecar.istio.io/excludeInboundPorts: "{{ .Values.service.manager_port }}"
+        traffic.sidecar.istio.io/excludeOutboundPorts: "{{ .Values.service.manager_port }}"
+        {{- end }}
+{{- include "bssc-indexsearch.csf-toolkit-helm.annotations" (tuple . .Values.custom.manager.pod.annotations) | indent 8}}
+    spec:
+      securityContext:
+{{ include "bssc-indexsearch.pod.securityContext" . | indent 8 }}
+      serviceAccountName: {{ template "bssc-indexsearch.serviceAccount.name" . }}
+      {{- if ($.istio.enabled) }}
+      automountServiceAccountToken: true
+      {{- else }}
+      automountServiceAccountToken: false
+      {{- end }}
+      {{- if .Values.manager.priorityClassName }}
+      priorityClassName: {{ .Values.manager.priorityClassName | quote }}
+      {{- else if .Values.global.priorityClassName }}
+      priorityClassName: {{ .Values.global.priorityClassName | quote }}
+      {{- end }}
+      {{- if or .Values.manager.podAntiAffinity.ruleDefinition .Values.manager.podAntiAffinity.customDefinition .Values.manager.nodeAffinity .Values.manager.podAffinity }}
+      affinity:
+      {{- end }}
+      {{- if eq .Values.manager.podAntiAffinity.ruleDefinition "hard" }}
+        podAntiAffinity:
+          requiredDuringSchedulingIgnoredDuringExecution:
+            - topologyKey: "kubernetes.io/hostname"
+              labelSelector:
+                matchLabels:
+{{- include "bssc-indexsearch.selectorLabels" (tuple . .Values.manager.name ) | indent 18 }}
+      {{- else if eq .Values.manager.podAntiAffinity.ruleDefinition "soft" }}
+        podAntiAffinity:
+          preferredDuringSchedulingIgnoredDuringExecution:
+          - weight: 100
+            podAffinityTerm:
+              topologyKey: kubernetes.io/hostname
+              labelSelector:
+                matchLabels:
+{{- include "bssc-indexsearch.selectorLabels" (tuple . .Values.manager.name ) | indent 18 }}
+          - weight: 50
+            podAffinityTerm:
+              topologyKey: topology.kubernetes.io/zone
+              labelSelector:
+                matchLabels:
+{{- include "bssc-indexsearch.selectorLabels" (tuple . .Values.manager.name ) | indent 18 }}
+      {{- else if .Values.manager.podAntiAffinity.customDefinition }}
+        podAntiAffinity:
+{{ toYaml .Values.manager.podAntiAffinity.customDefinition | indent 10 }}
+      {{- end }}
+      {{- if .Values.manager.podAffinity }}
+        podAffinity:
+{{ toYaml .Values.manager.podAffinity | indent 10 }}
+      {{- end }}
+      {{- with .Values.manager.nodeAffinity }}
+        nodeAffinity:
+{{ toYaml . | indent 10 }}
+      {{- end }}
+{{- if .Values.manager.nodeSelector }}
+      nodeSelector:
+{{ toYaml .Values.manager.nodeSelector | indent 8 }}
+{{- end }}
+{{- if .Values.manager.topologySpreadConstraints }}
+      topologySpreadConstraints: {{- include "bssc-indexsearch.topologySpreadConstraints" (tuple . .Values.manager ) | nindent 8 }}
+{{- end }}
+      hostAliases:
+      {{- if .Values.manager.hostAliases }}
+{{ toYaml .Values.manager.hostAliases | indent 6 }}
+      {{- end }}
+{{- if .Values.manager.tolerations }}
+      tolerations:
+{{ toYaml .Values.manager.tolerations | indent 8 }}
+{{- end }}
+      {{- with or .Values.imagePullSecrets .Values.global.imagePullSecrets }}
+      imagePullSecrets:
+{{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- if and (.Values.security.enable) }}
+      {{- if eq (tpl (.Values.security.sensitiveInfoInSecret.enabled | toString ) .) "true" }}
+      initContainers:
+      - name: fnms-init-container-{{ .Chart.Name }}
+        image: {{ .Values.global.registry }}/{{ .Values.init.image.name }}:{{ .Values.init.image.tag }}
+        env:
+          - name: keystore_jks_pass
+            valueFrom:
+              secretKeyRef:
+                name: {{ .Values.certificates.secrets.altiplano_keystore_secrets }}
+                key: {{ .Values.certificates.fileNames.altiplano_keystore_password }}
+          - name: keyfile
+            value: /etc/altiplano/certificates/secrets/{{ .Values.certificates.fileNames.indexsearch_server_key_pem }}
+          - name: keyfilepass
+            value: /etc/altiplano/certificates/secrets/{{ .Values.certificates.fileNames.indexsearch_server_key_pass }}
+          - name: certfile
+            value: /etc/altiplano/certificates/secrets/{{ .Values.certificates.fileNames.indexsearch_server_cert_pem }}
+          - name: keystore_jks
+            value: /etc/indexsearch/secrets/ssl/{{ .Values.certificates.fileNames.indexsearch_server_keystore_jks }}
+          - name: truststore
+            value: /etc/altiplano/certificates/secrets/{{ .Values.certificates.fileNames.indexsearch_server_trustchain_cert_pem }}
+          - name: truststore_jks
+            value: /etc/indexsearch/secrets/ssl/{{ .Values.certificates.fileNames.indexsearch_server_truststore_jks }}
+
+          - name: clientkeyfile
+            value: /etc/altiplano/certificates/secrets/{{ .Values.certificates.fileNames.client_key_pem }}
+          - name: clientkeyfilepass
+            value: /etc/altiplano/certificates/secrets/{{ .Values.certificates.fileNames.client_key_pass }}
+          - name: clientcertfile
+            value: /etc/altiplano/certificates/secrets/{{ .Values.certificates.fileNames.client_cert_pem }}
+          - name: clientkeystore_jks
+            value: /etc/indexsearch/secrets/ssl/{{ .Values.certificates.fileNames.client_keystore_jks }}
+          - name: clienttruststore
+            value: /etc/altiplano/certificates/secrets/{{ .Values.certificates.fileNames.client_trustchain_cert_pem }}
+          - name: clienttruststore_jks
+            value: /etc/indexsearch/secrets/ssl/{{ .Values.certificates.fileNames.client_truststore_jks }}
+        command: [ "/bin/sh", "-c" ]
+        args:
+          - |
+            /opt/init-container/pem-to-keystore.sh $keyfile $keyfilepass $certfile $keystore_jks_pass $keystore_jks $truststore $keystore_jks_pass $truststore_jks
+            /opt/init-container/pem-to-keystore.sh $clientkeyfile $clientkeyfilepass $clientcertfile $keystore_jks_pass $clientkeystore_jks $clienttruststore $keystore_jks_pass $clienttruststore_jks
+            cp /etc/indexsearch/secrets/ssl/{{ .Values.certificates.fileNames.indexsearch_server_keystore_jks }} /etc/initContainerMount/secrets/keystoreJks
+            cp /etc/indexsearch/secrets/ssl/{{ .Values.certificates.fileNames.indexsearch_server_keystore_jks }} /etc/initContainerMount/secrets/..data/keystoreJks
+            cp /etc/altiplano/certificates/storepass/{{ .Values.certificates.fileNames.altiplano_keystore_password }} /etc/initContainerMount/secrets/.keyPass
+            cp /etc/altiplano/certificates/storepass/{{ .Values.certificates.fileNames.altiplano_keystore_password }} /etc/initContainerMount/secrets/..data/.keyPass
+            cp /etc/indexsearch/secrets/ssl/{{ .Values.certificates.fileNames.indexsearch_server_truststore_jks }} /etc/initContainerMount/secrets/truststoreJks
+            cp /etc/indexsearch/secrets/ssl/{{ .Values.certificates.fileNames.indexsearch_server_truststore_jks }} /etc/initContainerMount/secrets/..data/truststoreJks
+            cp /etc/altiplano/certificates/storepass/{{ .Values.certificates.fileNames.altiplano_keystore_password }} /etc/initContainerMount/secrets/.trustPass
+            cp /etc/altiplano/certificates/storepass/{{ .Values.certificates.fileNames.altiplano_keystore_password }} /etc/initContainerMount/secrets/..data/.trustPass
+            cp /etc/indexsearch/secrets/ssl/{{ .Values.certificates.fileNames.client_keystore_jks }} /etc/initContainerMount/secrets/clientKeystoreJks
+            cp /etc/indexsearch/secrets/ssl/{{ .Values.certificates.fileNames.client_keystore_jks }} /etc/initContainerMount/secrets/..data/clientKeystoreJks
+            cp /etc/altiplano/certificates/secrets/{{ .Values.certificates.fileNames.client_cert_pem }} /etc/initContainerMount/secrets/clientCrtPem
+            cp /etc/altiplano/certificates/secrets/{{ .Values.certificates.fileNames.client_cert_pem }} /etc/initContainerMount/secrets/..data/clientCrtPem
+            cp /etc/altiplano/certificates/secrets/{{ .Values.certificates.fileNames.client_key_pem }} /etc/initContainerMount/secrets/clientKeyPem
+            cp /etc/altiplano/certificates/secrets/{{ .Values.certificates.fileNames.client_key_pem }} /etc/initContainerMount/secrets/..data/clientKeyPem
+            cp /etc/altiplano/certificates/secrets/{{ .Values.certificates.fileNames.altiplano_sso_trustchain_cert_pem }} /etc/initContainerMount/secrets/keycloakRootCaPem
+            cp /etc/altiplano/certificates/secrets/{{ .Values.certificates.fileNames.altiplano_sso_trustchain_cert_pem }} /etc/initContainerMount/secrets/..data/keycloakRootCaPem
+            admin_identity=$(keytool -list -v -keystore $clientkeystore_jks -storepass $keystore_jks_pass 2>/dev/null | grep "Owner:" | sed 's/Owner: //' | head -1)
+            echo $admin_identity > /etc/initContainerMount/secrets/.authAdminIdentity
+            echo $admin_identity > /etc/initContainerMount/secrets/..data/.authAdminIdentity
+        volumeMounts:
+          - name: ssl-certificates
+            mountPath: "/etc/indexsearch/secrets/ssl/"
+          - name: ssl-certificates-data
+            mountPath: "/etc/initContainerMount/secrets/..data"
+          - name: altiplano-indexsearch-certs
+            mountPath: "/etc/altiplano/certificates/secrets/"
+          - name: is-certsecrets
+            mountPath: "/etc/initContainerMount/secrets"
+          - name: altiplano-keystore-password
+            mountPath: "/etc/altiplano/certificates/storepass/"
+      - name : {{ template "bssc-indexsearch.initContainer.name" . }}
+        image: {{ include "bssc-indexsearch.registry" (tuple .Values .Values.internalInitRegistry) }}/{{ .Values.initContainer.repo }}:{{ .Values.initContainer.tag }}
+        imagePullPolicy: {{.Values.manager.ImagePullPolicy}}
+        command: ['sh', '-c', "/etc/initContainerMount/encrypt.sh"]
+        securityContext:
+{{ include "bssc-indexsearch.container.securityContext" . | indent 10 }}
+        resources:
+{{ include "bssc-indexsearch.resources" (tuple . .Values.initContainer.resources "100m") | indent 10 }}
+        env:
+        - name: TZ
+          value: {{ or .Values.timezone.timeZoneEnv .Values.global.timeZoneEnv "UTC" | quote }}
+        volumeMounts:
+        - name: ssl-certificates
+          mountPath: "/etc/indexsearch/secrets/ssl/"
+        - name: ssl-certificates-data
+          mountPath: "/etc/initContainerMount/secrets/..data"
+        - name: altiplano-indexsearch-certs
+          mountPath: "/etc/altiplano/certificates/secrets/"
+        - name: altiplano-keystore-password
+          mountPath: "/etc/altiplano/certificates/storepass/"
+        - name: shared-volume
+          mountPath: "/etc/sharedMount/"
+        - name: is-certsecrets
+          mountPath: "/etc/initContainerMount/secrets"
+        - name: is-passwordsecret
+          mountPath: "/etc/initContainerMount/passwords"
+          {{- if and (eq $.isCertManagerEnabled "true") ( not $.istio.enabled) }}
+              {{- if or (and (eq .Values.security.nodeCrt.tls.secretRef.name "") ( not .Values.security.sensitiveInfoInSecret.keystoreJks)) (and (eq .Values.security.adminCrt.tls.secretRef.name "") (not .Values.security.sensitiveInfoInSecret.clientKeyPem)) }}
+        - name: cert-manager-secret
+          mountPath: "/etc/initContainerMount/certManagerSecret/"
+              {{- end }}
+            {{- end }}
+      {{- end }}
+      {{- end }}      
+      containers:
+      - name: {{ template "bssc-indexsearch.manager.container" . }}
+        image: {{ include "bssc-indexsearch.registry" (tuple .Values .Values.internalAppRegistry) }}/{{.Values.manager.image.repo}}:{{.Values.manager.image.tag}}
+        imagePullPolicy: {{.Values.manager.ImagePullPolicy}}
+        resources:
+{{ include "bssc-indexsearch.resources" (tuple . .Values.manager.resources "1") | indent 10 }}
+        securityContext:
+{{ include "bssc-indexsearch.container.securityContext" . | indent 10 }}
+        readinessProbe:
+          tcpSocket:
+            port: {{ .Values.service.manager_port }}
+          initialDelaySeconds: {{ .Values.manager.readinessProbe.initialDelaySeconds }}
+          periodSeconds: {{ .Values.manager.readinessProbe.periodSeconds }}
+          timeoutSeconds: {{ .Values.manager.readinessProbe.timeoutSeconds }}
+          successThreshold: {{ .Values.manager.readinessProbe.successThreshold }}
+          failureThreshold: {{ .Values.manager.readinessProbe.failureThreshold }}
+        livenessProbe:
+          {{- if .Values.manager.livenessProbe.probecheck }}
+{{ tpl (toYaml .Values.manager.livenessProbe.probecheck) . | indent 10 }}
+          {{- else }}
+          tcpSocket:
+            port: {{ .Values.service.manager_port }}
+          {{- end }}
+          initialDelaySeconds: {{ .Values.manager.livenessProbe.initialDelaySeconds }}
+          periodSeconds: {{ .Values.manager.livenessProbe.periodSeconds }}
+          timeoutSeconds: {{ .Values.manager.livenessProbe.timeoutSeconds }}
+          successThreshold: {{ .Values.manager.livenessProbe.successThreshold }}
+          failureThreshold: {{ .Values.manager.livenessProbe.failureThreshold }}
+
+        env:
+          - name: "CLUSTER_NAME"
+            value: {{ printf "%s-%s" .Release.Namespace .Release.Name | quote }}
+          - name: "NODE_ROLES"
+            value: "{{ include "bssc-indexsearch.nodeRoles" (tuple . "cluster_manager") }}"
+          - name: "OPENSEARCH_JAVA_OPTS"
+            value: "{{.Values.manager.java_opts}}"
+          - name: "DISCOVERY_SERVICE"
+            value: "{{ include "bssc-indexsearch.fullname" . |trunc ((sub .Values.customResourceNames.resourceNameLimit 10)|int) }}-discovery"
+          - name: "NUMBER_OF_REPLICAS"
+            value: "1"
+          - name: "processors"
+            value: "{{.Values.manager.processors | default 1 }}"
+          - name: "SENSITIVE_INFO_IN_SECRETS"
+            value: {{ (tpl (.Values.security.sensitiveInfoInSecret.enabled | toString ) .) | quote }}
+          - name: "KEYCLOAK_AUTH"
+            value: "{{ .Values.security.keycloak_auth }}"
+          - name: "SEC_ENABLED"
+            value: "{{ .Values.security.enable }}"
+          - name: NSS_SDB_USE_CACHE
+            value: "no"
+          - name: "CERT_MANAGER_ENABLED"
+            value: {{ $.isCertManagerEnabled | quote }}
+          - name: "SYSLOG_ENABLED"
+            {{- if and ( $.syslogEnabled ) (or (eq (.Values.manager.syslogSidecar.enabled) true ) ( $.sendLogsViaLog4j )) }}
+            value: "true"
+            {{- else }}
+            value: "false"
+            {{- end }}
+          - name: "SEND_LOGS_VIA_LOG4J"
+            {{- if eq ( $.sendLogsViaLog4j | toString ) "true" }}
+            value: "true"
+            {{- else }}
+            value: "false"
+            {{- end }}
+          {{- if and ( $.syslogEnabled ) ( $.sendLogsViaLog4j ) }}
+          - name: "FACILITY_SET_BY_USER"
+            value: {{ $.syslog.facility | default "" }}
+          {{- end }}
+          - name: "LOG4J_SET_BY_USER"
+          {{- if .Values.log4j2_properties }}
+            value: "true"
+          {{- else }}
+            value: "false"
+          {{- end }}
+          - name: "HTTP_PORT"
+            value: "{{ .Values.service.client_port }}"
+          - name: "TRANSPORT_PORT"
+            value: "{{ .Values.service.manager_port }}"
+          - name: "OPENSEARCH_SERVICE"
+            value: "{{.Values.service.name}}"
+            {{- if or (.Values.unifiedLogging.extension) (.Values.global.unifiedLogging.extension) }}
+          - name: "EXTENSION_FIELDS"
+            value: {{ or .Values.unifiedLogging.extension .Values.global.unifiedLogging.extension | toJson | quote }}
+            {{- end }}
+          {{- if $.istio.enabled }}
+          - name: "ISTIO_VERSION"
+            value: "{{ $.istioVersion }}"
+          {{- end }}
+          - name: TZ
+            value: {{ or .Values.timezone.timeZoneEnv .Values.global.timeZoneEnv "UTC" | quote }}
+          - name: NETWORK_HOST
+            {{- if $.istio.enabled }}
+            value: "0.0.0.0"
+            {{- else }}
+            value: "{{.Values.network_host}}"
+            {{- end }}
+          {{- if .Values.cbur.enabled }}
+          - name: "PATH_REPO"
+            value: "/{{ .Values.backup_restore.path }}"
+          {{- else if not .Values.persistence.backup.enabled }}
+          - name: "PATH_REPO"
+            value: "/data/indexsearch_backup"
+          {{- end }}
+          - name: NAMESPACE
+            valueFrom:
+              fieldRef:
+                fieldPath: metadata.namespace
+          - name: NODE_NAME
+            valueFrom:
+              fieldRef:
+                fieldPath: metadata.name
+          - name: CLUSTER_INITIAL_CLUSTER_MANAGER_NODES
+            value: "{{ template "bssc-indexsearch.endpoints" . }}"
+          - name: ISTIO_ENABLED
+            value: "{{ $.istio.enabled }}"
+          {{- if $.ccrEnabled }}
+          - name: CROSS_CLUSTER_REPLICATION
+            value: "true"
+            {{- if .Values.crossClusterReplication.leader.enabled }}
+          - name: "FOLLOWERS_DN"
+            value: "{{ template "bssc-indexsearch.ccr.followerDNs" . }}"
+            {{- end }}
+          {{- end }}
+          {{- if .Values.security.enable }}
+            {{- if .Values.security.ciphers }}
+          - name: plugins.security.ssl.http.enabled_ciphers
+            value: "{{ template "bssc-indexsearch.ciphers" . }}"
+            {{- end }}
+            {{- if ne .Values.security.nodeCrt.tls.secretRef.name "" }}
+          - name: "NODE_TLS_SECRET_ENABLED"
+            value: "true"
+            {{- else }}
+          - name: "NODE_TLS_SECRET_ENABLED"
+            value: "false"
+            {{- end }}
+          {{- if ne .Values.security.adminCrt.tls.secretRef.name "" }}
+          - name: "ADMIN_TLS_SECRET_ENABLED"
+            value: "true"
+            {{- else }}
+          - name: "ADMIN_TLS_SECRET_ENABLED"
+            value: "false"
+            {{- end }}
+          - name: "SEC_CONFIG_DIRECTORY"
+            value: "/etc/opensearch/securityconfig/"
+            {{- end }}
+          {{- if .Values.env}}
+{{ toYaml .Values.env | indent 10 }}
+          {{- end }}
+          - name: "CONTAINER_NAME"
+            value: {{ template "bssc-indexsearch.manager.container" . }}
+        ports:
+        - containerPort: {{.Values.service.manager_port}}
+          name: tcp-transport
+          protocol: TCP
+        - containerPort: {{.Values.service.client_port}}
+          name: tcp-rest
+          protocol: TCP
+
+        volumeMounts:
+        - name: ssl-certificates
+          mountPath: "/etc/indexsearch/secrets/ssl/"
+        - name: ssl-certificates-data
+          mountPath: "/etc/initContainerMount/secrets/..data"
+        - name: altiplano-indexsearch-certs
+          mountPath: "/etc/altiplano/certificates/secrets/"
+        - name: altiplano-keystore-password
+          mountPath: "/etc/altiplano/certificates/storepass/"
+        - name: "extensions-tmp"
+          mountPath: "/usr/share/opensearch/extensions"
+        - name: tmp
+          mountPath: /tmp
+        - name: is-config
+          mountPath: /etc/opensearch/config
+        - name: "log4j2-properties"
+          mountPath: /opt/opensearch/log4j2-properties
+        - name: jvm-options
+          mountPath: /opt/opensearch/jvmoptions
+        {{- if and (.Values.persistence) (.Values.persistence.enabled) }}
+        - name: managerdir
+          mountPath: /data
+        {{- end }}
+        {{- if and ( $.syslogEnabled ) ($.sendLogsViaLog4j) }}
+          {{- if and (default "" $.syslogSecretName) (default "" $.syslogSecretKey) }}
+        - name: syslog-secret
+          mountPath: "/opt/opensearch/syslog/certs"
+          {{- end }}
+        {{- end }}
+        {{- if not (empty .Values.extraConfig) }}
+        - name: extra-config
+          mountPath: /opt/opensearch/extraconfig
+        {{- end }}
+        {{- if and (.Values.persistence) (.Values.persistence.enabled) }}
+        {{- if .Values.cbur.enabled }}
+        - name: indexsearch-backup
+          mountPath: "/{{ .Values.backup_restore.path }}"
+        - name: "cbura-sidecar-volume"
+          mountPath: /cburtmp
+        {{- else }}
+        {{- if .Values.persistence.backup.enabled }}
+        - name: indexsearch-backup
+          mountPath: /indexsearch-backup
+        {{- end }}
+        {{- end }}
+        {{- end }}
+        {{- if .Values.security.enable }}
+          {{- if eq (tpl (.Values.security.sensitiveInfoInSecret.enabled | toString ) .) "true" }}
+        - name: shared-volume
+          mountPath: "/etc/sharedMount/"
+        - name: securityconf-with-sensitiveinfo
+          mountPath: /etc/opensearch/securityconfig
+          {{- end }}
+          {{- if (or (ne .Values.security.nodeCrt.tls.secretRef.name "") (ne .Values.security.adminCrt.tls.secretRef.name ""))  }}
+        - name: tls-secret
+          mountPath: /etc/opensearch/tlssecret
+          {{- end }}
+        {{- end }}
+      {{- if and ( $.syslogEnabled ) (not ($.sendLogsViaLog4j)) }}
+        {{- if eq .Values.manager.syslogSidecar.enabled true }}
+      - name: {{ template "bssc-indexsearch.unifiedLoggingContainer.name" . }}
+        image: {{ include "bssc-indexsearch.registry" (tuple .Values .Values.internalFluentdSidecarRegistry) }}/{{.Values.unifiedLogging.imageRepo}}:{{ (include "bssc-indexsearch.imageTag" (tuple .Values.unifiedLogging.imageTag $.commonSupportedImageFlavor .Values .Values.unifiedLogging )) }}
+        imagePullPolicy: {{ .Values.unifiedLogging.imagePullPolicy }}
+        resources:
+{{ include "bssc-indexsearch.resources" (tuple . .Values.unifiedLogging.resources "50m") | indent 10 }}
+        command: ['bash', '-c', "/opt/scripts/fluentd-sidecar-entrypoint.sh"]
+        securityContext:
+{{ include "bssc-indexsearch.container.securityContext" . | indent 10 }}
+        env:
+          - name: NAMESPACE
+            valueFrom:
+              fieldRef:
+                fieldPath: metadata.namespace
+          - name: TZ
+            value: {{ or .Values.timezone.timeZoneEnv .Values.global.timeZoneEnv "UTC" | quote }}
+          - name: "ISTIO_ENABLED"
+            value: "{{ $.istio.enabled }}"
+          - name: "EXTENSION_FIELDS"
+            value: {{ or .Values.unifiedLogging.extension .Values.global.unifiedLogging.extension | toJson | quote }}
+          - name: TMPDIR
+            value: /tmp/fluentd-tmp-sidecar
+          {{- if .Values.unifiedLogging.env}}
+{{ toYaml .Values.unifiedLogging.env | indent 10 }}
+          {{- end }}
+          - name: "CONTAINER_NAME"
+            value: {{ template "bssc-indexsearch.unifiedLoggingContainer.name" . }}
+        volumeMounts:
+        - name: "tmp"
+          mountPath: "/tmp"
+        - name: "unified-logging-conf"
+          mountPath: "/etc/fluent/"
+          {{- if and (default "" $.syslogSecretName) (default "" $.syslogSecretKey) }}
+        - name: syslog-secret
+          mountPath: "/etc/fluent/certs"
+          {{- end }}
+        {{- end }}
+      {{- end }}
+      volumes:
+      # mounting /usr/share/opensearch/extensions directory as emptyDir since OS-v2.7.0 requires this location to be writable on runtime.
+      # Use of this directory and the contents inside is unclear yet and query is raised to community.
+      - name: is-certsecrets
+        emptyDir: {}
+      - name: altiplano-indexsearch-certs
+        secret:
+          secretName: altiplano-indexsearch-certificate-secrets
+      - name: ssl-certificates
+        emptyDir: {}
+      - name: ssl-certificates-data
+        emptyDir: {}
+      - name: altiplano-keystore-password
+        secret:
+          secretName: {{ .Values.certificates.secrets.altiplano_keystore_secrets }}
+      - name: extensions-tmp
+        emptyDir:
+          sizeLimit: {{ default "100Mi"  .Values.emptyDirSizeLimit.extensionTmp }}
+      # mounting tmp directory as GC logs, Heampdump, jvm error logs are written to /tmp/opensearch
+      - name: tmp
+        emptyDir:
+          sizeLimit: {{ default "200Mi"  .Values.emptyDirSizeLimit.tmp }}
+      {{- if ( $.syslogEnabled ) }}
+        {{- if and (eq .Values.manager.syslogSidecar.enabled true) (not ($.sendLogsViaLog4j)) }}
+      - name: unified-logging-conf
+        configMap:
+          name: {{ template "bssc-indexsearch.fullname" . }}-logging-conf
+        {{- end }}
+        {{- if and (default "" $.syslogSecretName) (default "" $.syslogSecretKey) }}
+      - name: syslog-secret
+        secret:
+          secretName: {{ $.syslogSecretName }}
+          items:
+          - key: {{ $.syslogSecretKey }}
+            path: syslogRootCaPem
+            {{- if $.syslogTlsCrt }}
+          - key: {{ $.syslogTlsCrt }}
+            path: syslogTlsCrt
+            {{- end }}
+            {{- if $.syslogTlsKey }}
+          - key: {{ $.syslogTlsKey }}
+            path: syslogTlsKey
+            {{- end }}
+        {{- end }}
+      {{- end }}
+      # is-config is mounted as a emptyDir for storing the config files and secrets
+      - name: is-config
+        emptyDir:
+          sizeLimit: {{ default "10Mi"  .Values.emptyDirSizeLimit.isConfig }}
+      {{- if or (not .Values.persistence) (not .Values.persistence.enabled) }}
+      - name: managerdir
+        emptyDir: {}
+        {{- if .Values.cbur.enabled }}
+      - name: "indexsearch-backup"
+        emptyDir: {}
+      - name: "cbura-sidecar-volume"
+        emptyDir: {}
+        {{- else }}
+        {{- if .Values.persistence.backup.enabled }}
+      - name: "indexsearch-backup"
+        emptyDir: {}
+        {{- end }}
+        {{- end }}
+      {{- else }}
+        {{- if .Values.cbur.enabled }}
+      - name: "indexsearch-backup"
+        persistentVolumeClaim:
+          claimName: {{ template "bssc-indexsearch.fullname" . }}-pvc
+      - name: "cbura-sidecar-volume"
+        persistentVolumeClaim:
+          claimName: {{ template "bssc-indexsearch.fullname" . }}-cbur-tmp-pvc
+        {{- else }}
+        {{- if .Values.persistence.backup.enabled }}
+      - name: "indexsearch-backup"
+        persistentVolumeClaim:
+          claimName: {{ template "bssc-indexsearch.fullname" . }}-backup-pvclaim
+        {{- end }}
+        {{- end }}
+      {{- end }}
+      {{- if .Values.security.enable }}
+        {{- if eq (tpl (.Values.security.sensitiveInfoInSecret.enabled | toString ) .) "true" }}
+      - name: shared-volume
+        emptyDir:
+          sizeLimit: {{ default "10Mi"  .Values.emptyDirSizeLimit.sharedVolume }}
+      #securityconf-with-sensitiveinfo is mounted as emptyDir for storing security config files when sensitiveInfoInSecret is enabled
+      - name: securityconf-with-sensitiveinfo
+        emptyDir:
+          sizeLimit: {{ default "10Mi"  .Values.emptyDirSizeLimit.securityconfWithSensitiveinfo }}
+      - name: is-passwordsecret
+        secret:
+          secretName: {{ .Values.security.sensitiveInfoInSecret.credentialNamePassword }}
+          items:
+            {{- if .Values.security.sensitiveInfoInSecret.secInternalUserYml }}
+          - key: {{ .Values.security.sensitiveInfoInSecret.secInternalUserYml }}
+            path: internal_users.yml
+            {{- end }}
+            {{- if (.Values.security.sensitiveInfoInSecret.adminUserName) }}
+          - key: {{ .Values.security.sensitiveInfoInSecret.adminUserName }}
+            path: .adminUserName
+            {{- end }}
+            {{- if (.Values.security.sensitiveInfoInSecret.adminPassword) }}
+          - key: {{ .Values.security.sensitiveInfoInSecret.adminPassword }}
+            path: .adminPassword
+            {{- end }}
+        {{- end }}
+          {{- if and (eq $.isCertManagerEnabled "true") ( not $.istio.enabled) }}
+              {{- if or (and (eq .Values.security.nodeCrt.tls.secretRef.name "") ( not .Values.security.sensitiveInfoInSecret.keystoreJks)) (and (eq .Values.security.adminCrt.tls.secretRef.name "") (not .Values.security.sensitiveInfoInSecret.clientKeyPem)) }}
+      - name: cert-manager-secret
+        projected:
+          sources:
+          - secret:
+              name: {{ .Values.security.certManager.storePasswordCredentialName }}
+              items:
+                - key: {{ .Values.security.certManager.storePasswordKey }}
+                  path: .keyPass
+                  {{- if and (eq .Values.security.nodeCrt.tls.secretRef.name "") (not (.Values.security.sensitiveInfoInSecret.keystoreJks)) }}
+                  {{- if .Values.indexsearch.nodeCrt.certificate.enabled }}
+          - secret:
+              name: {{ .Values.indexsearch.nodeCrt.certificate.secretName | default (printf "%s-nodecert" (include "bssc-indexsearch.fullname" .)) }}
+              items:
+                - key: keystore.jks
+                  path: keystoreJks
+                - key: truststore.jks
+                  path: truststoreJks
+                  {{- if .Values.security.keycloak_auth }}
+                - key: ca.crt
+                  path: keycloakRootCaCrt
+                  {{- end }}
+                  {{- end }}
+                  {{- end }}
+                  {{- if and (eq .Values.security.adminCrt.tls.secretRef.name "") ( not (.Values.security.sensitiveInfoInSecret.clientKeyPem)) }}
+                  {{- if .Values.indexsearch.adminCrt.certificate.enabled }}
+          - secret:
+              name: {{ .Values.indexsearch.adminCrt.certificate.secretName | default (printf "%s-clientcert" (include "bssc-indexsearch.fullname" .)) }}
+              items:
+                - key: keystore.jks
+                  path: clientKeystoreJks
+                - key: truststore.jks
+                  path: clientTruststoreJks
+                - key: tls.key
+                  path: clientKeyPem
+                - key: tls.crt
+                  path: clientCrtPem
+                  {{- end }}
+                  {{- end }}
+              {{- end }}
+            {{- end }}
+      {{- end }}
+      {{- if not (empty .Values.extraConfig) }}
+      - name: "extra-config"
+        configMap:
+          name: {{ template "bssc-indexsearch.fullname" . }}-extra
+      {{- end }}
+      - name: "log4j2-properties"
+        configMap:
+          name: {{ template "bssc-indexsearch.fullname" . }}-log4j2
+      - name: "jvm-options"
+        configMap:
+          name: {{ template "bssc-indexsearch.fullname" . }}-jvmopt
+
+  volumeClaimTemplates:
+  {{- if and (.Values.persistence) (.Values.persistence.enabled) }}
+  - metadata:
+      name: managerdir
+      labels:
+        release: "{{ .Release.Name }}"
+{{- include "bssc-indexsearch.commonLabelsWithoutChartVersion" (tuple . .Values.manager.name ) | indent 8 }}
+    spec:
+      accessModes:
+        - {{ .Values.persistence.accessMode | quote }}
+      resources:
+        requests:
+          storage: {{ .Values.persistence.managerStorage | quote }}
+    {{- if .Values.persistence.storageClassName }}
+    {{- if (eq "-" .Values.persistence.storageClassName) }}
+      storageClassName: ""
+    {{- else }}
+      storageClassName: "{{ .Values.persistence.storageClassName }}"
+    {{- end }}
+    {{- end }}
+  {{- end }}
+

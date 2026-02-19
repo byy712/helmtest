@@ -1,0 +1,26 @@
+{{- if .Values.server.enabled }}
+{{- include "cpro.istio.cproInitIstio" . }}
+{{- if and ($.istio.enabled) (eq $.istio.version "1.4") }}
+apiVersion: "authentication.istio.io/v1alpha1"
+kind: "Policy"
+metadata:
+  labels:
+    {{- include "cpro.app.labels.v3" ( dict "root" . "context" .Values.server ) | nindent 4 }}
+{{- include "cpro.labelsOrAnnotations" (tuple .Values.global.labels) | indent 4}}
+  name: {{ template "cpro.prometheus.server.fullname" . }}
+  namespace: "{{.Release.Namespace}}"
+  annotations:
+{{- include "cpro.labelsOrAnnotations" (tuple .Values.global.annotations) | indent 4}}
+spec:
+  targets:
+  - name: {{ template "cpro.prometheus.server.fullname" . }}-int
+  {{- if .Values.ha.enabled }}
+  - name: {{ template "cpro.prometheus.server.fullname" . }}-ext
+  {{- else }}
+  - name: {{ template "cpro.prometheus.server.fullname" . }}
+  {{- end }}
+  peers:
+  - mtls:
+      mode: PERMISSIVE
+{{- end }}
+{{- end }}

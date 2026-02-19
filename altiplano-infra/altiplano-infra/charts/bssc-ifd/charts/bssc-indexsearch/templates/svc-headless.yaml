@@ -1,0 +1,46 @@
+{{- include "bssc-indexsearch.istio.properties" . }}
+{{- include "bssc-indexsearch.istio.initIstio" . }}
+{{- if $.istio.enabled }}
+## Istio mesh requirement for pods & services - A pod must belong to at least one Kubernetes service even if the pod does NOT expose any port. Hence creating one service for data pods when istio is enabled.
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "bssc-indexsearch.fullname" . |trunc ((sub .Values.customResourceNames.resourceNameLimit 4)|int) }}-dhl
+  labels:
+{{- include "bssc-indexsearch.commonLabels" (tuple . .Values.data.name ) | indent 4 }}
+{{- include "bssc-indexsearch.csf-toolkit-helm.labels" (tuple .) | nindent 4 }}
+  annotations:
+{{- include "bssc-indexsearch.csf-toolkit-helm.annotations" (tuple .) | nindent 4 }}
+spec:
+  clusterIP : None
+  selector:
+{{- include "bssc-indexsearch.selectorLabels" (tuple . .Values.data.name ) | indent 4 }}
+  ports:
+    - name: tcp-headless
+      port: {{.Values.service.manager_port}}
+      protocol: TCP
+      appProtocol: tcp
+{{ include "bssc-indexsearch.dualStack.config" . | indent 2 }}
+---
+{{- if eq $.istioVersion "1.4" }}
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "bssc-indexsearch.fullname" . |trunc ((sub .Values.customResourceNames.resourceNameLimit 4)|int) }}-chl
+  labels:
+{{- include "bssc-indexsearch.commonLabels" (tuple . .Values.client.name ) | indent 4 }}
+{{- include "bssc-indexsearch.csf-toolkit-helm.labels" (tuple .) | nindent 4 }}
+  annotations:
+{{- include "bssc-indexsearch.csf-toolkit-helm.annotations" (tuple .) | nindent 4 }}
+spec:
+  clusterIP : None
+  selector:
+{{- include "bssc-indexsearch.selectorLabels" (tuple . .Values.client.name ) | indent 4 }}
+  ports:
+    - name: tcp-transport
+      port: {{.Values.service.manager_port}}
+      protocol: TCP
+      appProtocol: tcp
+{{ include "bssc-indexsearch.dualStack.config" . | indent 2 }}
+{{- end }}
+{{- end }}

@@ -1,0 +1,22 @@
+#variabes used component will have .Values.alertmanager data(yaml)
+##certificateName with be name of certificate created
+##secretName will be the name of secret created
+##the above variables are used in the cpro.certmanager.template
+{{- if and (.Values.alertmanager.enabled)  (eq (include "csf-common-lib.v1.coalesceBoolean" (tuple .Values.alertmanager.tls.enabled .Values.tls.enabled .Values.global.tls.enabled .Values.alertmanager.tls_auth_config.tls.enabled false)) "true") (eq (include "csf-common-lib.v1.isEmptyValue" .Values.alertmanager.tls.secretRef.name) "true")  (eq .Values.alertmanager.tls_auth_config.tls.externalSecret "") }}
+{{- if eq (include "csf-common-lib.v1.coalesceBoolean" (tuple .Values.certManager.enabled .Values.global.certManager.enabled true)) "true" }}
+{{- if .Values.alertmanager.certificate.enabled }}
+{{ $_ := set . "component" .Values.alertmanager }}
+{{ $certificateName := include "cpro.alertmanager.client.resourceName" . }}
+{{ $_ := set . "certificateName" $certificateName }}
+{{ $secretName := include "cpro.alertmanager.client.secret" . }}
+{{ $_ := set . "secretName" $secretName }}
+{{ $serviceName := include "cpro.prometheus.alertmanager.fullname" .  }}
+{{ $_ := set . "serviceName" $serviceName }}
+{{- if .Values.ha.enabled }}
+{{ $serviceNameExt := printf "%s-ext" (include "cpro.prometheus.alertmanager.fullname" . ) }}
+{{ $_ := set . "serviceNameExt" $serviceNameExt }}
+{{- end }}
+{{- include "cpro-common-lib.v4.certificate" (tuple . .Values.alertmanager "pobserve-issuer") }}
+{{- end }}
+{{- end }}
+{{- end }}

@@ -1,0 +1,13 @@
+{{- if and (eq (include "citm-ingress.getCertificate" (tuple  . "streamSSLCertificate" )) "no_certificate")  (eq (include "citm-ingress.getCertificate" (tuple  . "sslCertificate" )) "no_certificate") }}
+{{- if and (contains "true" (include "citm-ingress.isCertManagerEnabled" .)) (contains "enabled" (include "citm-ingress.isCertManagerEnabled" .))  }}
+{{- if eq (include "citm-ingress.getCertManagerIssuer" .) "false" }}
+apiVersion: cert-manager.io/v1
+kind: Issuer
+metadata:
+  name: {{ template "citm-ingress.fullname" . }}-issuer
+  namespace: {{ .Release.Namespace }}
+spec:
+  selfSigned: {}
+{{- end }}
+{{- end }}
+{{- end }}

@@ -1,0 +1,133 @@
+{{ if .Values.isuUpgrade.enabled }}
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: {{ template "ckey.keycloak.preIsuRollbackJob" . }}
+  labels:
+    app: {{ template "ckey.fullName" . }}
+    release: {{ .Release.Name }}
+    {{- include "ckey.customLabels" (tuple .Values.custom.job.labels .Values.global.labels ) | indent 4 }}
+    {{- include "ckey.commonLabels" . | indent 4 }}
+  annotations:
+    "helm.sh/hook": pre-rollback
+    "helm.sh/hook-delete-policy": {{ .Values.hookDeletePolicy }}
+    sidecar.istio.io/inject: "false"
+    {{- include "ckey.customAnnotations" (tuple .Values.custom.job.annotations .Values.global.annotations) | indent 4 }}
+spec:
+  template:
+    metadata:
+      name: {{ template "ckey.keycloak.isuUpgradeContainerName" . }}
+      labels:
+        altiplano-role: {{ .Values.accessRoleLabel }}
+        app: {{ template "ckey.fullName" . }}
+        release: {{ .Release.Name }}
+        {{- include "ckey.customLabels" (tuple .Values.custom.job.labels .Values.global.labels ) | indent 8 }}
+        {{- include "ckey.commonLabels" . | indent 8 }}
+      annotations:
+        {{- include "ckey.common.k8s-client-pod.annotations" . | indent 8}}
+        {{- include "ckey.customAnnotations" (tuple .Values.custom.job.annotations .Values.global.annotations) | indent 8 }}
+    spec:
+{{ include "ckey.keycloak.isu.common-pod-spec" . | indent 6 }}
+      containers:
+        - name: {{ template "ckey.keycloak.isuUpgradeContainerName" . }}
+          image: {{ include "ckey.container.image" (tuple $ .Values.images.kubectl .Values.internalKubectlRegistry) }}
+{{ include "ckey.keycloak.isu.common-container-spec" . | indent 10 }}
+          env:
+            {{- include "ckey.timezone" . | nindent 12 }}
+          command:
+          - sh
+          - -c
+          - |
+            {{ if .Values.isuUpgrade.traceLogging }}
+            set -x
+            {{ end }}
+            . /opt/keycloak/isu-common/isu-common.sh
+            info "Pre-rollback job started"
+            remove_isu_statefulset 2>/dev/null
+            {{- if .Values.isuUpgrade.dbSwitching.enabled }}
+            create_temp_db
+            create_isu_statefulset_with_temp_db {{ .Values.isuUpgrade.tmpPodsReplicaCount | default 2 }}
+            {{ else }}
+            create_isu_statefulset {{ .Values.isuUpgrade.tmpPodsReplicaCount | default 2 }}
+            {{- end }}
+            wait_isu_statefulset
+            redirect_requests_to_isu_statefulset
+            {{- if .Values.isuUpgrade.cburBackup.enabled }}
+            cbur_restore
+            {{- end }}
+            remove_main_sts
+            STATUS=$?
+            info "Pre-rollback job complete"
+{{ include "ckey.istio.quit_proxy_container" . | indent 12 }}
+            exit $STATUS
+          image: {{ include "ckey.container.image" (tuple $ .Values.images.kubectl .Values.internalKubectlRegistry) }}
+{{ include "ckey.keycloak.isu.rollback-container-spec" . | indent 10 }}
+      {{- if .Values.nodeSelector }}
+      nodeSelector:
+{{ toYaml .Values.nodeSelector | indent 8 }}
+      {{- end }}
+      {{- include "ckey.imagePullSecrets" (tuple . "kubectl") | nindent 6 }}
+      {{- if .Values.tolerations }}
+      tolerations:
+{{ toYaml .Values.tolerations | indent 8 }}
+      {{- end }}
+{{ include "ckey.common.affinity" . | indent 6 }}
+---
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: {{ template "ckey.keycloak.postIsuRollbackJob" . }}
+  labels:
+    app: {{ template "ckey.fullName" . }}
+    release: {{ .Release.Name }}
+{{ include "ckey.commonLabels" . | indent 4 }}
+  annotations:
+    "helm.sh/hook": post-rollback
+    "helm.sh/hook-delete-policy": {{ .Values.hookDeletePolicy }}
+    sidecar.istio.io/inject: "false"
+    {{- include "ckey.customAnnotations" (tuple .Values.custom.job.annotations .Values.global.annotations) | indent 4 }}
+spec:
+  template:
+    metadata:
+      name: {{ template "ckey.keycloak.isuUpgradeContainerName" . }}
+      labels:
+        altiplano-role: {{ .Values.accessRoleLabel }}
+        app: {{ template "ckey.fullName" . }}
+        release: {{ .Release.Name }}
+{{ include "ckey.commonLabels" . | indent 8 }}
+      annotations:
+{{ include "ckey.common.k8s-client-pod.annotations" . | indent 8}}
+    spec:
+{{ include "ckey.keycloak.isu.common-pod-spec" . | indent 6 }}
+      containers:
+        - name: {{ template "ckey.keycloak.isuUpgradeContainerName" . }}
+          image: {{ include "ckey.container.image" (tuple $ .Values.images.kubectl .Values.internalKubectlRegistry) }}
+{{ include "ckey.keycloak.isu.common-container-spec" . | indent 10 }}
+          env:
+            {{- include "ckey.timezone" . | nindent 12 }}
+          command:
+          - sh
+          - -c
+          - |
+            {{ if .Values.isuUpgrade.traceLogging }}
+            set -x
+            {{ end }}
+            . /opt/keycloak/isu-common/isu-common.sh
+            info "Post-rollback job started"
+            cleanup
+            info "Post-rollback job complete"
+            STATUS=$?
+{{ include "ckey.istio.quit_proxy_container" . | indent 12 }}
+            exit $STATUS
+          image: {{ include "ckey.container.image" (tuple $ .Values.images.kubectl .Values.internalKubectlRegistry) }}
+{{ include "ckey.keycloak.isu.rollback-container-spec" . | indent 10 }}
+      {{- if .Values.nodeSelector }}
+      nodeSelector:
+{{ toYaml .Values.nodeSelector | indent 8 }}
+      {{- end }}
+      {{- if .Values.tolerations }}
+      tolerations:
+{{ toYaml .Values.tolerations | indent 8 }}
+      {{- end }}
+{{ include "ckey.common.affinity" . | indent 6 }}
+{{ end }}

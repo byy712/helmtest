@@ -1,0 +1,95 @@
+{{- $kubeStateMetricssyslogEnabled := eq (include "csf-common-lib.v1.coalesceBoolean" (tuple .Values.kubeStateMetrics.unifiedLogging.syslog.enabled .Values.global.unifiedLogging.syslog.enabled false )) "true" }}
+{{- if and .Values.kubeStateMetrics.enabled (or $kubeStateMetricssyslogEnabled .Values.kubeStateMetrics.unifiedLogging.extension .Values.global.unifiedLogging.extension )}}
+{{- include "cpro-common-lib.v1.syslog" ( dict "root" . "context" .Values.kubeStateMetrics) }}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ template "cpro-common-lib-v1.ConfigmapName" (dict "name" "kubestatefluentdcm" "root" .) }}
+  labels:
+    {{- include "cpro.labelsOrAnnotations" (tuple .Values.global.labels) | indent 4}}
+  annotations:
+{{- include "cpro.labelsOrAnnotations" (tuple .Values.global.annotations) | indent 4}}
+data:
+  fluentd.conf: |
+    <system>
+      <log>
+        format json
+        time_format %Y-%m-%dT%H:%M:%S%z
+      </log>
+    </system>
+    <source>
+      @type tail
+      path /var/log/kubestatemetrics/*.log
+      pos_file /var/log/kubestatemetrics/fluent-kubestate-metric.pos
+      read_from_head true
+      tag kubestatemetrics-main-container-logs
+      <parse>
+        @type regexp
+          expression /^(?<loglevel>[A-Z])(?<timestamp>[0-9]+ [^ ]+)([ ]+)([0-9]+) ([^ ]+)([ ]+)((?<message>[^\{].+))/
+          log message
+      </parse>
+    </source>
+    <filter kubestatemetrics-main-container-logs>
+      @type record_transformer
+       enable_ruby true
+      <record>
+        system ${ ENV["SYSTEM"] }
+        systemid ${ ENV["SYSTEMID"] }
+        host ${ ENV["PODNAME"]}.${ ENV["RELEASE_NAMESPACE"] || '' }
+        timezone ${ ENV["TZ"] }
+        log ${ { message:record["message"] }}
+        type "log"
+        time ${record["timestamp"]}
+        extension ${require 'json';record.merge(JSON.parse(ENV["EXTENSION_FIELDS"]))}
+        level ${if record["loglevel"] == "E"; record["loglevel"] = "ERROR";elsif record["loglevel"] == "A"; record["loglevel"] = "ALERT"; elsif record["loglevel"] == "I"; record["loglevel"] = "INFO"; elsif record["loglevel"] == "W"; record["loglevel"] = "WARN"; elsif record["loglevel"] == "F"; record["loglevel"] = "FATAL"; end;}
+      </record>
+      remove_keys $.loglevel,$.timestamp,$.extension.message,$.message,$.extension.loglevel,$.extension.timestamp
+    </filter>
+    <match kubestatemetrics-main-container-logs >
+      @type rewrite_tag_filter
+      <rule>
+        key level
+        pattern (?i)alert
+        tag alert.${tag}
+      </rule>
+      <rule>
+        key level
+        pattern .+
+        tag notice.${tag}
+      </rule>
+    </match>
+    <match notice.** alert.** >
+        @type copy
+        <store>
+          @type stdout
+          <format>
+            @type json
+          </format>
+        </store>
+        {{- if $kubeStateMetricssyslogEnabled }}
+        <store>
+          @type remote_syslog
+          host {{ tpl $.syslog.host . }}
+          port {{ tpl ($.syslog.port | quote) . }}
+          {{- if or (eq (tpl $.syslog.protocol . | lower) "tcp") (eq (tpl $.syslog.protocol . | lower) "ssl") }}
+          protocol tcp
+          {{- else }}
+          protocol udp
+          {{- end }}
+          {{- if tpl (default "" $.syslog.facility) . }}
+          facility {{ tpl $.syslog.facility . | lower }}
+          {{- end }}
+          severity ${tag[0]}
+          <format>
+            @type json
+          </format>
+        {{- if and (tpl (default "" $.syslog.tls.secretRef.name) .) (tpl (default "" $.syslog.tls.secretRef.keyNames.caCrt) .) }}
+          tls true
+          ca_file /etc/fluent/certs/syslogRootCaPem
+          {{- end }}
+          <buffer tag>
+          </buffer>
+        </store>
+        {{- end }}
+    </match>
+{{- end }}

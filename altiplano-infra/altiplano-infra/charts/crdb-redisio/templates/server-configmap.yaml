@@ -1,0 +1,58 @@
+{{- include "crdb-redisio.init" . -}}
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "csf-common-lib.v3.resourceName" (tuple . "configmap" "server-config") }}
+  labels:
+    {{- include "crdb-redisio.labels" (tuple . "server" "configmap") | nindent 4 }}
+  annotations:
+    {{- include "crdb-redisio.annotations" (tuple . "server" "configmap") | nindent 4 }}
+data:
+  server.initial.conf: |
+    #
+    # Redis server default CRDB-redisio configuration file for
+    # K8s/Helm based containerized deployment.  Contents only used
+    # for initial install, post-install changes are not applied.
+    #
+    daemonize no
+    {{- if not .Values.server.persistence.enabled }}
+    # persistence disabled, do not save database
+    save ""
+    appendonly no
+    rdb-del-sync-files yes
+    {{- end }}
+    {{- if .Values.server.tmpfsWorkingDir }}
+    # Using tmpfs-backed database
+    dir /redisdb-tmpfs
+    {{- else }}
+    dir /redisdb
+    {{- end }}
+    {{- if .redis_cluster }}
+    cluster-enabled yes
+    cluster-config-file /redisdb/conf/cluster.nodes.conf
+    cluster-node-timeout 5000
+    {{- .Values.cluster.confInclude | nindent 4 }}
+    {{- end }}
+  server.chart.conf: |
+    #
+    # Redis server configuration include file
+    #
+    # This conf file is included at the beginning of the runtime server.conf
+    # file.  Dynamic changes done to the configuration via Redis CONFIG SET
+    # (w/ CONFIG REWRITE) will persist in the runtime server.conf file.
+    # Such dynamic changes that conflict with parameters specified here will
+    # overwrite the values specified here.
+    #
+    # Special care must be taken with multi-line parameters which don't overwrite
+    # previously seen parameters such as save, include, etc.  Conflicting
+    # parameters such as these will not overwrite the values here but rather
+    # add to them.
+    {{- with .Values.server.auditLogging -}}{{- if .enabled -}}
+    {{- $noAuthArg := has "auth" .events | ternary "" " noauth" -}}
+    {{- $noPermArg := has "permission" .events | ternary "" " noperm" }}
+    loadmodule /usr/lib/crdb/auditlog.so{{ $noAuthArg }}{{ $noPermArg }}
+    {{- end }}{{- end }}
+    {{- if and .Values.server .Values.server.confInclude }}
+    {{- .Values.server.confInclude | replace ";;" "\n" | nindent 4 }}
+    {{- end }}

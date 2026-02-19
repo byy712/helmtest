@@ -1,0 +1,63 @@
+{{- include "cpro-grafana.istio.grafanaInitIstio" . }}
+{{- if $.istio.enabled }}
+apiVersion: {{ template "cpro-grafana.grafanaApiVersion.virtualService" . }} 
+kind: VirtualService
+metadata:
+  name: {{ template "cpro-grafana.istioVirtualServiceName" . }}
+  labels:
+    {{- include "cpro-grafana.app.labels-v3" . | nindent 4 }}
+    {{- include "cpro-grafana.labelsOrAnnotations" (tuple .Values.global.labels) | indent 4}}
+  annotations:
+    {{- include "cpro-grafana.labelsOrAnnotations" (tuple .Values.global.annotations) | indent 4}}
+spec:
+  hosts:
+  {{- $numHosts := len $.istio.gateways.cproGrafana.host }}
+  {{- if (eq $numHosts 0) }}
+  - "*"
+  {{- else }}
+  {{- range $.istio.gateways.cproGrafana.host }}
+  - {{ . | quote }}
+  {{- end }}
+  {{- end }}
+  gateways:
+    {{- if $.shared_istio_gateway }}
+  - {{ $.shared_istio_gateway }}
+    {{- else }}
+  - {{ template "cpro-grafana.istioGatewayName" . }}
+    {{- end }}
+  {{- if (and (eq $.shared_istio_gateway "" ) (eq $.istio.gateways.cproGrafana.tls.mode "PASSTHROUGH")) }}
+  tls:
+  - match:
+    - port: {{ $.istio.gateways.cproGrafana.port }}
+    {{- if semverCompare ">1.5" $.istio.version }}
+      sniHosts:
+    {{- else }}
+      sni_hosts:
+    {{- end }}
+      {{- $numHosts := len $.istio.gateways.cproGrafana.host }}
+      {{- if gt $numHosts 0 }}
+      {{- range $.istio.gateways.cproGrafana.host }}
+      - {{ . | quote }}
+      {{- end }}
+      {{- else }}
+      - "*"
+      {{- end }}
+    route:
+    - destination:
+        host: {{ template "cpro-grafana.service.name" . }}
+        port:
+          number: {{ .Values.service.port }}
+  {{- else }}
+  http:
+  - match:
+    - uri:
+        prefix: /{{ template "cpro-grafana.rooturl" . }}
+    rewrite:
+      uri: /{{ template "cpro-grafana.rooturl" . }}
+    route:
+    - destination:
+        host: {{ template "cpro-grafana.service.name" . }}
+        port:
+          number: {{ .Values.service.port }}
+  {{- end }}
+{{- end }}

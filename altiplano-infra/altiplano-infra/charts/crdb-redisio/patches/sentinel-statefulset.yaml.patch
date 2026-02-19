@@ -1,0 +1,10 @@
+--- crdb-redisio-9.0.3-origin/templates/sentinel-statefulset.yaml	2024-02-07 16:28:36.000000000 +0530
++++ crdb-redisio-9.0.3-nokia-patch-1/templates/sentinel-statefulset.yaml	2024-03-05 16:39:13.390174612 +0530
+@@ -24,6 +24,7 @@
+       labels:
+         {{- include "crdb-redisio.labels" (tuple . "sentinel" "pod") | nindent 8 }}
+         type: sentinel
++        altiplano-role: {{ .Values.sentinel.accessRoleLabel }}
+       annotations:
+         acl/checksum: {{ toJson .Values.sentinel.acl | sha256sum }}
+         config/checksum: {{ .Values.sentinel.confInclude | sha256sum }}

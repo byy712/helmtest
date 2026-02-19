@@ -1,0 +1,73 @@
+{{- include "crdb-redisio.init" . -}}
+{{- if and .Values.cbur.enabled (gt (int .Values.global.prerestore) 0) }}
+{{ $api := .Values.cbur.apiVersion }}
+{{- if or .Values.cbur.legacyHooks (not (.Capabilities.APIVersions.Has $api)) }}
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: {{ include "csf-common-lib.v3.resourceName" (tuple . "job" (default "pre-restore" .Values.hooks.preRestoreJob.name)) }}
+  labels:
+    {{- include "crdb-redisio.labels" (tuple . "admin" "job") | nindent 4 }}
+  annotations:
+    {{- include "crdb-redisio.annotations" (tuple . "admin" "job") | nindent 4 }}
+spec:
+  backoffLimit: 3
+  template:
+    metadata:
+      labels:
+        {{- include "crdb-redisio.labels" (tuple . "admin" "pod") | nindent 8 }}
+        type: admin-ncms-hook
+        ncms-hook: prerestore
+        altiplano-role: {{ .Values.accessRoleLabel }}
+      annotations:
+        {{- include "crdb-redisio.annotations" (tuple . "admin" "pod") | nindent 8 }}
+        {{- include "crdb-redisio.istio-annotation" . | nindent 8 }}
+    spec:
+      {{- include "crdb-redisio.get_image_pull_secrets" (tuple . "admin") | nindent 6 }}
+      {{- include "crdb-redisio.sa" (tuple .) | nindent 6 }}
+      automountServiceAccountToken: true
+      {{- include "crdb-redisio.get_security_context" (tuple . "pod" "admin") | nindent 6 }}
+      {{- include "crdb-redisio.priority-class-name" (tuple . "admin") | nindent 6 }}
+      restartPolicy: Never
+      containers:
+      - name: {{ include "csf-common-lib.v1.containerName" (tuple . "pre-restore-admin") }}
+        {{- include "crdb-redisio.admin.image" . | nindent 8 }}
+        args: [ "restore" ]
+        {{- include "crdb-redisio.get_security_context" (tuple . "container" "admin") | nindent 8 }}
+        resources: {{- toYaml .Values.admin.resources | nindent 10 }}
+        env:
+        - name: HOOK_TYPE
+          value: "pre"
+        {{- if gt (int (index .Values.admin (printf "preRestoreTimeout" .))) 0 }}
+        - name: HOOK_TIMEOUT
+          value: "{{ index .Values.admin (printf "preRestoreTimeout" .) }}"
+        {{- end }}
+        {{- if and .Values.admin.debug (gt (int .Values.admin.jobDelay) 0) }}
+        - name: HOOK_DELAY
+          value: "{{ .Values.admin.jobDelay }}"
+        {{- end }}
+        {{- include "crdb-redisio.tz.env" . | nindent 8 }}
+        {{- include "crdb-redisio.admin.env" . | nindent 8 }}
+        {{- include "crdb-redisio.admin-access.env" . | nindent 8 }}
+        - name: DEBUG
+          value: {{ .Values.admin.debug | default "" | quote }}
+        volumeMounts:
+        {{- include "crdb-redisio.fs.vm" . | nindent 8 }}
+        - name: cluster-cm
+          mountPath: /chart
+        {{- include "crdb-redisio.logging.vm" . | nindent 8 }}
+        {{- include "crdb-redisio.tls.vm.cacerts" . | nindent 8 }}
+        {{- include "crdb-redisio.tls.vm.client" . | nindent 8 }}
+      volumes:
+      {{- include "crdb-redisio.fs.vol" . | nindent 6 }}
+      - name: cluster-cm
+        configMap:
+          name: {{ include "csf-common-lib.v3.resourceName" (tuple . "configmap" "cluster-config") }}
+      {{- include "crdb-redisio.logging.vol" (tuple . "job") | nindent 6 }}
+      {{- include "crdb-redisio.tls.vol" (tuple . "job") | nindent 6 }}
+      {{- if .Values.admin.tolerations }}
+      tolerations: {{- toYaml .Values.admin.tolerations | nindent 8 }}
+      {{- end }}
+      {{- include "crdb-redisio.node-selector" (tuple . "admin") | nindent 6 }}
+{{- end }}
+{{- end }}

@@ -1,0 +1,853 @@
+### global registry
+global:
+  # This registry is used for all container images
+  registry: csf-docker-delivered.repo.cci.nokia.net
+
+  # Set flatRegistry to true to use images from registries with a flat structure.
+  # If enabled, any subpaths in the image repository name (separated by /) would be skipped and only its last part would be used. Please ensure that all the images are available in the docker registry in the expected flat structure.
+  flatRegistry: false
+
+  # Set enableDefaultCpuLimits to true to enable pod CPU resources limit for all containers. Default is 'false'.
+  # If set to true, the cpuLimits ([*].resources.limit.cpu) must be defined for all containers.
+  # Value set here can be overriden at the workload level by setting enableDefaultCpuLimits value.
+  enableDefaultCpuLimits: false
+
+  seccompAllowedProfileNames: docker/default
+  seccompDefaultProfileName: docker/default
+
+  # This value has lower precedence over "timeZone.timeZoneEnv".
+  # Example: To test IST(India Standard Time) which is UTC +5:30, you need to use "Asia/Calcutta".
+  # Timezone full names can be found here: https://en.wikipedia.org/wiki/List_of_tz_database_time_zones
+  timeZoneEnv:
+
+  #you can add prefixes to pod and container names by providing values for below parameters
+  #Provide lowercase alphanumeric characters, '-' or '.'
+  #Consider suffixing the podNamePrefix and containerNamePrefix with either . or - for convenience
+  podNamePrefix:
+  containerNamePrefix:
+
+  #If enabled, then `podNamePrefix` would be added to the pod name without any restrictions. Default value is false.
+  disablePodNamePrefixRestrictions: 
+
+  #Sets priorityClass for Fluentd pods at global level
+  priorityClassName: ""
+
+  #Sets imagePullsecret for fluentd pods at global level
+  imagePullSecrets: []
+  # - name: regcred
+
+
+  # Configure annotations and labels at global level respectively. These will be added at both pod level and the workload(daemonset/statefulset/deployment) level for fluentd
+  annotations: {}
+  labels: {}
+  # Istio-related parameters
+  istio:
+    #version of istio available in the environment, defined at global level
+    # quote is important, otherwise value is treated as a float value.
+    version: "1.7"
+    # Whether istio cni is enabled in the environment.
+    cni:
+     enabled: true
+
+  # For IPv4 and IPv6 dual stack support at global scope.
+  # ipFamilyPolicy:  SingleStack | PreferDualStack | RequireDualStack
+  ipFamilyPolicy:
+  # ipFamilies: ["IPv4"] | ["IPv6"] | ["IPv4","IPv6"] | ["IPv6","IPv4"]
+  ipFamilies: []
+  # - IPv4
+  # - IPv6
+
+  certManager:
+    #global.certManager is set to true by default.
+    enabled: true
+
+  # HPA feature is supported only for the kind Deployment
+  hpa:
+    #enabled value left empty intentionally, default value is False
+    enabled:
+
+  #Provide list of extended fields that component can use to enrich the log event by removing {} and configure like below example.
+  unifiedLogging:
+    extension: {}
+    #extension:
+       #VM_Name: abc
+       #VM_UUID: 123
+    syslog:
+      # Enable sending logs to syslog. Enabled value left empty intentionally, default value is False.
+      enabled:
+      facility:
+      host:
+      port:
+      protocol:
+      #Note - If SSL is enabled for syslog server, configure its root CA certificate in a precreated secret and configure the secret name and key containing the ca certificate under caCrt/tls section
+      ## syslog.caCrt section will be deprecated in future. It is still supported currently, however the new parameter syslog.tls.secretRef takes higher precedence over syslog.caCrt if both are configured.
+      caCrt:
+        secretName:
+        key:
+      ## Recommended to use below section to configure the secret name and key containing the ca certificate.
+      tls:
+        secretRef:
+          # Secret name, pointing to a Secret object.
+          name:
+          # Secret key names mapping.
+          # If the provided Secret is of type `kubernetes.io/tls', then key names do not need to be changed.
+          keyNames:
+            # Name of Secret key, which contains CA certificate.
+            caCrt: "ca.crt"
+  
+  # Set requested image flavor at global level.
+  imageFlavor:
+  # Set requested image Flavor Policy at global level .Supports Strict or BestMatch. It is BestMatch by default.
+  imageFlavorPolicy:
+
+#Creating internal*Registry parameters for each image. These will be removed at the time of release in favour of global.registry
+#Internal registry used for fluentd image
+internalAppRegistry:
+#Internal registry used for fluentd sidecar image
+internalFluentdSidecarRegistry:
+#Internal registry used for init image
+internalInitRegistry:
+#Internal registry used for kubectl image
+internalToolsRegistry:
+
+accessRoleLabel: internal-access
+
+#When rbac.enabled is set to true, chart would create its own rbac related resources; If false, an external/pre-created service account as configured at serviceAccountName will be used.
+rbac:
+  enabled: true
+  # To read container logs (i.e. when enable_root_privilege is true), PSP (on kubernetes) / SCC (on openshift) are required to be created. 
+  # If not reading container logs, these can be set to false as 'restricted' PSP/SCC would be sufficient to run the chart.
+  psp:
+    create: true
+    #Below annotation must be set, when 'containerSecurityContext.seccompProfile.type' is configured.
+    annotations:
+      seccomp.security.alpha.kubernetes.io/allowedProfileNames: '*'
+  scc:
+    create: false
+    #Set annotations for SCCs only if required
+    annotations: {}
+
+#User can specify the precreated SA here.
+serviceAccountName: ""
+
+customResourceNames:
+  #Provide lowercase alphanumeric characters, '-' or '.'
+  resourceNameLimit: 63
+  fluentdPod:
+    #when fluentdContainerName is not provided,<containerprefix>-(fullname)-daemonset/statefulset would be used.
+    #Fullname will be set to <ReleaseName>-<ChartName> by default.
+    fluentdContainerName: ""
+    fluentdInitContainerName: ""
+    #when unifiedLoggingContainerName is not provided,<containerprefix>unifiedlogging-sidecar would be used.
+    unifiedLoggingContainerName: ""
+  #If job/container names are not provided, then default names would be generated by the chart in following format: 
+  #For job name: <podprefix>-<ReleaseName>-<string related to job>
+  #For job containernames: <containerprefix>-<string related to job>
+  scaleinJob:
+    name: ""
+    postscaleinContainerName: ""
+  deletePvcJob:
+    name: ""
+    deletePvcContainerName: ""
+  helmTestPod:
+    name: ""
+    helmTestContainerName: ""
+  deleteJob:
+    name: ""
+    deleteJobContainerName: ""
+  preUpgradePvMigrateJob:
+    name: ""
+    preUpgradePvMigrateContainerName: ""
+
+#This section allows to configure user defined name for pods and containers(For container this will take effect only when customResourceName is not provided for container)
+# Options include:
+# nameOverride: fullname would become <ReleaseName>-<nameOverride>
+# fullnameOverride: fullname would become fullnameOverride
+# If specified both, fullnameOverride would take the precedence.
+nameOverride:
+fullnameOverride:
+
+# Set enableDefaultCpuLimits to true to enable pod CPU resources limit for all containers. Default is empty value.
+# Values set here will take precedence over the value set at global.enableDefaultCpuLimits.
+enableDefaultCpuLimits:
+
+#Common lables for k8s objects. Set below to configure label app.kubernetes.io/part-of:
+partOf:
+
+timezone:
+# This value has precedence over "global.timeZoneEnv".
+# Example: To test IST(India Standard Time) which is UTC +5:30, you need to use "Asia/Calcutta".
+# Timezone full names can be found here: https://en.wikipedia.org/wiki/List_of_tz_database_time_zone
+  timeZoneEnv:
+
+#postscalein should be 0 to run postscalein job for cleaning up unused PVCs
+postscalein: 0
+
+#Sets imagePullsecret at root level for all fluentd pods. This has higher precendece over imagePullsecrets configured at global level.
+imagePullSecrets: []
+# - name: regcred
+
+#If enabled, then `podNamePrefix` would be added to the pod name without any restrictions. Default value is false.
+#If kind is statefulset and there is crucial data in the PVCs attached to fluentd pods, set the value to true to avoid data loss on upgrades (by retaining the same podnameprefix).
+disablePodNamePrefixRestrictions: 
+
+# Dual-stack config for services in fluentd chart. Chart level scope takes precedence over global level scope.
+#ipFamilyPolicy:  SingleStack | PreferDualStack | RequireDualStack
+ipFamilyPolicy:
+#ipFamilies: ["IPv4"] | ["IPv6"] | ["IPv4","IPv6"] | ["IPv6","IPv4"]
+ipFamilies: []
+
+# certManager configuration at root level.
+#Set certManager.enabled as true to create certifcates using certmanager feature.
+#If certManager is enabled, security must be enabled too
+certManager:
+#enabled value left empty intentionally, default value is False
+#This value has higher precedence over global.certManager.enabled
+  enabled:
+
+# set requested image flavor at root level. It has higher precedence than global.imageFlavor.
+imageFlavor:
+# set imageFlavorPolicy at root level. It supports Strict or BestMatch. Default value is BestMatch. It has higher precedence than global.imageFlavorPolicy.
+imageFlavorPolicy:
+
+fluentd:
+  kind: DaemonSet
+  image: 
+    repo: bssc-fluentd
+    # Desired image flavor must be configured at imageFlavor. If the flavor is included in image.tag (for ex. 1.16.2-rocky8-jre17-2311.0.1), the complete tag would be read as-is, irrespective of configuration at image.flavor.
+    tag: 1.16.2-2311.0.1
+    initRepo: bssc-init
+    initTag: 1.0.0-2311.0.1
+    fnmsInitRepo: fnms-init-container
+    fnmsInitTag: nokia-1.0.5
+    # set image Flavor at container level for main container and init container. It has higher precedence than global.imageFlavor, .imageFlavor and fluentd.imageFlavor. It supports rocky8-jre11 or rocky8-jre17 Default value is rocky8-jre11.   
+    flavor:
+    # set image Flavor policy at container level for main container and init container. It has higher precedence than global.imageFlavorPolicy, .imageFlavorPolicy and fluentd.imageFlavorPolicy. It supports Strict or BestMatch. Default value is BestMatch.
+    flavorPolicy:
+  ImagePullPolicy: "IfNotPresent"
+  # set image Flavor at workload. It has higher precedence than global.imageFlavor and .imageFlavor.
+  imageFlavor:
+  # set image Flavor Policy at workload. It has higher precedence than global.imageFlavorPolicy and .imageFlavorPolicy. It supports Strict or BestMatch. Default value is BestMatch.
+  imageFlavorPolicy:
+
+  init_resources:
+    limits:
+      #cpu: "100m"
+      memory: "100Mi"
+      ephemeral-storage: "30Mi"
+    requests:
+      cpu: "50m"
+      memory: "50Mi"
+      ephemeral-storage: "30Mi"
+  replicas: 1
+  replicasManagedByHpa: False
+  # HPA feature is supported only for the kind Deployment
+  hpa:
+    #enabled value left empty intentionally, default value is False
+    enabled:
+    minReplicas: 1
+    maxReplicas: 3
+    predefinedMetrics:
+      enabled: True
+      averageCPUThreshold: 85
+      averageMemoryThreshold: 85
+    behavior:
+    metrics:
+  podManagementPolicy: Parallel
+  updateStrategy:
+    type: RollingUpdate
+  statefulsetSuffix: "-statefulset"
+  daemonsetSuffix: "-daemonset"
+
+  #PodDisruptionBudgets for fluentd
+  #This will ensure that configured number of pods are always up and try to prevent the evictions
+  #https://kubernetes.io/docs/tasks/run-application/configure-pdb/
+  #Note: Either minAvailable or maxUnavailable should be used. Both cannot be used at the same time.
+  #To enable/disable creation of Pod Disruption budget for fluentd pods.
+  #If kind is daemonset (default), this section is not applicable and PDB is not created. If kind is statefulset/deployment, PDB can be enabled.
+  #Atleast 50% of the fluentd pods are recommended to be up to handle the incoming traffic. The minAavailable value can be changed based on need and incoming load.
+  #As default replica of fluentd is 1 and pdb.minAvailable is 50% when kind is configured as Deployment/statefulset, it will not allow to drain the node and service will not get interrupted.
+  #
+  #If user still wants to drain the node:
+  #option 1: If service outage is not acceptable - increase the num of replicas for fluentd so that the PDB conditions are met.
+  #option 2: If service outage is acceptable - either disable PDB or set minAvailable to empty and maxUnavailable to 1 so that node can be drained. |  `50%` |
+  pdb:
+    enabled: false
+    minAvailable: 50%
+    maxUnavailable: 
+
+  #Sets PriorityClass for fluentd pods. If left blank or empty quotes, pods will be configured to cluster default PriorityClass.
+  #fluentd.priorityClassName has higher precedence than priorityClassName in global scope
+  priorityClassName: ""
+
+  #If labelSelector key is omitted and autoGenerateLabelSelector is set to true, then labelSelector is automatically generated otherwise labelSelector are taken from labelSelector key
+  topologySpreadConstraints:
+  #- maxSkew: 1
+  #  topologyKey: kubernetes.io/hostname
+  #  whenUnsatisfiable: DoNotSchedule/ScheduleAnyway
+  #  labelSelector:
+  #    matchLabels:
+  #      app: fluentd
+  #  autoGenerateLabelSelector: False
+
+  #Sets imagePullSecrets at workload level for all fluentd pods. This has higher precendece over imagePullsecrets configured at root and global levels.
+  imagePullSecrets: []
+  #- name: regcred
+
+
+  #Pods' SecurityContext can be defined below
+  securityContext:
+    enabled: true
+    # runAsUser is the UID with which fluentd containers run. When enable_root_privilege: true fluentd will run as root user irrespective of value configured in runAsUser. If deploying in openshift environment, the value can be set as "auto". 
+    runAsUser: 1000
+    # fsGroup is the gid that is assigned for the volumemounts mounted to the pod(fsGroup ID is used for block storage). If deploying in openshift environment, the value can be set as "auto".
+    fsGroup: 998
+    # The supplementalGroups ID applies to shared storage volumes. Uncomment below line to set supplemetary group.
+    #supplementalGroups: [998]
+    # Uncomment below lines lines to configure SELinux label to a container.
+    # For more details refer to https://kubernetes.io/docs/tasks/configure-pod-container/security-context/
+    #seLinuxOptions:
+    #  level: "s0:c23,c123"
+    #Set 'privileged' to 'True' to read container logs (i.e. when 'enable_root_privilege' is true) on Openshift environement. 
+    privileged: False
+
+  #Containers' SecurityContext can be defined below
+  containerSecurityContext:
+    #When enable_root_privilege is set to 'true', fluentd containers will run as root user (runAsNonRoot: false) irrespective of value configured in runAsNonRoot.
+    runAsNonRoot: true
+    ##Set 'allowPrivilegeEscalation' to 'True' when securityContext.privileged is set to True
+    allowPrivilegeEscalation: false
+    seccompProfile:
+      type: RuntimeDefault
+
+
+  # To configure custom annotations and labels for fluentd, remove {} and configure desired annotations and labels respectively using 8 space indentation under respective section.
+  custom:
+    k8sKind:
+      # These will be added at metadata.annotations of fluentd daemonset/statefulset/deployment (based on fluentd.kind) 
+      annotations: {}
+      # These will be added at metadata.labels of fluentd daemonset/statefulset/deployment (based on fluentd.kind)
+      labels: {}
+    pod:
+      # These will be added at pod spec level (i.e. spec.template.metadata.annotations)
+      annotations: {}
+      # These will be added at pod spec level (i.e. spec.template.metadata.labels)
+      labels: {}
+
+    ## Configure annotations specific to helm hook jobs & test pods using 10 space indentation.
+    ## Configure labels specific to helm hook jobs & test pods using 10 space indentation.
+    hookJobs:
+      # These will be added at job level (i.e. metadata.annotations)
+      # These will be added at job level (i.e. metadata.labels)
+      job:
+        # These will be added at job level (i.e. metadata.annotations)
+        annotations: {}
+        # These will be added at job level (i.e. metadata.labels)
+        labels: {}
+      pod:
+        # These will be added at pod spec level (i.e. spec.template.metadata.annotations)
+        annotations: {}
+        # These will be added at pod spec level (i.e. spec.template.metadata.labels)
+        labels: {}
+
+  resources:
+    limits:
+      #cpu: "1"
+      memory: "1Gi"
+      ephemeral-storage: "500Mi"
+    requests:
+      cpu: "600m"
+      #When HPA is enabled it is recommended to set request same as limit because HPA considers requests for its calculation. If it is set to different value, HPA might unnecessarily scale up pods without using complete resources configured in requests.
+      memory: "500Mi"
+      ephemeral-storage: "200Mi"
+
+#set the system name and system ID for non-container log messages
+  EnvVars:
+    system: "BCMT"
+    systemId: "BCMT ID"
+
+#set any desired environment variables for fluentd container. Remove [] and add the envs as shown in the example below in the comments:  
+  env: []
+  #env:
+  #- name: NSS_SDB_USE_CACHE
+  #  value: "no"
+
+# if set to true fluentd container will run as root user and reads container, journal logs.
+# set the flag to false to run fluentd as non-root user. When below flag is disabled, fluentd runs with userid mentioned in securityContext.runAsUser section.
+# Donot change the flag unless required.
+  enable_root_privilege: true
+
+#When enable_root_privilege is set to true then service account token is always mounted inside the pod irrespective of this below parameter. In case of enable_root_privilege being set to false and it is required to mount service account token inside the pod then mountSAToken parameter needs to be set as true.
+  mountSAToken: false
+
+  #Set sensitiveInfoInSecret.enabled as true to take sensitive data from precreated secret.
+  #When enabled, a secret object has to be created with all the required sensitive data like indexsearch username, password, root ca certificate etc.
+  #Example secret generation command: kubectl create secret generic <secret-name> --from-literal=is_username=<username> --from-literal=is_password=<password> --from-file=root_ca_certificate=<certificatepath>/ca-cert.pem --namespace <namespace>
+  #Provide the list of all the sensitive data under secretData section as shown in the example. 
+  sensitiveInfoInSecret:
+    enabled: false
+    credentialName: #pre-created secretName
+    secretData: {}
+      #sensitiveInfoInSecret.secretData is a list of key:value pairs.
+      #Note1: secretData's key must match to parameter in the fluentd config enclosed in double angular brackets << >>.
+      #Note2: secretData's value must be same as precreated secret's key.
+      #Note3: If secretData's entry is a certificate then its key should always be suffixed with "*_cert". eg: isroot_cert
+      #Note4: When certManager is enabled, then to have indexsearch root CA certificate from cert manager generated secret in fluentd do not provide indexsearch root CA  under secretData. However, in fluentd configuration the indexsearch root CA parameter i.e. ca_file must be configured as <<isroot_cert>> only. Eg: ca_file <<isroot_cert>>
+      #example
+      #indexsearch_username: #key name in precreated secret that stores indexsearch username in its value. For ex. is_username
+      #indexsearch_password: #key name in precreated secret that stores indexsearch password in its value. For ex. is_password
+      #isroot_cert: #key name in precreated secret that stores indexsearch root ca certificate in its value. For ex. root_ca_certificate
+      #prometheus_root_cert: #key name in precreated secret that stores prometheus root ca certificate in its value
+  
+  #For user supplied certificates via Kubernetes Secret for server certificates. This is an alternative to sensitiveInfoInSecrets.secretData for providing server certificates (still supported for backward compatibility). Provide list in below format for configuring server certificates via secret.
+  #serverCerts:
+  #  - <Name of the server cert eg: cert for prometheus service can be named "prometheusCrt">:
+  #      tls:
+  #        secretRef:
+  #          # Secret name, pointing to a Secret object.
+  #          name: ""
+  #          # Secret key names mapping.
+  #          keyNames:
+  #            # Name of Secret key, which contains CA certificate
+  #            caCrt:
+  #            # Name of Secret key, which contains TLS key
+  #            tlsKey:
+  #            # Name of Secret key, which contains TLS certificate
+  #            tlsCrt:
+
+  #  - forwarderCrt:
+  #      tls:
+  #        secretRef:
+  #          # Secret name, pointing to a Secret object.
+  #          name: "forwardersecret"
+  #          # Secret key names mapping.
+  #          keyNames:
+  #            # Name of Secret key, which contains CA certificate
+  #            caCrt: ca.crt
+  #            # Name of Secret key, which contains TLS key
+  #            tlsKey: tls.key
+  #            # Name of Secret key, which contains TLS certificate
+  #            tlsCrt: tls.crt
+  serverCerts: []
+  #Remove [] and provide the list in above format. 
+  #Note1: serverCerts.<NameOfCert>.tls.secretRef.keyNames.x's values must be same as provided secret's key.
+  #Note2: Parameters in the fluentd config that are to be set with these certificates must be configured with <secretName>-<parameterName>_tls enclosed in double angular brackets << >>. Here, <secretName> is the name of the secret. Parameter name is name of the key under keyNames that is to be mounted and used. For eg: To use ca.crt from the forwardersecret in fluentd.conf, use <<forwardersecret-caCrt_tls>> in the config file.
+
+  #Certmanager Configuration
+  certManager:
+    #This has higher precedence over certManager.enabled (root level) and global.certManager.enabled. Its default value is set to read the same value configured at .Values.certManager.enabled
+    enabled: "{{ .Values.certManager.enabled }}"
+    duration: "8760h" #365
+    renewBefore: "360h" # 15d
+    apiVersion: "cert-manager.io/v1alpha3"
+    issuerRef:
+    # We can refer different Issuers by changing the kind and group here.
+    # The default value is ncms-ca-issuer(i.e is a cluster issuer)
+      name: ncms-ca-issuer
+      kind: ClusterIssuer
+      group: cert-manager.io
+
+  #Default name of the indexsearch service is indexsearch, so the default value of host is indexsearch in fluentd config.
+  #If the certificate for indexsearch is generated with CN=<service-name>.<namespace> , update the host field in the fluentd configuration accordingly.
+  #configurable values are bssc, clog-json, clog-journal, bssc-cri, custom-value
+  #If unifiedLogging.enabled is set to true, then below section should be added at the beginning of configFile when fluentd_config is set as custom-value 
+     #<system>
+       #<log>
+         #format json
+         #time_format %Y-%m-%dT%H:%M:%S%z
+       #</log>
+     #</system> 
+  fluentd_config: bssc
+
+  configFile: |
+    #If you have own configuration for fluentd other than provided by bssc/clog then set fluentd_config: custom-value and provide your configuration below. Example-
+    #<source>
+    #  @type tail
+    #  path /var/log/test/*.log
+    #  tag test
+    #  pos_file /var/log/fluentd.pos
+    #  format none
+    #</source>
+    #<match test>
+    #  @type stdout
+    #</match>
+
+# set the enabled value to true if some service to be exposed from fluentd like fluentd-promethues-plugin which exports fluentd metrics so that prometheus can scrap the metrics via this service and port
+# The below section added to enable/disable fluentd-prometheus service.
+  service:
+    enabled: false
+    # if you want to provide your own name for service then provide the value in "custom_name"
+    # Default value is template {{ "fullname" . }}
+    # Delete the old chart and deploy new chart if you want to configure "custom_name" parameter. 
+    custom_name: ""
+    # type of service: None, ClusterIP
+    type: ClusterIP
+    # metricsPort is for getting fluentd prometheus metrics. 
+    # 24231 is the default port of fluentd-prometheus-plugin.
+    # If metricsPort is changed, update same port in fluentd-prometheus configuration in the respective .conf file and in the prometheus annotation below as well.
+    metricsPort: 24231
+    annotations: {}
+    # protocol for service, This parameter is user configurable.
+    protocol: TCP
+    appProtocol: tcp
+    #If dual-stack is configured for fluentd, add bind :: in the prometheus source section in the fluentd configuration.
+
+# This section is added to enable/disable fluentd forward service.
+  forward_service:
+    enabled: false
+    # if you want to provide your own name for service then provide the value in "custom_name"
+    # Default value is template {{ "fullname" . }}-forwarder
+    custom_name: ""
+    # source port for forwarder
+    port: 24224
+    # protocol for forwarder,This parameter is user configurable.
+    protocol: TCP
+    # appProtocol provides a way to specify an application protocol for each service port, this param is user configurable and the default value is 'tcp'. When tls (ssl) is configured for fluentd forwarder plugin, appProtocol can be set to "tls".
+    appProtocol: tcp
+    # type of service: None, ClusterIP
+    type: ClusterIP
+    annotations: {}
+    #If dual-stack is configured for fluentd, add bind :: in the forwarder source section in the fluentd configuration. If using singlestack IPv4 or if trying to access using IPv4 address of the service,then set bind address to 0.0.0.0 (default value).
+
+  # volume_mount_enable: true mounts the directories under volumes: The below volumes are required for reading container logs. set the flag to false when fluentd is running as non-root user.
+  volume_mount_enable: true
+  # fluentd volumes
+  volumes:
+    - name: varlog
+      hostPath:
+        path: /var/log
+    #Comment below dockercontainers volume when deploying in NCS22 environment or Openshift environment.
+    - name: dockercontainers
+      hostPath:
+        path: /data0/docker
+    #Uncomment below containerd-log volume when deploying in NCS22 environment
+    #- name: containerd-log
+      #hostPath:
+        #path: /data0/containerd/log
+  # volume mounts
+  volumeMounts:
+    - name: varlog
+      mountPath: /var/log
+    #Comment below dockercontainers mount when deploying in NCS22 environment or Openshift environment.
+    - name: dockercontainers
+      mountPath: /data0/docker
+    #Uncomment below containerd-log mount when deploying in NCS22 environment
+    #- name: containerd-log
+      #mountPath: /data0/containerd/log
+  #list of hostpaths to be allowed that needs to be added in PSP, it should include the hostpaths location which are configured in volumes section
+  allowedHostPathsInPSP:
+    - pathPrefix: "/var/log"
+      readOnly: false
+    #Comment below "/data0/docker" hostpath when deploying in NCS22 environment or Openshift environment.
+    - pathPrefix: "/data0/docker"
+      readOnly: false
+    #Uncomment below "/data0/containerd/log" hostpath when deploying in NCS22 environment
+    #- pathPrefix: "/data0/containerd/log"
+      #readOnly: false
+  
+  ## Node labels for pod assignment
+  ### ref: https://kubernetes.io/docs/concepts/configuration/assign-pod-node/#nodeselector
+  nodeSelector: {}
+
+  ## Toleration is asking the K8S schedule to ignore a taint
+  ### ref: https://kubernetes.io/docs/concepts/configuration/taint-and-toleration/
+  #This toleration is provided to have fluentd pods to be scheduled on all nodes including control nodes that may have a taint NoExecute to fulfill daemonset behaviour.
+  #This can be set to empty for deployment/statefulset kind. 
+  #To configure it to empty, set tolerations: []
+  tolerations:
+    - operator: 'Exists'
+      effect: 'NoExecute'
+
+  livenessProbe:
+    initialDelaySeconds: 30
+    periodSeconds: 20
+    timeoutSeconds: 1
+    successThreshold: 1
+    failureThreshold: 3
+  readinessProbe:
+    initialDelaySeconds: 30
+    periodSeconds: 15
+    timeoutSeconds: 1
+    successThreshold: 1
+    failureThreshold: 3
+
+  ## Pod scheduling preferences.
+  ## ref: https://kubernetes.io/docs/concepts/configuration/assign-pod-node/#affinity-and-anti-affinity
+  affinity: {}
+
+  persistence:
+    #For 18.8 BCMT onwards storageClassName cinder will bydefault get picked up. For using the chart in BCMT-18.6 provide storageClassName which you have created.
+    ##If you want to use local storage as volume give "local-storage" in storageClassName.
+     #If defined, storageClassName: <storageClass> , specified storage class is taken up.
+     #If undefined or set as "", the storage class annotated as default will be used for dynamic PVC provisioning.
+     #If set as "-", no storage class will be used i.e. dynamic provisioning is disabled (Existing available PVs that do not have a specified storageClassName will be considered for binding to the PVC)
+    storageClassName: ""
+    accessMode: ReadWriteOnce
+    size: 10Gi
+    # set pvc_auto_delete to true if you want the persistent volume to also get deleted on deletion of the release.
+    # This will delete all the previsous data stored in the persistent volume.
+    # When local storage is used it will deleted only PVC not PV.
+    pvc_auto_delete: false
+
+  #Set unifiedLogging.enabled to false if you do not want to get fluentd pod's logs in CLOG format.
+  unifiedLogging:
+    enabled: true
+    # Following are the image and resource details for the fluentd sidecar used to achieve unified logging
+    imageRepo: bssc-fluentd
+    # Desired image flavor must be configured at imageFlavor. If the flavor is included in unifiedLogging.imageTag (for ex. 1.16.2-rocky8-jre17-2311.0.1), the complete tag would be read as-is, irrespective of configuration at unifiedLogging.imageFlavor.
+    imageTag: 1.16.2-2311.0.1
+    # set image Flavor at container level for fluentd-sidecar container. It has higher precedence than global.imageFlavor, .imageFlavor and fluentd.imageFlavor. It supports rocky8-jre11 or rocky8-jre17. Default value is rocky8-jre11.
+    imageFlavor:
+    # set image Flavor Policy at container level for fluentd-sidecar container. It has higher precedence than global.imageFlavorPolicy, .imageFlavorPolicy and fluentd.imageFlavorPolicy. It supports Strict or BestMatch. Default value is BestMatch.
+    imageFlavorPolicy:
+
+    imagePullPolicy: IfNotPresent
+    resources:
+      limits:
+        #cpu: "50m"
+        memory: "100Mi"
+        ephemeral-storage: "500Mi"
+      requests:
+        cpu: "20m"
+        memory: "80Mi"
+        ephemeral-storage: "200Mi"
+    syslog:
+      # Enable sending logs to syslog. Takes precedence over global.unifiedLogging.syslog.enabled. Enabled value left empty intentionally, default value is False.
+      enabled:
+      facility: 
+      host:
+      port:
+      protocol:
+      #Note - If SSL is enabled for syslog server, configure its root CA certificate in a precreated secret and configure the secret name and key containing the ca certificate under caCrt/tls section
+      ## syslog.caCrt section will be deprecated in future. It is still supported currently, however the new parameter syslog.tls.secretRef takes higher precedence over syslog.caCrt if both are configured.
+      caCrt:
+        secretName:
+        key:
+      ## Recommended to use below section to configure the secret name and key containing the ca certificate.
+      tls:
+        secretRef:
+          # Secret name, pointing to a Secret object.
+          name:
+          # Secret key names mapping.
+          # If the provided Secret is of type `kubernetes.io/tls', then key names do not need to be changed.
+          keyNames:
+            # Name of Secret key, which contains CA certificate.
+            caCrt: "ca.crt"
+     
+      #set buffer size for fluentd pod logs sent to syslog
+      appLogBufferSize: 70MB
+    
+    #Provide list of extended fields that component can use to enrich the log event by removing {} and configure like below example.
+    #This has precedence over global.unifiedLogging.extension
+    extension: {}
+    #extension:
+       #VM_Name: abc
+       #VM_UUID: 123
+
+    #Provide list of env parameters to be added in fluentd sidecar in below section after removing {}.
+    env: {}
+
+    unifiedLoggingConfig: |
+      #system directive is added here to format fluentd sidecar logs into json.
+      <system>
+        <log>
+          format json
+          time_format %Y-%m-%dT%H:%M:%S%z
+        </log>
+      </system>
+      <source>
+        @type tail
+        path /tmp/mainContainerLogs/*.log
+        pos_file /tmp/fluentd.pos
+        read_from_head true
+        tag fluentd-main-container-logs
+        <parse>
+          @type json
+          time_key time
+          time_format %iso8601
+          keep_time_key true
+        </parse>
+      </source>
+      <source>
+        @type tail
+        path /tmp/sidecarContainerLogs/*.log
+        pos_file /tmp/sidecar.pos
+        read_from_head true
+        tag fluentd-sidecar-alerts-logs
+        <parse>
+          @type json
+          time_key time
+          time_format %iso8601
+          keep_time_key true
+        </parse>
+      </source>
+      <filter fluent.* fluentd-main-container-logs>
+        @type record_transformer
+        enable_ruby true
+        renew_record true
+        <record>
+          log ${ { message: record["message"]  } }
+          extension ${require 'json';record.merge(JSON.parse(ENV["EXTENSION_FIELDS"]))}
+          type "log"
+          level ${record.has_key?("level") ? record["level"]: "unavailable" }
+          timezone ${ ENV["TZ"] }
+          system ${ ENV["SYSTEM"] }
+          systemid ${ ENV["SYSTEMID"] }
+          host ${ ENV["HOSTNAME"]}.${ ENV["NAMESPACE"] || '' }
+          container ${tag == 'fluentd-main-container-logs' ? ENV["MAIN_CONTAINER_NAME"] : ENV["CONTAINER_NAME"]}
+          time ${record.has_key?("time") ? record["time"]: time.strftime('%Y-%m-%dT%H:%M:%S%z') }
+        </record>
+        remove_keys $.extension.time,$.extension.message,$.extension.level
+      </filter>
+      <filter fluent.* fluentd-main-container-logs>
+        @type record_modifier
+        enable_ruby true
+        <record>
+          dummy ${require 'json';if record["extension"].empty?; record.delete("extension"); end}
+        </record>
+        remove_keys dummy
+      </filter>
+      {{- if $.syslogEnabled }}
+      <match fluentd-main-container-logs fluentd-sidecar-alerts-logs>
+        @type rewrite_tag_filter
+        <rule>
+          key level
+          pattern (?i)alert
+          tag ${tag}.alert
+        </rule>
+        <rule>
+          key level
+          pattern .+
+          tag ${tag}.{{ tpl (default "notice" $.syslog.severity) . }}
+        </rule>
+      </match>
+      {{- end }}
+      <match **>
+        @include dest.conf
+      </match>
+
+  # certManager.enabled and certificate.enabled must be true for using this certificate.
+  # The following certificate configurations like duration etc would be given precedence over the configurations in fluentd.certManager section.
+  certificate:
+    enabled: true
+    # If `issuerRef.name` or `issuerRef.kind` is not specified value from certManager section is taken
+    issuerRef:
+      name:
+      kind:
+      group: # set to "cert-manager.io" by default
+    duration:  # set to 8760h by default
+    renewBefore:  # set to 360h by default
+    # If left empty, it will be generated automatically.
+    secretName:
+    # Not needed in internal communication
+    subject:
+    # It has been deprecated since 2000 and is discouraged from being used for a server side certificates.
+    # `dnsNames` are used instead.
+    commonName:
+    # Usages is the set of x509 usages that are requested for the certificate.
+    # If `usages` is not specified, the following will be used:
+    # - server auth
+    # - client auth
+    usages:
+    # DNSNames is a list of DNS subjectAltNames to be set on the Certificate.
+    # If ssl passthrough is used on the Ingress object,
+    # then dnsNames should be set to external DNS names.
+    dnsNames:
+    # URIs is a list of URI subjectAltNames to be set on the Certificate.
+    uris:
+    # IPAddresses is a list of IP address subjectAltNames to be set on the Certificate.
+    ipAddresses:
+    privateKey:
+      algorithm:
+      encoding:
+      size:
+      # Rotation of a key pair, when certificate is refreshed is recommended from a security point of view
+      rotationPolicy: Always
+
+upgrade:
+  #Due to asset name changes, fluentd PV has to be migrated to retain old data. Use this flag if upgrading from BELK 22.06. For subsequent upgrades(like update configuration) the value has to be false.
+  #This needs to be set to true only when fluentd kind is StatefulSet. Also, PV migration needs cluster-level permission, so a cluster role is created as part of pre-upgrade hook when this is set to true.
+  autoMigratePV: false
+
+cbur:
+  enabled: false
+  #the maximum copy you want to saved.
+  maxCopy: 5
+  #Modes supported now: "local","NETBKUP","AVAMAR","CEPHS3","AWSS3", case insensitive
+  backendMode: "local"
+  #It is used for scheduled backup task
+  cronJob: "0 23 * * *"
+  #Set below parameters to true for auto enabling cron job
+  autoEnableCron: false
+  #Set below parameter to true in case you want cronjob to be automatically deleted when autoEnableCron is set back to false from true
+  autoUpdateCron: false
+
+# Set to true to enable istio
+istio:
+  enabled: false
+  #Istio version specified at chart level takes precedence over global level.
+  # quote is important, otherwise value is treated as a float value Ex. "1.7"
+  version:
+  # Whether istio cni is enabled in the environment.
+  cni:
+   enabled:
+  # This optional flag should only be used when application was installed in istio-injection=enabled namespace, but was configured with istio.enabled=false, thus istio sidecar could not be injected into this application. Client then would need destinationRule for accessing this application
+  createDrForClient: false
+  # Below configurations will be used for configuring spec of DestinationRule  when createDrForClient flag is enabled
+  customDrSpecForClientPrometheusSvc:
+    trafficPolicy:
+      tls:
+        mode: "DISABLE"
+  # Below configurations will be used for configuring spec of DestinationRule  when createDrForClient flag is enabled
+  customDrSpecForClientForwarderSvc:
+    trafficPolicy:
+      tls:
+        mode: "DISABLE"
+ 
+kubectl:
+  image:
+    repo: tools/kubectl
+    # Desired image flavor must be configured at image.flavour. If the flavor is included in image.tag (for ex. 1.26.11-rocky8-nano-20231124), the complete tag would be read as-is, irrespective of configuration at image.flavor.
+    tag: 1.26.11-20231124
+    # set image Flavor for kubectl. It has higher precedence than global.imageFlavor and .imageFlavor. Default value is rocky8-nano.
+    # If the flavor is configured at higher levels (workload, root or global) with a flavor not supported by kubectl img, set this imageFlavor explicitly to rocky8-nano.
+    flavor:
+    # set image Flavor Policy for kubectl. It has higher precedence than global.imageFlavorPolicy and .imageFlavorPolicy. It supports Strict or BestMatch. Default value is BestMatch.
+    flavorPolicy:
+    supportedImageFlavor: ["rocky8-nano"]
+
+#Set affinity, nodeSelector, tolerations and modify resources to apply to jobs and helm test pods
+jobs:
+  affinity: {}
+  nodeSelector: {}
+  tolerations: []
+  hookJobs:
+    resources:
+      requests:
+        cpu: 100m
+        memory: 100Mi
+        ephemeral-storage: "50Mi"
+      limits:
+        #cpu: 120m
+        memory: 120Mi
+        ephemeral-storage: "50Mi"
+
+cvea_log:
+  enable: false
+  cvea_connection: 0.0.0.0:9991
+  rpc_timeout: 300
+  cvea_retrytimes: 10
+  cvea_retryinterval: 200
+  
+cronjob:
+  schedule: "*/15 * * * *"
+  concurrencyPolicy: "Forbid"
+  failedJobsHistoryLimit: "0"
+  successfulJobsHistoryLimit: "0"
+  suspend: "False"
+
+#This section is used for configuring sizeLimit for emptyDir volumes. When emptyDirSizeLimit is not configured, default values will be used.
+emptyDirSizeLimit:
+  tmp: #default value is 500Mi
+  sensitiveConfig: #default value is 10Mi
+  sharedVolume: #default value is 10Mi

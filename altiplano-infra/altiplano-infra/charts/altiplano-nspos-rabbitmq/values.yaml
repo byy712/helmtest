@@ -1,0 +1,961 @@
+global:
+  vault:
+    enabled: #false
+    config:
+      url: ""
+      token: ""
+      kvPath: ""
+  ## This registry is the registry what references the rabbitmq and rsyslog images.
+  registry: artifactory.net.nokia.com
+  ## This registry1 is the registry which contains kubectl tools & cbur images.
+  registry1: artifactory.net.nokia.com
+  ## This registry2 is the registry what references the crmq-test image.
+  registry2: artifactory.net.nokia.com
+
+  podNamePrefix: 
+
+  containerNamePrefix: 
+
+  # Refer section "LabelsandAnnotations" from the Helm Best Practices documentation
+  annotations: {}
+    #Add the annotations here
+  labels: {}
+    #Add the labels here
+
+  preheal: 0
+  postheal: 0
+
+  ## For IPv4 and IPv6 dual stack support
+  # for the combination of (SingleStack, ["IPv6"]) set ipv6Enabled flag to true.
+  # ipFamilyPolicy:  SingleStack | PreferDualStack | RequireDualStack
+  ipFamilyPolicy:
+  # ipFamilies: ["IPv4"] | ["IPv6"] | ["IPv4","IPv6"] | ["IPv6","IPv4"]
+  ipFamilies: []
+  #- IPv4
+  #- IPv6
+
+  imagePullSecrets:
+postDeleteJobName: 
+postDeleteContainerName: 
+postInstallJobName: 
+postInstallContainerName: 
+postUpgradeJobName: 
+postUpgradeContainerName: 
+postScaleinJobName: 
+postScaleinContainerName: 
+podDisruptionBudgetJobName:
+preHealJobName:
+preHealContainerName:
+postHealJobName:
+postHealContainerName:
+
+
+nodeLabel: "rabbitmq"
+priorityClass: ""
+
+fullnameOverride: altiplano-nspos-rabbitmq
+
+kubernetes:
+  clusterDomain: cluster.local
+accessRoleLabel: internal-access
+
+init:
+  repository: fnms-init-container
+  tag: nokia-2.0.1
+  pullPolicy: IfNotPresent
+
+image:
+  registry: #artifactory.net.nokia.com
+  repository: nokia-nsp-docker-virtual/crmq/rabbitmq/rocky8
+  tag: 2.3.2-3.11.18-21
+  ## Specify a imagePullPolicy
+  ## Defaults to 'Always' if image tag is 'latest', else set to 'IfNotPresent'
+  ## ref: http://kubernetes.io/docs/user-guide/images/#pre-pulling-images
+  ##
+  pullPolicy: IfNotPresent
+
+  ## set to true if you would like to see extra information on logs
+  ## it turns BASH and NAMI debugging in minideb
+  ## ref:  https://github.com/bitnami/minideb-extras/#turn-on-bash-debugging
+  ## debug: false
+
+  ## Optionally specify an array of imagePullSecrets.
+  ## Secrets must be manually created in the namespace.
+  ## ref: https://kubernetes.io/docs/tasks/configure-pod-container/pull-image-private-registry/
+  ##
+  # pullSecrets:
+  #   - myRegistrKeySecretName
+
+## does your cluster have rbac enabled? assume yes by default
+
+rbac:
+  enabled: true
+  test:
+    enabled: false
+
+serviceAccountName:
+serviceAccountNamePostDel :
+serviceAccountNameScale :
+serviceAccountNameAdminForgetnode :
+serviceAccountNameHelmTest:
+serviceAccountNamePreHeal:
+serviceAccountNamePostHeal:
+helmTestSecret:
+
+
+postDeleteForceClean:
+  enabled: false
+
+## does your cluster in pure ipv6 environment?
+ipv6Enabled: false
+
+## For IPv4 and IPv6 dual stack support
+# for the combination of (SingleStack, ["IPv6"]) set ipv6Enabled flag to true.
+# ipFamilyPolicy:  SingleStack | PreferDualStack | RequireDualStack
+ipFamilyPolicy:
+# ipFamilies: ["IPv4"] | ["IPv6"] | ["IPv4","IPv6"] | ["IPv6","IPv4"]
+ipFamilies: []
+#- IPv4
+#- IPv6
+
+# crmq workload level annotations/labels
+statefulset:
+  annotations: {}
+    #Add the annotations here
+  labels: {}
+    #Add the labels here
+
+custom:
+  statefulset:
+    annotations: {}
+## to change app.kubernetes.io/part-of: "{{.Values.partOf}}" commonLabel annotation
+partOf: crmq
+
+# Refer section "CommonLabels" from the Helm Best Practices documentation
+commonLabels: true
+managedBy: Helm
+name: Message_Broker
+# It is not suggested to change this parameter to 'OnDelete' as the user will have to manually delete the Pods to cause the controller to create new Pods that reflect modifications made to a StatefulSet's .spec.template.
+updateStrategy:
+  type: RollingUpdate
+
+securityContext:
+  allowPrivilegeEscalation: false
+  readOnlyRootFilesystem: true
+  runAsUser: 10000
+  fsGroup: 10000
+  seccompProfile:
+    type: "RuntimeDefault"
+  supplementalGroups: ""
+  seLinuxOptions:
+    enabled: false
+    level: ""
+    role: ""
+    type: ""
+    user: ""
+
+
+## If rabbitmq.mqtt is enabled, make sure to set the pdb according the crmq user guide.
+## Also before creating mirror queues or quorum queues, set the pdb as mentioned in the guide.
+## Refer section "CRMQ PodDisruptionBudget Configuration" from crmq user guide documentation
+## Either set maxAvailable or minAvailable but not both. Values can be numeric like 1,2,3 or percentage like 50%.
+pdb:
+  enabled: true
+  maxUnavailable: 1
+  #minAvailable:
+
+istio:
+  enabled: false
+  # set the version of istio installed in the k8s cluster.
+  version: 1.7
+  # Whether istio cni is enabled in the environment.
+  cni:
+    enabled: false
+    # MTLS section of configuration.
+  mtls:
+    #Is strict MTLS enabled in the environment.
+    enabled: true
+  # Should allow mutual TLS as well as clear text for your deployment.
+  # disable to configure mtls in STRICT mode.
+  permissive: true
+## Whether use istio ingress gateway(Envoy)
+istioIngress:
+  enabled: false
+  # the host used to access the management GUI from istio ingress gateway
+  host: "*"
+  port: 80
+  selector: {istio: ingressgateway}
+
+tmpForceRecreateResources: false
+
+## option clusterDomain to change sts DnsConfig with an other clusterDomain
+clusterDomain: cluster.local
+
+
+## section of specific values for rabbitmq
+rabbitmq:
+  ## default rabbitmq application username and password stored inside a k8s secret.
+  ## example secret creation:
+  ## kubectl create secret generic <secret-name> --from-literal=<userkey>=user --from-literal=<passkey>=changeme
+  ## provide the secret name, username key and password key within the secret.
+  default_user_credentials:
+    secretName: altiplano-nspos-rabbitmq
+    usernameKey: username
+    passwordKey: password
+
+  dynamicConfig:
+    enabled: false
+    ## Set upgrade to true if you want to run the dynamic config at helm upgrade time.
+    ## You should care of not putting already existing rabbitmq ressource otherwise the job fail
+    ## for exemple if you already have the foo user declare dont try to declare it again.
+    ## If post-upgrade job fail then helm rollaback + change value + helm upgrade again.
+    upgrade: false
+    maxCommandRetries: 10
+    # Temporarily increased from 300 due to NSPD-276970 and CSFS-37744
+    timeout: 900
+    # {} cannot be quoted by '
+    parameters: |-
+      set_policy ha-all "^ha\." '{"ha-mode":"all"}'
+    ##set_vm_memory_high_watermark 0.7
+    ##add_user "foo" "bar"
+    ##add_vhost "/fool"
+    ##set_permissions -p '/fool' 'foo' '.' '.' '.*'
+
+  ## RabbitMQ application username
+  ## ref: https://github.com/bitnami/bitnami-docker-rabbitmq/blob/master/README.md#creating-a-database-user-on-first-run
+  ## this value is mandatory
+  username: user
+  
+
+
+  ## RabbitMQ application password
+  ## ref: https://github.com/bitnami/bitnami-docker-rabbitmq/blob/master/README.md#creating-a-database-user-on-first-run
+  ## this value is mandatory
+  password: "mistral"
+
+  ## Erlang cookie to determine whether different nodes are allowed to communicate with each other
+  ## ref: https://github.com/bitnami/bitnami-docker-rabbitmq#environment-variables
+  ##
+  # erlangCookie:
+
+  ## Node port
+  ## ref: https://github.com/bitnami/bitnami-docker-rabbitmq#environment-variables
+  ##
+  ## Note: Below non tls port will be disabled, when amqp tls is enabled in the cluster.
+  ## Retain the plaintext listener in addition to the tls listener (when amqp tls is turned ON), with the flag enablePlainTextPort.
+  amqpPort: 5672
+  enablePlainTextPort: true
+  ## nodePort: 30010
+  ## To expose the amqpPort
+  amqpSvc: true
+
+  ## RabbitMQ MQTT configuration
+  ## If mqtt is enabled, set the replicas and pdb according to the crmq user guide.
+  ## Refer section "CRMQ PodDisruptionBudget Configuration" from crmq user guide documentation
+  mqtt:
+    enabled: false
+    vhost: /
+    exchange: amq.topic
+    DefaultTcpPort: 1883
+    ## tcpNodePort:
+    enabledSsl: false
+    DefaultSslPort: 8883
+    ## sslNodePort:
+    DefaultRetainedSave: rabbit_mqtt_retained_msg_store_dets
+
+  ## The node name type in cluster.
+  ## When address_type is default, the env RABBITMQ_NODENAME is rabbit@$(POD_NAME).
+  ## When address_type is hostname, the env RABBITMQ_NODENAME is rabbit@$(POD_NAME).$(K8S_SERVICE_NAME).$(POD_NAMESPACE).svc.$(k8s_domain).
+  ##
+  clustering:
+    ## The address_type can only be set to default or hostname.
+    ## If set to hostname, must set RABBITMQ_USE_LONGNAME="true" in rabbitmq.environment field.
+    address_type: default
+    k8s_domain: cluster.local
+  ## Node name to cluster with. e.g.: `clusternode@hostname`
+  ## ref: https://github.com/bitnami/bitnami-docker-rabbitmq#environment-variables
+  ## If rabbitmqClusterNodeName is configured, RABBITMQ_NODENAME is the configured value.
+  ##
+  # rabbitmqClusterNodeName:
+
+  ## Plugins to enable
+  ## You can enable other plugins like:
+  ## [rabbitmq_management,rabbitmq_peer_discovery_k8s,rabbitmq_mqtt,rabbitmq_prometheus,...].
+  plugins: |-
+      [rabbitmq_management,rabbitmq_peer_discovery_k8s,rabbitmq_prometheus].
+
+  ## Configution file content
+  configuration: |-
+      ## Clustering
+      cluster_formation.peer_discovery_backend  = rabbit_peer_discovery_k8s
+      cluster_formation.k8s.host = kubernetes.default.svc.cluster.local
+      cluster_formation.k8s.address_type = hostname
+      cluster_partition_handling = autoheal
+      ## queue master locator
+      queue_master_locator=min-masters
+      ## enable guest user
+      loopback_users.guest = false
+      ## prometheus plugin (default values when rabbitmq_prometheus plugin is enabled in RabbitMQ 3.8)
+      #prometheus.path = /metrics
+      #prometheus.tcp.port = 15692
+
+  ## To add some contents in /etc/rabbitmq/advanced.config file
+  ## Note: prometheus plugin is no more defined in advancedConfig (since RabbitMQ 3.8)
+  advancedConfig: |-
+           %%{foo,
+           %%  [{bar, [ {path, "/rabbitmq"},
+           %%                         {connections_total_enabled, true} ]} ]},
+  ## environment file content
+  ## avoid adding -proto_dist in RABBITMQ_SERVER_ADDITIONAL_ERL_ARGS and RABBITMQ_CTL_ERL_ARGS
+  ## it will be added at the runtime based on the configuration.
+  environment: |-
+      RABBITMQ_SERVER_ADDITIONAL_ERL_ARGS="+A 128"
+      PLUGINS_DIR="/var/lib/rabbitmq/plugins:/usr/lib/rabbitmq/plugins:$RABBITMQ_HOME/plugins"
+      ## The two env vars below are added to fix NSPD-293607, by creating a static directory that all HA pods can share.
+      RABBITMQ_MNESIA_BASE="/var/lib/rabbitmq/mnesia"
+      RABBITMQ_MNESIA_DIR="$RABBITMQ_MNESIA_BASE/node_data"
+
+  environmentIpv6: |-
+      RABBITMQ_SERVER_ADDITIONAL_ERL_ARGS="+A 128  -kernel inetrc '/etc/rabbitmq/erl_inetrc'  -proto_dist inet6_tcp"
+      RABBITMQ_CTL_ERL_ARGS="-proto_dist inet6_tcp"
+      PLUGINS_DIR="/var/lib/rabbitmq/plugins:/usr/lib/rabbitmq/plugins:$RABBITMQ_HOME/plugins"
+
+
+  ##specific rabbitmq memory configuration memory ( could also be set directly in configuration bloc )
+  memory:
+    vm_memory_high_watermark_relative:
+    vm_memory_high_watermark_absolute:
+    vm_memory_high_watermark_paging_ratio:
+    disk_free_limit_absolute:
+
+  secretName: altiplano-nspos-rabbitmq-certificate-secrets
+
+  ## Internode TLS is used for Inter Broker Communication. 
+  ## The same port is used RabbitMQ CLI Clients as well, so this setting enables TLS for RabbitMQ CLI clients too
+  ## Check the below link before generating certs manually.
+  ## Refer section "Rabbitmq internode TLS Configuration" from crmq user guide documentation
+  internodetls:
+    enabled: false
+
+    # Create the secret with ca-cert, server-cert and server-key using below sample command.
+    # kubectl create secret generic <secret-name> --from-file=ca=<ca-certificate path> --from-file=cert=<certificate path> --from-file=key=<key path>
+    secret:
+      used: false
+      name: <internode-tls-secret>
+      ca_cert_key: ca
+      tls_cert_key: cert
+      tls_key_key: key
+      
+    verify_option: "verify_peer"
+    fail_if_no_peer_cert: true
+    honor_cipher_order: true
+    honor_ecc_order: true
+
+    # Set the tls versions as mentioned below in examples.
+    # eg. ['tlsv1.2', 'tlsv1.3']
+    # eg. ['tlsv1.3']
+    # NOTE: Strictly follow the format as mentioned in the examples.
+    versions: |-
+    #     ['tlsv1.3']
+
+    # Enable options to explicitly set ciphers
+    # TLSv1.3 shares no cipher suites with earlier TLS versions, when enabling TLSv1.3, 
+    # only enable TLSv1.3-specific cipher suites
+    # All ciphers must be enclosed in double-quotes("") separated by comma (,) followed by new-line
+    # as added below
+    ciphers_options: |-
+    ##      "ECDHE-ECDSA-AES256-GCM-SHA384",
+    ##      "ECDHE-RSA-AES256-GCM-SHA384"
+    ##  Ciphers below are only specific to Tlsv1.3
+    ##      "TLS_AES_256_GCM_SHA384",
+    ##      "TLS_AES_128_GCM_SHA256",
+    ##      "TLS_CHACHA20_POLY1305_SHA256",
+    ##      "TLS_AES_128_CCM_SHA256",
+    ##      "TLS_AES_128_CCM_8_SHA256" 
+
+    certmanager:
+      # Require at least BCMT19.12
+      used: false
+      # 365 days
+      duration: "8760h"
+      # 15 days
+      renewBefore: "360h"
+      keySize: 3072
+      # allowed values for algorithm are 'RSA','Ed25519' or 'ECDSA'
+      algorithm: "RSA"
+      # allowed values for encoding are 'PKCS1' or 'PKCS8'
+      encoding: "PKCS8"
+      issuerName: "ncms-ca-issuer"
+      issuerType: "ClusterIssuer"
+      issuerGroup: "cert-manager.io"
+      # if no commonName provided, the following section is added in secrets.yaml
+      ## commonName: {{ printf "%s-server" (include "crmq.fullname" .) | quote }}
+      commonName: 
+      ## rabbitmq.internodetls.certmanager.ipAddresses can be set either using "helm --set" or by editing the values.yaml
+      ## --set "rabbitmq.internodetls.certmanager.ipAddresses[0]"="127.0.0.1","rabbitmq.internodetls.certmanager.ipAddresses[1]"="135.1.12.3" or by following this example:
+      ##ipAddresses:
+      ##  - "127.0.0.1"
+      ##  - "135.1.12.3"
+      ipAddresses:
+      # For "domain" usage, see dnsNames examples hereafter
+      # if no dnsNames provided in values.yaml, then the following section is added in secrets.yaml
+      # {{- include "crmq.internode.tls.dns" . -}}
+      ##dnsNames:
+      ##  - "{{ crmq.fullname }}-0"
+      ##  - "{{ crmq.fullname }}-1"
+      ##  - "{{ crmq.fullname }}-2"
+      ##  - "*.{{ crmq.fullname }}.{{release.namespace}}.svc.{{ .Values.clusterDomain }}"
+      ## rabbitmq.internodetls.certmanager.dnsNames can be set by following this example (if not set, see above)
+      ## --set "rabbitmq.internodetls.certmanager.dnsNames[0]"="*.mylab.dev","rabbitmq.internodetls.certmanager.dnsNames[1]"="*.yourlab.dev"
+      ## or by following this example:
+      ##dnsNames:
+      ##  - "*.mylab.dev"
+      ##  - "*.yourlab.dev" 
+
+  ## This is configuration for RabbitMQ server to support TLS. The configuration to support mqtt tls is also configured here.
+  ## Note that here must config the whole content of file, not file path.
+  ## The file cacert.pem, cert.pem and key.pem will be mounted to path /etc/rabbitmq.tls.conf/server
+  ## If certmanager.use=true then don't fill cacert, cert & key
+  tls:
+    enabled: false
+
+    # Create the secret with ca-cert, server-cert and server-key using below sample command.
+    # kubectl create secret generic <secret-name> --from-file=ca=<ca-certificate path> --from-file=cert=<certificate path> --from-file=key=<key path>
+    secret:
+      used: true
+      name: altiplano-nspos-rabbitmq-certificate-secrets
+      ca_cert_key: nspos-rabbitmq-server-trustchain-cert.pem
+      tls_cert_key: nspos-rabbitmq-server-cert.pem
+      tls_key_key: nspos-rabbitmq-server-key.pem
+
+    ## if you upload your own certificate directly in the pod please give them path
+    uploadPath:
+      cacert: ""
+      cert: ""
+      key: ""
+
+    verify_option: "verify_peer"
+    fail_if_no_peer_cert: false
+    honor_cipher_order: true
+    honor_ecc_order: true
+    # Enable options to explicitly set ciphers
+    # TLSv1.3 shares no cipher suites with earlier TLS versions, when enabling TLSv1.3, only enable TLSv1.3-specific cipher suites
+    ciphers_options: |-
+    ##  ssl_options.ciphers.1 = ECDHE-ECDSA-AES256-GCM-SHA384
+    ##  ssl_options.ciphers.2  = ECDHE-RSA-AES256-GCM-SHA384
+    # Ciphers below are only specific to Tlsv1.3 
+    ##  ssl_options.ciphers.1  = TLS_AES_256_GCM_SHA384
+    ##  ssl_options.ciphers.2  = TLS_AES_128_GCM_SHA256
+    ##  ssl_options.ciphers.3  = TLS_CHACHA20_POLY1305_SHA256
+    ##  ssl_options.ciphers.4  = TLS_AES_128_CCM_SHA256
+    ##  ssl_options.ciphers.5  = TLS_AES_128_CCM_8_SHA256
+    
+    test: ""
+    ssl_port: 5671
+    ## nodePort:
+
+    ## If versions used please fill helm_test_tls_version value
+    versions: |-
+      ssl_options.versions.1 = tlsv1.2
+    ##  ssl_options.versions.1 = tlsv1
+    ##  ssl_options.versions.2 = tlsv1.2
+    ##  ssl_options.versions.3 = tlsv1.3
+
+    ## If you use tls.version please chose one tls version for tls helm test.
+    ##chose one of "ssl.PROTOCOL_TLSv1 ,ssl.PROTOCOL_TLSv1_1, ssl.PROTOCOL_TLSv1_2, ssl.PROTOCOL_TLS(for Tlsv1.3)"
+    ##TLS 1.3 protocol will be available with PROTOCOL_TLS in OpenSSL >= 1.1.1. There is no dedicated PROTOCOL constant for just TLS 1.3. 
+    helm_test_tls_version: "ssl.PROTOCOL_TLSv1_2"
+
+    #use_cert_manager replaced by certmanager.used
+    certmanager:
+      # Require at least BCMT19.12
+      used: false
+      # 365 days
+      duration: "8760h" 
+      # 15 days
+      renewBefore: "360h"
+      keySize: 3072
+      # allowed values for algorithm are 'RSA','Ed25519' or 'ECDSA'
+      algorithm: "RSA"
+      # allowed values for encoding are 'PKCS1' or 'PKCS8'
+      encoding: "PKCS8"
+      issuerName: "ncms-ca-issuer"
+      issuerType: "ClusterIssuer"
+
+      # if no commonName provided, the following section is added in secrets.yaml
+      ## commonName: {{ printf "%s-server" (include "crmq.fullname" .) | quote }}
+      commonName:
+      ## rabbitmq.tls.certmanager.ipAddresses can be set either using "helm --set" or by editing the values.yaml
+      ## --set "rabbitmq.tls.certmanager.ipAddresses[0]"="127.0.0.1","rabbitmq.tls.certmanager.ipAddresses[1]"="135.1.12.3"
+      ##ipAddresses:
+      ##  - "127.0.0.1"
+      ##  - "135.1.12.3"
+      ipAddresses:
+      # For "domain" usage, see dnsNames examples hereafter
+      domain: svc.cluster.local
+      # if no dnsNames provided in values.yaml, then the following section is added in secrets.yaml
+      ##dnsNames:
+      ##  - "crmq.fullname"
+      ##  - "crmq.fullname".{{Release.Namespace}}
+      ##  - "crmq.fullname".{{Release.Namespace}}.{{rabbitmq.tls.certmanager.domain}}
+      ## rabbitmq.tls.certmanager.dnsNames can be set by following this example (if not set, see above)
+      ## --set "rabbitmq.tls.certmanager.dnsNames[0]"="*.mylab.dev","rabbitmq.tls.certmanager.dnsNames[1]"="*.yourlab.dev"
+      ## or by following this example:
+      ##dnsNames:
+      ##  - "*.mylab.dev"
+      ##  - "*.yourlab.dev"
+  ## This is configuration for management plugin to support TLS.
+  ## If you want to mount the certs and key using secret, enable the below secret section and provide the name of secret
+  ## The file cacert.pem, cert.pem and key.pem will be mounted to path /etc/rabbitmq.tls.conf/secret/management
+  ## If certmanager.use=true then don't fill cacert, cert & key
+  management:
+    enabled: true
+    port: 15672
+    ## nodePort: 30110
+  
+    tls:
+      enabled: true
+      verify_option: "verify_peer"
+      fail_if_no_peer_cert: false
+      honor_cipher_order: true
+      honor_ecc_order: true
+
+      #Create secret to use ca-cert, server-cert and server-key using the below command.
+      #kubectl create secret generic <secret-name> --from-file=ca=<ca-certificate path> --from-file=cert=<certificate path> --from-file=key=<key path>
+      secret:
+        used: true
+        name: altiplano-nspos-rabbitmq-certificate-secrets
+        ca_cert_key: nspos-rabbitmq-server-trustchain-cert.pem
+        tls_cert_key: nspos-rabbitmq-server-cert.pem
+        tls_key_key: nspos-rabbitmq-server-key.pem
+  
+      ## If versions used please fill helm_test_tls_version value
+      versions: |-
+        'tlsv1.2'
+      ##  'tlsv1.3',
+      ##  'tlsv1.2'
+
+      ## If you use tls.versions please chose one tls version for tls helm test.
+      ## chose one of "tlsv1.3", "tlsv1.2"
+      helm_test_tls_version: "tlsv1.2"
+
+      # Enable options to explicitly set ciphers
+      # TLSv1.3 shares no cipher suites with earlier TLS versions, when enabling TLSv1.3, only enable TLSv1.3-specific cipher suites
+      ciphers_options: |-
+      ##  ECDHE-ECDSA-AES256-GCM-SHA384,
+      ##  ECDHE-RSA-AES256-GCM-SHA384
+      # Ciphers below are only specific to Tlsv1.3 
+      ##  TLS_AES_256_GCM_SHA384,
+      ##  TLS_AES_128_GCM_SHA256,
+      ##  TLS_CHACHA20_POLY1305_SHA256,
+      ##  TLS_AES_128_CCM_SHA256,
+      ##  TLS_AES_128_CCM_8_SHA256
+
+      ## if you upload your own certificate directly in the pod please give them path
+      uploadPath:
+        cacert: ""
+        cert: ""
+        key: ""
+
+      #use_cert_manager replaced by certmanager.used
+      certmanager:
+        # Require at least BCMT19.12
+        used: false
+        # 365 days
+        duration: "8760h"
+        # 15 days
+        renewBefore: "360h"
+        keySize: 3072
+        # allowed values for algorithm are 'RSA','Ed25519' or 'ECDSA'
+        algorithm: "RSA"
+        # allowed values for encoding are 'PKCS1' or 'PKCS8'
+        encoding: "PKCS8"
+        issuerName: "ncms-ca-issuer"
+        issuerType: "ClusterIssuer"
+        issuerGroup: "cert-manager.io"
+        # if no commonName provided, the following section is added in secrets.yaml
+        ## commonName: {{ printf "%s-management" (include "crmq.fullname" .) | quote }}
+        commonName:
+        ##ipAddresses:
+        ##  - "127.0.0.1"
+        ##  - "135.1.12.3"
+        ipAddresses:
+        # For "domain" usage, see dnsNames examples hereafter
+        domain: svc.cluster.local
+        # if no dnsNames provided in values.yaml, then the following section is added in secrets.yaml
+        ## dnsNames:
+        ##   - "rabbitmq.management.service"
+        ##   - "rabbitmq.management.service".{{Release.Namespace}}
+        ##   - "rabbitmq.management.service".{{Release.Namespace}}.{{rabbitmq.management.certmanager.domain}}
+        ## rabbitmq.management.certmanager.dnsNames can be set by following this example (if not set, see above)
+        ##dnsNames:
+        ##  - ""
+        ##  - "*"
+        
+  ##Updated port number must be replicated in "prometheus.io/port" at "svcPrometheusAnnotations"
+  prometheus:
+    enabled: false
+    port: 15692
+    ## nodePort: 30111
+    tls:
+      enabled: false
+
+      # Create the secret with ca-cert, server-cert and server-key using below sample command.
+      # kubectl create secret generic <secret-name> --from-file=ca=<ca-certificate path> --from-file=cert=<certificate path> --from-file=key=<key path>
+      secret:
+        used: true
+        name: altiplano-nspos-rabbitmq-certificate-secrets
+        ca_cert_key: nspos-rabbitmq-pts-client-trustchain-cert.pem
+        tls_cert_key: nspos-rabbitmq-pts-client-cert.pem
+        tls_key_key: nspos-rabbitmq-pts-client-key.pem
+
+      ## if you upload your own certificate directly in the pod please give them path
+      uploadPath:
+        cacert: ""
+        cert: ""
+        key: ""
+
+      ## password-if-keyfile-is-encrypted, presented in a secret
+      # pre create the secret prior to chart installation, with the below sample command.
+      # kubectl create secret generic <passwordSecretName> --from-literal=<passwordSecretKey>=example-password
+      passwordSecretName: 
+      passwordSecretKey: 
+
+      certmanager:
+        # Require at least BCMT19.12
+        used: false
+        # 365 days
+        duration: "8760h"
+        # 15 days
+        renewBefore: "360h"
+        keySize: 3072
+        # allowed values for algorithm are 'RSA','Ed25519' or 'ECDSA'
+        algorithm: "RSA"
+        # allowed values for encoding are 'PKCS1' or 'PKCS8'
+        encoding: "PKCS8"
+        issuerName: "ncms-ca-issuer"
+        issuerType: "ClusterIssuer"
+        issuerGroup: "cert-manager.io"
+        # if no commonName provided, the following section is added in secrets.yaml
+        ## commonName: {{ printf "%s-management" (include "crmq.fullname" .) | quote }}
+        commonName:
+        ##ipAddresses:
+        ##  - "127.0.0.1"
+        ##  - "135.1.12.3"
+        ipAddresses:
+        # For "domain" usage, see dnsNames examples hereafter
+        domain: svc.cluster.local
+        # if no dnsNames provided in values.yaml, then the following section is added in secrets.yaml
+        ## dnsNames:
+        ##   - "rabbitmq.management.service"
+        ##   - "rabbitmq.management.service".{{Release.Namespace}}
+        ##   - "rabbitmq.management.service".{{Release.Namespace}}.{{rabbitmq.management.certmanager.domain}}
+        ## rabbitmq.management.certmanager.dnsNames can be set by following this example (if not set, see above)
+        ##dnsNames:
+        ##  - ""
+        ##  - "*"
+  uaa:
+    enabled: false
+    clientId: "rabbit_client"
+    serverLocation: "http://localhost:8080/uaa"
+
+  # To enable OAuth2 plugin enable the below configuration and add 'rabbitmq_auth_backend_oauth2' in above rabbitmq.plugins list. 
+  # The below configuration supports only RSA Algorithm.
+  # To pass the symmetric-key use the advanced-config section with rabbitmqAuthBackendOauth2.enabled set to true.
+  # To pass the public key, create a secret as mentioned below and set the details under rsa section.
+  # kubectl create secret generic <signingSecretName> --from-file=<secretKeyName>=</path/to/pem/file>
+  rabbitmqAuthBackendOauth2:
+    enabled: false
+    ressourceServerId: "rabbitmq"
+    keyId: "key-1"
+    keyType: "RSA"
+    algo: "RS256"
+    signing_key: ""
+
+  backuprestore:
+    enabled: false
+    resources:
+      requests:
+        memory: 20Mi
+        cpu: 100m
+        ephemeral-storage: 1Gi
+      limits:
+        memory: 50Mi
+        cpu: 1
+        ephemeral-storage: 1Gi
+    # Refer section "CBUR - Containerized Backup and Recovery Guide" from CBUR confluence guide
+    backendMode: "local"
+    #autoEnableCron = true indicates that the cron job is immediately scheduled when the BrPolicy is created,
+    #while autoEnableCron = false indicates that scheduling of the cron job should be done on a subsequent backup request.
+    #This option only works when k8swatcher.enabled is true
+    autoEnableCron: false
+    #Indicate if subsequent update of cronjob will be done via brpoilicy update.
+    #true means cronjob must be updated via brpolicy update,
+    #false means cronjob must be updated via manual "helm backup -t app -a enable/disable" command.
+    autoUpdateCron: false
+    cronJob: "*/10 * * * *"
+    brOption: 0
+    maxCopy: 5
+    agent:
+      name: cbura-sidecar
+      imageRepo: cbur/cbura
+      imageTag: 1.0.3-5650
+      imagePullPolicy: IfNotPresent
+  # rsyslog: deprecated, use clog instead
+  rsyslog:
+    enabled: false
+    repository: crmq/rsyslog/rsyslog_8.37.0-13.el8
+    tag: 20200519124430257-646
+    imagePullPolicy: IfNotPresent
+    level: debug 
+    transport: udp
+  clog:
+    syslog:
+      enabled: false
+      port: 2514
+      format: "rfc5424"
+      level: debug
+      transport: udp
+  console:
+    enabled: true
+    level: info
+  
+  ## This is the installtion for 3rd party plugins, plugin should be enabled in upper rabbitmq.plugins field.
+  ## Note: prometheus is built-in in RabbitMQ 3.8 (so, no more in thirdPartyPlugin)
+  ## Configure sample as follow
+  ## thirdPartyPlugin:
+  ##   - name: <plugin-name>
+  ##     path: https://repo.cci.nokia.net/csf-generic-delivered/CRMQ/CommunityPlugins
+  thirdPartyPlugin:
+
+## This is configuration for client used tls files, such as federation, shovel...
+## Note that here must config the whole content of file, not file path.
+## Configure sample as follow, the file cacert.pem, cert.pem and key.pem will be mounted to path /etc/rabbitmq.tls.conf/federation.
+## tlsClient:
+##   - name: "federation"
+##     cacert: "..."
+##     cert: "..."
+##     key: "..."
+tlsClient:
+
+## Kubernetes service type
+serviceType: ClusterIP
+## serviceType: NodePort
+
+logSidecar:
+  enabled: false
+  stdout: false
+  logsToFile: false
+  logsToElastic: false
+  logsToSplunk: false
+  #from fluentd logs can be forwarded to different destionations (e.g. syslog)
+  logsToFluentd: false
+  logPath: /var/log/rabbitmq
+  image:
+    name: fluent/fluent-bit
+    tag: 1.2.2
+  logExcludePath:
+  # Send ALL logs to elastic - see fluent-bit-configmap
+  logParseRegexCsfRabbitmqLogs: .*
+  resources:
+    requests:
+      cpu: 100m
+      memory: 50Mi
+  elastic:
+    host: elasticsearch
+    port: 9200
+    index: csf-rabbitmq-logs
+    tls: false
+  fluentd:
+    host: fluentd
+    port: 24224
+  splunk:
+    host:
+    token:
+    port: 8088
+    sendRaw: Off
+    tls: true
+    tlsVerify: false
+    k8sHost:
+
+noWaitingOnHooks: true
+loggingLevel: info
+
+
+persistence:
+  ## reserve persistent storage after pod deleted
+  enabled: true
+  resourcePolicy: delete
+  reservePvc: false
+  reservePvcForScalein: false
+  data:
+    ## this enables PVC templates that will create one per pod
+    enabled: true
+
+    ## rabbitmq data Persistent Volume Storage Class
+    ## If defined, storageClassName: <storageClass>
+    ## If set to "-", storageClassName: "", which disables dynamic provisioning
+    ## If undefined (the default) or set to null, no storageClassName spec is
+    ##   set, choosing the default provisioner.  (gp2 on AWS, standard on
+    ##   GKE, AWS & OpenStack)
+    ##
+    storageClass: "-"
+    accessMode: ReadWriteOnce
+    # If you change this value, you might have to adjust `rabbitmq.diskFreeLimit` as well.
+    size: 8Gi
+    localPath: "/opt/nsp/volumes"
+  ## reserve persistent storage after pod deleted
+  log:
+    storageClass: ""
+    ## this enables PVC templates that will create one per pod
+    enabled: true
+
+    ## rabbitmq data Persistent Volume Storage Class
+    ## If defined, storageClassName: <storageClass>
+    ## If set to "-", storageClassName: "", which disables dynamic provisioning
+    ## If undefined (the default) or set to null, no storageClassName spec is
+    ##   set, choosing the default provisioner.  (gp2 on AWS, standard on
+    ##   GKE, AWS & OpenStack)
+    ##
+    # storageClass: "-"
+    accessMode: ReadWriteOnce
+    # If you change this value, you might have to adjust `rabbitmq.diskFreeLimit` as well.
+    size: 8Gi
+
+kubectlImage:
+  repository: tools/kubectl
+  tag: v1.24.2-rocky-nano-20220627
+
+helmTestImage:
+  repository: crmq-test/rabbitmq-test/rocky8
+  tag: 20220629101110144-1425
+
+## Configure this value to change delete policy of helm tests. by default it's hook-succeeded,before-hook-creation
+helmTestDeletePolicy: ""
+
+## Configure this value to change delete policy of jobs. by default it's hook-succeeded,before-hook-creation
+hooks:
+  deletePolicy: ""
+
+
+## Configure resource requests and limits
+## ref: http://kubernetes.io/docs/user-guide/compute-resources/
+##
+## Commented out in the NSP implementation because that is driven by the configurator
+resources:
+  requests:
+    memory: 230Mi
+    cpu: 500m
+  limits:
+    memory: 1Gi
+    cpu: 2
+
+## Replica count, set to 3 to provide a default available cluster
+## If rabbitmq.mqtt is enabled, set the replicas according to the crmq user guide.
+## Refer section "CRMQ PodDisruptionBudget Configuration" from crmq user guide documentation
+replicas: 1
+
+## Node labels and tolerations for pod assignment
+## ref: https://kubernetes.io/docs/concepts/configuration/assign-pod-node/#nodeselector
+## ref: https://kubernetes.io/docs/concepts/configuration/assign-pod-node/#taints-and-tolerations-beta-feature
+nodeSelector: {}
+tolerations: []
+
+# antiAffinity: "hard" : Specifies rules that must be met for a pod to be scheduled onto a node based on the pod labels.
+# antiAffinity: "soft" : Specifies preferences that the scheduler will try to enforce for the pod but will not guarantee, based on the pod labels.
+antiAffinity: "soft"
+
+## annotations for rabbitmq pods
+podAnnotations: {node.alpha.kubernetes.io/max-pids: "512"}
+
+## annotations for rabbitmq service metadata (else prometheus)
+svcAnnotations: {}
+## if prometheus plugin is enabled, "prometheus.io/path" must be equal to "rabbitmq.configuration.prometheus.path"
+## and "prometheus.io/port" must be equal to "rabbitmq.configuration.prometheus.port" and "rabbitmq.prometheus.port"
+svcPrometheusAnnotations: {prometheus.io/scrape: "true", prometheus.io/path: "/metrics", prometheus.io/port: "15692"}
+
+## svcName:
+
+## The following settings are to configure the frequency of the lifeness and readiness probes
+livenessProbe:
+  enabled: true
+  initialDelaySeconds: 120
+  timeoutSeconds: 10
+  failureThreshold: 6
+  periodSeconds: 30
+
+readinessProbe:
+  enabled: true
+  initialDelaySeconds: 10
+  timeoutSeconds: 20
+  periodSeconds: 30
+
+lcm:
+   scale_hooks: noupgradehooks
+   scale_timeout: 120
+
+
+# To enable client authentication,set ingress.certmanager.used + ingress.clientAuth.enabled to true.
+# Make sure to enable ingress.certmanager.dnsNames with proper hostname entries to pass client authentication.
+# To enable ssl passthrough, set ingress.sslPassThrough to true.
+# Make sure to disable ingress.certmanager and ingress.clientAuth with ingress.sslPassThrough enabled.
+ingress:
+  enabled: false
+  hostName: ""
+  #default path is /
+  path:
+  pathType: ImplementationSpecific
+
+  annotations:
+    ## Use this annotation when the chart install at openshift environment.
+    ## When this annotation is used make sure to set path to '' and pathType to ImplementationSpecific
+    #route.openshift.io/termination: "passthrough" 
+
+  tlsSecret: "cm-generated-secret"
+  certmanager:
+    used: false
+    # 365 days
+    duration: "8760h"
+    # 15 days
+    renewBefore: "360h"
+    keySize: 3072
+    # allowed values for algorithm are 'RSA','Ed25519' or 'ECDSA'
+    algorithm: "RSA"
+    # allowed values for encoding are 'PKCS1' or 'PKCS8'
+    encoding: "PKCS8"
+    issuerName: "ncms-ca-issuer"
+    issuerType: "ClusterIssuer"
+    issuerGroup: "cert-manager.io"
+##  ingress.certmanager.dnsNames can be set by following this example
+##    dnsNames: |
+##      - ""
+##      - "*"
+  clientAuth:
+    enabled: false
+    authTlsVerifyDepth: 1
+    authTlsVerifyClient: "on"
+  sslPassThrough: false 
+
+# Pod topology spread constraints used to control how Pods are spread across your cluster.
+# such as regions, zones, nodes, and other user-defined topology domains.
+# eg: 
+# topologySpreadConstraints:
+# - maxSkew: 1
+#   topologyKey: zone
+#   whenUnsatisfiable: DoNotSchedule
+# reference: https://kubernetes.io/docs/concepts/workloads/pods/pod-topology-spread-constraints/
+# to determine skew factor, labels of the pods are used.
+# if labelSelector is not defined, pre-defined pod labels will be used, 
+# user also can define custom pod labels as follows 
+# eg: 
+# topologySpreadConstraints:
+# - maxSkew: 1
+#   topologyKey: zone
+#   whenUnsatisfiable: DoNotSchedule
+#   labelSelector:
+#     matchLabels:
+#       app: crmq
+#       release: release-name
+#   autoGenerateLabelSelector: False
+topologySpreadConstraints: []
+

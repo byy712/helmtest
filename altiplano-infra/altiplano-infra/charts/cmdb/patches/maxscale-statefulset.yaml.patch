@@ -1,0 +1,87 @@
+--- cmdb-9.2.1/cmdb-original/templates/maxscale-statefulset.yaml	2024-04-25 05:27:41.000000000 +0530
++++ /home/chautruo/nokia/helm-dev/altiplano-infra/charts/cmdb/templates/maxscale-statefulset.yaml	2024-05-07 14:03:28.955189000 +0530
+@@ -33,6 +33,7 @@
+   template:
+     metadata:
+       labels:
++        altiplano-role: {{ .Values.maxscale.accessRoleLabel }}
+         {{- include "cmdb-maxscale.labels" (tuple . "pod") | nindent 8 }}
+         {{- include "cmdb.get_custom_selectors" (tuple . "maxscaleSts") | nindent 8 }}
+         {{- include "cmdb.get_mtls_labels" . | nindent 8 }}
+@@ -259,6 +260,47 @@
+         resources:
+           {{- include "cmdb.get_resources" ( tuple . .Values.maxscale.metrics.resources) | nindent 10 }}
+       {{- end }}
++      - name: {{ template "cmdb.container-prefix" . }}fluentd-sidecar
++        image: "{{ .Values.global.registry }}/{{ .Values.maxscale.fluentd_sidecar.image.name }}:{{ .Values.maxscale.fluentd_sidecar.image.tag }}"
++        imagePullPolicy: {{ .Values.maxscale.fluentd_sidecar.image.pullPolicy }}
++        securityContext:
++          readOnlyRootFilesystem: {{ .Values.maxscale.fluentd_sidecar.securityContext.readOnlyRootFilesystem | default true }}
++          runAsUser: {{ .Values.maxscale.fluentd_sidecar.securityContext.runAsUser | default 1000 }}
++          runAsGroup: {{ .Values.maxscale.fluentd_sidecar.securityContext.runAsGroup | default 1772 }}
++        resources:
++{{ toYaml .Values.maxscale.fluentd_sidecar.resources | indent 12 }}
++        env:
++        - name: CONTAINER_NAME
++          valueFrom:
++            fieldRef:
++              apiVersion: v1
++              fieldPath: metadata.name
++        - name: POD_IP
++          valueFrom:
++            fieldRef:
++              fieldPath:  status.podIP
++        {{- if .Values.maxscale.fluentd_sidecar.secrets }}
++        - name: IS_USERNAME
++          valueFrom:
++            secretKeyRef:
++              key: {{ .Values.maxscale.env.secrets.IS_USERNAME }}
++              name: {{ .Values.maxscale.fluentd_sidecar.secrets.passwordSecret | quote }}
++        - name: IS_PASSWORD
++          valueFrom:
++            secretKeyRef:
++              key: {{ .Values.maxscale.env.secrets.IS_PASSWORD }}
++              name: {{ .Values.maxscale.fluentd_sidecar.secrets.passwordSecret | quote }}
++        {{- end }} 
++        volumeMounts:
++        - name: tmp
++          mountPath: /tmp
++        - name: fs-varlogmaxscale
++          mountPath: /logs
++        - name: fluentd-config
++          mountPath: /etc/fluent/
++        - name: mdb-certificates
++          readOnly: true
++          mountPath: "/etc/.certificates"
+ 
+       terminationGracePeriodSeconds: {{ default 30 .Values.maxscale.terminationGracePeriodSeconds }}
+ 
+@@ -268,6 +310,8 @@
+       {{- include "cmdb-logging.vol" (tuple . .Values.maxscale "false") | nindent 6 }}
+       {{- include "cmdb-tls.vol" . | nindent 6 }}
+       {{- include "cmdb-tls.vol-prom-auth" (tuple . "maxscale") | nindent 6 }}
++      - name: tmp
++        emptyDir: {}
+       - name: cluster-cm
+         configMap:
+           name: {{ template "cmdb.fullname" . }}-mariadb-cluster
+@@ -295,6 +339,19 @@
+         emptyDir:
+           medium: Memory
+       {{- end }}
++      - name: logs
++        emptyDir: {}
++      - name: fluentd-config
++        configMap:
++          name: {{ template "cmdb.fullname" . }}-fluentd-config
++      {{- if .Values.maxscale.fluentd_sidecar.secrets }}
++      - name: certificates
++        secret:
++          secretName: {{ (tpl (.Values.maxscale.fluentd_sidecar.secrets.certSecret) .) }}
++      - name: passwords
++        secret:
++          secretName: {{ (tpl .Values.maxscale.fluentd_sidecar.secrets.passwordSecret .) }}
++      {{- end }}
+ 
+     {{- if .Values.maxscale.tolerations }}
+       tolerations:

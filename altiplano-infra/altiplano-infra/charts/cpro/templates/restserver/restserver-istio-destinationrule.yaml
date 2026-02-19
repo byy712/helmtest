@@ -1,0 +1,25 @@
+{{- include "cpro.istio.cproInitIstio" . }}
+{{- if .Values.restserver.enabled }}
+{{- if or ($.istio.enabled) ($.istio.createDrForClient) }}
+apiVersion: {{ template "cpro.apiVersion.destinationRule" . }}
+kind: DestinationRule
+metadata:
+  name: {{ template "cpro.prometheus.restserver.fullname" . }}
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "cpro.app.labels.v3" ( dict "root" . "context" .Values.restserver ) | nindent 4 }}
+{{- include "cpro.labelsOrAnnotations" (tuple .Values.global.labels) | indent 4}}
+  annotations:
+{{- include "cpro.labelsOrAnnotations" (tuple .Values.global.annotations) | indent 4}}
+spec:
+  host: "{{ template "cpro.prometheus.restserver.fullname" . }}.{{ .Release.Namespace }}.svc.{{ .Values.clusterDomain }}"
+  trafficPolicy:
+{{- if and ($.istio.mtls.enabled) (not $.istio.createDrForClient) (not $.istio.permissive) }}
+    tls:
+      mode: ISTIO_MUTUAL
+{{- else }}
+    tls:
+      mode: DISABLE
+{{- end }}
+{{- end }}
+{{- end }}

@@ -1,0 +1,66 @@
+{{- if eq (include "ckaf-ksql.jmx.certManager.enabled" .) "true" }}
+apiVersion: {{ template "ckaf-ksql.certificateApiVersion" (tuple .) }}
+kind: Certificate
+metadata:
+  name: {{ include "csf-common-lib.v2.resourceName" (tuple . "Certificate" "jmx-cert") }}
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "csf-common-lib.v1.commonLabels" (tuple . .Values.KafkaKsql.name) | indent 4 }}
+    {{- include "csf-common-lib.v1.customLabels" (tuple .Values.global.labels) | indent 4 }}
+    app: {{ .Chart.Name }}
+    release: {{ .Release.Name | quote }}
+  annotations:
+{{- include "csf-common-lib.v1.customAnnotations" (tuple .Values.global.annotations) | indent 4 }}
+spec:
+  secretName: {{ include "ckaf-ksql.jmx.certManagerSecret" . }}
+  duration: {{ .Values.JmxExporter.certificate.duration }}
+  renewBefore: {{ .Values.JmxExporter.certificate.renewBefore }}
+  {{- include "ckaf-ksql.jmx.privateKeyConfigs" . | indent 2 }}
+  dnsNames:
+  {{- if .Values.JmxExporter.certificate.dnsNames }}
+  {{ .Values.JmxExporter.certificate.dnsNames| toYaml | indent 2 }}
+  {{- else }}
+    - {{ template "ckaf-ksql.resourceName" (tuple . "Service" "") }}
+    - {{ template "ckaf-ksql.resourceName" (tuple . "Service" "") }}.{{ .Release.Namespace }}.svc.{{ .Values.clusterDomain | default "cluster.local" }}
+    - "*.{{ template "ckaf-ksql.resourceName" (tuple . "Service" "") }}.{{ .Release.Namespace }}.svc.{{ .Values.clusterDomain | default "cluster.local" }}"
+  {{- end }}
+  {{- if .Values.JmxExporter.certificate.usages }}
+  usages:
+  {{ .Values.JmxExporter.certificate.usages | toYaml | indent 2 }}
+  {{- else }}
+  usages:
+    - server auth
+    - client auth
+  {{- end }}
+  keystores:
+    jks:
+      create: true
+      # Password used to encrypt the keystore
+      passwordSecretRef:
+        key: {{ .Values.JmxExporter.certificate.store_password_key }}
+        name: {{ .Values.JmxExporter.certificate.store_password_secret_name }}
+  issuerRef:
+    name: {{ .Values.JmxExporter.certificate.issuerRef.name }}
+    # We can reference ClusterIssuers by changing the kind here.
+    # The default value is Issuer (i.e. a locally namespaced Issuer)
+    kind: {{ .Values.JmxExporter.certificate.issuerRef.kind }}
+    group: {{ .Values.JmxExporter.certificate.issuerRef.group }}
+  {{- if .Values.JmxExporter.certificate.subject }}
+  subject: {{ .Values.JmxExporter.certificate.subject | toYaml | indent 2}}
+  {{- end }}
+  {{- if .Values.JmxExporter.certificate.commonName }}
+  commonName: {{ .Values.JmxExporter.certificate.commonName | quote }}
+  {{- end }}
+  {{- if .Values.JmxExporter.certificate.uris }}
+  {{- if and (.Capabilities.APIVersions.Has "cert-manager.io/v1alpha3/Certificate") (not (.Capabilities.APIVersions.Has "cert-manager.io/v1/Certificate")) }}
+  uriSANs:
+  {{- else }}
+  uris:
+  {{- end }}
+  {{ .Values.JmxExporter.certificate.uris | toYaml | indent 2 }}
+  {{- end }}
+  {{- if .Values.JmxExporter.certificate.ipAddresses }}
+  ipAddresses:
+  {{ .Values.JmxExporter.certificate.ipAddresses | toYaml | indent 2 }}
+  {{- end }}
+{{- end }}

@@ -1,0 +1,82 @@
+{{- if .Values.global.vault.enabled }}
+apiVersion: v1
+kind: ServiceAccount
+automountServiceAccountToken: false
+metadata:
+  name: {{ template "altiplano-infra.app" . }}-populate-vault-sa
+  namespace: "{{.Release.Namespace}}"
+  labels:
+    {{- include "altiplano-infra.labels" $ | nindent 4 }}
+    app: {{ template "altiplano-infra.app" . }}-pre-upgrade
+    heritage: {{ .Release.Service }}
+    release: {{ .Release.Name }}
+  annotations:
+    helm.sh/hook: pre-install, pre-upgrade, pre-rollback
+    helm.sh/hook-delete-policy: before-hook-creation, hook-succeeded
+    helm.sh/hook-weight: "-10"
+---
+kind: Role
+apiVersion: rbac.authorization.k8s.io/v1
+metadata:
+  namespace: "{{.Release.Namespace}}"
+  name: {{ template "altiplano-infra.app" . }}-populate-vault-role
+  labels:
+    {{- include "altiplano-infra.labels" $ | nindent 4 }}
+    app: {{ template "altiplano-infra.app" . }}-pre-upgrade
+    heritage: {{ .Release.Service }}
+    release: {{ .Release.Name }}
+  annotations:
+    helm.sh/hook: pre-install, pre-upgrade, pre-rollback
+    helm.sh/hook-delete-policy: before-hook-creation, hook-succeeded
+    helm.sh/hook-weight: "-10"
+rules:
+- apiGroups: [""]
+  resources: ["pods"]
+  verbs: ["get", "list", "delete"]
+- apiGroups: [""]
+  resources: ["configmaps"]
+  verbs: ["get", "list", "delete"]
+- apiGroups: [""]
+  resources: ["pods/exec"]
+  verbs: ["create"]
+- apiGroups: ["apps"]
+  resources: ["statefulsets"]
+  verbs: ["get", "list", "watch", "patch", "create", "delete"]
+- apiGroups: [""]
+  resources: ["services"]
+  verbs: ["get", "patch"]
+- apiGroups: [""]
+  resources: ["persistentvolumeclaims"]
+  verbs: ["get", "list", "delete", "patch"]
+- apiGroups: [""]
+  resources: ["secrets"]
+  verbs: ["get", "list", "delete"]
+- apiGroups: [""]
+  resources: ["pods/log"]
+  verbs: ["get"]
+---
+kind: RoleBinding
+apiVersion: rbac.authorization.k8s.io/v1
+metadata:
+  name: {{ template "altiplano-infra.app" . }}-populate-vault-rolebinding
+  namespace: "{{.Release.Namespace}}"
+  labels:
+    {{- include "altiplano-infra.labels" $ | nindent 4 }}
+    app: {{ template "altiplano-infra.app" . }}-pre-upgrade
+    heritage: {{ .Release.Service }}
+    release: {{ .Release.Name }}
+  annotations:
+    helm.sh/hook: pre-install, pre-upgrade, pre-rollback
+    helm.sh/hook-delete-policy: before-hook-creation, hook-succeeded
+    helm.sh/hook-weight: "-10"
+subjects:
+- kind: ServiceAccount
+  name: {{ template "altiplano-infra.app" . }}-populate-vault-sa
+  namespace: "{{.Release.Namespace}}"
+  apiGroup: ""
+roleRef:
+  kind: Role
+  name: {{ template "altiplano-infra.app" . }}-populate-vault-role
+  apiGroup: rbac.authorization.k8s.io
+---
+{{- end }}

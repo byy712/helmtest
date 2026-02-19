@@ -1,0 +1,45 @@
+--- cpro-o/templates/server/server-deployment.yaml	2023-12-13 16:53:25.000000000 +0530
++++ cpro/templates/server/server-deployment.yaml	2024-04-22 12:19:35.821447000 +0530
+@@ -110,6 +110,21 @@
+         - name: storage-volume
+           mountPath: {{ .Values.server.persistentVolume.mountPath }}
+           subPath: "{{ .Values.server.persistentVolume.subPath }}"
++      - name: init-{{ .Chart.Name }}
++        image: "{{ .Values.global.registry }}/{{ .Values.init.image.name }}:{{ .Values.init.image.tag }}"
++        imagePullPolicy: "{{ .Values.init.image.imagePullPolicy }}"
++        command: [ "/bin/sh", "-c" ]
++        args:
++          - |
++            cp /etc/altiplano/certificates/secrets/pts-server-trustchain-cert.pem /etc/ssl/certs/ca.crt
++            cp /etc/altiplano/certificates/secrets/pts-server-key.pem  /etc/ssl/certs/server.key
++            cp /etc/altiplano/certificates/secrets/pts-server-cert.pem /etc/ssl/certs/server.crt
++
++        volumeMounts:
++          - name: pts-certificates
++            mountPath: /etc/ssl/certs
++          - name: altiplano-pts-certs
++            mountPath: /etc/altiplano/certificates/secrets/       
+         securityContext:
+          {{- include "cpro.containerSecurityContext" $data_csc | nindent 10 }}
+ {{ include "cpro.server.waitForCerts" .  | indent 6 }}
+@@ -485,6 +500,8 @@
+               mountPath: {{ .mountPath }}
+               readOnly: {{ .readOnly }}
+           {{- end }}
++            - name: altiplano-pts-certs
++              mountPath: /etc/altiplano/certificates/secrets          
+           {{- range .Values.server.extraConfigmapMounts }}
+             - name: {{ $.Values.server.name }}-{{ .name }}
+               mountPath: {{ .mountPath }}
+@@ -667,6 +684,11 @@
+           configMap:
+             name: {{ tpl (.configMap) $ }}
+       {{- end }}
++        - name: pts-certificates
++          emptyDir: {}
++        - name: altiplano-pts-certs
++          secret:
++            secretName: altiplano-pts-certificate-secrets
+       {{- range .Values.server.extraSecretMounts }}
+         - name: {{ .name }}
+           secret:

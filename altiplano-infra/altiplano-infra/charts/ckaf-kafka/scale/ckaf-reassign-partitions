@@ -1,0 +1,190 @@
+#!/bin/bash
+#set -x
+
+
+topic_jsonfile="./topic$$.json"
+move_jsonfile="./move$$.json"
+orig_jsonfile="./orig$$.json"
+
+Usage() {
+	echo "Usage:"
+	echo "	$0 --zookeeper host1:port1,host2:port2 --broker id1,id2 --topic [all|topica,topicb]"
+	echo "	$0 --zookeeper host1:port1,host2:port2 --broker id1,id2 --topicfile filename"
+	echo "	topicfile: file contains topics to be moved. 1 topic per line."
+	echo "This script is to do partitions reassignment based on input broker & topic." 
+	echo "It generates the iput file and calls kafka-reassign-partitions tool to complete the job."
+
+        exit 1
+}
+
+check_input () {
+ 	if [ "$2" == "" ]; then
+		echo "$1 not provided"
+ 		Usage
+	fi
+
+}
+
+generate_input_jsonfile() {
+        outputfile=$topic_jsonfile
+        indent="  "
+        echo '{"topics":' > $outputfile
+        echo "$indent[" >> $outputfile
+        first_topic=true
+
+	for topic in $topic_list 
+        do
+                if [ $first_topic = true ]; then
+			json_line=""
+ 			first_topic=false
+		else
+			echo "$indent$indent"${json_line}"," >> $outputfile
+                fi
+        	json_line='{"topic": "'
+                json_line=${json_line}$topic
+                json_line=${json_line}'"}' 
+        done
+
+	echo "$indent$indent"$json_line >> $outputfile
+        echo "$indent]," >> $outputfile
+        echo "$indent"'"version":1' >> $outputfile
+        echo '}' >> $outputfile
+}
+
+generate_move_jsonfile () {
+        tmpfile="/tmp/tmpresassign.file"
+	echo "kafka-reassign-partitions --zookeeper ${zk_address} --topics-to-move-json-file $topic_jsonfile --broker-list ${broker_list} --generate"
+	kafka-reassign-partitions --zookeeper ${zk_address} --topics-to-move-json-file $topic_jsonfile --broker-list "${broker_list}" --generate  > $tmpfile
+        cat  $tmpfile |tail -1 >> ${move_jsonfile}
+        cat  $tmpfile |sed -n 3p >> ${orig_jsonfile}
+
+	echo "move jsonfile:"
+        cat $move_jsonfile
+	echo "orig jsonfile:"
+	cat $orig_jsonfile
+
+}
+
+wait_reassign_comp() {
+
+	part_no=$(kafka-reassign-partitions --zookeeper ${zk_address} --reassignment-json-file ${move_jsonfile} --verify|grep Reassignment|wc -l)
+	echo "Totaly $part_no partitions will be reassigned."
+	
+	while true ;
+	do
+ 		succ_no=$(kafka-reassign-partitions --zookeeper ${zk_address} --reassignment-json-file ${move_jsonfile} --verify |grep "completed successfully"|wc -l)
+		echo "     ${succ_no}/${part_no} partitions reassigned successfully."
+        	if [ ${succ_no} -ge ${part_no} ]; then
+            		break;
+		fi
+		sleep 5
+ 	done
+	kafka-reassign-partitions --zookeeper ${zk_address} --reassignment-json-file ${move_jsonfile} --verify
+
+}
+
+run_leader_election () {
+        kafka-topics --describe --zookeeper ${zk_address}
+	#echo "Do you want to run kafka-preferred-replica-election now[N]?"
+	#read answer
+	#case $answer in
+	#      	y|Y|yes|YES)
+                echo "kafka-preferred-replica-election --zookeeper ${zk_address}"
+                kafka-preferred-replica-election  --zookeeper  ${zk_address}
+        	kafka-topics --describe --zookeeper ${zk_address}
+        #        ;;
+
+      	#	*)
+        #        echo "You can run following command to do leader election later:"
+        #        echo "kafka-preferred-replica-election --zookeeper ${zk_address}"
+        #        ;;
+
+      	#esac
+}
+
+TEMP=`getopt -o t:z:b:f:h --long zookeeper:,broker:,topic:,topicfile:,help \
+     -n "$0" -- "$@"`
+
+if [ $? != 0 ] || [ $# == 0 ] ; then
+	Usage
+fi
+
+eval set -- "$TEMP"
+
+unset zk_address
+unset broker_list
+unset topic_list
+unset topic_file
+
+while true ; 
+do  
+	case "$1" in
+                -z|--zookeeper)
+			zk_address=$2
+                        echo "get zookeeper address: $zk_address" ; 
+                        shift 2;;  
+                -b|--broker) 
+			broker_list=$2
+                        echo "get broker list: $broker_list" ; 
+                        shift 2;; 
+                -t|--topic)  
+			topic_list=$2
+                        echo "get topic list: $topic_list" ; 
+                        shift 2;;  
+                -f|--topicfile)  
+			topic_file=$2
+                        echo "get topic file: $topic_file" ; 
+                        shift 2;;  
+                -h|--help)  
+			Usage ;;
+                --) shift ; break ;;  
+                *) 
+			echo "Unknown  parameter:$1!"
+			Usage ;;
+        esac  
+done  
+
+check_input "zookeeper address" $zk_address
+check_input "broker list"  $broker_list
+
+if [ "$topic_list" == "" ]; then
+ 	check_input "topic" $topic_file
+        if [ -r $topic_file ]; then
+        	topic_list=$(cat $topic_file)
+	else
+		echo "File $topic_file not readable."
+		exit 1
+	fi
+        topic_list=$(cat $topic_file)
+elif [ "$topic_list" == "all" ]; then
+	echo "Partitions of all topics will be moved."
+	echo "kafka-topics --list --zookeeper $zk_address"
+    	topic_list=$(kafka-topics --list --zookeeper $zk_address)
+else
+	topic_list=$(echo $topic_list|sed -e "s/,/\n/g")
+fi
+echo $topic_list
+
+### 1 ### generate input json file $topic_jsonfile  based on topic list
+generate_input_jsonfile $topic_list
+cat $topic_jsonfile
+
+### 2 ### generate move json file based on $topic_jsonfile
+generate_move_jsonfile
+
+### 3 ### execute  partitions reassignment and wait for completion
+echo "kafka-reassign-partitions --zookeeper ${zk_address} --reassignment-json-file ${move_jsonfile} --execute"
+kafka-reassign-partitions --zookeeper ${zk_address} --reassignment-json-file ${move_jsonfile} --execute |grep "Partitions reassignment failed"
+if [ $? == 0 ]; then
+	echo "kafka-reassign-partitions failed. Please check the output error message."
+	exit 1
+fi
+wait_reassign_comp
+
+### 4 ### run partition leader election
+run_leader_election
+
+echo "Partition reassignment completed. Roll back file is saved at ${orig_jsonfile}"
+
+exit 0
+

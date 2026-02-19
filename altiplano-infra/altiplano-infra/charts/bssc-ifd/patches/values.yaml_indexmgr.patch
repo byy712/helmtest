@@ -1,0 +1,12 @@
+--- bssc-ifd-13.0.1/bssc-ifd/charts/bssc-indexmgr/values.yaml	2023-12-06 18:41:43.000000000 +0530
++++ bssc-ifd-patch/bssc-ifd/charts/bssc-indexmgr/values.yaml	2023-12-21 08:47:39.958935000 +0530
+@@ -521,7 +521,8 @@
+       size:
+       # Rotation of a key pair, when certificate is refreshed is recommended from a security point of view
+       rotationPolicy: Always
+-
++      
++accessRoleLabel: internal-access
+ kubectl:
+   image:
+     repo: tools/kubectl

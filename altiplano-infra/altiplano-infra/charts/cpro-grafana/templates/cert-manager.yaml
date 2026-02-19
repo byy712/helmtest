@@ -1,0 +1,11 @@
+{{- if and (eq (include "csf-common-lib.v1.coalesceBoolean" (tuple .Values.grafana.tls.enabled .Values.tls.enabled .Values.global.tls.enabled false)) "true") (eq (include "csf-common-lib.v1.isEmptyValue" .Values.grafana.tls.secretRef.name) "true") }}
+{{- if eq (include "csf-common-lib.v1.coalesceBoolean" (tuple .Values.certManager.enabled .Values.global.certManager.enabled false)) "true" }}
+{{- if .Values.grafana.certificate.enabled }}
+{{ $certificateName := include "csf-common-lib.v3.resourceName" (tuple . "Certificate" "cert") }}
+{{ $_ := set . "certificateName" $certificateName }}
+{{ $secretName := include "csf-common-lib.v3.certificateSecretName" (tuple . .Values.grafana .Values.grafana.certificate) }}
+{{ $_ := set . "secretName" $secretName }}
+{{ include "cpro-common-lib.v4.certificate" (tuple . .Values.grafana "visual-issuer") }}
+{{- end }}
+{{- end }}
+{{- end }}

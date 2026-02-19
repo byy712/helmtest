@@ -1,0 +1,101 @@
+{{- include "cmdb.init" . -}}
+{{ if and (eq (include "cmdb.has_maxscale" .) "true") .Values.geo_redundancy.enabled (not (.Values.geo_redundancy.directConnect)) }}
+#
+#  Create mariadb-master Endpoint and Service for each remote datacenter site
+#
+{{- $g := . -}}
+{{- $master_port := .Values.services.mariadb_master.port }}
+{{- $istio_enabled := .Values.istio.enabled }}
+{{- $mtls_mode := include "cmdb.istio_mtls_mode" . }}
+{{- $tls_mode := default "ISTIO_MUTUAL" .Values.istio.destinationRule.tls.mode }}
+{{- $has_security_api := semverCompare ">=1.5" (toString .Values.istio.version) }}
+{{- range $index, $item := .Values.geo_redundancy.remoteSites }}
+{{ $master := $item.master }}
+{{ $parts := splitList ":" (default ":" $master.remoteService) }}
+{{ $remote_ip := initial $parts | join ":" | trimAll "[]" }}
+{{ $remote_port := last $parts }}
+{{ if $master.remoteService }}
+  ## Validate remote host and port and trigger error as needed
+  {{- $ip := (required "A valid geo_redundancy.remoteSites.master must be 'host:port'" $remote_ip) }}
+  {{- $port := (required "A valid geo_redundancy.remoteSites.master must be 'host:port'" $remote_port) }}
+{{ end }}
+{{ $service_name := $master.serviceName | default (printf "%s-master-%s" (include "cmdb.fullname" $g) $item.name) }}
+---
+kind: Endpoints
+apiVersion: v1
+metadata:
+  name: {{ $service_name }}
+  labels:
+    {{- include "cmdb-mariadb.labels" (tuple $g "endpoints") | nindent 4 }}
+  annotations:
+    {{- include "cmdb-mariadb.annotations" (tuple $g "endpoints") | nindent 4 }}
+subsets:
+  # To be added after install
+{{- if $master.remoteService }}
+  - addresses:
+      - ip: "{{ $remote_ip }}"
+    ports:
+      - port: {{ $remote_port }}
+        name: "tcp-mariadb"
+{{- else }}
+  []
+{{- end }}
+
+---
+kind: Service
+apiVersion: v1
+metadata:
+  name: {{ $service_name }}
+  labels:
+    {{- include "cmdb-mariadb.labels" (tuple $g "service") | nindent 4 }}
+    {{- include "cmdb.get_mtls_labels" $g | nindent 4 }}
+  annotations:
+    {{- include "cmdb-mariadb.annotations" (tuple $g "service") | nindent 4 }}
+spec:
+{{- if $master.serviceIP }}
+  clusterIP: {{ $master.serviceIP }}
+{{- end }}
+  {{- include "cmdb.dual-stack" (tuple $g $master) | nindent 2 }}
+  ports:
+  - name: "tcp-mariadb"
+    port: {{ $master_port }}
+  # To be modified after install
+{{- if $master.remoteService }}
+    targetPort: {{ $remote_port }}
+{{- end }}
+
+{{- if $istio_enabled }}
+{{- if not $has_security_api }}
+---
+apiVersion: "authentication.istio.io/v1alpha1"
+kind: "Policy"
+metadata:
+  name: {{ $service_name }}-mtls-authn
+  labels:
+    {{- include "cmdb-mariadb.labels" (tuple $g "policy") | nindent 4 }}
+  annotations:
+    {{- include "cmdb-mariadb.annotations" (tuple $g "policy") | nindent 4 }}
+spec:
+  targets:
+  - name: {{ $service_name }}
+  peers:
+  - mtls:
+      mode: {{ $mtls_mode }}
+{{- end }}
+---
+apiVersion: networking.istio.io/v1beta1
+kind: DestinationRule
+metadata:
+  name: {{ $service_name }}-mlts-dr
+  labels:
+    {{- include "cmdb-mariadb.labels" (tuple $g "destinationrule") | nindent 4 }}
+  annotations:
+    {{- include "cmdb-mariadb.annotations" (tuple $g "destinationrule") | nindent 4 }}
+spec:
+  host: {{ $service_name }}
+  trafficPolicy:
+    tls:
+      mode: {{ $tls_mode }}
+{{- end }}
+{{- end }}
+{{- end }}

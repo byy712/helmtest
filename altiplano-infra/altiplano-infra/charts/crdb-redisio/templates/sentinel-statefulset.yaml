@@ -1,0 +1,278 @@
+{{- include "crdb-redisio.init" . -}}
+---
+{{- if (and .sentinel_enabled (gt (int .Values.server.count) 1)) }}
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: {{ include "csf-common-lib.v3.resourceName" (tuple . "statefulset" .Values.sentinel.nameSuffix) }}
+  labels:
+    {{- include "crdb-redisio.labels" (tuple . "sentinel" "statefulset") | nindent 4 }}
+  annotations:
+    {{- include "crdb-redisio.annotations" (tuple . "sentinel" "statefulset") | nindent 4 }}
+spec:
+  serviceName: {{ include "csf-common-lib.v3.resourceName" (tuple . "service" "sentinel-nodes") }}
+  podManagementPolicy: "Parallel"
+  replicas: {{ .Values.sentinel.count }}
+  updateStrategy:
+    type: RollingUpdate
+  selector:
+    matchLabels:
+      {{- include "crdb-redisio.selector_labels" . | nindent 6 }}
+      type: sentinel
+  template:
+    metadata:
+      labels:
+        {{- include "crdb-redisio.labels" (tuple . "sentinel" "pod") | nindent 8 }}
+        type: sentinel
+        altiplano-role: {{ .Values.sentinel.accessRoleLabel }}
+      annotations:
+        acl/checksum: {{ toJson .Values.sentinel.acl | sha256sum }}
+        config/checksum: {{ .Values.sentinel.confInclude | sha256sum }}
+        sentineluser/checksum: {{ include "crdb-redisio.sentineluserauth.sum" . }}
+        {{- include "crdb-redisio.annotations" (tuple . "sentinel" "pod") | nindent 8 }}
+        {{- include "crdb-redisio.istio-annotation" . | nindent 8 }}
+    spec:
+      {{- include "crdb-redisio.get_image_pull_secrets" (tuple . "sentinel") | nindent 6 }}
+      {{- include "crdb-redisio.get_security_context" (tuple . "pod" "sentinel") | nindent 6 }}
+      {{- include "crdb-redisio.sa" (tuple .) | nindent 6 }}
+      automountServiceAccountToken: true
+      {{- include "crdb-redisio.priority-class-name" (tuple . "sentinel") | nindent 6 }}
+      initContainers:
+      - name: {{ include "csf-common-lib.v1.containerName" (tuple . "config") }}
+        {{- include "crdb-redisio.sentinel.image" . | nindent 8 }}
+        command: [ "/usr/bin/harmonize_log", "--service=redisio-init", "/docker-entrypoint.sh"  ]
+        args: [ "init", "sentinel" ]
+        {{- include "crdb-redisio.get_security_context" (tuple . "container" "sentinel") | nindent 8 }}
+        env:
+        - name: DEBUG
+          value: {{ quote (.Values.sentinel.debug | default "") }}
+        - name: GROUP_NAME
+          value: {{ template "crdb-redisio.groupname" . }}
+        - name: AUTH_IMPORT
+          value: /auth-secrets
+        - name: KEYSTORE_DIR
+          value: /auth-share
+        - name: KEYSTORE_KEYFILE
+          value: /var/run/redisio/.encrypt.key
+        {{- include "crdb-redisio.tz.env" . | nindent 8 }}
+        volumeMounts:
+        {{- include "crdb-redisio.fs.vm" . | nindent 8 }}
+        - name: cluster-cm
+          mountPath: /cluster
+        - name: import-cm
+          mountPath: /import/config
+          readOnly: true
+        - name: auth-secrets
+          mountPath: /auth-secrets/sentinel.auth
+          subPath: sentinel.auth
+          readOnly: true
+        - name: admin-auth-secrets
+          mountPath: /auth-secrets/admin.auth
+          subPath: admin.auth
+          readOnly: true
+        - name: auth-keystore
+          mountPath: /auth-share
+        - name: auth-encrypt-key
+          mountPath: /var/run/redisio/.encrypt.key
+          readOnly: true
+          subPath: .encrypt.key
+        - name: datadir
+          mountPath: /redisdb
+        {{- include "crdb-redisio.logging.vm" . | nindent 8 }}
+        resources: {{- toYaml .Values.sentinel.resources | nindent 10 }}
+      containers:
+      - name: {{ include "csf-common-lib.v1.containerName" (tuple . "sentinel") }} 
+        {{- include "crdb-redisio.sentinel.image" . | nindent 8 }}
+        args: [ "sentinel" ]
+        {{- include "crdb-redisio.get_security_context" (tuple . "container" "sentinel") | nindent 8 }}
+        ports:
+        - containerPort: 26379
+          name: tcp-sentinel
+        env:
+        - name: ALARM_SERVICE_NAME
+          value: {{ .Values.alarmServiceName | quote }}
+        - name: DEBUG
+          value: {{ quote (.Values.sentinel.debug | default "") }}
+        - name: GROUP_NAME
+          value: {{ template "crdb-redisio.groupname" . }}
+        - name: POD_IP
+          valueFrom:
+            fieldRef:
+              fieldPath: status.podIP
+        {{- include "crdb-redisio.fifo.env" . | nindent 8 }}
+        {{- include "crdb-redisio.tz.env" . | nindent 8 }}
+        {{- include "crdb-redisio.cli.env" . | nindent 8 }}
+        {{- include "crdb-redisio.admin-access.env" . | nindent 8 }}
+        - name: DATADIR
+          value: "/redisdb"
+        - name: KEYSTORE_DIR
+          value: /auth-share
+        - name: KEYSTORE_KEYFILE
+          value: /var/run/redisio/.encrypt.key
+        {{- if .Values.sentinel.customBind }}
+        - name: _CRDB_REDISIO_SENTINEL_BIND
+          value: "{{ .Values.sentinel.customBind }}"
+        {{- end }}
+        {{- include "crdb-redisio.acl.user.sentinel.env" . | nindent 8 }}
+        {{- if .sentinel_tls }}
+        - name: _CRDB_REDISIO_SENTINEL_TLS_CA_CERT_FILE
+          value: {{ include "crdb-redisio.tls.dir.ca" . }}/sentinel-ca.crt
+        - name: _CRDB_REDISIO_SENTINEL_TLS_CERT_FILE
+          value: {{ include "crdb-redisio.tls.cert.server" . }}
+        - name: _CRDB_REDISIO_SENTINEL_TLS_KEY_FILE
+          value: {{ include "crdb-redisio.tls.key.server" . }}
+        - name: _CRDB_REDISIO_SENTINEL_TLS_REPLICATION
+          value: "$(REDIS_CLI_TLS)"
+          {{- if not .client_tls }}
+        - name: _CRDB_REDISIO_SENTINEL_TLS_AUTH_CLIENTS
+          value: "optional"
+          {{- end }}
+        - name: _CRDB_REDISIO_SENTINEL_PORT
+          value: "0"
+        - name: _CRDB_REDISIO_SENTINEL_TLS_PORT
+          value: "26379"
+        {{- else }}
+        - name: _CRDB_REDISIO_SENTINEL_PORT
+          value: "26379"
+        {{- end }}
+        volumeMounts:
+        {{- include "crdb-redisio.fs.vm" . | nindent 8 }}
+        - name: cluster-cm
+          mountPath: /cluster
+        - name: datadir
+          mountPath: /redisdb
+        - name: auth-keystore
+          mountPath: /auth-share
+        - name: auth-encrypt-key
+          mountPath: /var/run/redisio/.encrypt.key
+          readOnly: true
+          subPath: .encrypt.key
+        {{- include "crdb-redisio.tls.vm.cacerts" . | nindent 8 }}
+        {{- include "crdb-redisio.tls.vm.sentinel" . | nindent 8 }}
+        {{- include "crdb-redisio.tls.vm.client" . | nindent 8 }}
+        {{- include "crdb-redisio.logging.vm" . | nindent 8 }}
+        {{- $probe_cmd := "( $REDIS_CLI -h ${POD_IP} -p 26379 ping && ( $REDIS_CLI -h ::1 -p 26379 ping || $REDIS_CLI -p 26379 ping ) )" }}
+        {{- with .Values.sentinel }}
+        livenessProbe:
+          {{- with .livenessProbe }}
+          exec:
+            command:
+            - bash
+            - "-c"
+            - |
+              {{- .probeCmd | default $probe_cmd | nindent 14 }}
+          initialDelaySeconds: {{ .initialDelaySeconds | default 180 }}
+          periodSeconds: {{ .periodSeconds | default 10 }}
+          timeoutSeconds: {{ .timeoutSeconds | default 5 }}
+          failureThreshold: {{ .failureThreshold | default 6 }}
+          {{- end }}
+        readinessProbe:
+          {{- with .readinessProbe }}
+          exec:
+            command:
+            - bash
+            - "-c"
+            - |
+              {{- .probeCmd | default $probe_cmd | nindent 14 }}
+          initialDelaySeconds: {{ .initialDelaySeconds | default 10 }}
+          periodSeconds: {{ .periodSeconds | default 20 }}
+          timeoutSeconds: {{ .timeoutSeconds | default 2 }}
+          failureThreshold: {{ .failureThreshold | default 3 }}
+          {{- end }}
+        resources: {{- toYaml .resources | nindent 10 }}
+        {{- end }}
+      # Redis Sentinel metrics exporter container
+      {{- if and (.Values.sentinel.metrics) .Values.sentinel.metrics.enabled }}
+      - name:  {{ include "csf-common-lib.v1.containerName" (tuple . "metrics") }}
+        {{- include "crdb-redisio.sentinel.metrics.image" . | nindent 8 }}
+        {{- include "crdb-redisio.get_security_context" (tuple . "container" "sentinel.metrics") | nindent 8 }}
+        resources: {{- toYaml .Values.sentinel.metrics.resources | nindent 10 }}
+        env:
+        {{- include "crdb-redisio.tz.env" . | nindent 8 }}
+        {{- include "crdb-redisio.cli.env" . | nindent 8 }}
+        - name: REDIS_AUTH
+        {{- if .Values.sentinel.acl.enabled }}
+          valueFrom:
+            secretKeyRef:
+              name: {{ template "crdb-redisio.fullname" . }}-redis-secrets
+              key: metrics-auth
+        {{- else }}
+          value: "default:"
+        {{- end }}
+        - name: REDIS_ADDR
+          value: {{ .server_tls | ternary "rediss" "redis" }}://$(REDIS_AUTH)@127.0.0.1:26379
+        - name: REDIS_EXPORTER_REDIS_ONLY_METRICS
+          value: "true"
+        - name: REDIS_EXPORTER_DEBUG
+          value: {{ quote (.Values.sentinel.metrics.debug | default "") }}
+        {{- if .sentinel_tls }}
+        - name: REDIS_EXPORTER_SKIP_TLS_VERIFICATION
+          value: "true"
+        - name: REDIS_EXPORTER_TLS_CA_CERT_FILE
+          value: "$(REDIS_CLI_CACERTDIR)/sentinel-ca.crt"
+        {{- if .client_tls }}
+        - name: REDIS_EXPORTER_TLS_CLIENT_CERT_FILE
+          value: "$(REDIS_CLI_CERT)"
+        - name: REDIS_EXPORTER_TLS_CLIENT_KEY_FILE
+          value: "$(REDIS_CLI_KEY)"
+        {{- end }}
+        {{- end }}
+        ports:
+        - name: tcp-metrics
+          containerPort: 9121
+        volumeMounts:
+        {{- include "crdb-redisio.tls.vm.cacerts" . | nindent 8 }}
+        {{- include "crdb-redisio.tls.vm.client" . | nindent 8 }}
+      {{- end }}
+
+      volumes:
+      {{- include "crdb-redisio.fs.vol" . | nindent 6 }}
+      - name: import-cm
+        configMap:
+          name: {{ include "csf-common-lib.v3.resourceName" (tuple . "configmap" "sentinel-config") }}
+      - name: auth-secrets
+        secret:
+          secretName: {{ include "csf-common-lib.v3.resourceName" (tuple . "secret" "redis-secrets") }}
+          defaultMode: 0400
+          {{- if .Values.common }}{{/* Upgrade from v5.x.x */}}
+          optional: true
+          {{- end }}
+          items:
+          - key: sentinel-auth
+            path: sentinel.auth
+          {{- if .Values.sentinel.metrics.enabled }}
+          - key: metrics-auth
+            path: metrics.auth
+          {{- end }}
+      - name: admin-auth-secrets
+        secret:
+          secretName: {{ include "csf-common-lib.v3.resourceName" (tuple . "secret" "admin-secrets") }}
+          defaultMode: 0400
+          items:
+          - key: sentinel
+            path: admin.auth
+      - name: auth-encrypt-key
+        secret:
+          secretName: {{ include "csf-common-lib.v3.resourceName" (tuple . "secret" "auth-encrypt") }}
+          defaultMode: 0400
+          items:
+          - key: sentinel-key
+            path: .encrypt.key
+      - name: auth-keystore
+        emptyDir:
+          medium: "Memory"
+      - name: cluster-cm
+        configMap:
+          name: {{ include "csf-common-lib.v3.resourceName" (tuple . "configmap" "cluster-config") }}
+      - name: datadir
+        emptyDir: {}
+      {{- include "crdb-redisio.tls.vol" (tuple . "sentinel") | nindent 6 }}
+      {{- include "crdb-redisio.logging.vol" (tuple . "sentinel") | nindent 6 }}
+      {{- if .Values.sentinel.tolerations }}
+      tolerations: {{- toYaml .Values.sentinel.tolerations | nindent 8 }}
+      {{- end }}
+      {{- include "crdb-redisio.node-selector" (tuple . "sentinel") | nindent 6 }}
+      {{- include "crdb-redisio.spread-constraints" (tuple . "sentinel") | nindent 6 }}
+      affinity:
+      {{- include "csf-common-lib.v2.podAntiAffinity" (tuple . .Values.sentinel) | nindent 8 -}}
+{{- end }}

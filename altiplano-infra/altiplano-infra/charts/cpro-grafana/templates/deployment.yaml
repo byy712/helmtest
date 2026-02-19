@@ -1,0 +1,819 @@
+{{- include "cpro-grafana.istio.grafanaInitIstio" . }}
+{{- $syslogEnabled := eq (include "csf-common-lib.v1.coalesceBoolean" (tuple .Values.grafana.unifiedLogging.syslog.enabled .Values.global.unifiedLogging.syslog.enabled false )) "true"  }}
+{{- $tlsEnabled := eq (include "csf-common-lib.v1.coalesceBoolean" (tuple .Values.grafana.tls.enabled .Values.tls.enabled .Values.global.tls.enabled false)) "true" }}
+{{- $certEnabled := eq (include "csf-common-lib.v1.coalesceBoolean" (tuple .Values.certManager.enabled .Values.global.certManager.enabled false)) "true" }}
+{{- include "cpro-common-lib.v1.syslog" ( dict "root" . "context" .Values.grafana) }}
+apiVersion: {{ template "cpro-grafana.grafanaApiVersion.stateFullset" . }}
+kind: StatefulSet
+metadata:
+  name: {{ template "cpro-grafana.stsName" . }}
+  labels:
+    {{- include "cpro-grafana.app.labels-v3" . | nindent 4 }}
+    {{- include "cpro-grafana.labelsOrAnnotations" (tuple .Values.grafana.labels .Values.custom.grafanaSts.labels .Values.global.labels) | indent 4}}
+  annotations:
+{{- include "cpro-grafana.labelsOrAnnotations" (tuple .Values.grafana.annotations .Values.annotations .Values.custom.grafanaSts.annotations .Values.global.annotations) | indent 4}}
+{{- if or $syslogEnabled .Values.grafana.unifiedLogging.extension .Values.global.unifiedLogging.extension }}
+    configmap.reloader.stakater.com/reload: "{{ template "cpro-grafana.fluentdConfigmapName" (dict "name" "fluentdconfigmap" "context" .) }},{{ template "cpro-common-lib-v1.ConfigmapName" (dict "name" "logrotateconfigmap" "root" .) }}"
+{{- if and $syslogEnabled (tpl (default "" $.syslog.tls.secretRef.name) .) (tpl (default "" $.syslog.tls.secretRef.keyNames.caCrt) .) }}
+    secret.reloader.stakater.com/reload: "{{ tpl $.syslog.tls.secretRef.name . }}" 
+{{- end }}
+{{- end }}
+    reloader.stakater.com/auto: "true"
+spec:
+{{- if not .Values.grafana.replicasManagedByHpa }}
+  replicas: {{ template "cpro-grafana.replicas" . }}
+{{- end }}
+  selector:
+    matchLabels:
+      app: {{ template "cpro-grafana.name" . }}
+      release: {{ .Release.Name }}
+  serviceName: {{ template "cpro-grafana.service.name" . }}
+  {{- with .Values.updateStrategy }}
+  updateStrategy:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+  template:
+    metadata:
+      labels:
+        {{- include "cpro-grafana.app.labels-v3" . | nindent 8 }}
+        altiplano-role: {{ .Values.accessRoleLabel }}
+        app: {{ template "cpro-grafana.name" . }}
+        release: {{ .Release.Name }}
+        {{- include "cpro-grafana.labelsOrAnnotations" (tuple .Values.grafana.labels .Values.custom.pod.labels .Values.global.labels) | indent 8}}
+      annotations:
+        checksum/config: {{ include (print $.Template.BasePath "/configmap.yaml") . | sha256sum }}
+        checksum/dashboards-json-config: {{ include (print $.Template.BasePath "/dashboards-json-configmap.yaml") . | sha256sum }}
+        checksum/sc-dashboard-provider-config: {{ include (print $.Template.BasePath "/configmap-dashboard-provider.yaml") . | sha256sum }}
+{{- include "cpro-grafana.labelsOrAnnotations" (tuple .Values.grafana.annotations .Values.podAnnotations .Values.custom.pod.annotations .Values.global.annotations) | indent 8}}
+{{- if .Values.rbac.pspUseAppArmor }}
+{{- include "cpro-grafana.labelsOrAnnotations" (tuple .Values.custom.pod.apparmorAnnotations) | indent 8}}
+{{- end }}
+        sidecar.istio.io/inject: "{{ $.istio.enabled }}"
+{{- if and ($.istio.enabled) ($.istio.mtls.enabled) }}
+        sidecar.istio.io/rewriteAppHTTPProbers: "true"
+{{- end }}
+    spec:
+{{- if or (.Values.hostAliases) (and ($.istio.enabled) ($.istio.createKeycloakServiceEntry.enabled) (ne $.istio.createKeycloakServiceEntry.hostAlias "" )) }}
+      hostAliases:
+    {{- if .Values.hostAliases }}
+{{ toYaml .Values.hostAliases | indent 6 }}
+{{- end }}
+{{- if and ($.istio.enabled) ($.istio.createKeycloakServiceEntry.enabled) (ne $.istio.createKeycloakServiceEntry.hostAlias "" ) }}
+      - ip: "{{ $.istio.createKeycloakServiceEntry.hostAlias }}"
+        hostnames:
+        - "{{ $.istio.createKeycloakServiceEntry.extCkeyHostname }}"
+{{- end }}
+{{- end }}
+{{- if .Values.dnsPolicy }}
+      dnsPolicy: {{ .Values.dnsPolicy }}
+{{- end }}
+{{- if .Values.dnsConfig }}
+      dnsConfig:  
+{{- if .Values.dnsConfig.nameservers }}           
+        nameservers:
+{{ toYaml .Values.dnsConfig.nameservers | indent 10 }}  
+{{- end }}
+{{- if .Values.dnsConfig.searches }}
+        searches:
+{{ toYaml .Values.dnsConfig.searches | indent 10 }}
+{{- end }}
+{{- if .Values.dnsConfig.options }}
+        options:
+{{ toYaml .Values.dnsConfig.options | indent 10 }} 
+{{- end}}       
+{{- end }}
+      automountServiceAccountToken: true
+      serviceAccountName: {{ template "cpro-grafana.serviceAccountName" . }}
+      terminationGracePeriodSeconds: {{ .Values.terminationGracePeriodSeconds | default 0 }}
+{{- if .Values.schedulerName }}
+      schedulerName: "{{ .Values.schedulerName }}"
+{{- end }}
+      securityContext:
+      {{$securityContextvalue := dict "cSecCtx" .Values.securityContext "ctx" . }}
+      {{- include "cpro-grafana.securitycontext" $securityContextvalue | nindent 8 }}
+      {{- if .Values.seLinuxOptions.enabled }}
+        seLinuxOptions:
+          level: {{ .Values.seLinuxOptions.level }}
+          role: {{ .Values.seLinuxOptions.role }}
+          type: {{ .Values.seLinuxOptions.type }}
+          user: {{ .Values.seLinuxOptions.user }}
+      {{- end }}
+{{ include "cpro-common-lib.imagePullSecrets" (dict "workloadName" .Values.grafana "root" .) | indent 6 }}      
+      initContainers:        
+        - name: init-{{ .Chart.Name }}
+          image: {{ .Values.global.registry}}/{{ .Values.init.image.name}}:{{ .Values.init.image.tag}}
+          imagePullPolicy: {{ .Values.init.image.pullPolicy }}
+          command: [ "/bin/sh", "-c" ]
+          args:
+            - |
+              ln -s /etc/altiplano/certificates/secrets/grafana-server-cert.pem /etc/grafana/ssl/tls.crt
+              ln -s /etc/altiplano/certificates/secrets/grafana-server-key.pem /etc/grafana/ssl/tls.key
+              ln -s /etc/altiplano/certificates/secrets/grafana-sso-client-trustchain-cert.pem /etc/grafana/keycloak/keycloak.crt
+          volumeMounts:
+            - mountPath: /etc/altiplano/certificates/secrets/
+              name: altiplano-grafana-certs
+            - mountPath: /etc/grafana/ssl
+              name: ssl
+            - mountPath: /etc/grafana/keycloak
+              name: keycloak
+
+{{- if and $tlsEnabled (eq (include "csf-common-lib.v1.isEmptyValue" .Values.grafana.tls.secretRef.name) "true") ($certEnabled) .Values.certManager.wait4Certs2BeConsumed.enabled .Values.certManager.wait4Certs2BeConsumed.fileNames }}
+        - name: {{ template "cpro-grafana.certmanager.initcontainer" . }}
+{{- include "cpro-grafana.distro.image" (dict "root" . "workload" .Values.grafana "container" .Values.certManager "imageName" .Values.image.distro ) | nindent 10}}
+{{- include "cpro-grafana.terminationMessage" . | nindent 10 }}
+          resources:
+{{- include "cpro-common-lib.v1.resources" ( dict "root" . "workloadresources" .Values.resources "defaultcpulimit" "500m") | nindent 12 }}
+          command: ["/bin/fileSizeValidator"]
+          args:
+            - --mount-path={{ .Values.certManager.mountPath }}
+            - --timeout={{ .Values.certManager.wait4Certs2BeConsumed.timeout }}
+            - --log-level={{ .Values.certManager.wait4Certs2BeConsumed.logLevel }}
+            - --log-fmt={{ .Values.certManager.wait4Certs2BeConsumed.logFmt | quote }}
+            {{- range .Values.certManager.wait4Certs2BeConsumed.fileNames }}
+            - --file-name={{ . }}
+            {{- end }}
+          securityContext:
+          {{$securityContextvalue := dict "cSecCtx" .Values.certManager.containerSecurityContext "ctx" . }}
+          {{- include "cpro-grafana.containerSecurityContext" $securityContextvalue | nindent 12 }}
+          volumeMounts:
+            - name: cert-secret
+              readOnly: true
+              mountPath: {{ .Values.certManager.mountPath }}
+{{- end }}
+{{- if .Values.pluginsSideCar.enabled }}
+        - name: {{ template "cpro-grafana.pluginsidecarContainerName" . }}
+{{- include "cpro-grafana.utility.image" (dict "root" . "workload" .Values.grafana "container" .Values.pluginsSideCar "imageName" .Values.image.utility ) | nindent 10}}
+          command: ["/scripts/plugin_run.sh"]
+{{- include "cpro-grafana.terminationMessage" . | nindent 10 }}
+          env:
+            {{- include "cpro-grafana.timeZoneName" . | nindent 12 }}
+            - name: GRAFANA_PLUGIN_URLS
+              value: {{ join " " .Values.pluginUrls }}
+          args:
+           - "/pluginspv"
+           - {{ .Values.pluginsSideCar.curlOptions.connect_timeout | quote }}
+           - {{ .Values.pluginsSideCar.curlOptions.max_time | quote }}
+           - {{ .Values.pluginsSideCar.curlOptions.retry_count | quote }}
+          resources:
+{{- include "cpro-common-lib.v1.resources" ( dict "root" . "workloadresources" .Values.pluginsSideCar.resources "defaultcpulimit" "500m") | nindent 12 }}
+          securityContext:
+          {{$securityContextvalue := dict "cSecCtx" .Values.pluginsSideCar.containerSecurityContext "ctx" . }}
+          {{- include "cpro-grafana.containerSecurityContext" $securityContextvalue | nindent 12 }}
+          volumeMounts:
+            - name: plugins
+              mountPath: "/pluginspv"
+{{- end }}
+
+{{- if .Values.downloadDashboardsImage.enabled }}
+        - name: {{ template "cpro-grafana.downloadDashboards" . }}
+{{- include "cpro-grafana.utility.image" (dict "root" . "workload" .Values.grafana "container" .Values.downloadDashboardsImage "imageName" .Values.image.utility ) | nindent 10}}
+{{- include "cpro-grafana.terminationMessage" . | nindent 10 }}
+          command: ["sh", "/etc/grafana/download_dashboards.sh"]
+          resources:
+{{- include "cpro-common-lib.v1.resources" ( dict "root" . "workloadresources" .Values.grafanaUtil.resources "defaultcpulimit" "100m") | nindent 12 }}
+          securityContext:
+          {{$securityContextvalue := dict "cSecCtx" .Values.downloadDashboardsImage.containerSecurityContext "ctx" . }}
+          {{- include "cpro-grafana.containerSecurityContext" $securityContextvalue | nindent 12 }}     
+          env:
+            {{- include "cpro-grafana.timeZoneName" . | nindent 12 }}
+          volumeMounts:
+            - name: config
+              mountPath: "/etc/grafana/download_dashboards.sh"
+              subPath: download_dashboards.sh
+            - name: storage
+              mountPath: "/var/lib/grafana"
+              subPath: {{ .Values.persistence.subPath }}
+          {{- range .Values.extraSecretMounts }}
+            - name: {{ .name }}
+              mountPath: {{ .mountPath }}
+              readOnly: {{ .readOnly }}
+          {{- end }}
+{{- end }}
+       {{- if ne .Values.sensitiveDataSecretName "" }}
+        - name: {{ template "cpro-grafana.GrafanaFileMerge" . }}
+{{- include "cpro-grafana.distro.image" (dict "root" . "workload" .Values.grafana "container" .Values.grafanaFileMerge "imageName" .Values.image.distro) | nindent 10}}
+          command: ["/cproConfigReloader"]
+{{- include "cpro-grafana.terminationMessage" . | nindent 10 }}
+          args:
+            {{- if and ($tlsEnabled) (eq (include "csf-common-lib.v1.isEmptyValue" .Values.grafana.tls.secretRef.name) "true") ($certEnabled) }}
+            - --volume-dir={{ .Values.certManager.mountPath }}
+            {{- end }}
+            - --watch-interval=30
+            - --retry-interval=1
+            - --delay-interval=1
+            - --output-file=/.secrets/grafana.ini
+            - --config-file=/etc/grafana/grafana.ini
+            - --secret-file=/etc/config/secrets/grafana_secret.yaml
+            - --log-level=warn
+            - --log-format=logfmt
+          resources:
+{{- include "cpro-common-lib.v1.resources" ( dict "root" . "workloadresources" .Values.grafanaFileMerge.resources "defaultcpulimit" "100m") | nindent 12 }}
+          securityContext:
+          {{$securityContextvalue := dict "cSecCtx" .Values.grafanaFileMerge.containerSecurityContext "ctx" . }}
+          {{- include "cpro-grafana.containerSecurityContext" $securityContextvalue | nindent 12 }}    
+          env:
+            {{- include "cpro-grafana.timeZoneName" . | nindent 12 }}
+          volumeMounts:
+            - name: config
+              mountPath: "/etc/grafana/grafana.ini"
+              subPath: grafana.ini
+            - name: secure-data
+              mountPath: /.secrets/
+            - name: sensitivedata
+              mountPath: /etc/config/secrets
+              readOnly: true
+       {{- end }}
+      containers:
+{{- if or $syslogEnabled .Values.grafana.unifiedLogging.extension .Values.global.unifiedLogging.extension }} 
+        {{- include "cpro-common-lib.fluentd-v2" ( dict "root" . "context" .Values.fluentd "workload" .Values.grafana "registry" .Values.intFluentdReg ) | nindent 8 }}
+          volumeMounts:
+            - name: kiwigridlogs
+              mountPath: /var/log/kiwigrid
+            - name: grafanalogs
+              mountPath: /var/log/grafana
+            - name: harmonized-logging-conf
+              mountPath: /etc/fluent/
+            - mountPath: /tmp
+              name: fluentdtmp
+             {{- if and $syslogEnabled (tpl (default "" $.syslog.tls.secretRef.name) .) (tpl (default "" $.syslog.tls.secretRef.keyNames.caCrt) .) }}
+            - mountPath: /etc/fluent/certs/
+              name: fluentd-tls
+             {{- end}}
+      {{- include "cpro-common-lib.logrotate" ( dict "root" . "context" .Values.logrotate "registry" .Values.intLogrotateReg ) | nindent 8 }}
+          volumeMounts:
+            - name: kiwigridlogs
+              mountPath: /var/log/kiwigrid
+            - name: logrotate-cronie-file
+              mountPath: /logRotate
+{{- end}}
+{{- if .Values.sidecar.dashboards.enabled }}
+        - name: {{ template "cpro-grafana.grafanaSidecarDashboard" . }}
+{{- include "cpro-grafana.python.image" (dict "root" . "workload" .Values.grafana "container" .Values.sidecar "imageName" .Values.image.python ) | nindent 10}}
+{{- include "cpro-grafana.terminationMessage" . | nindent 10 }}
+{{- if or $syslogEnabled .Values.grafana.unifiedLogging.extension .Values.global.unifiedLogging.extension }} 
+          command: [ "/bin/klogrun"]
+          args:
+            - -log-file=/var/log/kiwigrid/kiwigrid_dashboard.log
+            - -also-stdout=true
+            - python3
+            - -u
+            - /usr/bin/sidecar.py
+{{- end }}
+          env:
+            {{- include "cpro-grafana.timeZoneName" . | nindent 12 }}
+            - name: LABEL
+              value: "{{ .Values.sidecar.dashboards.label }}"
+            - name: FOLDER
+              value: "{{ .Values.sidecar.dashboards.folder }}"
+            - name: FOLDER_ANNOTATION
+              value: "{{ .Values.sidecar.dashboards.folderAnnotation }}"
+            - name: SKIP_TLS_VERIFY
+              value: "{{ .Values.sidecar.SKIP_TLS_VERIFY }}"
+            - name: UNIQUE_FILENAMES
+              value: "{{ .Values.sidecar.enableUniqueFilenames }}"
+            - name: RESOURCE
+              value: "{{ .Values.sidecar.dashboards.resource }}"
+            - name: LOG_LEVEL
+              value: "{{ .Values.sidecar.dashboards.level }}"
+            {{- if .Values.sidecar.dashboards.namespace }}
+            - name: NAMESPACE
+              value: "{{ .Values.sidecar.dashboards.namespace }}"
+            {{- else if not .Values.restrictedToNamespace }}
+            - name: NAMESPACE
+              value: "ALL"
+            {{- else }}
+            {{- end }}
+            {{- if .Values.sidecar.dashboards.config}}
+{{ tpl (toYaml .Values.sidecar.dashboards.config) . | indent 12 }}     
+	     {{- end }}  
+          resources:
+{{- include "cpro-common-lib.v1.resources" ( dict "root" . "workloadresources" .Values.sidecar.resources "defaultcpulimit" "100m") | nindent 12 }}
+          securityContext:
+          {{$securityContextvalue := dict "cSecCtx" .Values.sidecar.containerSecurityContext "ctx" . }}
+          {{- include "cpro-grafana.containerSecurityContext" $securityContextvalue | nindent 12 }}
+          volumeMounts:
+            - name: sc-dashboard-volume
+              mountPath: {{ .Values.sidecar.dashboards.folder | quote }}
+{{- if or $syslogEnabled .Values.grafana.unifiedLogging.extension .Values.global.unifiedLogging.extension }} 
+            - name: kiwigridlogs
+              mountPath: /var/log/kiwigrid
+{{- end}}
+{{- end}}
+{{- if .Values.sane }}
+  {{- if .Values.sane.enabled }}
+        - name: {{ template "cpro-grafana.grafanaSaneAuthProxy" . }}
+          {{- if and .Values.sane.imageRepo .Values.sane.imageTag }}
+          image: "{{ template "cpro-common-lib.v1.imageRegistry" ( dict "root" . "imageInfo" .Values.sane.imageRepo "internalRegisty" .Values.intGrafanaSaneReg ) }}:{{ .Values.sane.imageTag }}"
+          {{- else }}
+          image: "{{ template "cpro-common-lib.v1.imageRegistry" ( dict "root" . "imageInfo" "" "internalRegisty" .Values.intGrafanaSaneReg ) }}:{{ .Values.sane.imageTag }}"
+          {{- end }}
+          imagePullPolicy: {{ .Values.sane.imagePullPolicy }}
+{{- include "cpro-grafana.terminationMessage" . | nindent 10 }}
+          env:
+            {{- include "cpro-grafana.timeZoneName" . | nindent 12 }}
+{{- if .Values.sane.env }}
+{{ toYaml .Values.sane.env | indent 12 }}
+{{- end }}
+          ports:
+            - name: tcp-sane-port
+              containerPort: {{ .Values.sane.port }}
+          securityContext:
+          {{$securityContextvalue := dict "cSecCtx" .Values.grafana.containerSecurityContext "ctx" . }}
+          {{- include "cpro-grafana.containerSecurityContext" $securityContextvalue | nindent 12 }}
+          resources:
+{{- if .Values.cbur.resources }}
+{{- include "cpro-common-lib.v1.resources" ( dict "root" . "workloadresources" .Values.cbur.resources "defaultcpulimit" "100m") | nindent 12 }}
+{{- end }}
+  {{- end}}
+{{- end}}
+{{- if .Values.cbur.enabled }}
+        - name: {{ template "cpro-grafana.cburaSidecarContainerName" . }}
+          resources:
+{{- include "cpro-common-lib.v1.resources" ( dict "root" . "workloadresources" .Values.cbur.resources "defaultcpulimit" "100m") | nindent 12 }}
+          image: "{{ template "cpro-common-lib.v1.imageRegistry" ( dict "root" . "imageInfo" .Values.cbur.image.imageRepo "internalRegisty" .Values.intCburReg ) }}:{{ .Values.cbur.image.imageTag }}"
+          imagePullPolicy: {{ .Values.cbur.image.imagePullPolicy }}
+{{- include "cpro-grafana.terminationMessage" . | nindent 10 }}
+          env:
+            {{- include "cpro-grafana.timeZoneName" . | nindent 12 }}
+          securityContext:
+          {{- include "cpro-grafana.containerSecurityContext" (dict "cSecCtx" .Values.cbur.containerSecurityContext "ctx" .)  | nindent 12 }}
+          {{- if .Values.cmdb.enabled }}
+          volumeMounts:
+            - mountPath: /appdata
+              name: appdata
+         {{- else }}
+          volumeMounts:
+            - mountPath: /storage
+              name: storage
+         {{- end }}
+            - mountPath: /tmp
+              name: cbur-br-data
+{{- end}}
+{{- if .Values.cbur.enabled }}
+        - name: {{ template "cpro-grafana.grafanaMdbtool" . }}
+{{- include "cpro-grafana.utility.image" (dict "root" . "workload" .Values.grafana "container" .Values.mdbToolImage "imageName" .Values.image.utility ) | nindent 10}}
+{{- include "cpro-grafana.terminationMessage" . | nindent 10 }}
+          securityContext:
+          {{$securityContextvalue := dict "cSecCtx" .Values.mdbToolImage.containerSecurityContext "ctx" . }}
+          {{- include "cpro-grafana.containerSecurityContext" $securityContextvalue | nindent 12 }}
+          env:
+            {{- include "cpro-grafana.timeZoneName" . | nindent 12 }}
+          resources:
+{{- include "cpro-common-lib.v1.resources" ( dict "root" . "workloadresources" .Values.mdbToolImage.resources "defaultcpulimit" "500m") | nindent 12 }}
+         {{- if .Values.cmdb.enabled }}
+          volumeMounts:
+          {{- if ne .Values.sensitiveDataSecretName "" }}
+            - name: sensitivedata
+              mountPath: /etc/config/secrets
+              readOnly: true
+          {{- end }}
+          {{- if .Values.grafana.externalCredentials }}
+          {{- include "cpro-common-lib.v1-includeExternalCredentialMounts" (dict "creds" .Values.grafana.externalCredentials "root" . ) | indent 12 }}
+          {{- end }}
+          {{- if ne .Values.grafana.security.credentialName "" }}
+          {{- include "cpro-common-lib.v1-includeCredentialMount" (dict "cred" .Values.grafana.security "root" . "volumeName" "graf-security") | indent 12 }}
+          {{- end }}
+          {{- if ne .Values.cmdb.auth.credentialName "" }}
+          {{- include "cpro-common-lib.v1-includeCredentialMount" (dict "cred" .Values.cmdb.auth "root" . "volumeName" "cmdb-auth") | indent 12 }}
+          {{- end }}
+          {{- if ne .Values.keycloak.auth.credentialName "" }}
+          {{- include "cpro-common-lib.v1-includeCredentialMount" (dict "cred" .Values.keycloak.auth "root" . "volumeName" "keycloak-auth") | indent 12 }}
+          {{- end }}
+            - name: appdata
+              mountPath: "/appdata"
+         {{- end }}
+{{- end}}
+{{- if .Values.sidecar.datasources.enabled }}
+        - name: {{ template "cpro-grafana.grafanaDatasource" . }}
+{{- include "cpro-grafana.python.image" (dict "root" . "workload" .Values.grafana "container" .Values.sidecar "imageName" .Values.image.python ) | nindent 10}}
+{{- include "cpro-grafana.terminationMessage" . | nindent 10 }}
+{{- if or $syslogEnabled .Values.grafana.unifiedLogging.extension .Values.global.unifiedLogging.extension }} 
+          command: [ "/bin/klogrun"]
+          args:
+            - -log-file=/var/log/kiwigrid/kiwigrid_datasource.log
+            - -also-stdout=true
+            - python3
+            - -u
+            - /usr/bin/sidecar.py
+{{- end }}
+          env:
+            {{- include "cpro-grafana.timeZoneName" . | nindent 12 }}
+            - name: LABEL
+              value: "{{ .Values.sidecar.datasources.label }}"
+            - name: LOG_LEVEL
+              value: "{{ .Values.sidecar.datasources.level }}"
+            - name: FOLDER
+              value: "/etc/grafana/provisioning/datasources"
+            {{- if .Values.sidecar.datasources.config}}
+{{ tpl (toYaml .Values.sidecar.datasources.config) . | indent 12 }}
+             {{- end }}
+          resources:
+{{- include "cpro-common-lib.v1.resources" ( dict "root" . "workloadresources" .Values.sidecar.resources "defaultcpulimit" "100m") | nindent 12 }}
+          securityContext:
+          {{$securityContextvalue := dict "cSecCtx" .Values.sidecar.containerSecurityContext "ctx" . }}
+          {{- include "cpro-grafana.containerSecurityContext" $securityContextvalue | nindent 12 }}
+          volumeMounts:
+            - name: sc-datasources-volume
+              mountPath: "/etc/grafana/provisioning/datasources"
+{{- if or $syslogEnabled .Values.grafana.unifiedLogging.extension .Values.global.unifiedLogging.extension }} 
+            - name: kiwigridlogs
+              mountPath: /var/log/kiwigrid
+{{- end }}
+{{- end}}
+        - name: {{ template "cpro-grafana.grafanaUtilContainerName" . }}
+{{- include "cpro-grafana.utility.image" (dict "root" . "workload" .Values.grafana "container" .Values.grafanaUtil "imageName" .Values.image.utility ) | nindent 10}}
+{{- include "cpro-grafana.terminationMessage" . | nindent 10 }}
+          command: ["sleep","infinity"]
+          env:
+            {{- include "cpro-grafana.timeZoneName" . | nindent 12 }}
+          resources:
+{{- include "cpro-common-lib.v1.resources" ( dict "root" . "workloadresources" .Values.grafanaUtil.resources "defaultcpulimit" "100m") | nindent 12 }}
+          securityContext:
+          {{$securityContextvalue := dict "cSecCtx" .Values.grafanaUtil.containerSecurityContext "ctx" . }}
+          {{- include "cpro-grafana.containerSecurityContext" $securityContextvalue | nindent 12 }}
+        - name: {{ template "cpro-grafana.grafanaContainer" . }}
+{{- include "cpro-grafana.distro.image" (dict "root" . "workload" .Values.grafana "imageName" .Values.image.distro) | nindent 10}}
+          command: ["/grafana-starter"]
+{{- include "cpro-grafana.terminationMessage" . | nindent 10 }}
+          resources:
+{{- include "cpro-common-lib.v1.resources" ( dict "root" . "workloadresources" .Values.resources "defaultcpulimit" "500m") | nindent 12 }}
+          args:
+          {{- if ne .Values.sensitiveDataSecretName "" }}
+            - --configPath=/.secrets/grafana.ini
+          {{- else }}
+            - --configPath=/etc/grafana/grafana.ini
+          {{- end }}
+            - --homePath=/usr/share/grafana
+            - --logMode=console
+            - --pathsData=$GF_PATHS_DATA
+            - --pathsPlugins=$GF_PATHS_PLUGINS
+            - --pathsProvisioning=$GF_PATHS_PROVISIONING
+            - --pathsLogs=$GF_PATHS_LOGS
+            - --wait-interval=5
+            - --secretPathPrefix={{ .Values.secretPathPrefix }}
+          {{- range $key, $value := .Values.extraArgs }}
+            {{- if $value }}
+            - --extraArgs={{ $key }}={{ $value }}
+            {{- else }}
+            - --extraArgs={{ $key }}
+            {{- end }}
+          {{- end }}
+          securityContext:
+          {{$securityContextvalue := dict "cSecCtx" .Values.grafana.containerSecurityContext "ctx" . }}
+          {{- include "cpro-grafana.containerSecurityContext" $securityContextvalue | nindent 12 }}
+          volumeMounts:
+          {{- if .Values.grafana.externalCredentials }}
+          {{- include "cpro-common-lib.v1-includeExternalCredentialMounts" (dict "creds" .Values.grafana.externalCredentials "root" . ) | indent 12 }}
+          {{- end }}
+          {{- if ne .Values.grafana.security.credentialName "" }}
+          {{- include "cpro-common-lib.v1-includeCredentialMount" (dict "cred" .Values.grafana.security "root" . "volumeName" "graf-security") | indent 12 }}
+          {{- end }}
+          {{- if ne .Values.cmdb.auth.credentialName "" }}
+          {{- include "cpro-common-lib.v1-includeCredentialMount" (dict "cred" .Values.cmdb.auth "root" . "volumeName" "cmdb-auth") | indent 12 }}
+          {{- end }}
+          {{- if ne .Values.keycloak.auth.credentialName "" }}
+          {{- include "cpro-common-lib.v1-includeCredentialMount" (dict "cred" .Values.keycloak.auth "root" . "volumeName" "keycloak-auth") | indent 12 }}
+          {{- end }}
+          {{- if or $syslogEnabled .Values.grafana.unifiedLogging.extension .Values.global.unifiedLogging.extension }} 
+            - name: grafanalogs
+              mountPath: /var/log/grafana 
+          {{- end }}
+          {{- if and $tlsEnabled ( or ( ne (include "csf-common-lib.v1.isEmptyValue" .Values.grafana.tls.secretRef.name) "true") ($certEnabled)) }}
+            - name: cert-secret
+              readOnly: true
+              mountPath: {{ .Values.certManager.mountPath }}
+          {{- end }}
+          {{- if and (not $tlsEnabled) (eq (include "csf-common-lib.v1.isEmptyValue" .Values.grafana.tls.secretRef.name) "true") ( ne (include "csf-common-lib.v1.coalesceBoolean" (tuple .Values.certManager.enabled .Values.global.certManager.enabled false)) "true" ) }}
+            - name: ssl
+              mountPath: "/etc/grafana/ssl"
+              readOnly: true
+          {{- end }}
+            - name: altiplano-grafana-certs
+              mountPath: /etc/altiplano/certificates/secrets/ 
+          {{- if or ( ne .Values.keycloak.cert "" ) ( .Values.keycloak.secret ) }}
+            - name: keycloak
+              readOnly: true
+              mountPath: "/etc/grafana/keycloak"
+          {{- end }}
+          {{- if and (.Values.cmdb.enabled) (ne .Values.cmdb.certsecret "certmanager") }}
+          {{- if and (.Values.grafana_ini.database.ssl_mode) (ne (.Values.grafana_ini.database.ssl_mode | quote) "false") }}
+            - name: cmdbtls
+              readOnly: true
+              mountPath: "/etc/grafana/cmdbtls"
+          {{- end }}
+          {{- end }}
+            - name: config
+              mountPath: "/etc/grafana/grafana.ini"
+              subPath: grafana.ini
+            - name: ldap
+              mountPath: "/etc/grafana/ldap.toml"
+              subPath: ldap.toml
+            - name: security
+              mountPath: "/etc/secrets"
+            - name: secure-data
+              mountPath: /.secrets/
+          {{- if (ne .Values.sensitiveDataSecretName "") }}
+            - name: sensitivedata
+              mountPath: /etc/config/secrets
+              readOnly: true
+          {{- end }}
+          {{- if .Values.pluginsSideCar.enabled }}
+            - name: plugins
+              mountPath: "/var/lib/grafana/plugins"
+            - name: tempfolder
+              mountPath: "/tmp"
+          {{- end }}
+{{- if .Values.dashboards }}
+  {{- range $key, $value := .Values.dashboards }}
+    {{ if hasKey $value "json" }}
+            - name: dashboards-json
+              mountPath: "/var/lib/grafana/dashboards/{{ $key }}.json"
+              subPath: {{ $key }}.json
+    {{- end }}
+  {{- end }}
+{{- end -}}
+{{- if .Values.datasources }}
+            - name: config
+              mountPath: "/etc/grafana/provisioning/datasources/datasources.yaml"
+              subPath: datasources.yaml
+{{- end }}
+{{- if .Values.dashboardProviders }}
+            - name: config
+              mountPath: "/etc/grafana/provisioning/dashboards/dashboardproviders.yaml"
+              subPath: dashboardproviders.yaml
+{{- end }}
+{{- if .Values.sidecar.dashboards.enabled }}
+            - name: sc-dashboard-volume
+              mountPath: {{ .Values.sidecar.dashboards.folder | quote }}
+            - name: sc-dashboard-provider
+              mountPath: "/etc/grafana/provisioning/dashboards"
+{{- end}}
+{{- if .Values.sidecar.datasources.enabled }}
+            - name: sc-datasources-volume
+              mountPath: "/etc/grafana/provisioning/datasources"
+{{- end}}
+            - name: storage
+              mountPath: "/var/lib/grafana"
+              subPath: {{ .Values.persistence.subPath }}
+          {{- range .Values.extraSecretMounts }}
+            - name: {{ .name }}
+              mountPath: {{ .mountPath }}
+              readOnly: {{ .readOnly }}
+          {{- end }}
+          ports:
+            - name: tcp-service
+              containerPort: {{ .Values.service.port }}
+            - name: tcp-grafana
+              containerPort: {{ .Values.grafana_ini.server.http_port }}
+          env:
+{{- if or $syslogEnabled .Values.grafana.unifiedLogging.extension .Values.global.unifiedLogging.extension }} 
+            - name: GF_PATHS_LOGS
+              value: /var/log/grafana
+{{- end}}
+            {{- include "cpro-grafana.timeZoneName" . | nindent 12 }}
+            - name: GRAFANA_APPTITLE
+              value: {{ .Values.appTitle }}
+            {{- if .Values.plugins }}
+            - name: GF_INSTALL_PLUGINS
+              valueFrom:
+                configMapKeyRef:
+                  name: {{ template "cpro-grafana.fullname" . }}
+                  key: plugins
+            {{- end }}
+            {{- if eq .Values.sensitiveDataSecretName "" }}
+            {{- if .Values.smtp.existingSecret }}
+            - name: GF_SMTP_USER
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.smtp.existingSecret }}
+                  key: user
+            - name: GF_SMTP_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.smtp.existingSecret }}
+                  key: password
+            {{- end }}
+            {{- end }}
+{{- range $key, $value := .Values.env }}
+            - name: "{{ $key }}"
+              value: "{{ $value }}"
+{{- end }}
+            - name: "K8S"
+              value: "true"
+{{- if $.istio.enabled }}
+            - name: "ISTIO_ENABLED"
+              value: "true"
+{{- end }}
+{{- if and ($.istio.enabled) ($.istio.gateways.cproGrafana.enabled) (ne ($.istio.gateways.cproGrafana.protocol | upper) "HTTPS") }}
+            - name: "ISTIO_GATEWAY_ALERT"
+              value: "true"
+{{- end }}
+{{- if  and (not $.istio.enabled) ($syslogEnabled) (eq (tpl (default "" $.syslog.tls.secretRef.name) .) "") }}
+            - name: "RSYSLOG_SERVER_ALERT"
+              value: "true"
+{{- end }}
+          {{- if .Values.envFromSecret }}
+          envFrom:
+            - secretRef:
+                name: {{ .Values.envFromSecret }}
+          {{- end }}
+          livenessProbe:
+            httpGet:
+              path: /api/health
+              scheme: {{ upper .Values.grafana_ini.server.protocol }}
+              port: {{ .Values.grafana_ini.server.http_port }}
+            initialDelaySeconds: {{ .Values.livenessProbe.initialDelaySeconds }}
+            timeoutSeconds: {{ .Values.livenessProbe.timeoutSeconds }}
+            failureThreshold: {{ .Values.livenessProbe.failureThreshold }}
+            periodSeconds: {{ .Values.livenessProbe.periodSeconds }}
+          readinessProbe:
+            httpGet:
+              path: /api/health
+              scheme: {{ upper .Values.grafana_ini.server.protocol }}
+              port: {{ .Values.grafana_ini.server.http_port }}
+            initialDelaySeconds: {{ .Values.readinessProbe.initialDelaySeconds }}
+            timeoutSeconds: {{ .Values.readinessProbe.timeoutSeconds }}
+            failureThreshold: {{ .Values.readinessProbe.failureThreshold }}
+            periodSeconds: {{ .Values.readinessProbe.periodSeconds }}
+          resources:
+{{- include "cpro-common-lib.v1.resources" ( dict "root" . "workloadresources" .Values.resources "defaultcpulimit" "500m") | nindent 12 }}
+    {{- with .Values.nodeSelector }}
+      nodeSelector:
+{{ toYaml . | indent 8 }}
+    {{- end }}
+{{$data := dict "component_pc" .Values  "ctx" . }}
+{{- include "cpro-grafana.pod.pcName" $data | nindent 6 }}
+{{- if .Values.HA.enabled }}
+      affinity:
+      {{- include "cpro-grafana.podAntiAffinity" . | indent 8 }}
+      {{- if .Values.affinity }}
+      {{- if .Values.affinity.podAntiAffinity }}
+{{ toYaml .Values.affinity.podAntiAffinity | indent 10 }}
+      {{- end }}
+      {{- if .Values.affinity.podAffinity }}
+        podAffinity:
+{{ toYaml .Values.affinity.podAffinity | indent 10 }}
+      {{- end }}
+      {{- end }}
+{{- else }}
+    {{- with .Values.affinity }}
+      affinity:
+{{ toYaml . | indent 8 }}
+    {{- end }}
+{{- end }}
+{{- with .Values.tolerations }}
+      tolerations:
+{{ toYaml . | indent 8 }}
+    {{- end }}
+      {{- if .Values.grafana.topologySpreadConstraints }}
+      topologySpreadConstraints: {{- include "cpro-grafana.topologySpreadConstraints" (tuple . .Values.grafana) | nindent 8 }}
+      {{- end }}
+      volumes:
+      {{- if .Values.grafana.externalCredentials  }}
+      {{- include "cpro-common-lib.v1-includeExternalCredentials" (dict "creds" .Values.grafana.externalCredentials ) | indent 8 }}
+      {{- end }}
+      {{- if ne .Values.grafana.security.credentialName "" }}
+      {{- include "cpro-common-lib.v1-includeCredential" (dict "creds" .Values.grafana.security "volumeName" "graf-security") | indent 8 -}} 
+      {{- end }}
+      {{- if ne .Values.cmdb.auth.credentialName "" }}
+      {{- include "cpro-common-lib.v1-includeCredential" (dict "creds" .Values.cmdb.auth "volumeName" "cmdb-auth") | indent 8 -}} 
+      {{- end }}
+      {{- if ne .Values.keycloak.auth.credentialName "" }}
+      {{- include "cpro-common-lib.v1-includeCredential" (dict "creds" .Values.keycloak.auth "volumeName" "keycloak-auth") | indent 8 -}} 
+      {{- end }}
+{{- if or $syslogEnabled .Values.grafana.unifiedLogging.extension .Values.global.unifiedLogging.extension }} 
+        - name: fluentdtmp
+          emptyDir: {}
+        - name: kiwigridlogs
+          emptyDir: {}
+        - name: grafanalogs
+          emptyDir: {}
+        - name: harmonized-logging-conf
+          configMap:
+            name: {{ template "cpro-grafana.fluentdConfigmapName" (dict "name" "fluentdconfigmap" "context" .) }} 
+        - name: logrotate-cronie-file
+          configMap:
+            defaultMode: 0640
+            items:
+              - key: logrotate.conf
+                path: logrotate.conf
+              - key: rotate.sh
+                path: rotate.sh
+            name: {{ template "cpro-common-lib-v1.ConfigmapName" (dict "name" "logrotateconfigmap" "root" .) }} 
+              {{- if and $syslogEnabled (tpl (default "" $.syslog.tls.secretRef.name) .) (tpl (default "" $.syslog.tls.secretRef.keyNames.caCrt) .) }}
+        - name: fluentd-tls
+          secret:
+            secretName: {{ tpl $.syslog.tls.secretRef.name . }}
+            items:
+              - key: {{ tpl $.syslog.tls.secretRef.keyNames.caCrt . }}
+                path: syslogRootCaPem
+        {{- end }}
+{{- end }}
+        {{- if $tlsEnabled }}
+        - name: cert-secret
+          secret:
+            defaultMode: 0440
+       {{- if and (ne (include "csf-common-lib.v1.isEmptyValue" .Values.grafana.tls.secretRef.name) "true") }}
+            secretName: {{ .Values.grafana.tls.secretRef.name }}
+       {{- else if and $certEnabled .Values.grafana.certificate.enabled }}
+            secretName: {{ include "csf-common-lib.v3.certificateSecretName" (tuple . .Values.grafana .Values.grafana.certificate) }}
+       {{- else }}
+       {{- required "either external secret has to be created or certmanager is to be set to true when tls is enabled" "" }}
+       {{ end }}
+       {{ end }}
+       {{- if and (not $tlsEnabled) (eq (include "csf-common-lib.v1.isEmptyValue" .Values.grafana.tls.secretRef.name) "true") ( ne (include "csf-common-lib.v1.coalesceBoolean" (tuple .Values.certManager.enabled .Values.global.certManager.enabled false)) "true" ) }}
+        - name: ssl
+          emptyDir:
+            medium: Memory
+       {{ end }}
+       {{- if or ( ne .Values.keycloak.cert "" ) ( .Values.keycloak.secret ) }}
+        - name: keycloak
+          emptyDir:
+            medium: Memory
+        - name: altiplano-grafana-certs
+          secret:
+            secretName: altiplano-grafana-certificate-secrets
+       {{- end }}
+       {{- if and (.Values.cmdb.enabled) (ne .Values.cmdb.certsecret "certmanager") }}
+       {{- if and (.Values.grafana_ini.database.ssl_mode) (ne (.Values.grafana_ini.database.ssl_mode | quote) "false") }}
+        - name: cmdbtls
+          secret:
+            secretName: {{ template "cpro-grafana.cmdb.userSecretName" . }}
+            defaultMode: 0440
+       {{- end }}
+       {{- end }}
+        - name: config
+          configMap:
+            name: {{ template "cpro-grafana.fullname" . }}
+            defaultMode: 0440
+        - name: dashboards-json
+          configMap:
+            name: {{ template "cpro-grafana.dashboardsJsonConfigmapName" . }}
+            defaultMode: 0440
+        - name: ldap
+          secret:
+            {{- if .Values.ldap.existingSecret }}
+            secretName: {{ .Values.ldap.existingSecret }}
+            {{- else }}
+            secretName: {{ template "cpro-grafana.fullname" . }}
+            {{- end }}
+            defaultMode: 0440
+            items:
+              - key: ldap-toml
+                path: ldap.toml
+        - name: security
+          secret:
+            secretName: {{ template "cpro-grafana.fullname" . }}
+            defaultMode: 0440
+            items:
+              - key: admin-user
+                path: username
+              - key: admin-password
+                path: password
+        - name: storage
+      {{- if and (.Values.persistence.enabled) (not .Values.cmdb.enabled) }}
+          persistentVolumeClaim:
+            claimName: {{ .Values.persistence.existingClaim | default (include "cpro-grafana.fullname" .) }}
+      {{- else }}
+          {{$ephemeralstoragevalue := dict "ephvol" .Values.grafana "eph" . }}
+          {{- include "cpro-grafana.ephemeral.storage" $ephemeralstoragevalue | nindent 10 }}
+      {{- end -}}
+      {{- if .Values.sidecar.dashboards.enabled }}
+        - name: sc-dashboard-volume
+          emptyDir: {}
+        - name: sc-dashboard-provider
+          configMap:
+            name: {{ template "cpro-grafana.configDashboards" . }}
+            defaultMode: 0440
+      {{- end }}
+      {{- if .Values.sidecar.datasources.enabled }}
+        - name: sc-datasources-volume
+          emptyDir: {}
+      {{- end -}}
+      {{- range .Values.extraSecretMounts }}
+        - name: {{ .name }}
+          secret:
+            secretName: {{ .secretName }}
+            defaultMode: 0440
+      {{- end }}
+      {{- if .Values.cmdb.enabled }}
+        - name: appdata
+          {{$ephemeralstoragevalue := dict "ephvol" .Values.grafana "eph" . }}
+          {{- include "cpro-grafana.ephemeral.storage" $ephemeralstoragevalue | nindent 10 }}
+      {{- end }}
+      {{- if .Values.pluginsSideCar.enabled }}
+        - name: plugins
+          emptyDir: {}
+        - name: tempfolder
+          emptyDir: {}
+      {{- end }}
+      {{- if (ne .Values.sensitiveDataSecretName "") }}
+        - name: sensitivedata
+          secret:
+            secretName: {{ .Values.sensitiveDataSecretName }}
+      {{- end }}
+        - name: secure-data
+          emptyDir: {}
+        - name: cbur-br-data
+          {{$ephemeralstoragevalue := dict "ephvol" .Values.cbur "eph" . }}
+          {{- include "cpro-grafana.cbur.ephemeral.storage" $ephemeralstoragevalue | nindent 10 }}

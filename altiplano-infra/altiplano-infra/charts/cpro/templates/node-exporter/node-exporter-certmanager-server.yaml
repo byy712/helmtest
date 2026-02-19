@@ -1,0 +1,18 @@
+#variabes used component will have .Values.nodeExporter data(yaml)
+##certificateName with be name of certificate created
+##secretName will be the name of secret created
+##the above variables are used in the cpro.certmanager.template
+{{- if and ( .Values.nodeExporter.enabled ) (eq (include "csf-common-lib.v1.coalesceBoolean" (tuple .Values.nodeExporter.tls.enabled .Values.tls.enabled .Values.global.tls.enabled .Values.nodeExporter.tls_auth_config.tls.enabled false)) "true") (eq (include "csf-common-lib.v1.isEmptyValue" .Values.nodeExporter.tls.secretRef.name) "true")  (eq .Values.nodeExporter.tls_auth_config.tls.externalSecret "")}}
+{{- if eq (include "csf-common-lib.v1.coalesceBoolean" (tuple .Values.certManager.enabled .Values.global.certManager.enabled true)) "true" }}
+{{- if .Values.nodeExporter.certificate.enabled }}
+{{ $_ := set . "component" .Values.nodeExporter }}
+{{ $certificateName := include "cpro.nodeexporter.server.resourceName" . }}
+{{ $_ := set . "certificateName" $certificateName }}
+{{ $secretName := include "cpro.nodeexporter.server.secret" . }}
+{{ $_ := set . "secretName" $secretName }}
+{{ $serviceName := printf "%s" (include "cpro.prometheus.nodeExporter.daemonSetName" . ) }}
+{{ $_ := set . "serviceName" $serviceName }}
+{{- include "cpro-common-lib.v4.certificate" (tuple . .Values.nodeExporter "pobserve-issuer") }}
+{{- end }}
+{{- end }}
+{{- end }}

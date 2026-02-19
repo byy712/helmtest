@@ -1,0 +1,59 @@
+{{- include "cpro-grafana.istio.grafanaInitIstio" . }}
+{{- if or ($.istio.enabled) ($.istio.createDrForClient) }}
+apiVersion: {{ template "cpro-grafana.grafanaApiVersion.destinationRule" . }}
+kind: DestinationRule
+metadata:
+  labels:
+    {{- include "cpro-grafana.app.labels-v3" . | nindent 4 }}
+    {{- include "cpro-grafana.labelsOrAnnotations" (tuple .Values.global.labels) | indent 4}}
+  name: {{ template "cpro-grafana.fullname" . }}
+  namespace: {{ .Release.Namespace }}
+  annotations:
+{{- include "cpro-grafana.labelsOrAnnotations" (tuple .Values.global.annotations) | indent 4}}
+spec:
+  host: "{{ template "cpro-grafana.service.name" . }}.{{ .Release.Namespace }}.svc.{{ .Values.clusterDomain }}"
+  trafficPolicy:
+{{- if and ($.istio.mtls.enabled) (not $.istio.createDrForClient) (not $.istio.permissive) }}
+    tls:
+      mode: ISTIO_MUTUAL
+{{- else }}
+    tls:
+      mode: DISABLE
+{{- end }}
+{{- if .Values.HA.enabled }}
+    loadBalancer:
+      consistentHash:
+        useSourceIp: true
+{{- end }}
+{{- end }}
+
+---
+
+{{- if or ($.istio.enabled) ($.istio.createDrForClient) }}
+apiVersion: {{ template "cpro-grafana.grafanaApiVersion.destinationRule" . }}
+kind: DestinationRule
+metadata:
+  labels:
+    {{- include "cpro-grafana.app.labels-v3" . | nindent 4 }}
+    {{- include "cpro-grafana.labelsOrAnnotations" (tuple .Values.global.labels) | indent 4}}
+  name: {{ template "cpro-grafana.istioDestinationRule" . }}
+  namespace: {{ .Release.Namespace }}
+  annotations:
+{{- include "cpro-grafana.labelsOrAnnotations" (tuple .Values.global.annotations) | indent 4}}
+spec:
+  host: "{{ template "cpro-grafana.istioDestinationRule" . }}.{{ .Release.Namespace }}.svc.{{ .Values.clusterDomain }}"
+  trafficPolicy:
+{{- if and ($.istio.mtls.enabled) (not $.istio.createDrForClient) (not $.istio.permissive) }}
+    tls:
+      mode: ISTIO_MUTUAL
+{{- else }}
+    tls:
+      mode: DISABLE
+{{- end }}
+{{- if .Values.HA.enabled }}
+    loadBalancer:
+      consistentHash:
+        useSourceIp: true
+{{- end }}
+{{- end }}
+

@@ -1,0 +1,79 @@
+{{/*
+   *
+   * Setup the various hostname and FQDN for Access to the database
+   *
+   */}}
+{{- $svchost := default (printf "%s-mysql" (include "cmdb.fullname" .)) .Values.services.mysql.name }}
+{{- $svcfqdn := printf "%s.%s.svc.%s" $svchost .Release.Namespace .Values.clusterDomain }}
+
+*** MariaDB can be accessed on the following DNS name within the cluster:
+{{ $svcfqdn }}
+
+{{- if (eq .Values.services.mysql.type "NodePort") }}
+
+*** MariaDB is also exposed external to the cluster via a cluster NodePort
+
+To determine the external port
+==============================
+  kubectl get services --namespace {{ .Release.Namespace }} -l app={{ template "cmdb.fullname" . }}
+{{- end }}
+
+{{- if .syslogCommonIssuer }}
+
+*** A self-signed Certificate Issuer was created to satisfy the TLS configuration provided for unifiedLogging. These settings should NOT be used in a production environment.
+{{ end -}}
+
+{{/*
+To get the root password
+===========================
+  kubectl get secret --namespace {{ .Release.Namespace }} {{ template "cmdb.fullname" . }}-mariadb-initialusers -o jsonpath={.data.mysql-root-password} |base64 -d
+*/}}
+
+{{- if .Release.IsInstall }}
+{{ $display := .Values.displayPasswords | default "if-generated" | lower }}
+{{- if or (eq  $display "if-generated") (eq $display "always") }}
+Initial Passwords
+=================
+The following are the initial built-in passwords for the database.
+They are only displayed this one-time.
+
+*** IMPORTANT: These are stored in helm/tiller.
+*** To secure the deployment of this database, they MUST be changed from these initial values.
+
+  {{ printf " %-10s | %s" "User" "Password" }}
+  {{ printf "============|=======================================" }}
+  {{- if and (or (eq $display "always") (not .Values.users.root.password)) (not .Values.users.root.credentialName) }}
+  {{ printf " %-10s | %s" "root" (include "cmdb.pw.root.dec" .) }}
+  {{- end }}
+  {{- if hasPrefix "master" .Values.cluster_type }}
+  {{- if and (or (eq $display "always") (not .Values.users.replication.password)) (not .Values.users.replication.credentialName) }}
+  {{ printf " %-10s | %s" .Values.users.replication.username (include "cmdb.pw.repl.dec" .) }}
+  {{- end }}
+  {{- end }}
+  {{- if .Values.mariadb.metrics.enabled }}
+  {{- if and (or (eq $display "always") (not .Values.users.mariadbMetrics.password)) (not .Values.users.mariadbMetrics.credentialName) }}
+  {{ printf " %-10s | %s" .Values.users.mariadbMetrics.username (include "cmdb.pw.mariadb_metrics.dec" .) }}
+  {{- end }}
+  {{- end }}
+  {{- if eq (include "cmdb.has_maxscale" .) "true" }}
+  {{- if and (or (eq $display "always") (not .Values.users.maxscale.password)) (not .Values.users.maxscale.credentialName) }}
+  {{ printf " %-10s | %s" .Values.users.maxscale.username (include "cmdb.pw.maxscale.dec" .) }}
+  {{- end }}
+  {{- end }}
+  {{- if .Values.maxscale.metrics.enabled }}
+  {{- if and (or (eq $display "always") (not .Values.users.maxscaleMetrics.password)) (not .Values.users.maxscaleMetrics.credentialName) }}
+  {{ printf " %-10s | %s" .Values.users.maxscaleMetrics.username (include "cmdb.pw.maxscale_metrics.dec" .) }}
+  {{- end }}
+  {{- end }}
+
+{{- end }}
+{{- end }}
+
+
+To connect to the database
+===========================
+1. Run a pod that you can use as a client
+    kubectl run mysql-client --rm --tty -i --namespace {{ .Release.Namespace }} --image {{ coalesce .Values.mariadb.image.registry .Values.internalRegistry | default .Values.global.registry | default .Values._internalRegistry }}/{{ .Values.global.flatRegistry | ternary ( base .Values.mariadb.image.name ) .Values.mariadb.image.name }}:{{ include "cmdb-image.tag" ( tuple .Values .Values.mariadb.image) }} --command -- bash
+
+2. Connect using the mysql cli
+    mysql -uroot -p -h {{ $svchost }}

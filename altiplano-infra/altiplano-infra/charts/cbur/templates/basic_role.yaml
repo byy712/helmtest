@@ -1,0 +1,262 @@
+{{- if .Values.rbac.enabled }}
+{{- $new := list }}
+{{- if .Values.includeNamespaces}}
+{{- $new = append .Values.includeNamespaces .Release.Namespace }}
+{{- else }}
+{{- $new = .Release.Namespace | append $new }}
+{{- end }}
+{{- $dot := . }}
+{{- range $new | uniq }}
+---
+apiVersion: rbac.authorization.k8s.io/v1
+{{- if eq $.Values.cburScope "Namespaced" }}
+kind: Role
+{{- else }}
+kind: ClusterRole
+{{- end }}
+metadata:
+  labels:
+    heritage: {{ $.Release.Service }}
+    app: {{ template "cbur.fullname" $dot }}
+    chart: "{{ $.Chart.Name }}-{{ $.Chart.Version }}"
+    release: {{ $.Release.Name }}
+    component: "{{ $.Release.Name }}-{{ $.Values.component }}"
+    {{- include "cbur.proxy.commonLabels" (tuple $dot) | indent 4 }}
+    {{- include "cbur.customLabels" (tuple $dot.Values.global.labels) | indent 4 }}
+  annotations:
+    {{- include "cbur.customAnnotations" (tuple $dot.Values.global.annotations) | indent 4 }}
+  name: {{ template "cbur.fullname" $dot }}-basic-role
+  namespace: {{ . }}
+rules:
+  # Allow CBUR to maintain its own Secrets
+- apiGroups: [""]
+  resources: ["secrets"]
+  resourceNames:
+  - cburm-ssh-public-key
+  - {{ template "cbur.fullname" $dot }}-server-srt
+  - {{ template "cbur.fullname" $dot }}-client-srt
+  - cbur-ncm-secret
+  - cbur-redis
+  verbs: ["get", "list", "watch", "update", "patch", "delete"]
+
+  # Allow CBUR to access other CBUR secrets
+  # and application secrets so they can be backed-up/restored
+- apiGroups: [""]
+  resources: ["secrets"]
+  verbs: ["get", "list", "patch", "create"]
+
+  # Allow CBUR to access other CBUR configmaps
+  # and application configmaps so they can be backed-up/restored
+- apiGroups: [""]
+  resources: ["configmaps"]
+  verbs: ["get", "list", "patch", "create"]
+
+  # Allow cbur to auto inject sidecar
+- apiGroups: ["storage.k8s.io"]
+  resources: ["storageclasses"]
+  verbs: ["get", "list"]
+
+  # Allow CBUR to access all CRs with kind BrPolicy
+- apiGroups: ["cbur.csf.nokia.com"]
+  resources: ["brpolices"]
+{{- if $.Values.rbac.limitBrApiGroupPermission }}
+  verbs: ["get", "list", "watch", "delete"]
+{{- else }}
+  verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
+{{- end }}
+
+  # Allow CBUR to access the status section of BrPolicy
+- apiGroups: ["cbur.csf.nokia.com"]
+  resources: ["brpolices/status"]
+  verbs: ["get", "list", "watch", "update", "patch"]
+
+  # Allow CBUR to access all CRs with kind BrHook
+- apiGroups: ["cbur.csf.nokia.com"]
+  resources: ["brhooks"]
+{{- if $.Values.rbac.limitBrApiGroupPermission }}
+  verbs: ["get", "list", "watch", "delete"]
+{{- else }}
+  verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
+{{- end }}
+
+  # Allow CBUR to access the namespaces/status when backup with S3 backend
+- apiGroups: [""]
+  resources: ["namespaces/status"]
+  verbs: ["get"]
+
+{{- if $.Values.k8swatcher.clusterBrEnabled }}
+  # Allow CBUR to access all OS related customResource for cluster BR
+- apiGroups: ["ncm.nokia.com", "ncs.nokia.com", "setting.nokia.com"]
+  resources: ["*"]
+  verbs: ["list", "get", "update", "patch", "create"]
+
+  #  Allow CBUR to access tenant related CRs for cluster BR
+- apiGroups: ["mt.ncm.nokia.com"]
+  resources: ["tenants", "tenantnamespaces"]
+  verbs: ["list", "get", "update", "patch", "create"]
+{{- end }}
+
+{{- if eq $.Values.cburScope "Cluster" }}
+  # Allow CBUR to create CRDs
+- apiGroups: ["apiextensions.k8s.io"]
+  resources: ["customresourcedefinitions"]
+  verbs: ["create"]
+
+  # Allow CBUR to access CBUR CRDs
+- apiGroups: ["apiextensions.k8s.io"]
+  resources: ["customresourcedefinitions"]
+  resourceNames: ["brpolices.cbur.csf.nokia.com", "brhooks.cbur.csf.nokia.com"]
+  verbs: ["get", "update", "patch", "delete"]
+
+  # Allow CBUR to create clusterRole
+- apiGroups: ["rbac.authorization.k8s.io"]
+  resources: ["clusterroles"]
+  verbs: ["get", "patch", "create", "list", "update"]
+
+  # Allow CBUR to create clusterRoleBindings
+- apiGroups: ["rbac.authorization.k8s.io"]
+  resources: ["clusterrolebindings"]
+  verbs: ["get", "patch", "create", "list", "update"]
+
+  # Allow CBUR to access namespace for namespace backup/restore
+- apiGroups:
+  - ""
+  resources:
+  - namespaces
+  verbs: ["create", "get", "list"]
+{{- end }}
+
+  # Allow CBUR to get the target Pods and even its logs
+- apiGroups: [""]
+  resources: ["pods", "pods/log"]
+  verbs: ["get", "list"]
+  # Allow CBUR to exec commands in the target Pods
+- apiGroups: [""]
+  resources: ["pods/exec"]
+  verbs: ["create"]
+
+  # Allow CBUR to create / delete pods during restore
+- apiGroups: [""]
+  resources: ["pods"]
+  verbs: ["create", "delete", "patch"]
+
+  # Allow CBUR to access the target Deployment
+- apiGroups: ["extensions", "apps"]
+  resources: ["deployments"]
+  verbs: ["get", "update", "patch", "list", "create", "delete"]
+
+{{- if $.Values.rbac.daemonSetAccess }}
+  # Allow CBUR to access the target DaemonSet
+- apiGroups: ["extensions", "apps"]
+  resources: ["daemonsets"]
+  verbs: ["get", "update", "patch", "list"]
+{{- end }}
+
+  # Allow CBUR to access the target StatefulSet
+- apiGroups: ["apps"]
+  resources: ["statefulsets"]
+  verbs: ["get", "update", "patch", "list"]
+
+  # Allow CBUR to maintain the PVC used by sidecar
+- apiGroups: [""]
+  resources: ["persistentvolumeclaims"]
+  verbs: ["create", "get", "delete"]
+
+  # Allow CBUR to maintain the cronjob for scheduled backup
+- apiGroups: ["batch"]
+  resources: ["cronjobs"]
+  verbs: ["create", "get", "delete", "update", "patch"]
+
+  # Allow CBUR to maintain the hook jobs for BrHook
+- apiGroups: ["batch"]
+  resources: ["jobs"]
+  verbs: ["create", "get", "delete", "update", "patch", "list"]
+
+{{- if semverCompare "<1.25.0" $.Capabilities.KubeVersion.GitVersion }}
+{{- if eq (include "cbur.PSP" $dot) "true"  }}
+  # Allow CBUR to use psp when CBUR create own PSP
+- apiGroups:
+  - extensions
+  resourceNames:
+  - {{ template "cbur.fullname" $dot }}-psp
+  resources:
+  - podsecuritypolicies
+  verbs:
+  - use
+{{- end }}
+{{- end }}
+
+{{- if $.Values.rbac.daemonSetAccess }}
+  # Allow CBUR to create / delete the target DaemonSet during restore
+- apiGroups: ["extensions", "apps"]
+  resources: ["daemonsets"]
+  verbs: ["create", "delete"]
+{{- end }}
+
+- apiGroups: ["extensions", "apps"]
+  resources: ["replicasets"]
+  verbs: ["get", "update", "patch", "list", "create", "delete"]
+
+  # Allow CBUR to create / delete the target StatefulSet during restore
+- apiGroups: ["apps"]
+  resources: ["statefulsets"]
+  verbs: ["create", "delete"]
+
+- apiGroups: [""]
+  resources: ["persistentvolumeclaims"]
+  verbs: ["list"]
+
+- apiGroups: [""]
+  resources: ["persistentvolumeclaims/status"]
+  verbs: ["get"]
+
+  # Allow CBUR to access the volumesnapshots
+- apiGroups:
+  - snapshot.storage.k8s.io
+  resources:
+  - volumesnapshots
+  verbs: ["create", "get", "delete", "update", "patch", "list"]
+
+- apiGroups:
+  - snapshot.storage.k8s.io
+  resources:
+  - volumesnapshotclasses
+  verbs: ["get", "list"]
+
+{{- if $.Values.rbac.rules }}
+{{ toYaml $.Values.rbac.rules }}
+{{- end }}
+---
+apiVersion: rbac.authorization.k8s.io/v1
+{{- if eq $.Values.cburScope "Namespaced" }}
+kind: RoleBinding
+{{- else }}
+kind: ClusterRoleBinding
+{{- end }}
+metadata:
+  labels:
+    heritage: {{ $.Release.Service }}
+    app: {{ template "cbur.fullname" $dot }}
+    chart: "{{ $.Chart.Name }}-{{ $.Chart.Version }}"
+    release: {{ $.Release.Name }}
+    component: "{{ $.Release.Name }}-{{ $.Values.component }}"
+    {{- include "cbur.proxy.commonLabels" (tuple $dot) | indent 4 }}
+    {{- include "cbur.customLabels" (tuple $dot.Values.global.labels) | indent 4 }}
+  annotations:
+    {{- include "cbur.customAnnotations" (tuple $dot.Values.global.annotations) | indent 4 }}
+  name: {{ template "cbur.fullname" $dot }}-basic-rolebinding
+  namespace: {{ . }}
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  {{- if eq $.Values.cburScope "Namespaced" }}
+  kind: Role
+  {{- else }}
+  kind: ClusterRole
+  {{- end }}
+  name: {{ template "cbur.fullname" $dot }}-basic-role
+subjects:
+  - kind: ServiceAccount
+    name: {{ template "cbur.fullname" $dot }}
+    namespace: {{ $.Release.Namespace }}
+{{- end -}}
+{{- end -}}

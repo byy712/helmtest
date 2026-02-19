@@ -1,0 +1,121 @@
+{{- include "cpro.istio.cproInitIstio" . }}
+{{- if .Values.alertmanager.enabled -}}
+{{- if .Values.ha.enabled -}}
+apiVersion: v1
+kind: Service
+metadata:
+  annotations:
+{{- include "cpro.labelsOrAnnotations" (tuple .Values.alertmanager.service.annotationsForAlertmanagerCluster .Values.alertmanager.service.annotations .Values.global.annotations) | indent 4}}
+  labels:
+    {{- include "cpro.app.labels.v3" ( dict "root" . "context" .Values.alertmanager ) | nindent 4 }}
+## int has been appended to fix immutable clusterip issue in helm3 during upgrade
+## This will be appended for headless service, in HA mode
+{{- include "cpro.labelsOrAnnotations" (tuple .Values.alertmanager.service.labels .Values.global.labels) | indent 4}}
+  name: {{ template "cpro.prometheus.alertmanager.fullname" . }}
+spec:
+  ports:
+    - port: {{ .Values.alertmanager.service.meshpeerPort }}
+      targetPort: {{ .Values.alertmanager.service.meshpeerPort }}
+      protocol: TCP
+      name: tcp-cluster
+      #appProtocol: tcp
+    - port: {{ .Values.alertmanager.service.meshpeerPortUdp }}
+      targetPort: {{ .Values.alertmanager.service.meshpeerPortUdp }}
+      protocol: UDP
+      name: udp-cluster
+      #appProtocol: udp
+  {{- include "cpro.dualStack.ipFamilyPolicy.config" ( dict "root" . "context" .Values.alertmanager )  | indent 2 }}
+  {{- include "cpro.dualStack.ipFamilies.config" ( dict "root" . "context" .Values.alertmanager )| indent 2 }}
+  selector:
+    app: {{ template "cpro.prometheus.name" . }}
+    component: "{{ .Values.alertmanager.name }}"
+    release: {{ .Release.Name }}
+  type: ClusterIP
+  clusterIP: None
+{{- end }}
+{{- end }}
+
+---
+
+{{ if .Values.alertmanager.enabled -}}
+apiVersion: v1
+kind: Service
+metadata:
+  annotations:
+    prometheus.io/port: "{{ .Values.alertmanager.service.webPort }}"
+    prometheus.io/path: {{ template "cpro.alertmanager.routePrefixURL" . }}/metrics
+    prometheus.io/scheme: {{ template "cpro.prometheus.alertmanager.scheme" . }}
+{{- include "cpro.labelsOrAnnotations" (tuple .Values.alertmanager.service.annotationsForScrape .Values.alertmanager.service.annotations .Values.global.annotations) | indent 4}}
+  labels:
+    {{- include "cpro.app.labels.v3" ( dict "root" . "context" .Values.alertmanager ) | nindent 4 }}
+{{- include "cpro.labelsOrAnnotations" (tuple .Values.alertmanager.service.labels .Values.global.labels) | indent 4}}
+{{- if .Values.ha.enabled }}
+  name: {{ template "cpro.prometheus.alertmanager.fullname" . }}-ext
+{{- else }}
+  name: {{ template "cpro.prometheus.alertmanager.fullname" . }}
+{{- end }}
+spec:
+{{- if .Values.alertmanager.service.clusterIP }}
+  clusterIP: {{ .Values.alertmanager.service.clusterIP | quote }}
+{{- end }}
+{{- if .Values.alertmanager.service.externalIPs }}
+  externalIPs:
+{{ toYaml .Values.alertmanager.service.externalIPs | indent 4 }}
+{{- end }}
+{{- if .Values.alertmanager.service.loadBalancerIP }}
+  loadBalancerIP: {{ .Values.alertmanager.service.loadBalancerIP }}
+{{- end }}
+{{- if .Values.alertmanager.service.loadBalancerSourceRanges }}
+  loadBalancerSourceRanges:
+  {{- range $cidr := .Values.alertmanager.service.loadBalancerSourceRanges }}
+    - {{ $cidr }}
+  {{- end }}
+{{- end }}
+  ports:
+    - name: tcp-http
+      port: {{ .Values.alertmanager.service.servicePort }}
+      protocol: TCP
+      targetPort: tcp-webport
+    {{- if (and (eq .Values.alertmanager.service.type "NodePort") (not (empty .Values.alertmanager.service.nodePort))) }}
+      nodePort: {{ .Values.alertmanager.service.nodePort }}
+    {{- end }}
+      ##appProtocol: {{ template "cpro.prometheus.alertmanager.scheme" . }}
+  {{- include "cpro.dualStack.ipFamilyPolicy.config" ( dict "root" . "context" .Values.alertmanager )  | indent 2 }}
+  {{- include "cpro.dualStack.ipFamilies.config" ( dict "root" . "context" .Values.alertmanager )| indent 2 }}
+  selector:
+    app: {{ template "cpro.prometheus.name" . }}
+    component: "{{ .Values.alertmanager.name }}"
+    release: {{ .Release.Name }}
+  type: "{{ .Values.alertmanager.service.type }}"
+{{- end }}
+
+---
+
+{{ if .Values.alertmanager.enabled -}}
+{{ if or ($.istio.enabled) (.Values.includeWorkloadInIstioMesh) -}}
+apiVersion: v1
+kind: Service
+metadata:
+  annotations:
+{{- include "cpro.labelsOrAnnotations" (tuple .Values.alertmanager.service.annotations .Values.global.annotations) | indent 4}}
+  labels:
+    {{- include "cpro.app.labels.v3" ( dict "root" . "context" .Values.alertmanager ) | nindent 4 }}
+{{- include "cpro.labelsOrAnnotations" (tuple .Values.alertmanager.service.labels .Values.global.labels) | indent 4}}
+  name: {{ template "cpro.prometheus.alertmanager.fullname" . }}-scr
+spec:
+  clusterIP: None
+  ports:
+    - name: tcp-http
+      port: {{ .Values.alertmanager.service.webPort }}
+      protocol: TCP
+      targetPort: tcp-webport
+      ##appProtocol: {{ template "cpro.prometheus.alertmanager.scheme" . }}
+  {{- include "cpro.dualStack.ipFamilyPolicy.config" ( dict "root" . "context" .Values.alertmanager )  | indent 2 }}
+  {{- include "cpro.dualStack.ipFamilies.config" ( dict "root" . "context" .Values.alertmanager )| indent 2 }}
+  selector:
+    app: {{ template "cpro.prometheus.name" . }}
+    component: "{{ .Values.alertmanager.name }}"
+    release: {{ .Release.Name }}
+  type: ClusterIP
+{{- end }}
+{{- end }}

@@ -1,0 +1,11 @@
+--- ckaf-mirror-maker-5.1.0/ckaf-mirror-maker/templates/_helpers.tpl	2024-03-28 23:41:14.000000000 +0530
++++ ckaf-mirror-maker-5.1.0-nokia-patch-7/ckaf-mirror-maker/templates/_helpers.tpl	2024-06-24 15:10:42.737988663 +0530
+@@ -24,7 +24,7 @@
+       {{- if .Values.serviceAccountName }}
+         {{ .Values.serviceAccountName }}
+       {{- else -}}
+-        {{ template "ckaf-mirror-maker.name" . }}-mmadmin
++        {{ template "ckaf-mirror-maker.name" . }}-sa-mmadmin
+       {{- end }}
+       {{- end }}
+ {{- end -}}

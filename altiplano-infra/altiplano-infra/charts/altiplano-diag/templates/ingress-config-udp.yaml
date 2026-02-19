@@ -1,0 +1,7 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ .Release.Name }}-altiplano-ingress-udp-altiplano-infra
+  namespace: {{ .Release.Namespace }}
+data:
+{{ tpl (toYaml .Values.global.ingress_diag_udp_config) . | default "" | indent 2 }}

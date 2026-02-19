@@ -1,0 +1,87 @@
+{{- include "cmdb.init" . -}}
+{{- if and .Values.istio.enabled .Values.istio.gateway.enabled (eq (include "cmdb.has_maxscale" .) "true") .Values.geo_redundancy.enabled }}
+{{ $gateway_name := .Values.istio.gateway.name | default (include "cmdb.fullname" .) }}
+---
+apiVersion: networking.istio.io/v1beta1
+kind: Gateway
+metadata:
+  name: {{ $gateway_name }}
+  labels:
+    {{- include "cmdb-mariadb.labels" (tuple . "gateway") | nindent 4 }}
+  annotations:
+    {{- include "cmdb-mariadb.annotations" (tuple . "gateway") | nindent 4 }}
+spec:
+  selector:
+  {{- if .Values.istio.gateway.ingressPodSelector }}
+    {{ toYaml .Values.istio.gateway.ingressPodSelector | nindent 4 }}
+  {{- else }}
+    istio: ingressgateway
+  {{- end }}
+  servers:
+  - port:
+      name: tcp-mariadb-master
+      number: {{ .Values.services.mariadb_master.port }}
+      protocol: TLS
+    hosts:
+  {{- if .Values.istio.gateway.hosts }}
+    {{ toYaml .Values.istio.gateway.hosts | nindent 4 }}
+  {{- else }}
+    - "*"
+  {{- end }}
+    tls:
+      mode: {{ .Values.istio.gateway.tls.mode }}
+    {{- if .Values.istio.gateway.tls.credentialName }}
+      credentialName: {{ .Values.istio.gateway.tls.credentialName }}
+    {{- end }}
+    {{- if .Values.istio.gateway.tls.custom }}
+      {{ toYaml .Values.istio.gateway.tls.custom | nindent 6 }}
+    {{- end }}
+  - port:
+      name: tcp-maxscale
+      number: {{ .Values.services.maxscale.port }}
+      protocol: TLS
+    hosts:
+  {{- if .Values.istio.gateway.hosts }}
+    {{ toYaml .Values.istio.gateway.hosts | nindent 4 }}
+  {{- else }}
+    - "*"
+  {{- end }}
+    tls:
+      mode: {{ .Values.istio.gateway.tls.mode }}
+    {{- if .Values.istio.gateway.tls.credentialName }}
+      credentialName: {{ .Values.istio.gateway.tls.credentialName }}
+    {{- end }}
+    {{- if .Values.istio.gateway.tls.custom }}
+      {{ toYaml .Values.istio.gateway.tls.custom | nindent 6 }}
+    {{- end }}
+
+---
+apiVersion: networking.istio.io/v1beta1
+kind: VirtualService
+metadata:
+  name: {{ $gateway_name }}-vs
+  labels:
+    {{- include "cmdb-mariadb.labels" (tuple . "virtualservice") | nindent 4 }}
+  annotations:
+    {{- include "cmdb-mariadb.annotations" (tuple . "virtualservice") | nindent 4 }}
+spec:
+  gateways:
+  - {{ $gateway_name }}
+  hosts:
+  - '*'
+  tcp:
+  - match:
+    - port: {{ .Values.services.mariadb_master.port }}
+    route:
+    - destination:
+        host: {{ .Values.services.mariadb_master.name | default (printf "%s-mariadb-master" (include "cmdb.fullname" .)) | quote }}
+        port:
+          number: {{ .Values.services.mariadb_master.port }}
+  - match:
+    - port: {{ .Values.services.maxscale.port }}
+    route:
+    - destination:
+        host: {{ .Values.services.maxscale.name | default (printf "%s-maxscale" (include "cmdb.fullname" .)) | quote }}
+        port:
+          number: {{ .Values.services.maxscale.port }}
+{{- end -}}

@@ -1,0 +1,19 @@
+{{- if and (.Values.rbac.enabled) (.Values.sqlitetomdb) (.Values.cmdb.enabled) }}
+kind: Role
+apiVersion: {{ template "cpro-grafana.grafanaApiVersion.role" . }}
+metadata:
+  labels:
+    {{- include "cpro-grafana.app.labels-v3" . | nindent 4 }}
+    {{- include "cpro-grafana.labelsOrAnnotations" (tuple .Values.global.labels) | indent 4}}
+  namespace: {{ .Release.Namespace }}
+  annotations:
+    {{- include "cpro-grafana.labelsOrAnnotations" (tuple .Values.global.annotations) | indent 4}}
+    "helm.sh/hook": post-upgrade
+    "helm.sh/hook-weight": "{{ add .Values.helmDeleteImage.hookWeight 4 }}"
+    "helm.sh/hook-delete-policy": hook-succeeded, before-hook-creation
+  name: {{ template "cpro-grafana.postUpgradejobResourceName" . }}
+rules:
+- apiGroups: [""] # "" indicates the core API group
+  resources: ["secrets"]
+  verbs: ["get", "watch", "list", "delete"]
+{{- end}}

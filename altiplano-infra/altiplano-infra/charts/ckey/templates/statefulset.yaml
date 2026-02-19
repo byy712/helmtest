@@ -1,0 +1,873 @@
+{{ $default_quarkus_thread_pool_max_threads := 50 }}
+{{ $frontendUrl := include "ckey.hostnameUrl" . }}
+{{ include "ckey.probes.configurationCheck" . }}
+{{ include "ckey.geoPorts.configurationCheck" . }}
+{{ $terminationSeconds := default 30 .Values.terminationGracePeriodSecondsForSSO }}
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: {{ template "ckey.keycloak.statefulsetName" . }}
+  labels:
+    app: {{ template "ckey.chartName" . }}
+    release: "{{ .Release.Name }}"
+    heritage: "{{ .Release.Service }}"
+    csf-component: ckey
+    csf-subcomponent: keycloak
+    {{- include "ckey.customLabels" (tuple .Values.custom.statefulset.labels .Values.global.labels ) | indent 4 }}
+    {{- include "ckey.commonLabels" . | indent 4 }}
+  annotations:
+    {{- include "ckey.customAnnotations" (tuple .Values.custom.statefulset.annotations .Values.global.annotations) | indent 4 }}
+spec:
+  selector:
+    matchLabels:
+      app: {{ template "ckey.chartName" . }}
+      release: "{{ .Release.Name }}"
+  {{- if not .Values.replicasManagedByHpa }}
+  replicas: {{ .Values.replicaCount }}
+  {{- end }}
+  serviceName: {{ template "ckey.fullName" . }}-headless
+  podManagementPolicy: {{ .Values.podManagementPolicy | default "Parallel" | quote }}
+  updateStrategy:
+    type: RollingUpdate
+  template:
+    metadata:
+      labels:
+        altiplano-role: {{ .Values.accessRoleLabel }}
+        app: {{ template "ckey.chartName" . }}
+        release: "{{ .Release.Name }}"
+        {{- include "ckey.customLabels" (tuple .Values.custom.pod.labels .Values.global.labels ) | indent 8 }}
+        {{- include "ckey.commonLabels" . | indent 8 }}
+      annotations:
+        {{- include "ckey.customAnnotations" (tuple .Values.custom.pod.annotations .Values.global.annotations) | indent 8 }}
+      {{- if .Values.istio.enabled }}
+        sidecar.istio.io/inject: "true"
+        {{ if .Values.geoRedundancy.enabled }}
+        traffic.sidecar.istio.io/excludeOutboundPorts: {{ print .Values.jgroupsTCPBindPort "," .Values.jgroupsFDPort "," .Values.geoRedundancy.service.jgroupsTCPPort  | quote }}
+        traffic.sidecar.istio.io/excludeInboundPorts: {{ print .Values.jgroupsTCPBindPort "," .Values.jgroupsFDPort "," .Values.geoRedundancy.service.jgroupsTCPPort | quote }}
+        {{ else }}
+        traffic.sidecar.istio.io/excludeOutboundPorts: {{ print .Values.jgroupsTCPBindPort "," .Values.jgroupsFDPort | quote }}
+        traffic.sidecar.istio.io/excludeInboundPorts: {{ print .Values.jgroupsTCPBindPort "," .Values.jgroupsFDPort | quote }}
+        {{ end }}
+        # CKEY chart default configuration for Peer authentication is STRICT so below annotation is needed
+        sidecar.istio.io/rewriteAppHTTPProbers: "true"
+        {{- include "ckey.istio.resources" .  }}
+      {{- else }}
+        sidecar.istio.io/inject: "false"
+      {{- end }}
+      {{- if .Values.rollme.enabled }}
+        rollme: {{ randAlphaNum 5 | quote }}
+        kubectl.kubernetes.io/default-container: {{ template "ckey.keycloak.containerName" . }}
+        kubectl.kubernetes.io/default-exec-container: {{ template "ckey.keycloak.containerName" . }}
+      {{- end }}
+    spec:
+      {{- if .Values.hostAliases }}
+      hostAliases:
+{{ toYaml .Values.hostAliases | indent 6 }}
+      {{- end }}
+      initContainers:
+        - name: init-{{ .Values.radiusImage.repository }}
+          image: {{ template "radiusImage.fullname" . }}
+          imagePullPolicy: {{ .Values.radiusImage.pullPolicy }}
+          command: ["sh", "-c", "until [ $ALTIPLANO_GEO_ACTIVE_SITE == true ]; do echo waiting for ALTIPLANO_GEO_ACTIVE_SITE to be true; sleep 10; done ; cp target/radius-provider-package/*.jar /opt/keycloak/providers/radius/ "]
+          volumeMounts:
+            - mountPath: /opt/keycloak/providers/radius
+              name: deployments-storage
+          env:
+            - name: ALTIPLANO_GEO_ACTIVE_SITE
+              value: {{ .Values.global.ALTIPLANO_GEO_ACTIVE_SITE | quote }}
+        - name: init-{{ .Chart.Name }}
+          image: {{ .Values.global.registry }}/{{ .Values.init.image.name }}:{{ .Values.init.image.tag }}
+          imagePullPolicy: "{{ .Values.init.image.pullPolicy }}"
+          command: [ "/bin/sh", "-c" ]
+          args:
+            - |
+              cp /etc/altiplano/certificates/secrets/sso-mariadb-client-trustchain-cert.pem /opt/keycloak/security/mariadb_ssl/server-cert.pem
+              cp /etc/altiplano/certificates/secrets/sso-server-cert.pem /opt/etc/keycloak/server_ssl_certificates/tls.crt
+              cp /etc/altiplano/certificates/secrets/sso-server-key.pem /opt/etc/keycloak/server_ssl_certificates/tls.key
+              cp /etc/altiplano/certificates/secrets/sso-mariadb-client-cert.pem /opt/keycloak/security/mariadb_ssl/client-cert.pem
+              cp /etc/altiplano/certificates/secrets/sso-mariadb-client-key.pem /opt/keycloak/security/mariadb_ssl/client-key.pem
+              cp /etc/altiplano/certificates/storepass/keystore-password /opt/keycloak/security/mariadb_ssl/keycloak-java-client-truststore-password
+              cp /etc/altiplano/certificates/storepass/keystore-password /opt/keycloak/security/mariadb_ssl/keycloak-java-keystore-password
+              /opt/init-container/pem-to-keystore.sh /etc/altiplano/certificates/secrets/sso-mariadb-client-key.pem /etc/altiplano/certificates/secrets/sso-mariadb-client-key.pass /etc/altiplano/certificates/secrets/sso-mariadb-client-cert.pem $keystore_jks_pass /opt/etc/keycloak/db-keystore/db_keystore.jks /etc/altiplano/certificates/secrets/sso-mariadb-client-trustchain-cert.pem $keystore_jks_pass /opt/etc/keycloak/keycloak_java_client_truststore/client_keystore.jks
+              /opt/init-container/pem-to-keystore.sh /etc/altiplano/certificates/secrets/sso-server-trustchain-cert.pem $keystore_jks_pass /opt/etc/keycloak/keycloak_java_client_truststore/client_keystore.jks
+              /opt/init-container/pem-to-keystore.sh /etc/altiplano/certificates/secrets/sso-ldap-client-trustchain-cert.pem $keystore_jks_pass /opt/etc/keycloak/keycloak_java_client_truststore/client_keystore.jks
+          env:
+            - name: keystore_jks_pass
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.certificates.secrets.altiplano_keystore_secrets }}
+                  key: {{ .Values.jksPassword }}
+          volumeMounts:
+            - name: altiplano-keystore-password
+              mountPath: /etc/altiplano/certificates/storepass/
+            - name: keycloak-java-client-truststore
+              mountPath: /opt/etc/keycloak/keycloak_java_client_truststore/
+            - name: cmdb-certificates
+              mountPath: /opt/keycloak/security/mariadb_ssl
+            - name: server-certificates
+              mountPath: /opt/etc/keycloak/server_ssl_certificates
+            - name: altiplano-sso-certs
+              mountPath: /etc/altiplano/certificates/secrets/
+            - name: db-keystore-certs
+              mountPath: /opt/etc/keycloak/db-keystore/  
+        {{- $thisChart := . }}
+        {{- range $index, $customProvider := .Values.customProviders }}
+        {{- if $customProvider.image }}
+        - name: {{ printf "%s%s-%d" (include "ckey.containerNamePrefix" $thisChart) ($customProvider.image | splitList "/" | last | splitList ":" | first) $index | trunc 63 | trimSuffix "-" }}
+          {{ if $customProvider.useGlobalRegistry }}
+          image: {{ printf "%s/%s" (include "ckey.customprovider.registry" $thisChart) $customProvider.image }}
+          {{ else }}
+          image: {{ $customProvider.image }}
+          {{ end }}
+          imagePullPolicy: "{{ $.Values.images.pullPolicy }}"
+          securityContext:
+          {{- include "ckey.container.securitycontext" $thisChart | nindent 12 }}
+          command:
+            - sh
+          args:
+            - -c
+            - |
+              {{- if eq $customProvider.type "extension-jar" }}
+              [ ! -d "/customProviders/extension-jar" ] && mkdir -p /customProviders/extension-jar
+              cp -R target/* /customProviders/extension-jar
+              {{- else if eq $customProvider.type "theme" }}
+              [ ! -d "/customProviders/themes" ] && mkdir -p /customProviders/themes
+              cp -R target/* /customProviders/themes
+              {{- else }}
+              {{- fail "Only extension-jar and theme type of customProvider are supported in keycloak" -}}
+              {{- end }}
+          resources:
+{{ include "ckey.keycloak.busybox-container-resources-spec" $thisChart | indent 12 }}
+          volumeMounts:
+            - name: {{ template "ckey.fullName" $thisChart }}-custom-providers
+              mountPath: /customProviders
+        {{- end }}
+        {{- end }}
+      {{- include "ckey.imagePullSecrets" (tuple . "customImagePullSecrets") | nindent 6 }}
+      securityContext:
+{{ include "ckey.keycloak.securitycontext" . | indent 8 }}
+      serviceAccountName: {{ template "ckey.serviceAccountStateful" . }}
+      {{- if .Values.istio.enabled }}
+      automountServiceAccountToken: true
+      {{- else }}
+      automountServiceAccountToken: {{ .Values.automountServiceAccountToken | default "false" }}
+      {{- end }}
+      {{- if .Values.priorityClassName }}
+      priorityClassName: {{ .Values.priorityClassName | quote }}
+      {{- else if .Values.global.priorityClassName }}
+      priorityClassName: {{ .Values.global.priorityClassName | quote }}
+      {{- end }}
+      {{- if .Values.hostAliases }}
+      hostAliases:
+{{ toYaml .Values.hostAliases | indent 8 }}
+      {{- end }}
+      containers:
+        - name: {{ template "ckey.keycloak.containerName" . }}
+          image: {{ include "ckey.container.image" (tuple $ .Values.images.keycloak .Values.internalKeycloakRegistry) }}
+          imagePullPolicy: "{{ .Values.images.pullPolicy }}"
+          securityContext:
+          {{- include "ckey.container.securitycontext" . | nindent 12 }}
+          env:
+            - name: ALTIPLANO_KEYCLOAK_UI_REALM
+              {{- if .Values.env.ALTIPLANO_KEYCLOAK_UI_REALM }}
+              value: {{ .Values.env.ALTIPLANO_KEYCLOAK_UI_REALM }}
+              {{- else if .Values.global.ALTIPLANO_KEYCLOAK_UI_REALM }}
+              value: {{ .Values.global.ALTIPLANO_KEYCLOAK_UI_REALM }}
+              {{- else }}
+              value: "master"
+              {{ end }}
+            - name: ALTIPLANO_KEYCLOAK_NBI_REALM
+              {{- if .Values.env.ALTIPLANO_KEYCLOAK_NBI_REALM }}
+              value: {{ .Values.env.ALTIPLANO_KEYCLOAK_NBI_REALM }}
+              {{- else if .Values.global.ALTIPLANO_KEYCLOAK_NBI_REALM }}
+              value: {{ .Values.global.ALTIPLANO_KEYCLOAK_NBI_REALM }}
+              {{- else }}
+              value: "system"
+              {{ end }}
+            {{- include "ckey.timezone" . | nindent 12 }}
+            - name: KC_HTTP_RELATIVE_PATH
+              value: {{ template "ckey.ingress.contextPath" . }}
+            - name: KC_PROXY
+              value: {{ .Values.kcProxy | default "none" }}
+              {{ if $frontendUrl }}
+            - name: KC_HOSTNAME_URL
+              value: {{ template "ckey.hostnameUrl" . }}
+            - name: KC_HOSTNAME_ADMIN_URL
+              value: {{ template "ckey.hostnameUrl" . }}
+              {{ else if .Values.kcHostName }}
+            - name: KC_HOSTNAME
+              value: {{  template "ckey.kcHostName" . }}
+            - name: KC_HOSTNAME_ADMIN
+              value: {{  template "ckey.kcHostName" . }}
+              {{ end }}
+              {{- if or .Values.kcHostName $frontendUrl }}
+            - name: KC_HOSTNAME_STRICT
+              value: "true"
+            - name: KC_HOSTNAME_STRICT_BACKCHANNEL
+              value: "true"
+              {{- else }}
+            - name: KC_HOSTNAME_STRICT
+              value: "false"
+              {{- end}}
+            - name: KC_DB_URL_HOST
+              value: {{ .Values.dbAddress | quote }}
+            - name: KC_DB
+              value: {{ .Values.dbVendor | default "mariadb" }}
+            - name: KC_DB_URL_PORT
+              value: {{ .Values.dbPort | default "3306" | quote }}
+            - name: KC_DB_URL_DATABASE
+              value: {{ .Values.dbName | default "db4keycloak" | quote }}
+            - name: KC_DB_USERNAME
+              value: {{ .Values.dbUser | default "keycloak" | quote }}
+            - name: KC_DB_URL_PROPERTIES
+              value: {{ .Values.jdbcParams | default "?autoReconnect=true" | quote }}
+            # Replicating DB_IP, DB_PORT, DB_NAME and DB_USER historical env variables to support ISU Update/Rollback
+            - name: DB_IP
+              value: {{ .Values.dbAddress | quote }}
+            - name: DB_PORT
+              value: {{ .Values.dbPort | default "3306" | quote }}
+            - name: DB_NAME
+              value: {{ .Values.dbName | default "db4keycloak" | quote }}
+            - name: DB_USER
+              value: {{ .Values.dbUser | default "keycloak" | quote }}
+            - name: KC_HTTPS_PORT
+              value: {{ .Values.httpsPort | default "8443" | quote }}
+            {{ if .Values.httpPort }}
+            - name: KC_HTTP_ENABLED
+              value: "true"
+            - name: KC_HTTP_PORT
+              value: {{ .Values.httpPort | quote }}
+            {{ end }}
+            {{- if (and (.Values.istio.enabled) (.Values.istio.isVirtualServiceRequiredForHTTP)) }}
+            - name: ISTIO_HTTP_VIRTUAL_SERVICE_ENABLED
+              value: "true"
+            {{ end }}
+            - name: DATABASE_RETRY_COUNTER
+              value: {{ mul .Values.probeDelays.startupProbeFailureThreshold 2 | quote }}
+            - name: DATABASE_CHECK_TIMEGAP
+              value: {{ mul (div .Values.probeDelays.startupProbePeriodSeconds 2) 1000 | quote }}
+            - name: DB_ALARM_CHECK_PERIOD
+              value: {{ .Values.dbAlarmCheckPeriod | default "30000" | quote}}
+            - name: CERT_EXPIRY_ALARM_PERIOD
+              value: {{ .Values.certExpiryAlarmPeriod | default "10" | quote}}
+            - name: DATABASE_ALARM_INITIAL_DELAY
+              value: {{ .Values.databaseAlarmInitialDelay | default "240" | quote}}
+            - name: KC_HEALTH_ENABLED
+              value: {{ .Values.kcHealthcheckEndpointEnabled | default "true" | quote }}
+            - name: KC_METRICS_ENABLED
+              value: {{ .Values.kcMetricsEndpointEnabled | default "true" | quote }}
+            - name: LDAP_HEALTH_ENABLED
+              value: {{ .Values.ldapalarm.enabled | default "true" | quote }}
+            - name: LDAP_ALARM_INITIAL_DELAY
+              value: {{ .Values.ldapalarm.ldapAlarmInitialDelay | default "240" | quote}}
+            - name: REALM
+              value: {{ .Values.ldapalarm.realm | default "master" | quote}}
+            - name: LB_BANNER_TITLE
+              value: {{ .Values.loginBannerTitle | default "Login Banner" | quote }}
+            - name: LB_WELCOME_FIRST_NAME_MSG
+              value: {{ .Values.loginBannerWelcomeFirstNameMessage | default "Welcome, {0}." | quote }}
+            - name: LB_WELCOME_USERNAME_MSG
+              value: {{ .Values.loginBannerWelcomeUsernameMessage | default "Welcome, {0}." | quote }}
+            - name: LB_PREVIOUS_SUCCESS_MSG
+              value: {{ .Values.loginBannerPreviousSuccessMessage | default "Your last successful login was on {0}." | quote }}
+            - name: LB_FAILED_LOGIN_COUNTER_MSG
+              value: {{ .Values.loginBannerFailedLoginCounterMessage | default "Failed login attempts after last successful login" | quote }}
+            - name: LB_MAIN_MSG
+              value: {{ .Values.loginBannerMainMessage | default "You are about to access a private system. This system is for the use of authorized users only. All connections are logged. Any unauthorized access or access attempts may be punishable to the fullest extent possible under the applicable local legislation." | quote }}
+            - name: LB_ACCEPT_MSG
+              value: {{ .Values.loginBannerAcceptMessage | default "OK" | quote }}
+            - name: MEMORY_LIMIT
+              value: {{ .Values.resources.limits.memory | quote }}
+            - name: JAVA_OPTS_APPEND
+              value: {{ .Values.customJavaOpts | default "" | quote }}
+            - name: KCSH_COMMAND_LINE
+              value: {{ .Values.kcshCommandLine | default "" | quote }}
+            - name: JGROUPS_DNS_QUERY
+              value: {{ template "ckey.headlessService" . }}
+            - name: IP_FAMILY
+              value: {{ include "ckey.dualStack.ipFamilies" ( dict "root" . "context" .Values ) }}
+            - name: MEMORY_FACTOR_FOR_KEYCLOAK
+              value: {{ .Values.memoryFactorForKeycloak | quote }}
+            - name: MEMORY_FACTOR_FOR_UNIFIED_LOGGER
+              value: {{ .Values.memoryFactorForUnifiedLogger | quote }}
+            - name: KC_CACHE_STACK
+              value: {{ .Values.kcCacheStack | default "not-set" | quote }}
+            - name: CKEY_POD_IP
+              valueFrom:
+                fieldRef:
+                  fieldPath: status.podIP
+            - name: JGROUPS_BIND_PORT
+              value: {{ .Values.jgroupsTCPBindPort | quote }}
+            {{ if gt .Values.jgroupsFDPort .Values.jgroupsTCPBindPort }}
+            - name: JGROUPS_FD_OFFSET
+              value: {{ sub .Values.jgroupsFDPort .Values.jgroupsTCPBindPort | quote }}
+            {{ end }}
+            - name: KC_LOG_GELF_PORT
+              value: "8888"
+            - name: VERTX_HEALTH_CHECK_PORT
+              value: "8887"
+            - name: KC_LOG_FILE
+              value: "/logs/"
+            - name: LOG4CXX_PROP_PATH
+              value: "/tmp/opt/keycloak/vertx/log4cxx.property"
+            - name: KC_LOG
+              value: {{ .Values.unifiedLogging.kcLog | default "gelf" | quote }}
+            - name: KC_LOG_LEVEL
+              value: {{ .Values.unifiedLogging.logLevel | default "INFO" | quote }}
+            - name: KC_LOG_GELF_LEVEL
+              value: {{ .Values.unifiedLogging.logLevel | default "INFO" | quote }}
+            - name: LOGGING_JAVA_OPTS
+              value: {{ .Values.unifiedLogging.loggingJavaOpts | default "-Xms90m -Xmx180m" | quote }}
+            {{- if not (contains "QUARKUS_DATASOURCE_REACTIVE_IDLE_TIMEOUT" .Values.extraEnv) }}
+            - name: QUARKUS_DATASOURCE_REACTIVE_IDLE_TIMEOUT
+              value: "15s"
+            {{- end }}
+            {{- if not (contains "QUARKUS_DATASOURCE_JDBC_IDLE_REMOVAL_INTERVAL" .Values.extraEnv) }}
+            - name: QUARKUS_DATASOURCE_JDBC_IDLE_REMOVAL_INTERVAL
+              value: "20s"
+            {{- end }}
+            {{- if not (contains "QUARKUS_MICROMETER_BINDER_VERTX_ENABLED" .Values.extraEnv) }}
+            - name: QUARKUS_MICROMETER_BINDER_VERTX_ENABLED
+              value: "true"
+            {{- end }}
+            {{- if not (contains "QUARKUS_MICROMETER_BINDER_SYSTEM" .Values.extraEnv) }}
+            - name: QUARKUS_MICROMETER_BINDER_SYSTEM
+              value: "true"
+            {{- end }}
+            {{- if not (contains "QUARKUS_MICROMETER_BINDER_HTTP_CLIENT_ENABLED" .Values.extraEnv) }}
+            - name: QUARKUS_MICROMETER_BINDER_HTTP_CLIENT_ENABLED
+              value: "true"
+            {{- end }}
+            {{- if not (contains "QUARKUS_MICROMETER_BINDER_HTTP_SERVER_ENABLED" .Values.extraEnv) }}
+            - name: QUARKUS_MICROMETER_BINDER_HTTP_SERVER_ENABLED
+              value: "true"
+            {{- end }}
+            {{- if not (contains "QUARKUS_DATASOURCE_METRICS_ENABLED" .Values.extraEnv) }}
+            - name: QUARKUS_DATASOURCE_METRICS_ENABLED
+              value: "true"
+            {{- end }}
+            {{- if not (contains "QUARKUS_MICROMETER_BINDER_JVM" .Values.extraEnv) }}
+            - name: QUARKUS_MICROMETER_BINDER_JVM
+              value: "true"
+            {{- end }}
+            {{- if not (contains "QUARKUS_LOG_METRICS_ENABLED" .Values.extraEnv) }}
+            - name: QUARKUS_LOG_METRICS_ENABLED
+              value: "true"
+            {{- end }}
+            {{- if not (contains "QUARKUS_SCHEDULER_METRICS_ENABLED" .Values.extraEnv) }}
+            - name: QUARKUS_SCHEDULER_METRICS_ENABLED
+              value: "true"
+            {{- end }}
+            {{- if not (contains "QUARKUS_THREAD_POOL_MAX_THREADS" .Values.extraEnv) }}
+            - name: QUARKUS_THREAD_POOL_MAX_THREADS
+              value: {{ $default_quarkus_thread_pool_max_threads | quote }}
+            {{- end }}
+            {{- if not (contains "JGROUPS_THREAD_POOL_MAX_THREADS" .Values.extraEnv) }}
+            - name: JGROUPS_THREAD_POOL_MAX_THREADS
+              value: {{ mul $default_quarkus_thread_pool_max_threads  .Values.replicaCount | quote }}
+            {{- end }}
+            {{- if not (contains "KC_DB_POOL_MAX_SIZE" .Values.extraEnv) }}
+            - name: KC_DB_POOL_MAX_SIZE
+              value: {{ div $default_quarkus_thread_pool_max_threads 2 | quote }}
+            {{- end }}
+            {{- if not (contains "QUARKUS_THREAD_POOL_QUEUE_SIZE" .Values.extraEnv) }}
+            - name: QUARKUS_THREAD_POOL_QUEUE_SIZE
+              value: "1000"
+            {{- end }}
+            - name: POD_NAMESPACE
+              valueFrom:
+                fieldRef:
+                  apiVersion: v1
+                  fieldPath: metadata.namespace
+            - name: URI_METRICS_ENABLED
+              value: {{ .Values.metric.uriMetricsEnabled | default "true" | quote }}
+            - name: URI_METRICS_DETAILED
+              value: {{ .Values.metric.uriMetricsDetailed | default "false" | quote }}
+              {{ if .Values.secretCredentials.zeroTrustMetricSecret }}
+            - name: ZERO_TRUST_METRIC_OIDC_ENDPOINT
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.secretCredentials.zeroTrustMetricSecret }}
+                  key: oidc_endpoint
+            - name: EXPECTED_AUDIENCE
+              valueFrom:
+                secretKeyRef:
+                   name: {{ .Values.secretCredentials.zeroTrustMetricSecret }}
+                   key: aud
+              {{ end }}
+            - name: JKS_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.certificates.secrets.altiplano_keystore_secrets }}
+                  key: {{ .Values.jksPassword }}
+            - name: REDIRECT_URIS
+              {{- if .Values.REDIRECT_URIS }}
+              value: {{ .Values.REDIRECT_URIS }}
+              {{- else if .Values.global.K8S_PUBLIC_HOSTNAME }}
+              {{- if contains ":" .Values.global.K8S_PUBLIC_IP }} # This is to check if IP address is IPv6
+              {{- if .Values.global.INGRESS_CONTROLLER_HTTPSPORT }}
+              value: https://{{ .Values.global.K8S_PUBLIC_HOSTNAME }}:{{ .Values.global.INGRESS_CONTROLLER_HTTPSPORT }}/altiplano-indexsearch-dashboards/auth/openid/login,https://{{ .Values.global.K8S_PUBLIC_HOSTNAME }}:{{ .Values.global.INGRESS_CONTROLLER_HTTPSPORT }}/altiplano-indexsearch-dashboards,https://{{ .Values.global.K8S_PUBLIC_HOSTNAME }}:{{ .Values.global.INGRESS_CONTROLLER_HTTPSPORT }}/altiplano-alarms-indexsearch-dashboards/auth/openid/login,https://{{ .Values.global.K8S_PUBLIC_HOSTNAME }}:{{ .Values.global.INGRESS_CONTROLLER_HTTPSPORT }}/altiplano-alarms-indexsearch-dashboards,https://[{{ .Values.global.K8S_PUBLIC_IP }}]:30030,https://[{{ .Values.global.K8S_PUBLIC_IP }}]:{{ .Values.global.INGRESS_CONTROLLER_HTTPSPORT }}/altiplano-grafana,https://[{{ .Values.global.K8S_PUBLIC_IP }}]/workflow-manager,https://[{{ .Values.global.K8S_PUBLIC_IP }}]:{{ .Values.global.INGRESS_CONTROLLER_HTTPSPORT }}/oauth2/callback,https://{{ .Values.global.K8S_PUBLIC_HOSTNAME }}/oauth2/callback,https://{{ .Values.global.K8S_PUBLIC_HOSTNAME }}:{{ .Values.global.INGRESS_CONTROLLER_HTTPSPORT }}/altiplano-grafana,https://{{ .Values.global.K8S_PUBLIC_HOSTNAME }}/workflow-manager,https://[{{ .Values.global.K8S_PUBLIC_IP }}]/wfm,https://{{ .Values.global.K8S_PUBLIC_HOSTNAME }}/wfm
+              {{- else }}
+              value: https://{{ .Values.global.K8S_PUBLIC_HOSTNAME }}/altiplano-indexsearch-dashboards/auth/openid/login,https://{{ .Values.global.K8S_PUBLIC_HOSTNAME }}/altiplano-indexsearch-dashboards,https://{{ .Values.global.K8S_PUBLIC_HOSTNAME }}/altiplano-alarms-indexsearch-dashboards/auth/openid/login,https://{{ .Values.global.K8S_PUBLIC_HOSTNAME }}/altiplano-alarms-indexsearch-dashboards,https://[{{ .Values.global.K8S_PUBLIC_IP }}]:30030,https://[{{ .Values.global.K8S_PUBLIC_IP }}]/altiplano-grafana,https://[{{ .Values.global.K8S_PUBLIC_IP }}]/workflow-manager,https://[{{ .Values.global.K8S_PUBLIC_IP }}]/oauth2/callback,https://{{ .Values.global.K8S_PUBLIC_HOSTNAME }}/oauth2/callback,https://{{ .Values.global.K8S_PUBLIC_HOSTNAME }}/altiplano-grafana,https://{{ .Values.global.K8S_PUBLIC_HOSTNAME }}/workflow-manager,https://[{{ .Values.global.K8S_PUBLIC_IP }}]/wfm,https://{{ .Values.global.K8S_PUBLIC_HOSTNAME }}/wfm
+              {{- end }}
+              {{- else }}
+              {{- if .Values.global.INGRESS_CONTROLLER_HTTPSPORT }}
+              value: https://{{ .Values.global.K8S_PUBLIC_HOSTNAME }}:{{ .Values.global.INGRESS_CONTROLLER_HTTPSPORT }}/altiplano-indexsearch-dashboards/auth/openid/login,https://{{ .Values.global.K8S_PUBLIC_HOSTNAME }}:{{ .Values.global.INGRESS_CONTROLLER_HTTPSPORT }}/altiplano-indexsearch-dashboards,https://{{ .Values.global.K8S_PUBLIC_HOSTNAME }}:{{ .Values.global.INGRESS_CONTROLLER_HTTPSPORT }}/altiplano-alarms-indexsearch-dashboards/auth/openid/login,https://{{ .Values.global.K8S_PUBLIC_HOSTNAME }}:{{ .Values.global.INGRESS_CONTROLLER_HTTPSPORT }}/altiplano-alarms-indexsearch-dashboards,https://{{ .Values.global.K8S_PUBLIC_IP }}:30030,https://{{ .Values.global.K8S_PUBLIC_IP }}:{{ .Values.global.INGRESS_CONTROLLER_HTTPSPORT }}/altiplano-grafana,https://{{ .Values.global.K8S_PUBLIC_IP }}/workflow-manager,https://{{ .Values.global.K8S_PUBLIC_IP }}:{{ .Values.global.INGRESS_CONTROLLER_HTTPSPORT }}/oauth2/callback,https://{{ .Values.global.K8S_PUBLIC_HOSTNAME }}/oauth2/callback,https://{{ .Values.global.K8S_PUBLIC_HOSTNAME }}:{{ .Values.global.INGRESS_CONTROLLER_HTTPSPORT }}/altiplano-grafana,https://{{ .Values.global.K8S_PUBLIC_HOSTNAME }}/workflow-manager,https://{{ .Values.global.K8S_PUBLIC_IP }}/wfm,https://{{ .Values.global.K8S_PUBLIC_HOSTNAME }}/wfm
+              {{- else }}             
+              value: https://{{ .Values.global.K8S_PUBLIC_HOSTNAME }}/altiplano-indexsearch-dashboards/auth/openid/login,https://{{ .Values.global.K8S_PUBLIC_HOSTNAME }}/altiplano-indexsearch-dashboards,https://{{ .Values.global.K8S_PUBLIC_HOSTNAME }}/altiplano-alarms-indexsearch-dashboards/auth/openid/login,https://{{ .Values.global.K8S_PUBLIC_HOSTNAME }}/altiplano-alarms-indexsearch-dashboards,https://{{ .Values.global.K8S_PUBLIC_IP }}:30030,https://{{ .Values.global.K8S_PUBLIC_IP }}/altiplano-grafana,https://{{ .Values.global.K8S_PUBLIC_IP }}/workflow-manager,https://{{ .Values.global.K8S_PUBLIC_IP }}/oauth2/callback,https://{{ .Values.global.K8S_PUBLIC_HOSTNAME }}/oauth2/callback,https://{{ .Values.global.K8S_PUBLIC_HOSTNAME }}/altiplano-grafana,https://{{ .Values.global.K8S_PUBLIC_HOSTNAME }}/workflow-manager,https://{{ .Values.global.K8S_PUBLIC_IP }}/wfm,https://{{ .Values.global.K8S_PUBLIC_HOSTNAME }}/wfm
+              {{- end }}
+              {{- end }}
+              {{- else }}
+              {{- if .Values.global.INGRESS_CONTROLLER_HTTPSPORT }}
+              value: https://{{ .Values.global.K8S_PUBLIC_IP }}:{{ .Values.global.INGRESS_CONTROLLER_HTTPSPORT }}/altiplano-indexsearch-dashboards/auth/openid/login,https://{{ .Values.global.K8S_PUBLIC_IP }}:{{ .Values.global.INGRESS_CONTROLLER_HTTPSPORT }}/altiplano-indexsearch-dashboards,https://{{ .Values.global.K8S_PUBLIC_IP }}:{{ .Values.global.INGRESS_CONTROLLER_HTTPSPORT }}/altiplano-alarms-indexsearch-dashboards/auth/openid/login,https://{{ .Values.global.K8S_PUBLIC_IP }}:{{ .Values.global.INGRESS_CONTROLLER_HTTPSPORT }}/altiplano-alarms-indexsearch-dashboards,https://{{ .Values.global.K8S_PUBLIC_IP }}:30030,https://{{ .Values.global.K8S_PUBLIC_IP }}:{{ .Values.global.INGRESS_CONTROLLER_HTTPSPORT }}/altiplano-grafana,https://{{ .Values.global.K8S_PUBLIC_IP }}/workflow-manager,https://{{ .Values.global.K8S_PUBLIC_IP }}:{{ .Values.global.INGRESS_CONTROLLER_HTTPSPORT }}/oauth2/callback,https://{{ .Values.global.K8S_PUBLIC_IP }}/wfm
+              {{- else }}
+              value: https://{{ .Values.global.K8S_PUBLIC_IP }}/altiplano-indexsearch-dashboards/auth/openid/login,https://{{ .Values.global.K8S_PUBLIC_IP }}/altiplano-indexsearch-dashboards,https://{{ .Values.global.K8S_PUBLIC_IP }}/altiplano-alarms-indexsearch-dashboards/auth/openid/login,https://{{ .Values.global.K8S_PUBLIC_IP }}/altiplano-alarms-indexsearch-dashboards,https://{{ .Values.global.K8S_PUBLIC_IP }}:30030,https://{{ .Values.global.K8S_PUBLIC_IP }}/altiplano-grafana,https://{{ .Values.global.K8S_PUBLIC_IP }}/workflow-manager,https://{{ .Values.global.K8S_PUBLIC_IP }}/oauth2/callback,https://{{ .Values.global.K8S_PUBLIC_IP }}/wfm
+              {{- end }}
+              {{- end }}
+            - name: KC_CLIENT_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: altiplano-secrets
+                  key: keycloak_client_secret
+{{- $secret_name := include "custom-user-realm-config-secret" . }}
+{{- range $name, $value := .Values.env.secrets }}
+{{- if not ( empty $value) }}
+            - name: {{ $name | quote }}
+              valueFrom:
+                secretKeyRef:
+                  name: {{ $secret_name }}
+                  key: {{ $name | quote }}
+{{- end }}
+{{- end }}
+
+{{- with .Values.extraEnv }}
+{{ tpl . $ | indent 12 }}
+{{- end }}
+          {{ if .Values.probeDelays.startupProbePeriodSeconds }}
+          startupProbe:
+            httpGet:
+              path: {{ template "ckey.ingress.contextPath" . }}/health/ready
+              port: https-keycloak
+              scheme: HTTPS
+            initialDelaySeconds: {{ .Values.probeDelays.startupProbeInitialDelaySeconds }}
+            timeoutSeconds: {{ .Values.probeDelays.startupProbeTimeoutSeconds }}
+            periodSeconds: {{ .Values.probeDelays.startupProbePeriodSeconds }}
+            failureThreshold: {{ .Values.probeDelays.startupProbeFailureThreshold }}
+          {{ end }}
+          readinessProbe:
+            httpGet:
+              path: {{ template "ckey.ingress.contextPath" . }}/health/ready
+              port: https-keycloak
+              scheme: HTTPS
+            initialDelaySeconds: {{ .Values.probeDelays.readinessProbeInitialDelay | default 240 }}
+            timeoutSeconds: {{ .Values.probeDelays.readinessProbeTimeoutSeconds | default 1 }}
+            periodSeconds: {{ .Values.probeDelays.readinessProbePeriodSeconds | default 30 }}
+            failureThreshold: {{ .Values.probeDelays.readinessProbeFailureThreshold | default 1 }}
+          livenessProbe:
+            exec:
+              command:
+              - sh
+              - -c
+              - |+
+                {{ if .Values.istio.enabled }}
+                ISTIO_ENABLED=true
+                {{ else }}
+                ISTIO_ENABLED=false
+                {{ end }}
+{{ .Files.Get "quarkusLivenessprobe.sh" | indent 16 }}
+            failureThreshold: {{ .Values.probeDelays.livenessProbeFailureThreshold | default 3 }}
+            initialDelaySeconds: {{ .Values.probeDelays.livenessProbeInitialDelay | default 330 }}
+            timeoutSeconds: {{ .Values.probeDelays.livenessProbeTimeoutSeconds | default 5 }}
+            periodSeconds: {{ .Values.probeDelays.livenessProbePeriodSeconds | default 15 }}
+          # We do not want to keycloak container to immediately terminate as the keycloak clients may be holding up the ckey-http-service fqdn to keycloak pod's ip due to DNS caching. Thus, we want keycloak container to handle incoming request until 'terminationGracePeriodSeconds' is expired. Thus, we intentionally sleep within preStop lifecycle hook so that keycloak container is terminated in delayed fashion.
+          lifecycle:
+            preStop:
+              exec:
+                command:
+                  - /bin/sh
+                  - -c
+                  - echo 'Container will be terminated'&& sleep {{ $terminationSeconds }}
+          resources:
+            requests:
+              memory: {{ .Values.resources.requests.memory | default "2048Mi" | quote }}
+              cpu: {{ .Values.resources.requests.cpu | default "250m" | quote }}
+              {{- if index .Values.resources.requests "ephemeral-storage" }}
+              ephemeral-storage: {{ index .Values.resources.requests "ephemeral-storage" | quote }}
+              {{- end }}
+            limits:
+              memory: {{ .Values.resources.limits.memory | default "2048Mi" | quote }}
+              {{- if eq (include "ckey.coalesceBoolean" (tuple .Values.enableDefaultCpuLimits .Values.global.enableDefaultCpuLimits false)) "true" }}
+              cpu: {{ .Values.resources.limits.cpu | quote }}
+              {{ end }}
+              {{- if index .Values.resources.limits "ephemeral-storage" }}
+              ephemeral-storage: {{ index .Values.resources.limits "ephemeral-storage" | quote }}
+              {{- end }}
+          volumeMounts:
+            - name: {{ template "ckey.fullName" . }}-custom-providers
+              mountPath: /customProviders
+            - mountPath: /opt/keycloak/providers/radius
+              name: deployments-storage
+            {{- include "ckey.syslogVolumeMount" . | indent 12 }}
+            {{- range .Values.customProviders }}
+            {{- if .configMap }}
+            {{- $configMap := .configMap }}
+            {{- if eq .type "extension-jar" }}
+            {{- range .resources }}
+            - name: {{ $configMap }}
+              mountPath: /customProviders/extension-jar/{{ . }}
+              subPath: {{ . }}
+            {{- end }}
+            {{- else if eq .type "theme" }}
+            {{- range .resources }}
+            - name: {{ $configMap }}
+              mountPath: /customProviders/themes/{{ . }}
+              subPath: {{ . }}
+            {{- end }}
+            {{- else }}
+            {{- fail "Only extension-jar and theme type of customProvider are supported in keycloak" -}}
+            {{- end }}
+            {{- end }}
+            {{- end }}
+            - name: custom-ckey-scripts
+              mountPath: /ckey/custom-scripts
+              readOnly: true
+            - name: {{ template "ckey.fullName" . }}-tmp
+              mountPath: "/tmp"
+            {{- if .Values.cbur.enabled }}
+            - name: backup
+              mountPath: "/ckey/backup"
+            {{ end }}
+            {{ if .Values.secretCredentials.keystoreSecret }}
+            - name: keystore-secret
+              mountPath: /opt/etc/keycloak/server_ssl_certificates/tls.key
+              subPath: tls.key
+              readOnly: true
+            - name: keystore-secret
+              mountPath: /opt/etc/keycloak/server_ssl_certificates/tls.crt
+              subPath: tls.crt
+              readOnly: true
+            {{ end }}
+            {{ if .Values.secretCredentials.truststoreSecret }}
+            - name: keycloak-java-client-truststore
+              mountPath: /opt/etc/keycloak/keycloak_java_client_truststore/
+            - name: keystore-secret
+              mountPath: /opt/keycloak/security/ckey-secret/keycloak-java-keystore-password
+              subPath: keystore-password
+            - name: truststore-secret
+              mountPath: /opt/keycloak/security/ckey-secret/keycloak-java-client-truststore
+              subPath: keystore-password
+            {{ end }}
+            {{ if .Values.secretCredentials.spiSecret }}
+            - name: spi-keystore
+              mountPath: /opt/etc/keycloak/spi-keystore/spi_keystore.jks
+              subPath: spi_keystore.jks
+              readOnly: true
+            - name: spi-keystore
+              mountPath: /opt/keycloak/security/ckey-secret/spi-keystore-password
+              subPath: spi-keystore-password
+              readOnly: true
+            {{ end }}
+            {{ if .Values.secretCredentials.dbKeystoreSecret }}
+            - name: db-keystore
+              mountPath: /opt/keycloak/security/ckey-secret/db-keystore-password
+              subPath: keystore-password
+            {{ end }}
+            - name: server-certificates
+              mountPath: /opt/etc/keycloak/server_ssl_certificates
+            - name: db-keystore-certs
+              mountPath: /opt/etc/keycloak/db-keystore
+            - name: log-dir
+              mountPath: /logs/
+            - name: logging-configuration
+              mountPath: /opt/keycloak/vertx/log4cxx.property
+              subPath: log4cxx.property
+            - name: logging-extensions
+              mountPath: /opt/keycloak/vertx/logging-extensions.json
+              subPath: logging-extensions.json
+            - name: altiplano-sso-certs
+              mountPath: /etc/altiplano/certificates/secrets/
+              readOnly: true
+            - name: altiplano-keystore-password
+              mountPath: /etc/altiplano/certificates/storepass/
+            {{ if .Values.secretCredentials.rabbitMqPushEventListenerSecret }}
+            - name: push-listener-config-json
+              mountPath: /opt/etc/keycloak/push-listener-registry.json
+              subPath: push-listener-registry.json
+            {{ else if (eq (include "ckey.pushEventcheck" . ) "true" ) }}
+            - name: push-listener-config-json
+              mountPath: /opt/etc/keycloak/push-listener-registry.json
+              subPath: push-listener-registry.json
+            {{ end }}
+            - name: custom-attribute-config
+              mountPath: /opt/etc/keycloak/custom-attributes-config.conf
+              subPath: custom-attributes-config.conf
+            - name: notification-listener-config-json
+              mountPath: /opt/etc/keycloak/notification-listener-registry.json
+              subPath: notification-listener-registry.json
+            - mountPath: /opt/keycloak/security/mariadb_ssl/
+              name: cmdb-certificates
+              readOnly: true
+            - name: ckey-secret
+              mountPath: /opt/keycloak/security/ckey-secret/keycloak-admin-password
+              subPath: keycloak-admin-password
+            - name: ckey-secret
+              mountPath: /opt/keycloak/security/ckey-secret/keycloak-admin-user
+              subPath: keycloak-admin-user
+            {{ if .Values.secretCredentials.dbSecret }}
+            - name: ckey-secret
+              mountPath: /opt/keycloak/security/ckey-secret/db-password
+              subPath: db-password
+            {{ end }}
+            {{ if .Values.cacheConfigMap }}
+            - name: cache-config-xml
+              mountPath: /ckey/custom-cache-config
+            {{ end }}
+          ports:
+            - containerPort: {{ .Values.httpsPort | default 8443 }}
+              name: https-keycloak
+            - containerPort: {{ .Values.jgroupsTCPBindPort }}
+              name: jgroups-port
+            - containerPort: {{ .Values.jgroupsFDPort }}
+              name: jgroups-fd-port
+            {{ if .Values.httpPort }}
+            - containerPort: {{ .Values.httpPort }}
+              name: http-keycloak
+            {{ end }}
+            {{ if .Values.geoRedundancy.enabled }}
+            - containerPort: {{ .Values.geoRedundancy.service.jgroupsTCPPort }}
+              name: xsite
+            {{ end }}
+        {{- if .Values.cbur.enabled }}
+        - name: {{ template "ckey.cburContainerName" . }}
+          image: {{ include "ckey.container.image" (tuple $ .Values.images.cbur .Values.internalCburRegistry) }}
+          imagePullPolicy: {{ .Values.images.pullPolicy }}
+          {{- if .Values.cbur.securityContext }}
+          securityContext:
+{{ include "ckey.cbur.securitycontext" . | indent 12 }}
+          {{- end }}
+          env:
+            {{- include "ckey.timezone" . | nindent 12 }}
+          volumeMounts:
+          - mountPath: /backup
+            name: "backup"
+          - mountPath: /tmp
+            name: "cbur-tmp"
+          resources:
+            requests:
+              memory: {{ .Values.cbur.resources.requests.memory | default "256Mi" | quote }}
+              cpu: {{ .Values.cbur.resources.requests.cpu | default "250m" | quote }}
+              {{- if index .Values.cbur.resources.requests "ephemeral-storage" }}
+              ephemeral-storage: {{ index .Values.cbur.resources.requests "ephemeral-storage" | quote }}
+              {{- end }}
+            limits:
+              memory: {{ .Values.cbur.resources.limits.memory | default "256Mi" | quote }}
+              {{- if eq (include "ckey.coalesceBoolean" (tuple .Values.enableDefaultCpuLimits .Values.global.enableDefaultCpuLimits false)) "true" }}
+              cpu: {{ .Values.cbur.resources.limits.cpu | quote }}
+              {{ end }}
+              {{- if index .Values.cbur.resources.limits "ephemeral-storage" }}
+              ephemeral-storage: {{ index .Values.cbur.resources.limits "ephemeral-storage" | quote }}
+              {{- end }}
+        {{- end }}
+        - name: fluentd-sidecar
+          image: {{ .Values.global.registry }}/{{ .Values.fluentd_sidecar.image.name }}:{{ .Values.fluentd_sidecar.image.tag }}
+          imagePullPolicy: {{ .Values.fluentd_sidecar.image.pullPolicy }}
+          volumeMounts:
+          - name: fluentd-config
+            mountPath: /etc/fluent/
+          {{- if .Values.fluentd_sidecar.secrets }}
+          - name: certificates
+            mountPath: /etc/.certificates/
+          {{- end }}
+          - name: log-dir
+            mountPath: /logs/
+          resources:
+{{ toYaml .Values.fluentd_sidecar.resources | indent 12 }}
+          env:
+          {{- if .Values.fluentd_sidecar.secrets }}
+          - name: IS_USERNAME
+            valueFrom:
+              secretKeyRef:
+                key: {{ .Values.env.secrets.IS_USERNAME }}
+                name: {{ .Values.fluentd_sidecar.secrets.passwordSecret | quote }}
+          - name: IS_PASSWORD
+            valueFrom:
+              secretKeyRef:
+                key: {{ .Values.env.secrets.IS_PASSWORD }}
+                name: {{ .Values.fluentd_sidecar.secrets.passwordSecret | quote }}
+          {{- end }}
+          - name: CONTAINER_NAME
+            valueFrom:
+              fieldRef:
+                apiVersion: v1
+                fieldPath: metadata.name
+          - name: POD_IP
+            valueFrom:
+              fieldRef:
+                fieldPath: status.podIP
+      {{- include "ckey.imagePullSecrets" (tuple . "keycloak") | nindent 6 }}
+      terminationGracePeriodSeconds: {{ $terminationSeconds }}
+      volumes:
+        - name: altiplano-keystore-password
+          secret:
+            secretName: {{ .Values.certificates.secrets.altiplano_keystore_secrets }} 
+        - name: deployments-storage
+          emptyDir: {}
+        - name: log-dir
+          emptyDir: {}
+        - name: fluentd-config
+          configMap:
+            name: {{ template "ckey.fullName" . }}-keycloak-fluentd-config
+        {{- if .Values.fluentd_sidecar.secrets }}
+        - name: certificates
+          secret:
+            secretName: {{ (tpl .Values.fluentd_sidecar.secrets.certSecret .) }}
+        - name: passwords
+          secret:
+            secretName: {{ (tpl .Values.fluentd_sidecar.secrets.passwordSecret .) }}
+        {{- end }}
+        {{- range .Values.customProviders }}
+        {{- if .configMap }}
+        - name: {{ .configMap }}
+          configMap:
+            name: {{ .configMap }}
+        {{- end }}
+        {{- end }}
+        {{- include "ckey.syslogVolume" . | nindent 8 }}
+        - name: {{ template "ckey.fullName" . }}-custom-providers
+          emptyDir: {}
+        - name: {{ template "ckey.fullName" . }}-tmp
+          emptyDir: {}
+        - name: cbur-tmp
+          emptyDir: {}
+        - name: custom-ckey-scripts
+          configMap:
+            name: {{ template "ckey.fullName" . }}-custom-ckey-scripts
+            defaultMode: 0555
+        {{ if .Values.secretCredentials.keystoreSecret }}
+        - name: keystore-secret
+          emptyDir: {}
+        {{ end }}
+        {{ if .Values.secretCredentials.spiSecret }}
+        - name: spi-keystore
+          secret:
+            secretName: {{ .Values.secretCredentials.spiSecret }}
+        {{ end }}
+        {{ if .Values.secretCredentials.dbKeystoreSecret }}
+        - name: db-keystore
+          secret:
+            secretName: {{ .Values.secretCredentials.dbKeystoreSecret }}
+        {{ end }}
+        {{ if .Values.secretCredentials.truststoreSecret }}
+        - name: keycloak-java-client-truststore
+          emptyDir: {}
+        - name: keystore-secret
+          secret:
+            secretName: {{ .Values.secretCredentials.truststoreSecret }}
+        - name: truststore-secret
+          secret:
+            secretName: {{ .Values.secretCredentials.truststoreSecret }}
+        {{ end }}
+        - name: logging-configuration
+          configMap:
+            {{ if .Values.unifiedLogging.customLog4jConfigMap }}
+            name: {{ .Values.unifiedLogging.customLog4jConfigMap }}
+            {{ else }}
+            name: {{ template "ckey.fullName" . }}-logging-configuration
+            {{ end }}
+        - name: logging-extensions
+          configMap:
+            {{ if .Values.unifiedLogging.extensionConfigMap }}
+            name: {{ .Values.unifiedLogging.extensionConfigMap }}
+            {{ else }}
+            name: {{ template "ckey.fullName" . }}-logging-extensions
+            {{ end }}
+        - name: altiplano-sso-certs
+          secret:
+            secretName: altiplano-sso-certificate-secrets
+        - name: server-certificates
+          emptyDir:
+            medium: Memory
+        - name: cmdb-certificates
+          emptyDir:
+            medium: Memory
+        - name: db-keystore-certs
+          emptyDir:
+            medium: Memory
+        {{ if .Values.secretCredentials.rabbitMqPushEventListenerSecret }}
+        - name: push-listener-config-json
+          secret:
+            secretName: {{ .Values.secretCredentials.rabbitMqPushEventListenerSecret }}
+        {{ else if .Values.pushEventListenerData.pushConfigMapName }}
+        - name: push-listener-config-json
+          configMap:
+            name: {{ .Values.pushEventListenerData.pushConfigMapName }}
+            items:
+            - key: push-listener-registry.json
+              path: push-listener-registry.json
+        {{ else }}
+        - name: push-listener-config-json
+          configMap:
+            name: {{ template "ckey.fullName" . }}-push-listener
+            items:
+            - key: push-listener-registry.json
+              path: push-listener-registry.json
+        {{ end }}
+        - name: custom-attribute-config
+          configMap:
+            name: {{ template "ckey.fullName" . }}-custom-attributes
+            items:
+            - key: custom-attributes-config.conf
+              path: custom-attributes-config.conf
+        - name: notification-listener-config-json
+          configMap:
+            name: {{ template "ckey.fullName" . }}-notification-listener
+            items:
+            - key: notification-listener-registry.json
+              path: notification-listener-registry.json
+        - name: ckey-secret
+          projected:
+            sources:
+            - secret:
+                {{ if .Values.secretCredentials.ckeySecret }}
+                name: {{ .Values.secretCredentials.ckeySecret }}
+                {{ else }}
+                name: {{ template "ckey.fullName" . }}
+                {{ end }}
+                optional: true
+            {{ if .Values.secretCredentials.dbSecret }}
+            - secret:
+                name: {{ .Values.secretCredentials.dbSecret }}
+                optional: true
+            {{ end }}
+        {{ if .Values.cacheConfigMap }}
+        - name: cache-config-xml
+          configMap:
+            name: {{ .Values.cacheConfigMap }}
+            items:
+            - key: custom_cache_config.xml
+              path: custom_cache_config.xml
+        {{ end }}
+    {{- if .Values.tolerations }}
+      tolerations:
+{{ toYaml .Values.tolerations | indent 8 }}
+    {{- end }}
+    {{- if .Values.topologySpreadConstraints }}
+      topologySpreadConstraints: {{- include "ckey.topologySpreadConstraints" (tuple . .Values ) | nindent 8 }}
+    {{- end }}
+    {{- if .Values.nodeSelector }}
+      nodeSelector:
+{{ toYaml .Values.nodeSelector | indent 8 }}
+    {{- end }}
+{{ include "ckey.common.affinity" . | indent 6 }}
+  volumeClaimTemplates:
+  {{- if .Values.cbur.enabled }}
+  - metadata:
+      name: backup
+    spec:
+      accessModes:
+        - "ReadWriteOnce"
+      resources:
+        requests:
+          storage: "{{ .Values.cbur.backupStorage.size }}"
+      storageClassName: {{ template "ckey.storageClass" . }}
+  {{ end }}

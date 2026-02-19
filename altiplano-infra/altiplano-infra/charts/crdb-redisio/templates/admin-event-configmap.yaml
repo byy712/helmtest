@@ -1,0 +1,18 @@
+{{- include "crdb-redisio.init" . -}}
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "csf-common-lib.v3.resourceName" (tuple . "configmap" "admin-event") }}
+  labels:
+    {{- include "crdb-redisio.admin.labels" (tuple . "admin" "configmap") | nindent 4 }}
+  annotations:
+    {{- include "crdb-redisio.annotations" (tuple . "admin" "configmap") | nindent 4 }}
+data:
+  recovery_tag: |-
+    {{ .Values.admin.recovery | default "none" | sha256sum }}
+  cmd_args: |-
+    {{- if contains ":" (default "" .Values.admin.recovery) }}
+    {{- $vals := (split ":" .Values.admin.recovery) }}
+    node={{ $vals._1 }}
+    {{- end }}

@@ -1,0 +1,68 @@
+{{- include "cmdb.init" . -}}
+{{- if ne .Values.cluster_type "galera" }}
+{{- $g := . -}}
+{{- $istio_enabled := .Values.istio.enabled }}
+{{- $has_security_api := semverCompare ">=1.5" (toString .Values.istio.version) }}
+{{- $service_value := .Values.services.mariadb }}
+{{- $service_name := .Values.services.mariadb.name | default (printf "%s-mariadb" (include "cmdb.fullname" .)) }}
+{{- $mtls_mode := include "cmdb.istio_mtls_mode" . }}
+{{- range $i := until (int .Values.mariadb.count) }}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ $service_name }}-{{ $i }}
+  labels:
+    {{- include "cmdb-mariadb.labels" (tuple $g "service") | nindent 4 }}
+    {{- include "cmdb.get_mtls_labels" $g  | nindent 4 }}
+  annotations:
+    {{- include "cmdb-mariadb.annotations" (tuple $g "service") | nindent 4 }}
+spec:
+  type: ClusterIP
+  {{- include "cmdb.dual-stack" (tuple $g $service_value) | nindent 2 }}
+  ports:
+  - name: tcp-mysql
+    port: 3306
+  - name: tcp-sst
+    port: 4444
+  selector:
+    {{- include "cmdb-mariadb.selector_labels" $g | nindent 4 }}
+    type: mariadb
+    statefulset.kubernetes.io/pod-name: {{ template "cmdb.pod-prefix" $g }}-mariadb-{{ $i }}
+
+{{- if $istio_enabled }}
+{{- if not $has_security_api }}
+---
+apiVersion: "authentication.istio.io/v1alpha1"
+kind: "Policy"
+metadata:
+  name: {{ $service_name }}-{{ $i }}-mtls-authn
+  labels:
+    {{- include "cmdb-mariadb.labels" (tuple $g "policy") | nindent 4 }}
+  annotations:
+    {{- include "cmdb-mariadb.annotations" (tuple $g "policy") | nindent 4 }}
+spec:
+  targets:
+  - name: {{ $service_name }}-{{ $i }}
+  peers:
+  - mtls:
+      mode: {{ $mtls_mode }}
+{{- end }}
+---
+apiVersion: networking.istio.io/v1beta1
+kind: DestinationRule
+metadata:
+  name: {{ $service_name }}-{{ $i }}-mlts-dr
+  labels:
+    {{- include "cmdb-mariadb.labels" (tuple $g "destinationrule") | nindent 4 }}
+  annotations:
+    {{- include "cmdb-mariadb.annotations" (tuple $g "destinationrule") | nindent 4 }}
+spec:
+  host: {{ $service_name }}-{{ $i }}
+  trafficPolicy:
+    tls:
+      mode: ISTIO_MUTUAL
+{{- end }}
+{{- end }}
+
+{{- end }}

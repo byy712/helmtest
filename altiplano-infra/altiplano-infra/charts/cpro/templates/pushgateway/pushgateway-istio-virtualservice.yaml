@@ -1,0 +1,44 @@
+{{- include "cpro.istio.cproInitIstio" . }}
+{{- if and $.istio.enabled .Values.pushgateway.enabled}}
+apiVersion: {{ template "cpro.apiVersion.virtualService" . }}
+kind: VirtualService
+metadata:
+  labels:
+    {{- include "cpro.app.labels.v3" ( dict "root" . "context" .Values.pushgateway ) | nindent 4 }}
+{{- include "cpro.labelsOrAnnotations" (tuple .Values.global.labels) | indent 4}}
+  name: {{ template "cpro.prometheus.pushgateway.fullname" . }}-vs
+  annotations:
+{{- include "cpro.labelsOrAnnotations" (tuple .Values.global.annotations) | indent 4}}
+spec:
+  hosts:
+  {{- $numHosts := len $.istio.gateways.cproPushgateway.host }}
+  {{- if (eq $numHosts 0) }}
+  - "*"
+  {{- else }}
+  {{- range $.istio.gateways.cproPushgateway.host }}
+  - {{ . | quote }}
+  {{- end }}
+  {{- end }}
+  gateways:
+  {{- if $.shared_istio_gateway }}
+  - {{ $.shared_istio_gateway }}
+    {{- else }}
+  - {{ template "cpro.pushgateway.istioGatewayName"  $ }}
+    {{- end }}
+  http:
+  - match:
+    - uri:
+        prefix: {{ template "cpro.pushgateway.routePrefixURL" . }}
+    rewrite:
+  {{- $rewriteURI := include "cpro.pushgateway.routePrefixURL" . -}}
+  {{- if ne $rewriteURI "" }}
+      uri: {{ $rewriteURI }}
+  {{- else }}
+      uri: /
+  {{- end }}
+    route:
+    - destination:
+        host: {{ template "cpro.prometheus.pushgateway.fullname" . }}
+        port:
+          number: {{ .Values.pushgateway.service.servicePort }}
+{{- end }}

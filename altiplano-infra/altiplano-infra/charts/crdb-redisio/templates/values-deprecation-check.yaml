@@ -1,0 +1,19 @@
+{{- include "crdb-redisio.init" . -}}
+{{/*
+*
+* A non-manifest helper to check that deprecated values are not used.
+* This prevents performing an install of a chart using old, unsupported values.
+*
+*/}}
+
+{{- if .Release.IsInstall -}}
+{{- if .Values.common -}}
+{{- if .Values.common.password -}}
+{{- $_ := required "common.password Value not supported any longer - use acl Value(s)" "" -}}
+{{- end -}}
+{{- if .Values.common.groupName -}}
+{{- $_ := required "common.groupName Value not supported any longer - use groupName (without common)" "" -}}
+{{- end -}}
+{{- $_ := required "common.* Values not supported any longer" "" -}}
+{{- end -}}
+{{- end -}}

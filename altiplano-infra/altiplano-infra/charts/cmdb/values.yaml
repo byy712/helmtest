@@ -1,0 +1,2963 @@
+---
+##
+## Common, cluster-level values
+##
+
+## Global properties can be passed down from a parent chart.
+global:
+  ###### site-specific params #####
+  ## Image Registries
+  ## registry is used for CMDB container images, but can be preceded by internalRegistry.
+  ## Also used for CBUR, OSDB, metrics, auth and exporter container images.
+  registry:
+  _registry: "csf-docker-delivered.repo.cci.nokia.net"
+  ## If set to true, <repository path> in all container images will be skipped.
+  flatRegistry: false
+
+  ###### site-specific params #####
+  ## podNamePrefix is the prefix to add to all pod (sts, job) resources
+  ## The length of the podNamePrefix is limited to 31 characters including
+  ## a hyphen "-" will be added at the end, if disablePodNamePrefixRestrictions
+  ## is set to false
+  #podNamePrefix:
+  ## containerNamePrefix is the prefix to add to all pod containers
+  ## The length of containerNamePrefix is limited to 34 characters and
+  ## a hyphen "-" will be added at the end for a maximum of 35 characters
+  ## (Refer to HBP 3.4.0)
+  #containerNamePrefix:
+  ## If disablePodNamePrefixRestrictions is set to true:
+  ## a). the length of <podNamePrefix> is not limited.
+  ## b). "-" is not automatically added after <podNamePrefix>
+  ##
+  disablePodNamePrefixRestrictions:
+
+  ## ncms parameters
+  postheal: 0
+  postrestore: 0
+  jobtimeout: 600
+
+  # Refer HBP 2.13 [HBP_Helm_Annotations_1][HBP_Helm_Labels_5]
+  annotations: {}
+  labels: {}
+
+  # cert-manager certificate resource configuration (previously under
+  # certMangager) must now be defined at each workload under "certificate"
+  # (ie, clients.mariadb.certificate, mariadb.certificate, maxscale.certificate)
+  # certManager block now only defines if certManager is enabled and if
+  # apiVersion needs to be changed from default.
+  # TLS and certificate config has been significantly restructured per HBP 3.4.0
+  # Should use of cert-manager for creating and managing enabled certificates
+  #
+  # certManager is enabled by default (with no value entered). To disable it,
+  # set the value to false.
+  # Certificates API Version "apiVersion" defaults to "cert-manager.io/v1"
+  certManager:
+    enabled:
+    apiVersion:
+    issuerRef:
+      name:
+      kind:
+      group:
+
+
+  # Horizontal Pod Autoscaler.
+  # HPA can be enabled here for all statefulsets, or by setting *.hpa.enabled
+  # true individually in each subsystem.  All other mariadb/maxscale HPA
+  # parameters are configured in the mariadb/maxscale section.
+  hpa:
+    # enabled value left empty intentionally, default value is false
+    enabled:
+
+  # Priority indicates the importance of a Pod relative to other Pods.
+  # If a Pod cannot be scheduled, the scheduler tries to preempt (evict) lower
+  # priority Pods to make scheduling of the pending Pod possible.
+  # Services priorityClassName has higher precedence than this globle scope one.
+  #priorityClassName:
+
+  ###### site-specific params #####
+  ## To config global time zone for all containers if not already set,
+  ## set TZ environment variable in the container (eg, America/Chicago or GST-6)
+  ## Default will be "UTC"
+  #timeZoneEnv:
+
+  ###### site-specific params #####
+  # Refer HBP_Kubernetes_Service_4
+  # Optionally configure Kubernetes Dual Stack globally.  If specified here,
+  # this configuration will be applied to all created services, unless
+  # overriden in the service specification.
+  # Ref: https://kubernetes.io/docs/concepts/services-networking/dual-stack/
+  ipFamilyPolicy: ""
+  ipFamilies: []
+
+  ## Global Image Pull Secrets for Registry. It can be overridden by pod level config.
+  ## - name: regcred
+  imagePullSecrets: []
+
+  ## Refer HBP_Kubernetes_Pod_res_5
+  enableDefaultCpuLimits: false
+
+  ## Refer HBP_Istio_sidecar_1
+  istio:
+    sidecar:
+      # Istio sidecar (Envoy) healthcheck port.
+      # If it is not set, then the default value is 15021, and 15020 for Istio versions prior to 1.6.
+      healthCheckPort:
+      # Istio sidecar (Envoy) admin port on which `quitquitquit` endpoint can be used to stop sidecar container.
+      stopPort: 15000
+
+  ###### site-specific params #####
+  # Global Unified Logging Configuration
+  # Here unified logging can be configured at the global level.
+  unifiedLogging:
+    # Allowed values are: "OFF", "FATAL", "ERROR", "WARN", "INFO", "DEBUG", "TRACE", "ALL"
+    logLevel:
+    extension: {}
+    syslog:
+      enabled: false
+      facility:
+      host:
+      port:
+      protocol:
+      timeout:
+      closeReqType:
+      rfc: {}
+      keyStore: {}
+      keyStorePassword: {}
+      trustStore: {}
+      trustStorePassword: {}
+      # Replacement for keyStore/keyStorePassword/trustStore/trustStorePassword
+      # If needed by clog lib, it can be converted in a helm hook to keyStore/trustStore
+      tls:
+        secretRef:
+          # Secret name, pointing to a Secret object.
+          name:
+          # Secret key names mapping.
+          # If the provided Secret is of type `kubernetes.io/tls', then key names do not need to be changed.
+          keyNames:
+            # Name of Secret key, which contains CA certificate
+            caCrt: "ca.crt"
+            # Name of Secret key, which contains TLS key
+            tlsKey: "tls.key"
+            # Name of Secret key, which contains TLS certificate
+            tlsCrt: "tls.crt"
+
+  ## See imageFlavor description (below)
+  imageFlavor: rocky8
+
+  ## See imageFlavorPolicy description (below)
+  imageFlavorPolicy: BestMatch
+
+  ## See tls description (below)
+  tls:
+    enabled: true
+
+## Use TLS/SSL Encryption for mariadb, maxscale, unless disabled on the workload level
+## Default is true
+tls:
+  enabled:
+
+## See: global.disablePodNamePrefixRestrictions description (above)
+## This value takes precendence over the global.disablePodNamePrefixRestrictions
+disablePodNamePrefixRestrictions:
+
+lcm:
+  heal:
+    timeout: 300
+  scale:
+    timeout: 600
+
+accessRoleLabel: internal-access
+
+## Root level value takes precedence over the global value.
+enableDefaultCpuLimits:
+
+# certManager.enabled at root level dictates enablement or disablement, default is true (with no
+# value entered). To disable it, set it to false.
+# Certificates API Version "apiVersion" defaults to "cert-manager.io/v1"
+# issuerRef added for "csf-common-lib.v6.certificateValues", kind: default "Issuer", group: default "cert-manager.io".
+certManager:
+  enabled:
+  apiVersion:
+  ## Below will be used if certificate.issuerRef not configured for unifiedLogging syslog
+  ## refer "csf-common-lib.v6.certificateValues".
+  issuerRef:
+    name:
+    kind:
+    group:
+
+## Custom defines custom <kind> resource labels/annoations to assign to every
+## <kind> resource, and custom selector labels to assign to statefulsets.
+custom:
+  ## Add custom labels and/or annotations to every resource <kind>
+  ## (eg, <kind> can be pod, statefulset, secret, podsecuritypolicy, etc)
+  ## Iterate for each <kind> you want to create custom labels/annotations for.
+  #<kind>:
+  #  labels: {}
+  #  annotations: {}
+
+  ## The customized selector labels are immutable during upgrade.
+  ## And they will also be added to template.metadata.labels.
+  mariadbSts:
+    selectors: {}
+  maxscaleSts:
+    selectors: {}
+
+###### site-specific params #####
+## RBAC enabled flag, scc is not required for cmdb.
+rbac:
+  enabled: true
+  ## PSP creation is needed when istio (no CNI) enabled on NCS/k8s platform
+  ## Will not be created unless all conditions are met
+  psp:
+    create: true
+  ## SCC creation is needed when istio (no CNI) enabled on OpenShift platform
+  ## Will not be created unless all conditions are met
+  scc:
+    create: false
+
+###### site-specific params #####
+## To change default container time zone by setting
+## TZ environment variable in the container (eg, America/Chicago or GST-6)
+timeZoneEnv:
+
+## serviceAccountName is the service account to use instead of generating one.
+## Must only be set if a sufficient SA has already been pre-created
+## Can also be set in global
+serviceAccountName:
+
+###### site-specific params #####
+## istio.enabled     - indicates if Istio is enabled in namespace
+## istio.version     - specifies the Istio version in the deployment environment
+## istio.cni.enabled - indicates if Istio CNI plugin is enabled in the system
+## istio.gateway     - configure the gateway for geo-redundancy
+istio:
+  enabled: false
+  version: "1.6"
+  cni:
+    enabled: false
+
+  ## ISTIO MTLS section of configuration.
+  ## Refer: https://istio.io/latest/docs/reference/config/security/peer_authentication/
+  ## if mtls.enabled==true and permissive==false( default ),
+  ##    will set peerauthentication/policy with mtls mode STRICT: connection is an mTLS tunnel
+  ## if mtls.enabled==true and permissive==true,
+  ##    will set peerauthentication/policy with mtls mode PERMISSIVE: either plaintext or mTLS tunnel
+  ## if mtls.enabled==false(not recommended), permissive is ignored,
+  ##    will set peerauthentication/policy with mtls mode UNSET: inherit from parent, if has one. Otherwise PERMISSIVE
+  mtls:
+    enabled: true
+  ## Connection can be either plaintext or mTLS tunnel.
+  permissive: false
+
+  ## Istio gateway configuration for geo-redundancy ingress traffic.
+  ## The gateway port will be configured to be the same as the assocciated
+  ## service port, so does not need to be defined here.
+  gateway:
+    # should this gateway be enabled when Istio is enabled?
+    enabled: false
+
+    ## name of gateway (defaults to <release-name>-gw)
+    #name:
+
+    ## selector for ingressgateway pod which you want your gateway to attach to
+    ## (defaults to istio: ingressgateway)
+    ingressPodSelector: {}
+
+    ## hosts exposed by this gateway (defaults to all hosts)
+    hosts: []
+
+    ## gateway TLS settings:
+    ## Ref: https://istio.io/latest/docs/reference/config/networking/gateway/#ServerTLSSettings
+    tls:
+      mode: ISTIO_MUTUAL
+      credentialName:
+      ## additional configuration to be added as-is to TLS section of gateway
+      custom: {}
+
+  ## Istio serviceEntry configuration for geo-redundancy egress traffic.
+  serviceEntry:
+    # should serviceEntry resources be created with chart deployment
+    create: false
+
+  ## A DestinationRule in Istio is a Kubernetes custom resource that defines policies for traffic routing,
+  ## load balancing, and connection management for services within the service mesh.
+  ## This applies to both mariadb-master and maxscale remote services.
+  destinationRule:
+    tls:
+      ## TLS connection mode: DISABLE, SIMPLE, MUTUAL, ISTIO_MUTUAL
+      mode: ISTIO_MUTUAL
+
+## Override for default securityContext settings.  If set, podSecurityContext
+## will be used for all pods created.  If set, containerSecurityContext will be
+## used for all containers.  Further refinement of the securityContexts can be
+## set in the various subsystems below (eg. mariadb, maxscale, admin, etc.).
+## Use disabled: true to disable the use of a pod/container security context
+podSecurityContext: {}
+containerSecurityContext: {}
+
+###### site-specific params #####
+## unifiedLogging is used to configure pod logging for generation of log
+## messages to a syslog server.
+## workload level unifiedLogging configuration takes priority.
+unifiedLogging:
+  ## map of logging extension to add to each log message in addition to global one
+  extension: {}
+
+  # Allowed values are: "OFF", "FATAL", "ERROR", "WARN", "INFO", "DEBUG", "TRACE", "ALL"
+  logLevel:
+
+  ## Syslog logging parameters
+  syslog:
+    # enable syslog logging (disabled by default)
+    enabled:
+    # Defines which facility will be used for sending the log message.
+    # This is a required option, otherwise the appender will be invalid.
+    facility:
+    # Sets the appender target's host. (Domain name or IP address)
+    host:
+    # Sets the appender target's port.
+    port:
+    # Defines which socket protocol is used for sending the log into the
+    # target host.  Can be either UDP, TCP or SSL.  Defaults to UDP.
+    protocol:
+    # SSL handshake/connection timeout (milliseconds, default 1000)
+    timeout:
+    # SSL close request type (GNUTLS_SHUT_RDWR (default), GNUTLS_SHUT_WR)
+    # Ref: https://gnutls.org/manual/gnutls.html
+    closeReqType:
+    rfc:
+      enabled:
+      appName:
+      procId:
+      msgId:
+      version:
+    # The keystore is meant to contain your private keys and certificates
+    # and determines which authentication credentials to send to the remote
+    # host.  'key' in the Secret named 'secretName' will be used as keystore
+    # file. Only PKCS12 file format is supported.
+    keyStore:
+      secretName:
+      key:
+    # Plain text password to access the keystore stored in 'key' in the
+    # Secret named 'secretName'
+    keyStorePassword:
+      secretName:
+      key:
+    # The trust store is meant to contain the CA certificates you are willing
+    # to trust when a remote party presents its certificate. Determines whether
+    # the remote authentication credentials (and thus the connection) should be
+    # trusted. In some cases, they can be one and the same store, although it
+    # is often better practice to use distinct stores (especially when they
+    # are file-based).  'key' in the secret named 'secretName' will be used
+    # as trustsstore file.  Only PKCS12 file format is supported.
+    trustStore:
+      secretName:
+      key:
+    # Plain text password to access the truststore stored in 'key' in the
+    # Secret named 'secretName'
+    trustStorePassword:
+      secretName:
+      key:
+    # Replacement for keyStore/keyStorePassword/trustStore/trustStorePassword
+    # If needed by clog lib, it can be converted in a helm hook to keyStore/trustStore
+    tls:
+      secretRef:
+        # Secret name, pointing to a Secret object.
+        name:
+        # Secret key names mapping.
+        # If the provided Secret is of type `kubernetes.io/tls', then key names do not need to be changed.
+        keyNames:
+          # Name of Secret key, which contains CA certificate
+          caCrt:
+          # Name of Secret key, which contains TLS key
+          tlsKey:
+          # Name of Secret key, which contains TLS certificate
+          tlsCrt:
+
+###### site-specific params #####
+## auth is used to configure SSL or Zero Trust authentication for all metrics
+## containers. Metrics authentication should only be enabled if either:
+## - scrape requests are required to be secure (using TLS), or
+## - scrape requests are required to be zero trust (using bearer token).
+auth:
+  enabled:
+
+  # If prometheus is configured to use TLS for scrape, then the certificates
+  # used to authenticate the scrape request must be provided here.
+  # The secret resource containing all the certificate files must be
+  # pre-populated before CMDB deployment.
+  tls:
+    secretRef:
+      # Secret name, pointing to a Secret object (either generic or of type
+      # kubernetes.io/tls.  If empty, then TLS will not be enabled.
+      name:
+      # Secret key names mapping.
+      # If the provided secret is of type "kubernetes.io/tls", then key names
+      # must not be changed.
+      keyNames:
+        # Name of Secret key, which contains CA certificate
+        caCrt: "ca.crt"
+        # Name of Secret key, which contains TLS key
+        tlsKey: "tls.key"
+        # Name of Secret key, which contains TLS certificate
+        tlsCrt: "tls.crt"
+
+  # For Zero Trust Authentication, the OIDC secret reference to access
+  # the authentication server.  The OIDC server should contain the following:
+  #
+  #   oidcDiscoveryEndpoint = [required] The OIDC discovery entrypoint for
+  #                           the authentication server (must be https).
+  #   clientId              = The client_id to use to authenticate with the
+  #                           authentication server (required for opaque
+  #                           bearer token authentication).
+  #   clientSecret          = The client_secret to use to authenticate with
+  #                           the authentication server (required to be
+  #                           present with clientId).
+  #   audience              = For future usage.
+  #
+  secretRef:
+    name:
+
+  # skip certificate verification (insecure mode)
+  skipVerifyInsecure: true
+
+###### site-specific params #####
+## clusterDomain is the domain (tail end of the hostname) used in raw k8s
+## installs (eg. myrel-cmdb-mysql.default.svc.cluster.local)
+clusterDomain: "cluster.local"
+
+## cluster_name is used to specify the name of the cluster.
+## If cluster_name not specified, the release name will be used
+#cluster_name: "my-cluster"
+## cluster_type is the type of cluster (topology) being installed
+## must be one of master-slave, master-master, galera, simplex
+cluster_type: "master-slave"
+
+## imageFlavor is the default image flavor (rocky8/centos7) to use for all
+## container images.  This flavor determine the elversion to be appended to
+## all image tags to pull the desired flavor of the container image.
+## Defaults to rocky8.
+## Each workload can override this global value by adding image.flavor to
+## the image specification.
+## Can be set to 'custom' to allow for user-defined image tags w/o flavor.
+imageFlavor: rocky8
+
+## imageFlavorPolicy is the policy which container image flavor should be based
+## Options are: (Strict/BestMatch), with default 'BestMatch'
+## Strict: the requested imageFlavor must match one of the container image flavors
+## BestMatch:
+##   - The OS flavor of the selected imageFlavor must match the OS flavor of the requested
+##     imageFlavor or be distroless
+##   - The runtime flavor of the selected imageFlavor must match all the requested runtime
+##     flavors (only if the flavor is supported by a container image)
+##   - The version of the requested runtime flavor must match the version or base version of
+##     the runtime flavor in the selected image flavor
+##     (Example: python3.11 matches requested python3)
+imageFlavorPolicy: BestMatch
+
+## Used for CMDB container images, takes precedence over global.registry.
+internalRegistry:
+_internalRegistry: "csf-docker-delivered.repo.cci.nokia.net"
+
+## max_node_wait is the maximum time (in minutes) to wait for other pods to
+## become available after a pod restart
+max_node_wait: 15
+## quorum_node_wait is the maximum time (in seconds) a pod should wait for
+## additional pods after quorum reached.  To continue immediately after
+## reaching quorum, set to 0.
+quorum_node_wait: 120
+## deployRequires is the number of pods required to consider deployment
+## successful.  Can be one of:
+##   all    - all pods must come up to consider deployment successful
+##   quorum - a quorum (50% + 1) of pods must com up
+##   any    - at least one pod must be available (use with caution)
+deployRequires: all
+
+## nodeAntiAffinity Speficies the type of anti-affinity for scheduling pods
+## to nodes.  If hard, pods cannot be scheduled together on nodes, if soft,
+## best-effort to avoid sharing nodes will be done
+nodeAntiAffinity: hard
+
+## displayPassords specifies if passwords should be displayed by the helm
+## NOTES - which are displayed when helm install completes.
+## displayPasswords is one of never, if-generated, always
+displayPasswords: "if-generated"
+
+## partOf specifies the parent chart that this CMDB helm chart is a part of
+## if CMDB chart is being used in an umbrella chart
+partOf:
+## managedBy specifies the name being used to manage the operation of CMDB.
+managedBy:
+
+## Values on how to expose services
+services:
+  ##
+  ## MySQL service exposes the mysql database service
+  ##
+  mysql:
+    ## name of mysql service.  If not set, will be <release>-mysql
+    #name:
+    ## By default, set to ClusterIP to expose database only within cluster
+    ## Set as NodePort to expose database externally
+    type: ClusterIP
+
+    ## Service port(s) to be configured for MaxScale Service/Listeners.
+    ##
+    ## For each configured service enabled, by default tlsPort or nonTlsPort
+    ## will be configured to use the default service port (listed below),
+    ## based on mariadb TLS enabled. If mariadb TLS is enabled, additionally
+    ## nonTlsPort can be set to enable simultaneous non-TLS access on a
+    ## different port. Leave blank to default port handling.
+    ##
+    ## If type is NodePort, optionally set a specific nodePort port to use
+    ## instead of having one assigned by the infrastructure.  Ignored if
+    ## not using NodePort, random assigned if commented out.
+    ## NOTE:  If assigning nodePort here, you must ensure that the port
+    ##        is not currently assigned in the assignment range.
+    ##
+    ## MaxScale Read-Write-Split Service
+    ## when enabled, port defaults to 3306, TLS based on mariadb.tls.enabled.
+    rwSplit:
+      enabled: true
+      tlsPort:
+      nonTlsPort:
+      #nodePort:
+    ## MaxScale Read-Only Service:
+    ## when enabled, port defaults to 3307, TLS based on mariadb.tls.enabled.
+    readOnly:
+      enabled: false
+      tlsPort:
+      #nodePort:
+    ## MaxScale Master-Only Service:
+    ## when enabled, port defaults to 3308, TLS based on mariadb.tls.enabled.
+    masterOnly:
+      enabled: false
+      tlsPort:
+      nonTlsPort:
+      #nodePort:
+
+    ## For non-Maxscale (ie. simplex):
+    ## If type set to NodePort, optionally set a specific nodePort port
+    ## to use instead of having one assigned by the infrastructure.
+    ## Ignored if not using NodePort, random assigned if commented out.
+    ## NOTE:  If assigning nodePort here, you must ensure that the port
+    ##        is not currently assigned in the assignment range.
+    #nodePort:
+
+    ## Enable service CluterIP session affinity and timeout (seconds)
+    ## Defaults to disabled and timeout defaults to 10800 (k8s defined)
+    sessionAffinity:
+      enabled: false
+      #timeout: 60
+
+    ## Configure dual-stack for the mysql service, if not specified,
+    ## defaults to global settings.
+    ipFamilyPolicy: ""
+    ipFamilies: []
+
+  ##
+  ## Mariadb exposes a per-pod service for mariadb pods.
+  ##
+  mariadb:
+    ## Istio per-pod service name.  If not set, will be <release>-mariadb-<N>
+    #name:
+
+    ## Configure dual-stack for the mariadb per-pod service, if not specified,
+    ## defaults to global settings.
+    ipFamilyPolicy: ""
+    ipFamilies: []
+
+    ## mariadb-exporter metrics config (used if mariadb.metrics is enabled)
+    exporter:
+      ## name of mariadb metrics exporter service.  If not set, will be
+      ## <release>-mariadb-metrics
+      #name:
+      ## name of the mariadb metrics headless exporter service (if one is
+      ## required to be created to scrape metrics in an istio environment).
+      ## If not set and is required to be created, will be:
+      ## <release>-mariadb-metrics-headless
+      #headless:
+      #  name:
+      ## mariadb-exporter metrics port
+      port: 9104
+
+      ## Configure dual-stack for the mariadb metrics service, if not
+      ## specified defaults to global settings
+      ipFamilyPolicy: ""
+      ipFamilies: []
+
+  ##
+  ## Maxscale exposes the administrative REST API interface of Maxscale
+  ## (only if using MaxScale)
+  ## If using geo-redundancy, some form of exposure must be used (e.g.,
+  ## IngressConfigMap, or manual CITM TCP config, etc.).  See type:
+  ## description below.
+  ##
+  maxscale:
+    ## name of service.  If not set, will be <release>-maxscale
+    #name:
+
+    ## Type of method to expose this service
+    ##
+    ## This service can be exposed using a common Kubernetes Service object,
+    ## or through various platform-dependent service exposure mechanisms.
+    ##
+    ## The configurable types allowed are as follows:
+    ##   ClusterIP        - Use a standard K8s ClusterIP Service
+    ##                      (may require additional external steps to expose)
+    ##   NodePort         - Use a standard K8s NodePort Service
+    ##   IngressConfigMap - Creates a ConfigMap for dynamic configuration by a
+    ##                      compatible ingress controller (CITM). Also creates
+    ##                      the necessary underlying K8s ClusterIP Service.
+    ##                      NOTE: only supports ConfigMap creation in the same
+    ##                            namespace as the cmdb Release.
+    ##   TransportIngress - Use a CSF TransportIngress CR for dynamic
+    ##                      configuration by a compatible controller.  Also
+    ##                      creates the necessary underlying K8s ClusterIP
+    ##                      Service.
+    ##                      NOTE: The TransportIngress CRD must be defined
+    ##                      prior to installation of the cmdb Release or the
+    ##                      installation will fail.
+    ##
+    ##   NOTE: If using CITM for ingress controller, the default CITM
+    ##         configuration requires modification to the existing ConfigMap
+    ##         in the namespace of the citm-ingress Release.  See the CMDB
+    ##         OAM Guide, for more information on how to configure CITM and/or
+    ##         other methods of exposure.
+    type: ClusterIP
+
+    ## If type set to NodePort, optionally set a specific nodePort port
+    ## to use instead of having one assigned by the infrastructure.
+    ## Ignored if not using NodePort, random assigned if commented out.
+    ## NOTE:  If assigning nodePort here, you must ensure that the port
+    ##        is not currently assigned in the assignment range.
+    #nodePort:
+
+    ## Service port
+    port: 8989
+
+    ## If type is IngressConfigMap, add CITM ConfigMap configuration here.
+    ##
+    ##   configMapName - [required] The ConfigMap name prefix must match the
+    ##                   expected pattern of CITM, which is by default the
+    ##                   fullname of the citm-ingress Release plus '-tcp'.
+    ##                   For example, if citm-ingress was deployed with a
+    ##                   release name of foo, by default  this should be set
+    ##                   to foo-citm-ingress-tcp (<release>-<chart>-tcp).
+    ##                   This would result in a configmap named:
+    ##                   foo-citm-ingress-tcp-<cmdb_fullname>-<services.maxscale.name>
+    ##   port          - [required] The port on which to expose the Maxscale
+    ##                   service via CITM ingress on the Edge Node(s).
+    ##   keywords      - The keywords to add for TCP ingress configuration.
+    ##                   For example, to add support for TLS termination at the
+    ##                   stream level, set keywords to "STREAM-SSL"
+    ##
+    #citmIngress:
+    #  configMapName:
+    #  port:
+    #  keywords:
+
+    ## If type is TransportIngress, add transport ingress configuration here.
+    ##
+    ##   name          - [optional] If not set, will be same as service name.
+    ##   port          - [required] The port on which to expose the Maxscale
+    ##                   service via TransportIngress.  Must be within the
+    ##                   port range allocated to the namespace.
+    #csfTransportIngress:
+    #  name:
+    #  port:
+
+    ## Configure dual-stack for the maxscale service, if not specified,
+    ## defaults to global settings.
+    ipFamilyPolicy: ""
+    ipFamilies: []
+
+    ## maxscale-exporter metrics Service (used if maxscale.metrics is enabled)
+    exporter:
+      ## name of maxscale metrics exporter service.  If not set, will be
+      ## <release>-maxscale-metrics
+      #name:
+      ## name of the maxscale metrics headless exporter service (if one is
+      ## required to be created to scrape metrics in an istio environment).
+      ## If not set and is required to be created, will be:
+      ## <release>-maxscale-metrics-headless
+      #headless:
+      #  name:
+      ## maxscale-exporter metrics port
+      port: 9195
+
+      ## Configure dual-stack for the maxscale metrics service, if not
+      ## specified, defaults to global settings.
+      ipFamilyPolicy: ""
+      ipFamilies: []
+
+  ##
+  ## Admin exposes the admin container DB (redis.io) interface to all
+  ## cluster pods.  (only if not Simplex)
+  ##
+  admin:
+    ## name of admin service.  If not set, will be <release>-admin
+    #name:
+    type: ClusterIP
+
+    ## Configure dual-stack for the admin service, if not specified,
+    ## defaults to global settings.
+    ipFamilyPolicy: ""
+    ipFamilies: []
+
+  ##
+  ## MariaDB Master exposes the pod that is master
+  ## (only if using MaxScale and geo_redundancy.enabled)
+  ##
+  mariadb_master:
+    ## name of service.  If not set, will be <release>-mariadb-master
+    #name:
+
+    ## Type of method to expose this service
+    ## See: services.maxscale.type description (above)
+    type: NodePort
+
+    ## Service port
+    port: 3306
+
+    ## See: services.maxscale.nodePort description (above)
+    #nodePort:
+
+    ## If type is IngressConfigMap, add CITM ConfigMap configuration here.
+    ## See: services.maxscale.citmIngress description (above)
+    #citmIngress:
+    #  configMapName:
+    #  port:
+    #  keywords:
+
+    ## If type is TransportIngress, add transport ingress configuration here.
+    ## See: services.maxscale.csfTransportIngress (above)
+    #csfTransportIngress:
+    #  name:
+    #  port:
+
+    ## If type is IngressConfigMap, required.
+    ## See: services.maxscale.citmIngressTcpConfigMapName description (above)
+    #citmIngressTcpConfigMapName:
+
+    ## If type is IngressConfigMap, required.
+    ## See: services.maxscale.citmIngressTcpPort description (above)
+    #citmIngressTcpPort:
+
+    ## If type is TransportIngress, optional.
+    ## See: services.maxscale.csfTransportIngressName description (above)
+    #csfTransportIngressName:
+
+    ## If type is TransportIngress, requied.
+    ## See: services.maxscale.csfTransportIngressPort description (above)
+    #csfTransportIngressPort:
+
+    ## Configure dual-stack for the mariadb-master service, if not specified,
+    ## defaults to global settings.
+    ipFamilyPolicy: ""
+    ipFamilies: []
+
+## MariaDB Client Certificate
+## See mariadb.certificate for MariaDB Server Certificate configuration
+## And the description of the supported interfaces and secrets for all certs
+## The following two parameters manage certificate alarms and only applicable
+## to client certificate:
+##    - polling: This parameter defines the number of seconds the certificate
+##               is checked by the mariadb monitor. The mariadb monitor is
+##               scheduled to run every 10 seconds, which is the smallest this
+##               param can be. The default of 3600 seconds (once an hour) is a
+##               reasonable rate to check certificates.
+##    - threshold: If greater than zero, a Minor alarm is generated if the
+##                 certificate is about to expire in the specified number of
+##                 days (default 7). A Major alarm is generated when the
+##                 certificate is expired. The zero value disables certificate
+##                 alarming.
+##
+clients:
+  mariadb:
+    tls:
+      ## MariaDB Client Certificate
+      ###### site-specific params #####
+      secretRef:
+        # Secret name, pointing to a Secret object of type `kubernetes.io/tls`.
+        # If empty then automatically generated secret with certificate will
+        # be used
+        name:
+        # Secret key names mapping.
+        # If the provided Secret is of type `kubernetes.io/tls', then key names
+        # do not need to be changed.
+        keyNames:
+          # Name of Secret key, which contains CA certificate
+          caCrt: "ca.crt"
+          # Name of Secret key, which contains TLS key
+          tlsKey: "tls.key"
+          # Name of Secret key, which contains TLS certificate
+          tlsCrt: "tls.crt"
+        threshold: 7
+        polling: 3600
+
+    ## ----------------------------------
+    ## Client CMGR Certificate Parameters
+    ## ----------------------------------
+    ## Defaults:
+    ## - certificate.issuerRef.name            :: ncms-ca-issuer
+    ## - certificate.issuerRef.kind            :: ClusterIssuer
+    ## - certificate.issuerRef.group           :: cert-manager.io
+    ## - certificate.duration                  :: 8760h
+    ## - certificate.renewBefore               :: 360h
+    ## - certificate.commonName                :: ((cmdb.fullname))-mariadb
+    ## - certificate.privateKey.encoding       :: PKCS1
+    ## - certificate.privateKey.rotationPolicy :: Never
+    ## Note: cert-manager has to be in release 1.6.1 or newer to support
+    ## certificate chains.
+    certificate:
+      # Enable use of cert-manager managed certificate for the MariaDB
+      # client certificate
+      enabled: true
+      issuerRef:
+        # If the `Issuer` name is not specified, self-signed `Issuer`
+        # will be created automatically.
+        name:
+        kind:
+        group:
+      duration:
+      renewBefore:
+      # The use of the common name field has been deprecated since 2000.
+      # and is discouraged from being used. `dnsNames` are used instead.
+      commonName:
+      usages:
+      # At least one of a DNS Name, URI, or IP address is required.
+      dnsNames: []
+      ipAddresses: []
+      uris: []
+      privateKey:
+        algorithm:
+        encoding:
+        size:
+        # Rotation of a key pair, when certificate is refreshed is recommended
+        # from a security point of view default is "Never"
+        rotationPolicy:
+
+##
+## Values specific to the MariaDB (server)
+##
+mariadb:
+  image:
+    name: "cmdb/cmdb-mariadb"
+    tag: "6.2-2.6533"
+    pullPolicy: IfNotPresent
+    vaultInitRepo: fnms-init-container
+    vaultInitTag: nokia-1.0.5
+  accessRoleLabel: internal-access
+  fluentd_sidecar:
+    image:
+      name: "fnms-fluent"
+      tag: "nokia-3.1.5"
+      pullPolicy: IfNotPresent
+    securityContext:
+      runAsUser: 1000
+      runAsGroup: 1771
+
+  ## Pod imagePullSecrets override for mariadb pods
+  imagePullSecrets: []
+
+  ## Pod securityContext override for mariadb pods
+  ## Use disabled: true to disable the use of a pod-level security context
+  podSecurityContext: {}
+  ## Container securityContext override for mariadb container
+  ## Use disabled: true to disable the use of a container-level security context
+  containerSecurityContext: {}
+
+  # Refer HBP 2.13 [HBP_Helm_Annotations_2][HBP_Helm_Labels_6]
+  annotations: {}
+  labels: {}
+
+  ## The number of MariaDB pods to create
+  count: 3
+
+  ## Horizontal Pod Autoscaler (HPA) for mariadb pods.
+  ## Configures the auto-scale up/down of mariadb pods based on metrics.
+  ## The following are the options that can be set:
+  ##   enabled           - Enable/disable HPA for mariadb statefulset.
+  ##                       When enabled, mariadb.count is ignored.
+  ##   minReplicas       - Minimum number of pods HPA can scale down to
+  ##   maxReplicas       - Maximum number of pods HPA can scale up to
+  ##   predefinedMetrics - Pre-defined average pod cpu/memory utilization
+  ##   metrics           - List of metrics to be used for auto-scaling in
+  ##                       addition to pre-defined metrics (if enabled)
+  ##   behavior          - Behavior for scalling up/down pods when match metrics
+  ## Ref: https://kubernetes.io/docs/tasks/run-application/horizontal-pod-autoscale-walkthrough/
+  hpa:
+    # enabled value left empty intentionally, default value is false
+    enabled:
+    minReplicas: 3
+    maxReplicas: 9
+    # [HPA_Kubernetes_HPA_3] Pre-defined metrics can be defined by specifying
+    # a default average utilization of all pod containers for scaling up/down.
+    predefinedMetrics:
+      enabled: true
+      averageCPUThreshold: 80
+      averageMemoryThreshold: 80
+    # Metrics to be used for auto-scaling if more than pre-defined metrics
+    # are required. See the following reference for how to configure.
+    # Ref: https://kubernetes.io/docs/tasks/run-application/horizontal-pod-autoscale/#support-for-resource-metrics
+    metrics: []
+    # Behavior for auto-scaling up/down.  See the following reference for
+    # defaults configured by kubernetes and field descriptions and meaning.
+    # Ref: https://kubernetes.io/docs/tasks/run-application/horizontal-pod-autoscale/#configurable-scaling-behavior
+    # NOTE: Scaling up mariadb pods requires rebuild of the new pod(s) from
+    # an existing slave, therefore the scale-up period is 5 minutes to allow
+    # this to occur.
+    # IMPORTANT NOTE:  This assumes that the database is not too large to
+    # perform the rebuild operation in a timely manner.  Autoscaling will not
+    # work well with very large databases.
+    behavior:
+      scaleDown:
+        stabilizationWindowSeconds: 300
+        #selectPolicy: Max
+        # allow scale down of up to 2 pods in 30 second interval
+        policies:
+        - type: Pods
+          value: 2
+          periodSeconds: 30
+      scaleUp:
+        stabilizationWindowSeconds: 30
+        #selectPolicy: Max
+        # allow scale up of up to 2 pods in 300 second interval
+        policies:
+        - type: Pods
+          value: 2
+          periodSeconds: 300
+
+  ## Pod Discruption Budget (PDB) for mariadb pods
+  ## Defines limits to the the number of concurrent disruptions that the
+  ## mariadb database pods can experience.
+  ## The following are the options that can be set:
+  ##   enabled        - Enable/disable PDB for mariadb statefulset
+  ##   minAvailable   - The number of pods from that set that must still be
+  ##                    available after the eviction, even in the absence of
+  ##                    the evicted pod. minAvailable can be either an absolute
+  ##                    number or a percentage.
+  ##   maxUnavailable - The number of pods from that set that can be
+  ##                    unavailable after the eviction. It can be either an
+  ##                    absolute number or a percentage
+  ## Ref: https://kubernetes.io/docs/concepts/workloads/pods/disruptions/
+  ##      https://kubernetes.io/docs/tasks/run-application/configure-pdb/
+  pdb:
+    enabled: true
+    minAvailable: 50%
+    #maxUnavailable:
+
+  ## Perform automatic tc-heuristic-recover of the database on pod restarts.
+  ## Set to one of the following:
+  ##   rollback - perform auto rollback of uncommitted transactions
+  ##   commit   - perform auto commit of uncommitted transactions
+  ##   none     - disable automatic tc-hauristic-recover
+  ## Defaults to rollback for non-simplex deployments, none for simplex.
+  #heuristic_recover: rollback
+
+  ## Interval (in seconds) when clean-logs should be performed on Master to
+  ## cleanup binlogs that have been replicated to all slaves
+  ## NOTE:  Must quote integer if a large value to prevent scientific notation
+  ##        conversion
+  clean_log_interval: 3600
+
+  ## Additional command line arguments to mariadb mysqld daemon
+  ## ref: https://mariadb.com/kb/en/mysqld-options/
+  ## eg, to start the database with safe-user-create, uncomment the following:
+  #mysqldOpts: --safe-user-create=ON
+
+  ## A customized mysqld.conf to import
+  ## ref: https://mariadb.com/kb/en/server-system-variables/
+  ## You can set version here to fake the version so that version is not
+  ## leaked during connection (eg, version = 10.0.0-log)
+  mysqld_site_conf: |-
+    [mysqld]
+    userstat = on
+
+  ###### site-specific params #####
+  ## serverIdPrefix defines a standard prefix to use for assignment of server_id
+  ## for each local mariadb pod.  The server_id uniquely identifies the server
+  ## instance in the community of replication partners, which includes both
+  ## local and geo-redundant remote data center servers.
+  ## IMPORTANT: The serverIdPrefix MUST be unique to each data center.
+  ## There are two ways a server_id can be assigned:
+  ##  1. If serverIdPrefix is defined, it will be used as a prefix with the
+  ##     3 digit pod number as suffix.
+  ##  2. If serverIdPrefix is not defined, as random unsigned integer id
+  ##     will be assigned.
+  ## Where it becomes important to use serverIdPrefix is when a multi-datacenter
+  ## deployment is configured and one datacenter is reinstalled due to a
+  ## disaster recovery scenario.  This will ensure that the datacenter is
+  ## re-installed with the same server_id assignments as the original install.
+  ## The range for assignment is 1 < serverIdPrefix <= 4294966 and the value
+  ## should be quoted to avoid conversion to scientific notation.
+  #serverIdPrefix:
+
+  ## Enable/disable server audit logging.
+  ## If enabled, set events which will be logged.
+  ## ref: https://mariadb.com/kb/en/library/mariadb-audit-plugin-log-settings/
+  audit_logging:
+    enabled: true
+    events: "CONNECT,QUERY_DCL,QUERY_DDL"
+
+  ## Data in Flight TLS/SSL Encryption
+  ## Use TLS for data in flight to/from client
+  ## Also use TLS/SSL for internal replication traffic
+  ## Defaults to true
+  tls:
+    enabled:
+
+  ## Two interfaces are supported as specified by the tls.secretRef.name
+  ## value, which must be one of these values (details follow):
+  ##   - none (or empty) = Automatically generated certificates (by cmgr)
+  ##                       if certManager.enabled is true
+  ##                       OR
+  ##                       No certificates
+  ##   - <secret>        = User supplied certificates in the specified <secret>
+  ##
+  ## NOTE: These interfaces are valid only when mariadb.tls.enabled is set.
+  ##
+  ## 1. No certificates
+  ##    P/V:   tls.secretRef.name: none (or empty)
+  ##    a) Automatically generated certificates
+  ##       Descr: This interface creates two kubectl secret objects with the
+  ##              following names:
+  ##              - {{cmdb.fullname}}-client-cert
+  ##              - {{cmdb.fullname}}-server-cert
+  ##              and will automatically generate the 6 files as specified by
+  ##              the following 3 parameters.
+  ##
+  ##       Notes:
+  ##         - Certificates are stored in the /etc/my.cnf.d/ssl directory.
+  ##    b) No certificates
+  ##       Descr: No certificates are configured and only TLS (aka SSL) ciphers
+  ##              will be used.
+  ##
+  ## 2. Manually supplied certificates
+  ##    P/V:   tls.secretRef.name : <secret>
+  ##    Descr: The <secret> value is a kubectl secret object that contains
+  ##           six files (3 for mariadb server and 3 for mariadb client)
+  ##           The following 3 keyNames parameters: mariadb.tls.secretRef.keyNames.caCrt.
+  ##           mariadb.tls.secretRef.keyNames.tlsKey, and mariadb.tls.secretRef.keyNames.tlsCrt
+  ##           are used for the 3 mariadb server files. Three similar parameters are used in the
+  ##           clients.mariadb.tls section: clients.mariadb.tls.secretRef.keyNames.tlsCrt, etc.
+  ##
+  ##           - caCrt
+  ##           - tlsKey
+  ##           - tlsCrt
+  ##    Notes:
+  ##      - The secret resource containing all the certificate files must be
+  ##        pre-populated before CMDB deployment.
+  ##      - Certificates are stored in the /etc/my.cnf.d/ssl directory.
+  ##
+  ###### site-specific params #####
+  ##
+    secretRef:
+      # Secret name, pointing to a Secret object of type `kubernetes.io/tls`.
+      # If empty then automatically generated secret with certificate will be used
+      name:
+      # Secret key names mapping.
+      # If the provided Secret is of type `kubernetes.io/tls', then key names
+      # do not need to be changed.
+      keyNames:
+        # Name of Secret key, which contains CA certificate
+        caCrt: "ca.crt"
+        # Name of Secret key, which contains TLS key
+        tlsKey: "tls.key"
+        # Name of Secret key, which contains TLS certificate
+        tlsCrt: "tls.crt"
+
+  ## Refer to the clients.mariadb.certificate for parameter descriptions
+  certificate:
+    # Enable use of cert-manager managed certificate for the MariaDB server
+    # certificate
+    enabled: true
+    issuerRef:
+      # If the `Issuer` name is not specified, self-signed `Issuer` will be
+      # created automatically.
+      name:
+      kind:
+      group:
+    duration:
+    renewBefore:
+    # The use of the common name field has been deprecated since 2000.
+    # and is discouraged from being used. `dnsNames` are used instead.
+    commonName:
+    usages:
+    # At least one of a DNS Name, URI, or IP address is required.
+    dnsNames: []
+    ipAddresses: []
+    uris: []
+    privateKey:
+      algorithm:
+      encoding:
+      size:
+      # Rotation of a key pair, when certificate is refreshed is recommended
+      # from a security point of view
+      rotationPolicy:
+
+  ## Data at Rest Encryption (DARE)
+  ##
+  ## - secret     = this is a kube secret that contains objects that are
+  ##                identified by the keyFile and keyFileKey parameters.
+  ## - keyFile    = (required) this is the name of the key-file in <secret> used
+  ##                to encrypt/decrypt the database. By default, this file is
+  ##                plain-text. The installer may encrypt this file - in this
+  ##                case the keyFileKey param must be specified.
+  ## - keyFileKey = (optional) this is the name of the file in <secret> to
+  ##                decrypt "keyFile". This is required only if the "keyFile"
+  ##                is encrypted. Use the following command to encrypt "keyFile"
+  ##                (eg: filename.plain -> filename.enc):
+  ##                # openssl enc -aes-256-cbc -md sha1 -pass file:<keyFileKey>
+  ##                       -in ./filename.plain -out ./filename.enc
+  ## - keyFileId  = (optional) this specifies a particular key in "keyFile".
+  ##                If not present, then assume keyid "1".
+  ##
+  ###### site-specific params #####
+  ##
+  encryption:
+    enabled: false
+    secret:
+    keyFile:
+    keyFileKey:
+    keyFileId:
+
+  ## List of databases to be created
+  #databases:
+  #  - name: mydb
+  #    character_set: keybcs2
+  #    collate: keybcs2_bin
+  #  - name: anotherdb
+
+  ## List of users to be created
+  ## Supply credentialName identifying secret with info, or supply user
+  ## info directly here.
+  #users:
+  #  - credentialName:
+  #    name: test
+  #    # base64 encoded
+  #    password:
+  #    host: "%"
+  #    privilege: ALL
+  #    object: "mydb.*"
+  #    #if use_tls set, require SSL/X509 or not
+  #    requires: ""
+  #    with: "GRANT OPTION"
+
+  ## Enable persistence using Persistent Volume Claims (PVC)
+  ## ref: http://kubernetes.io/docs/user-guide/persistent-volumes/
+  ##
+  ## The following PVCs can be declared in addition to the primary PVC
+  ## which represents the PVC which will house the database itself:
+  ##
+  ## - backup   = This PVC used for mariadb database backup/restore.
+  ##              The backup PVC should be enabled when CBUR is enabled to
+  ##              perform backup/restore operations.
+  ## - temp     = This PVC is used for mariadb temp file system space and will
+  ##              automatically configure the mariadb tmpdir config variable
+  ##              to point to this PVC.  This is needed when applications
+  ##              perform certain actions (eg, complicated ALTER table)
+  ##              which require a large amount of temp file system space.
+  ## - shared   = A shared PVC can be defined which will be mounted to *every*
+  ##              mariadb pod.  This must be an existing PVC with the given
+  ##              name and will be mounted at the dir location within the pod.
+  ##              WARNING: Use at your own risk.
+  persistence:
+    size: 20Gi
+    storageClass: ""
+    accessMode: ReadWriteOnce
+    resourcePolicy: delete
+    preserve_pvc: false
+    # A major alarm will be fired if the data pvc usage is over the near full percentage
+    nearFullPercent: 85
+    # A critical alarm will be fired if the data pvc usage is over full percentage
+    fullPercent: 95
+    ## The backup storage size should be twice of data storage size in site deployment.
+    backup:
+      enabled: true
+      size: 20Gi
+      storageClass: ""
+      accessMode: ReadWriteOnce
+      dir: /mariadb/backup
+    temp:
+      enabled: false
+      size: 5Gi
+      storageClass: ""
+      accessMode: ReadWriteOnce
+      dir: /mariadb/tmp
+    ##
+    ## WARNING: When using shared PVC with multiple mariadb pods, make sure
+    ##          you are using a storage type that allows for multiple pod
+    ##          mounts.  If not, the shorage will be successfully mounted on
+    ##          the first pod, but all other pods will fail to come up.
+    ##          Use at your own risk.
+    shared:
+      enabled: false
+      #name: "shared-storage"
+      #dir: /mariadb/shared
+
+  ## ConfigMap to be mounted to /import/initdb.d on mariadb container, allowing
+  ## for import of user-defined shell scripts and SQL to be injected on initial
+  ## database creation.  Must be an existing configmap in the deployment
+  ## namespace containing the shell scripts and/or SQL to be injected.
+  #initdbConfigMap:
+
+  ## Resource QOS (per MariaDB container)
+  resources:
+    requests:
+      memory: 256Mi
+      cpu: 250m
+      ephemeral-storage: 1Gi
+    limits:
+      memory: 768Mi
+      # Used when enableDefaultCpuLimits is true
+      _cpu: 1
+      # Used regardless of enableDefaultCpuLimits
+      cpu:
+      ephemeral-storage: 1Gi
+
+  ## Readiness/Liveness Probe Configuration (MariaDB container)
+  ## ref: https://kubernetes.io/docs/tasks/configure-pod-container/configure-liveness-readiness-startup-probes/#configure-probes
+  ##
+  startupProbe:
+    initialDelaySeconds: 1
+    periodSeconds: 5
+    timeoutSeconds: 1
+    failureThreshold: 60
+    successThreshold: 1
+  livenessProbe:
+    initialDelaySeconds: 120
+    periodSeconds: 10
+    timeoutSeconds: 5
+    failureThreshold: 6
+    successThreshold: 1
+  readinessProbe:
+    initialDelaySeconds: 10
+    periodSeconds: 15
+    timeoutSeconds: 1
+    failureThreshold: 3
+    successThreshold: 1
+
+  ## Termination grace period (in seconds).  Defaults to 120 seconds.
+  ## Must provide enough time for master_switchover or graceful termination
+  #terminationGracePeriodSeconds: 120
+
+  ## Node tolerations for mariadb scheduling to nodes with taints
+  ## Ref: https://kubernetes.io/docs/concepts/configuration/taint-and-toleration/
+  tolerations: []
+  ## Node labels for mariadb pod assignment
+  ## Ref: https://kubernetes.io/docs/concepts/configuration/assign-pod-node/#nodeselector
+  nodeSelector: {}
+  ## topologySpreadConstraints allow control of how Pods are spread across
+  ## cluster among failure-domains such as regions, zones, nodes, and other
+  ## user-defined topology domains. This can help to achieve high availability
+  ## as well as efficient resource utilization.
+  ## The following attributes can be defined here (additonal attributes are
+  ## available as documented in the reference):
+  ##   maxSkew           - Describes the degree to which Pods may be unevenly
+  ##                       distributed.  If must be greater than zero.
+  ##   topologyKey       - The key of node labels.
+  ##   whenUnsatisfiable - [optional] Indicates how to deal with a Pod if it
+  ##                       doesn't satisfy the spread constraint.
+  ##                       Defaults to DoNotSchedule.
+  ##   autoGenerateLabelSelector - [HBP_Kubernetes_PodTopology_2]
+  ##                       Auto-generate the labelSelector attribute to
+  ##                       correctly select the mariadb pods if not explicitly
+  ##                       defined here.
+  ## Ref: https://kubernetes.io/docs/concepts/workloads/pods/pod-topology-spread-constraints/
+  ##
+  ## Suggested values if set for mariadb pods:
+  ## topologySpreadConstraints:
+  ##   - maxSkew: 1
+  ##     topologyKey: <host-specific>
+  ##     whenUnsatisfiable: ScheduleAnyway
+  ##     autoGenerateLabelSelector: true
+  topologySpreadConstraints: []
+
+  ## BCMT nodeAffinity rules (mutually-exclusive with nodeSelector above):
+  ## Default to not enabled.
+  nodeAffinity:
+    enabled: false
+    key: is_worker
+    value: true
+
+  ## Mariadb podAntiAffinity constrains which nodes the pods can be scheduled based on
+  ## the labels of the pods already running on that node.
+  ## Refer https://kubernetes.io/docs/reference/generated/kubernetes-api/v1.25/#podantiaffinity-v1-core
+  podAntiAffinity:
+    zone:
+      ## Possible options: soft/hard/none
+      type:
+      topologyKey: "topology.kubernetes.io/zone"
+    node:
+      ## Possible options: soft/hard/none.
+      ## Default is same as "nodeAffinity" to be backward compatible.
+      type:
+      topologyKey: "kubernetes.io/hostname"
+    ##customRules:
+      ##  type: soft/hard (by default soft)
+      ##  topologyKey:
+      ##  weight: 100 (by default 100)
+      ##  autoGenerateLabelSelector: true
+      ##  labelSelector: <pod labels> (none by default)
+      ##  namespaceSelector: <namespace labels> (none by default)
+      ##  namespaces:
+
+
+  ## Set MariaDB pod priority and preemption (defaults to not specified)
+  ## Ref: https://kubernetes.io/docs/concepts/configuration/pod-priority-preemption/
+  #priorityClassName:
+
+  ## initContainers:
+  initContainers:
+    resources:
+      limits:
+        memory: 64Mi
+        # Used when enableDefaultCpuLimits is true
+        _cpu: 100m
+        # Used regardless of enableDefaultCpuLimits
+        cpu:
+        ephemeral-storage: 64Mi
+      requests:
+        cpu: 100m
+        memory: 64Mi
+        ephemeral-storage: 64Mi
+
+  ## Metrics Scrapper
+  metrics:
+    enabled: false
+
+    image:
+      name: "cmdb/cmdb-mysqld-exporter"
+      tag: "0.15.1-2.292"
+      pullPolicy: IfNotPresent
+
+    ## Container securityContext override for mariadb metrics container
+    ## Use disabled: true to disable the use of a container-level security context
+    ## runAsUser must match mariadb container for metrics to work
+    containerSecurityContext: {}
+
+    ## Note that prometheus.io/port is specified in mariadb-metrics-service
+    annotations:
+      prometheus.io/scrape: "true"
+
+    ## Resource QOS (per MariaDB-Metrics container)
+    resources:
+      requests:
+        memory: 256Mi
+        cpu: 250m
+        ephemeral-storage: 128Mi
+      limits:
+        memory: 256Mi
+        # Used when enableDefaultCpuLimits is true
+        _cpu: 250m
+        # Used regardless of enableDefaultCpuLimits
+        cpu:
+        ephemeral-storage: 128Mi
+
+  ## Zero Trust Proxy
+  auth:
+    enabled:
+
+    image:
+      name: "osdb/csfdb-zt-proxy"
+      tag: "1.1-4.40"
+      flavor: rocky8
+      pullPolicy: IfNotPresent
+
+    ## Container securityContext override for mariadb auth container
+    ## Use disabled: true to disable the use of a container-level security context
+    ## runAsUser must match mariadb container for metrics to work
+    containerSecurityContext: {}
+
+    ## Resource QOS (per MariaDB-Auth container)
+    resources:
+      requests:
+        memory: 256Mi
+        cpu: 250m
+        ephemeral-storage: 128Mi
+      limits:
+        memory: 256Mi
+        # Used when enableDefaultCpuLimits is true
+        _cpu: 250m
+        # Used regardless of enableDefaultCpuLimits
+        cpu:
+        ephemeral-storage: 128Mi
+
+  ## Grafana dashboard
+  dashboard:
+    enabled: false
+
+  ## Backup/restore options
+  backupRestore:
+    ## The option specifies the number of threads(default 2) to use to copy multiple data
+    ## files concurrently when creating a backup.
+    ## The option can be used with --copy-back option to copy the user data files
+    ## in parallel (redo logs and system tablespaces are copied in the main thread).
+    ##
+    parallel: 2
+
+    ## This option affects how much memory is allocated for preparing a backup
+    ## with mariabackup --prepare during restore.
+    ## Its purpose is similar to innodb_buffer_pool_size.  The default value is 512MB,
+    ## and if you have enough available memory, 1GB
+    ## to 2GB is a good recommended value.Multiples are supported providing the
+    ## unit (e.g. 1MB, 1M, 1GB, 1G).
+    ##
+    useMemory: 512MB
+
+    ## Interval(in days) to allow for full backup since the previous full backup is completed.
+    ## If 0, perform full backup all the time without any incremental backup.
+    ##
+    fullBackupInterval: 1
+
+    # Preserve replicated tables during restore. Used for restore between datacenters.
+    preserve: false
+
+  ## unifiedLogging is used to configure pod logging for generation of log
+  ## messages to a syslog server.
+  ## This is for mariadb workload level configuration.
+  ##
+  ## Used for generating mariadb logging configmap name
+  unifiedLogging:
+    ## map of logging extension to add to each log message
+    extension: {}
+
+    # Allowed values are: "OFF", "FATAL", "ERROR", "WARN", "INFO", "DEBUG", "TRACE", "ALL"
+    logLevel:
+
+    ## Syslog logging parameters
+    syslog:
+      # enable syslog logging (disabled by default)
+      enabled:
+      # Defines which facility will be used for sending the log message.
+      # This is a required option, otherwise the appender will be invalid.
+      facility:
+      # Sets the appender target's host. (Domain name or IP address)
+      host:
+      # Sets the appender target's port.
+      port:
+      # Defines which socket protocol is used for sending the log into the
+      # target host.  Can be either UDP, TCP or SSL.  Defaults to UDP.
+      protocol:
+      # SSL handshake/connection timeout (milliseconds, default 1000)
+      timeout:
+      # SSL close request type (GNUTLS_SHUT_RDWR (default), GNUTLS_SHUT_WR)
+      # Ref: https://gnutls.org/manual/gnutls.html
+      closeReqType:
+      rfc:
+        enabled:
+        appName:
+        procId:
+        msgId:
+        version:
+      # The keystore is meant to contain your private keys and certificates
+      # and determines which authentication credentials to send to the remote
+      # host.  'key' in the Secret named 'secretName' will be used as keystore
+      # file. Only PKCS12 file format is supported.
+      keyStore:
+        secretName:
+        key:
+      # Plain text password to access the keystore stored in 'key' in the
+      # Secret named 'secretName'
+      keyStorePassword:
+        secretName:
+        key:
+      # The trust store is meant to contain the CA certificates you are willing
+      # to trust when a remote party presents its certificate. Determines whether
+      # the remote authentication credentials (and thus the connection) should be
+      # trusted. In some cases, they can be one and the same store, although it
+      # is often better practice to use distinct stores (especially when they
+      # are file-based).  'key' in the secret named 'secretName' will be used
+      # as trustsstore file.  Only PKCS12 file format is supported.
+      trustStore:
+        secretName:
+        key:
+      # Plain text password to access the truststore stored in 'key' in the
+      # Secret named 'secretName'
+      trustStorePassword:
+        secretName:
+        key:
+      # Replacement for keyStore/keyStorePassword/trustStore/trustStorePassword
+      # If needed by clog lib, it can be converted in a helm hook to keyStore/trustStore
+      tls:
+        secretRef:
+          # Secret name, pointing to a Secret object.
+          name:
+          # Secret key names mapping.
+          # If the provided Secret is of type `kubernetes.io/tls', then key names do not need to be changed.
+          keyNames:
+            # Name of Secret key, which contains CA certificate
+            caCrt:
+            # Name of Secret key, which contains TLS key
+            tlsKey:
+            # Name of Secret key, which contains TLS certificate
+            tlsCrt:
+      ##
+      ## Certificate for mariadb workload level unifiedLogging
+      ## When using generated certificates via cert-manager,
+      ## the following are used to create the Certificate objects.
+      nameSuffix: mariadb-syslog
+      certificate:
+        enabled: true
+        ## Suffix used by common-lib for secretName of certs
+        nameSuffix:
+        issuerRef:
+          name:
+          kind:
+          group:
+        duration: 8760h # 1 year
+        renewBefore: 360h # 15 days
+        # Not needed in internall communication
+        subject:
+        # It has been deprecated since 2000 and is discouraged from being used. `dnsNames` are used instead.
+        commonName:
+        # If `usages` is not specified, the following will be used:
+        # - server auth
+        # - client auth
+        usages:
+        # If `dnsNames` is not specified then the following internal names will be used:
+        # - localhost
+        # - <service name>.<namespace>
+        # - <service name>.<namespace>.svc
+        # - <service name>.<namespace>.svc.<cluster domain>
+        # If ssl passthrough is used on the Ingress object,
+        # then dnsNames should be set to external DNS names.
+        dnsNames:
+        uris:
+        # If ipAddresses not specified then the following internal local IPs will be used:
+        # - "127.0.0.1"
+        # - "::1"
+        ipAddresses:
+        privateKey:
+          algorithm:
+          encoding:
+          size:
+          rotationPolicy: Always
+
+##
+## Values specific to the MaxScale (proxy)
+##
+maxscale:
+  image:
+    name: "cmdb/cmdb-maxscale"
+    tag: "6.2-2.6533"
+    pullPolicy: IfNotPresent
+    vaultInitRepo: fnms-init-container
+    vaultInitTag: nokia-1.0.5
+  accessRoleLabel: internal-access
+  fluentd_sidecar:
+    image:
+      name: "fnms-fluent"
+      tag: "nokia-3.1.5"
+      pullPolicy: IfNotPresent
+    securityContext:
+      runAsUser: 1000
+      runAsGroup: 1772
+
+  ## Pod imagePullSecrets override for maxscale pods
+  imagePullSecrets: []
+
+  ## Pod securityContext override for maxscale pods
+  ## Use disabled: true to disable the use of a pod-level security context
+  podSecurityContext: {}
+  ## Container securityContext override for maxscale container
+  ## Use disabled: true to disable the use of a container-level security context
+  containerSecurityContext: {}
+
+  # Refer HBP 2.13 [HBP_Helm_Annotations_2][HBP_Helm_Labels_6]
+  annotations: {}
+  labels: {}
+
+  ## The number of MaxScale pods
+  ## NOTE: when HPA enabled (next section), this value is ignored.
+  count: 2
+
+  ## Horizontal Pod Autoscaler (HPA) for maxscale pods.
+  ## Configures the auto-scale up/down of maxscale pods based on metrics.
+  ## The following are the options that can be set:
+  ##   enabled           - Enable/disable HPA for maxscale statefulset.
+  ##                       When enabled, maxscale.count is ignored.
+  ##   minReplicas       - Minimum number of pods HPA can scale down to
+  ##   maxReplicas       - Maximum number of pods HPA can scale up to
+  ##   predefinedMetrics - Pre-defined average pod cpu/memory utilization
+  ##   metrics           - List of metrics to be used for auto-scaling in
+  ##                       addition to pre-defined metrics (if enabled)
+  ##   behavior          - Behavior for scalling up/down pods when match metrics
+  ## Ref: https://kubernetes.io/docs/tasks/run-application/horizontal-pod-autoscale-walkthrough/
+  hpa:
+    # enabled value left empty intentionally, default value is false
+    enabled:
+    minReplicas: 2
+    maxReplicas: 3
+    # [HPA_Kubernetes_HPA_3] Pre-defined metrics can be defined by specifying
+    # a default average utilization of all pod containers for scaling up/down.
+    predefinedMetrics:
+      enabled: true
+      averageCPUThreshold: 80
+      averageMemoryThreshold: 80
+    # Metrics to be used for auto-scaling if more than pre-defined metrics
+    # are required. See the following reference for how to configure.
+    # Ref: https://kubernetes.io/docs/tasks/run-application/horizontal-pod-autoscale/#support-for-resource-metrics
+    metrics: []
+    # Behavior for auto-scaling up/down. See the following reference for
+    # defaults configured by kubernetes and field descriptions and meaning.
+    # Ref: https://kubernetes.io/docs/tasks/run-application/horizontal-pod-autoscale/#configurable-scaling-behavior
+    behavior:
+      scaleDown:
+        stabilizationWindowSeconds: 120
+        #selectPolicy: Max
+        policies: []
+      scaleUp:
+        stabilizationWindowSeconds: 15
+        #selectPolicy: Max
+        policies: []
+
+  ## Pod Discruption Budget (PDB) for maxscale pods.
+  ## Defines limits to the the number of concurrent disruptions that the
+  ## maxscale proxy pods can experience.
+  ## The following are the options that can be set:
+  ##   enabled        - Enable/disable PDB for maxscale statefulset
+  ##                    For single pod config, PDB should be disabled.
+  ##   minAvailable   - The number of pods from that set that must still be
+  ##                    available after the eviction, even in the absence of
+  ##                    the evicted pod. minAvailable can be either an absolute
+  ##                    number or a percentage.
+  ##   maxUnavailable - The number of pods from that set that can be
+  ##                    unavailable after the eviction. It can be either an
+  ##                    absolute number or a percentage
+  ## Ref: https://kubernetes.io/docs/concepts/workloads/pods/disruptions/
+  ##      https://kubernetes.io/docs/tasks/run-application/configure-pdb/
+  pdb:
+    enabled: true
+    #minAvailable:
+    maxUnavailable: 1
+
+  ## use TLS/SSL for maxscale admin interface
+  # Certificates to be used when MaxScale is used as a server - i.e. when
+  # serving metrics to the exporter.  These secrets generally follow the
+  # same rules/descritions as the MariaDB certificates with the exception
+  # that maxscale server certifcates are stored under /etc/certs/maxscale.
+  # The secret resource containing all the certificate files must be
+  # pre-populated before CMDB deployment.
+  # Defaults to true
+  tls:
+    enabled:
+    # Maxscale Certificate
+    secretRef:
+      # Secret name, pointing to a Secret object of type `kubernetes.io/tls`.
+      # If empty then automatically generated secret with certificate will
+      # be used
+      name:
+      # Secret key names mapping.
+      # If the provided Secret is of type `kubernetes.io/tls', then key names
+      # do not need to be changed.
+      keyNames:
+        # Name of Secret key, which contains CA certificate
+        caCrt: "ca.crt"
+        # Name of Secret key, which contains TLS key
+        tlsKey: "tls.key"
+        # Name of Secret key, which contains TLS certificate
+        tlsCrt: "tls.crt"
+
+  ## Refer to the clients.mariadb.certificate for parameter descriptions
+  certificate:
+    # Enable use of cert-manager managed certificate for the Maxscale server
+    # certificate
+    enabled: true
+    issuerRef:
+      # If the `Issuer` name is not specified, self-signed `Issuer` will be
+      # created automatically.
+      name:
+      kind:
+      group:
+    duration:
+    renewBefore:
+    # The use of the common name field has been deprecated since 2000.
+    # and is discouraged from being used. `dnsNames` are used instead.
+    commonName:
+    usages:
+    # At least one of a DNS Name, URI, or IP address is required.
+    dnsNames: []
+    ipAddresses: []
+    uris: []
+    privateKey:
+      algorithm:
+      encoding:
+      size:
+      # Rotation of a key pair, when certificate is refreshed is recommended
+      # from a security point of view
+      rotationPolicy:
+
+  ## Master Switchover timeout when Master pod is being deleted.
+  ## This is used on mariadb preStop hook (defaults to 30 seconds)
+  masterSwitchoverTimeout: 30
+
+  ## The time (in seconds) to allow the maxscale pod to pull the keystore
+  ## from one of the mariadb pods
+  keystorePullTimeout: 300
+
+  ## A customized maxscale configuration to import
+  ## ref: https://mariadb.com/kb/en/mariadb-maxscale-6-mariadb-maxscale-configuration-guide/
+  ## IMPORTANT NOTE:
+  ## Number of threads is defaulted to 2 in k8s environment since there are
+  ## only virtual CPUs allocated to containers and maxscale would otherwise
+  ## see all CPUs on the host and set it way too high.
+  ## Threads should be set to int(maxscale.limits.cpu), with minimum of 2.
+  ## Ref: https://mariadb.com/kb/en/mariadb-maxscale-6-mariadb-maxscale-configuration-guide/#threads
+  maxscale_site_conf: |-
+    [maxscale]
+    threads = 2
+    query_retries = 2
+    query_retry_timeout = 10s
+
+  ## A customized maxscale logrotate configuration to import
+  logrotate_conf: |-
+    [maxscale]
+    maxsize = 2097152
+    rotate = 5
+    compress = no
+
+  ## Use semi-synchronous replication for internal database replication.
+  ## Use of semi-sync replication is HIGHLY recommended when using maxscale
+  ## for automated database failover.  If this is turned off, then it is
+  ## very likely that master failover will not function properly and the
+  ## failed Master will not correctly rejoin as Slave.
+  ## When set to true (default):
+  ##  - rpl_semi_sync_% variables will be automatically added to
+  ##    mariadb.mysqld_site_conf values
+  ##  - managing of variables on Master will automatically be added to
+  ##    maxscale.sql.promotion and maxscale.sql.demotion
+  semiSyncReplication: true
+
+  ##
+  ## Lists of SQL to inject at certain MaxScale events
+  ##
+  sql:
+    ## Mariadb Node promoted to master
+    promotion: []
+
+    ## Mariadb Node demoted to slave
+    demotion: []
+
+  ## Resource QOS (per MaxScale container)
+  resources:
+    requests:
+      memory: 256Mi
+      cpu: 250m
+      ephemeral-storage: 1Gi
+    limits:
+      memory: 512Mi
+      # Used when enableDefaultCpuLimits is true
+      _cpu: 500m
+      # Used regardless of enableDefaultCpuLimits
+      cpu:
+      ephemeral-storage: 1Gi
+
+  ## Readiness/Liveness Probe Configuration (MaxScale container)
+  ## ref: https://kubernetes.io/docs/tasks/configure-pod-container/configure-liveness-readiness-startup-probes/#configure-probes
+  ##
+  startupProbe:
+    initialDelaySeconds: 1
+    periodSeconds: 5
+    timeoutSeconds: 1
+    failureThreshold: 60
+    successThreshold: 1
+  livenessProbe:
+    initialDelaySeconds: 120
+    periodSeconds: 10
+    timeoutSeconds: 5
+    failureThreshold: 6
+    successThreshold: 1
+  readinessProbe:
+    initialDelaySeconds: 10
+    periodSeconds: 10
+    timeoutSeconds: 1
+    failureThreshold: 4
+    successThreshold: 1
+
+  ## Termination grace period (in seconds).  Defaults to 30 seconds.
+  #terminationGracePeriodSeconds: 30
+
+  ## Node tolerations for maxscale scheduling to nodes with taints
+  ## Ref: https://kubernetes.io/docs/concepts/configuration/taint-and-toleration/
+  ## These values should not be changed.
+  tolerations:
+    - key: 'is_edge'
+      operator: 'Equal'
+      value: 'true'
+      effect: 'NoExecute'
+
+  ## Node labels for maxscale pod assignment
+  ## Ref: https://kubernetes.io/docs/concepts/configuration/assign-pod-node/#nodeselector
+  nodeSelector: {}
+  ## Ref: https://kubernetes.io/docs/concepts/workloads/pods/pod-topology-spread-constraints/
+  ## topologySpreadConstraints allow control of how Pods are spread across
+  ## cluster among failure-domains such as regions, zones, nodes, and other
+  ## user-defined topology domains. This can help to achieve high availability
+  ## as well as efficient resource utilization.
+  ## The following attributes can be defined here (additonal attributes are
+  ## available as documented in the reference):
+  ##   maxSkew           - Describes the degree to which Pods may be unevenly
+  ##                       distributed.  If must be greater than zero.
+  ##   topologyKey       - The key of node labels.
+  ##   whenUnsatisfiable - [optional] Indicates how to deal with a Pod if it
+  ##                       doesn't satisfy the spread constraint.
+  ##                       Defaults to DoNotSchedule.
+  ##   autoGenerateLabelSelector - [HBP_Kubernetes_PodTopology_2]
+  ##                       Auto-generate the labelSelector attribute to
+  ##                       correctly select the maxscale pods if not explicitly
+  ##                       defined here.
+  ## Ref: https://kubernetes.io/docs/concepts/workloads/pods/pod-topology-spread-constraints/
+  ##
+  ## Suggested values if set for maxscale pods:
+  ## topologySpreadConstraints:
+  ##   - maxSkew: 1
+  ##     topologyKey: <host-specific>
+  ##     autoGenerateLabelSelector: true
+  topologySpreadConstraints: []
+
+  ## BCMT nodeAffinity rules (mutually-exclusive with nodeSelector above):
+  ## Default to deploy maxscale pods to edge nodes (recommended).
+  ## Set to is_worker to deploy maxscale pods to worker nodes (not recommended).
+  nodeAffinity:
+    enabled: true
+    key: is_edge
+    value: true
+
+  ## Maxscale podAntiAffinity constrains which nodes the pods can be scheduled based on
+  ## the labels of the pods already running on that node.
+  ## Refer https://kubernetes.io/docs/reference/generated/kubernetes-api/v1.25/#podantiaffinity-v1-core
+  podAntiAffinity:
+    zone:
+      ## Possible options: soft/hard/none
+      type:
+      topologyKey: "topology.kubernetes.io/zone"
+    node:
+      ## Possible options: soft/hard/none
+      ## Default is same as "nodeAffinity" to be backward compatible.
+      type:
+      topologyKey: "kubernetes.io/hostname"
+    ##customRules:
+      ##  type: soft/hard (by default soft)
+      ##  topologyKey:
+      ##  weight: 100 (by default 100)
+      ##  autoGenerateLabelSelector: true
+      ##  labelSelector: <pod labels> (none by default)
+      ##  namespaceSelector: <namespace labels> (none by default)
+      ##  namespaces:
+
+  ## Set MaxScale pod priority and preemption (defaults to not specified)
+  ## Ref: https://kubernetes.io/docs/concepts/configuration/pod-priority-preemption/
+  #priorityClassName:
+
+  ## initContainers:
+  initContainers:
+    resources:
+      limits:
+        # Used when enableDefaultCpuLimits is true
+        _cpu: 100m
+        # Used regardless of enableDefaultCpuLimits
+        cpu:
+        memory: 64Mi
+        ephemeral-storage: 64Mi
+      requests:
+        cpu: 100m
+        memory: 64Mi
+        ephemeral-storage: 64Mi
+
+  ## Metrics Scrapper
+  metrics:
+    enabled: false
+
+    image:
+      name: "cmdb/cmdb-maxctrl-exporter"
+      tag: "0.1.0-24.288"
+      pullPolicy: IfNotPresent
+
+    ## Container securityContext override for maxscale metrics container
+    ## Use disabled: true to disable the use of a container-level security context
+    ## runAsUser must match maxscale container for metrics to work
+    containerSecurityContext: {}
+
+    ## Note that prometheus.io/port is specified in maxscale-metrics-service
+    annotations:
+      prometheus.io/scrape: "true"
+
+    ## Resource QOS (per MaxScale-Metrics container)
+    resources:
+      requests:
+        memory: 256Mi
+        cpu: 250m
+        ephemeral-storage: 128Mi
+      limits:
+        memory: 256Mi
+        # Used when enableDefaultCpuLimits is true
+        _cpu: 250m
+        # Used regardless of enableDefaultCpuLimits
+        cpu:
+        ephemeral-storage: 128Mi
+
+  ## Zero Trust Proxy
+  auth:
+    enabled:
+
+    image:
+      name: "osdb/csfdb-zt-proxy"
+      tag: "1.1-4.40"
+      flavor: rocky8
+      pullPolicy: IfNotPresent
+
+    ## Container securityContext override for mariadb auth container
+    ## Use disabled: true to disable the use of a container-level security context
+    ## runAsUser must match maxscale container for metrics to work
+    containerSecurityContext: {}
+
+    ## Resource QOS (per MaxScale-Auth container)
+    resources:
+      requests:
+        memory: 256Mi
+        cpu: 250m
+        ephemeral-storage: 128Mi
+      limits:
+        memory: 256Mi
+        # Used when enableDefaultCpuLimits is true
+        _cpu: 250m
+        # Used regardless of enableDefaultCpuLimits
+        cpu:
+        ephemeral-storage: 128Mi
+
+  ## unifiedLogging is used to configure pod logging for generation of log
+  ## messages to a syslog server.
+  ## This is for maxscale workload level configuration.
+  ##
+  ## Used for generating maxscale logging configmap name
+  unifiedLogging:
+    ## map of logging extension to add to each log message
+    extension: {}
+
+    # Allowed values are: "OFF", "FATAL", "ERROR", "WARN", "INFO", "DEBUG", "TRACE", "ALL"
+    logLevel:
+
+    ## Syslog logging parameters
+    syslog:
+      # enable syslog logging (disabled by default)
+      enabled:
+      # Defines which facility will be used for sending the log message.
+      # This is a required option, otherwise the appender will be invalid.
+      facility:
+      # Sets the appender target's host. (Domain name or IP address)
+      host:
+      # Sets the appender target's port.
+      port:
+      # Defines which socket protocol is used for sending the log into the
+      # target host.  Can be either UDP, TCP or SSL.  Defaults to UDP.
+      protocol:
+      # SSL handshake/connection timeout (milliseconds, default 1000)
+      timeout:
+      # SSL close request type (GNUTLS_SHUT_RDWR (default), GNUTLS_SHUT_WR)
+      # Ref: https://gnutls.org/manual/gnutls.html
+      closeReqType:
+      rfc:
+        enabled:
+        appName:
+        procId:
+        msgId:
+        version:
+      # The keystore is meant to contain your private keys and certificates
+      # and determines which authentication credentials to send to the remote
+      # host.  'key' in the Secret named 'secretName' will be used as keystore
+      # file. Only PKCS12 file format is supported.
+      keyStore:
+        secretName:
+        key:
+      # Plain text password to access the keystore stored in 'key' in the
+      # Secret named 'secretName'
+      keyStorePassword:
+        secretName:
+        key:
+      # The trust store is meant to contain the CA certificates you are willing
+      # to trust when a remote party presents its certificate. Determines whether
+      # the remote authentication credentials (and thus the connection) should be
+      # trusted. In some cases, they can be one and the same store, although it
+      # is often better practice to use distinct stores (especially when they
+      # are file-based).  'key' in the secret named 'secretName' will be used
+      # as trustsstore file.  Only PKCS12 file format is supported.
+      trustStore:
+        secretName:
+        key:
+      # Plain text password to access the truststore stored in 'key' in the
+      # Secret named 'secretName'
+      trustStorePassword:
+        secretName:
+        key:
+      # Replacement for keyStore/keyStorePassword/trustStore/trustStorePassword
+      # If needed by clog lib, it can be converted in a helm hook to keyStore/trustStore
+      tls:
+        secretRef:
+          # Secret name, pointing to a Secret object.
+          name:
+          # Secret key names mapping.
+          # If the provided Secret is of type `kubernetes.io/tls', then key names do not need to be changed.
+          keyNames:
+            # Name of Secret key, which contains CA certificate
+            caCrt:
+            # Name of Secret key, which contains TLS key
+            tlsKey:
+            # Name of Secret key, which contains TLS certificate
+            tlsCrt:
+      ##
+      ##
+      ## Certificate for maxscale workload level unifiedLogging
+      ## When using generated certificates via cert-manager,
+      ## the following are used to create the Certificate objects.
+      nameSuffix: maxscale-syslog
+      certificate:
+        enabled: true
+        ## Suffix used by common-lib for secretName of certs
+        nameSuffix:
+        issuerRef:
+          name:
+          kind:
+          group:
+        duration: 8760h # 1 year
+        renewBefore: 360h # 15 days
+        # Not needed in internall communication
+        subject:
+        # It has been deprecated since 2000 and is discouraged from being used. `dnsNames` are used instead.
+        commonName:
+        # If `usages` is not specified, the following will be used:
+        # - server auth
+        # - client auth
+        usages:
+        # If `dnsNames` is not specified then the following internal names will be used:
+        # - localhost
+        # - <service name>.<namespace>
+        # - <service name>.<namespace>.svc
+        # - <service name>.<namespace>.svc.<cluster domain>
+        # If ssl passthrough is used on the Ingress object,
+        # then dnsNames should be set to external DNS names.
+        dnsNames:
+        uris:
+        # If ipAddresses not specified then the following internal local IPs will be used:
+        # - "127.0.0.1"
+        # - "::1"
+        ipAddresses:
+        privateKey:
+          algorithm:
+          encoding:
+          size:
+          rotationPolicy:
+
+##
+## Values specific to the CMDB Administrative container
+## (used for lifecycle and administrative Jobs)
+##
+admin:
+  count: 1
+  image:
+    name: "cmdb/cmdb-admin"
+    tag: "6.2-2.6533"
+    pullPolicy: IfNotPresent
+    vaultInitRepo: fnms-init-container
+    vaultInitTag: nokia-1.0.5
+  accessRoleLabel: internal-access
+  fluentd_sidecar:
+    image:
+      name: "fnms-fluent"
+      tag: "nokia-3.1.5"
+      pullPolicy: IfNotPresent
+    securityContext:
+      runAsUser: 1000
+      runAsGroup: 1773
+
+  ## Pod imagePullSecrets override for admin pods and jobs
+  imagePullSecrets: []
+
+  ## Pod securityContext override for admin pods and jobs
+  ## Use disabled: true to disable the use of a pod-level security context
+  podSecurityContext: {}
+  ## Container securityContext override for admin container
+  ## Use disabled: true to disable the use of a container-level security context
+  containerSecurityContext: {}
+
+  # Refer HBP 2.13 [HBP_Helm_Annotations_2][HBP_Helm_Labels_6]
+  annotations: {}
+  labels: {}
+
+  ## Pod Discruption Budget (PDB) for admin pods
+  ## Defines limits to the the number of concurrent disruptions that the
+  ## admin database pods can experience.
+  ## The following are the options that can be set:
+  ##   enabled        - Enable/disable PDB for admin statefulset
+  ##                    For single pod config, PDB should be disabled.
+  ##   minAvailable   - The number of pods from that set that must still be
+  ##                    available after the eviction, even in the absence of
+  ##                    the evicted pod. minAvailable can be either an absolute
+  ##                    number or a percentage.
+  ##   maxUnavailable - The number of pods from that set that can be
+  ##                    unavailable after the eviction. It can be either an
+  ##                    absolute number or a percentage
+  ## Ref: https://kubernetes.io/docs/concepts/workloads/pods/disruptions/
+  ##      https://kubernetes.io/docs/tasks/run-application/configure-pdb/
+  pdb:
+    enabled: false
+    #minAvailable:
+    maxUnavailable: 100%
+
+  ## A recovery flag.  If changed, will trigger a heal of the database to occur
+  #recovery: none
+
+  ## Set to true to change update config behavior to cause statefulset update
+  ## (resulting in rolling pod restarts) when mariadb and maxscale configuration
+  ## is changed.  Default behavior is to not affect statefulset and services
+  ## will be restarted within the pod.
+  configAnnotation: false
+
+  ## Should auto-heal be enabled?
+  ## This will enable automated heal operations on cluster (Galera supported).
+  ## the pauseDelay is how long (seconds) to wait to re-enable auto-heal after
+  ## the cluster comes [back] up.
+  autoHeal:
+    enabled: true
+    pauseDelay: 900
+
+  ## Should slave auto-rebuild be enabled?
+  ## This will enable automated slave rebuild operation in master-slave
+  ## topology for a failed Master that does not come back as a Slave.
+  ##
+  ##   enabled          - Enable automatic slave rebuild?
+  ##   mode             - Auto-rebuild mode:
+  ##                      failed-master = only auto-rebuild failed master if
+  ##                                      it failed to come back as slave.
+  ##                      safe          = auto-rebuild failed slave as long
+  ##                                      as a quorum of healthy nodes exist.
+  ##                      aggressive    = auto-rebuild failed slave as long
+  ##                                      as at least one healthy node exists.
+  ##   onErrorsIO       - List of replication errors occuring on IO thread
+  ##                      which will trigger auto-rebuild of Slave.
+  ##                      By default, the following IO thread error will
+  ##                      trigger auto-rebuild (unless set to 'none'):
+  ##                        ER_MASTER_FATAL_ERROR_READING_BINLOG (1236)
+  ##                      If experiencing transient file system errors, the
+  ##                      following errors can be added to this list:
+  ##                        ER_SLAVE_RELAY_LOG_READ_FAILURE (1594)
+  ##                        ER_SLAVE_RELAY_LOG_WRITE_FAILURE (1595)
+  ##   onErrorsSQL      - List of replication errors occuring on SQL thread
+  ##                      which will trigger auto-rebuild of Slave.
+  ##                      By default, all SQL errors will trigger auto-rebuild
+  ##                      (unless set to 'none').
+  ##   preferredDonor   - Preferred donor to use for rebuild:
+  ##                      slave  = use most up-to-date Slave for donor server
+  ##                               (will use Master if no suitable Slave found)
+  ##                      master = use Master for donor server
+  ##   allowMasterDonor - Allow Master to be used as Donor?
+  ##                      (only valid for preferredDonor = slave)
+  ##   method           - Method to use for rebuild process:
+  ##                      mariabackup - use mariabackup utility to perform
+  ##                                    backup/restore
+  ##                      tar         - use directory tar method (useful for
+  ##                                    large databases)
+  ##   timeout          - Time (seconds) to allow rebuild to complete before
+  ##                      abort.  Increase for larger databases.
+  ##   retries          - Number of retries allowed for failed rebuild before
+  ##                      giving up.
+  ##   failRetryInterval - Interval (seconds) between attempts to retry a
+  ##                       failed rebuild which has exceeded retry attempts.
+  ##                       Set to 'never' to disable fail retries.
+  ##                       Defaults to 86400 (24 hours).
+  ##   parallel         - Number of donor threads to use for rebuild.
+  ##   useMemory        - Amount of memory (eg, 512M) to use for joining server.
+  ##                      NOTE: Do not set to more than half of
+  ##                            resources.limits.memory
+  ##   joinerBind       - Joiner address to bind to. Defaults to all IPv4/IPv6
+  ##                      addresses ('[::],pf=ip6'). For environments where
+  ##                      IPv6 is disabled, set to '0.0.0.0'.
+  ##
+  ## onErrorsIO, onErrorsSQL: Supports the following value formats:
+  ##   X,Y,...     = trigger on IO/SQL errors X, Y, ... (csv list of errors)
+  ##   all         = trigger on all IO/SQL errors
+  ##   all-X-Y-... = trigger on all IO/SQL errors except X, Y, ...
+  ##   none        = trigger on no IO/SQL errors
+  ##
+  rebuildSlave:
+    enabled: true
+    mode: safe
+    onErrorsIO: 1236
+    onErrorsSQL: all
+    preferredDonor: slave
+    allowMasterDonor: true
+    method: mariabackup
+    timeout: 300
+    retries: 1
+    failRetryInterval: 86400
+    parallel: 2
+    useMemory: 256M
+
+  ## Restore Server (RS) Deployment for Major Upgrade Upgrade/Rollback.
+  ## This will allow enablement of RS statefulset (a dynamic statefulset pod
+  ## to be created on major upgrade) to be enabled.  This will allow for
+  ## rollback over major upgrade by keeping a running copy of the old release
+  ## database present when the existing StatefulSet is upgraded to new release.
+  ##
+  ## IMPORTANT NOTE: Do NOT enable joinCluster if performing application
+  ##                 schema change over upgrade if the schema is not backward
+  ##                 compatible with old release.  This will cause replication
+  ##                 failures to the RS pod.
+  ##
+  restoreServer:
+    # Enable RS deployment?
+    # Simplex topology will force enabled false and this value is ignored.
+    enabled: false
+
+    # Should the RS deployment pod join the existing cluster to keep in sync
+    # with new release transactions during soak period?  Joining cluster will
+    # require that the RS pod be running an old release copy of mariadb and
+    # have enought resources to keep the RS database up to date with new
+    # release transactions.
+    joinCluster: false
+
+    # Refer HBP 2.13 [HBP_Helm_Annotations_2][HBP_Helm_Labels_6]
+    annotations: {}
+    labels: {}
+
+    # RS deployment deletion policy.  A csv list of triggers for RS deployment
+    # deletion after upgrade.  Can be any of the following:
+    #   - chart-upgrade   = delete on next chart upgrade (ie, change in chart
+    #                       version)
+    #   - config-update   = delete on subsequent helm upgrade of any config
+    #                       values, including replica counts (scale)
+    #   - ttl=N           = delete after N hours (eg, ttl=48)
+    deletePolicy: "config-update,chart-upgrade"
+
+  ## Auto password change job timeout.
+  ## When a user credential secret password is updated, an automatic pwchange
+  ## job will be initiated.  This defines the timeout (in seconds) to allow
+  ## the pwchange job to complete.
+  pwchangeTimeout: 900
+
+  ## Set to 'yes' for quick install deployment.  This will tell the post-install
+  ## hook to not wait for SDC to come up and not wait for pods to start.
+  ## It is highly recommended that this value be left blank however if you are
+  ## deploying a large number of charts you can set this to 'yes' to speed up
+  ## deployment.  Setting to 'yes' will not discover pods that fail to start
+  ## and may not set initial SDC values.
+  quickInstall: ""
+
+  ## If set, administrative jobs will be more verbose to stdout (kubectl logs)
+  debug: false
+
+  ## Name of a Secret (in our same namespace) to be used for performing
+  ## the password change of database user(s).
+  ## If changed, and the named secret exists, the password change will be
+  ## attempted.  After a successful password change, the secret will be
+  ## automatically deleted. If the password change fails, the secret will
+  ## be marked as invalid, thus causing any future upgrades to ignore
+  ## this secret.  Future attempts (after failure) must recreate the
+  ## secret for it to be processed.
+  #pwChangeSecret: ""
+
+  ## Resource QOS (per Admin container)
+  resources:
+    requests:
+      memory: 256Mi
+      cpu: 250m
+      ephemeral-storage: 1Gi
+    limits:
+      memory: 512Mi
+      # Used when enableDefaultCpuLimits is true
+      _cpu: 500m
+      # Used regardless of enableDefaultCpuLimits
+      cpu:
+      ephemeral-storage: 1Gi
+
+  ## Readiness/Liveness Probe Configuration for (Admin container)
+  ## ref: https://kubernetes.io/docs/tasks/configure-pod-container/configure-liveness-readiness-startup-probes/#configure-probes
+  ##
+  startupProbe:
+    initialDelaySeconds: 1
+    periodSeconds: 5
+    timeoutSeconds: 1
+    failureThreshold: 60
+    successThreshold: 1
+  livenessProbe:
+    initialDelaySeconds: 120
+    periodSeconds: 10
+    timeoutSeconds: 5
+    failureThreshold: 6
+    successThreshold: 1
+  readinessProbe:
+    initialDelaySeconds: 10
+    periodSeconds: 10
+    timeoutSeconds: 1
+    failureThreshold: 3
+    successThreshold: 1
+
+  ## Termination grace period (in seconds).  Defaults to 0 seconds so that
+  ## the simplex admin pod will be automatically rescheduled on another node
+  ## if the hosting node fails.
+  ## WARNING: Changing may cause delayed recovery from hosting node failure.
+  #terminationGracePeriodSeconds: 0
+
+  ## Node tolerations for admin scheduling to nodes with taints
+  ## Ref: https://kubernetes.io/docs/concepts/configuration/taint-and-toleration/
+  tolerations: []
+  ## Node labels for admin pod assignment
+  ## Ref: https://kubernetes.io/docs/concepts/configuration/assign-pod-node/#nodeselector
+  nodeSelector: {}
+  ## topologySpreadConstraints allow control of how Pods are spread across
+  ## cluster among failure-domains such as regions, zones, nodes, and other
+  ## user-defined topology domains. This can help to achieve high availability
+  ## as well as efficient resource utilization.
+  ## The following attributes can be defined here (additional attributes are
+  ## available as documented in the reference):
+  ##   maxSkew           - Describes the degree to which Pods may be unevenly
+  ##                       distributed.  If must be greater than zero.
+  ##   topologyKey       - The key of node labels.
+  ##   whenUnsatisfiable - [optional] Indicates how to deal with a Pod if it
+  ##                       doesn't satisfy the spread constraint.
+  ##                       Defaults to DoNotSchedule.
+  ##   autoGenerateLabelSelector - [HBP_Kubernetes_PodTopology_2]
+  ##                       Auto-generate the labelSelector attribute to
+  ##                       correctly select the admin pods if not explicitly
+  ##                       defined here.
+  ## Ref: https://kubernetes.io/docs/concepts/workloads/pods/pod-topology-spread-constraints/
+  ##
+  ## Suggested values if set for admin pods:
+  ## NOTE:  Currently only 1 admin pod is supported, so this functionality
+  ##        would have no effect.  Included for future use.
+  topologySpreadConstraints: []
+
+  ## BCMT nodeAffinity rules (mutually-exclusive with nodeSelector above):
+  ## Default to not enabled
+  nodeAffinity:
+    enabled: false
+    key: is_worker
+    value: true
+
+  ## Set Admin pod priority and preemption (defaults to not specified)
+  ## Ref: https://kubernetes.io/docs/concepts/configuration/pod-priority-preemption/
+  #priorityClassName:
+
+  ## unifiedLogging is used to configure pod logging for generation of log
+  ## messages to a syslog server.
+  ## This is for admin workload level configuration.
+  ##
+  ## Used for generating admin logging configmap name
+  unifiedLogging:
+    ## map of logging extension to add to each log message
+    extension: {}
+
+    # Allowed values are: "OFF", "FATAL", "ERROR", "WARN", "INFO", "DEBUG", "TRACE", "ALL"
+    logLevel:
+
+    ## Syslog logging parameters
+    syslog:
+      # enable syslog logging (disabled by default)
+      enabled:
+      # Defines which facility will be used for sending the log message.
+      # This is a required option, otherwise the appender will be invalid.
+      facility:
+      # Sets the appender target's host. (Domain name or IP address)
+      host:
+      # Sets the appender target's port.
+      port:
+      # Defines which socket protocol is used for sending the log into the
+      # target host.  Can be either UDP, TCP or SSL.  Defaults to UDP.
+      protocol:
+      # SSL handshake/connection timeout (milliseconds, default 1000)
+      timeout:
+      # SSL close request type (GNUTLS_SHUT_RDWR (default), GNUTLS_SHUT_WR)
+      # Ref: https://gnutls.org/manual/gnutls.html
+      closeReqType:
+      rfc:
+        enabled:
+        appName:
+        procId:
+        msgId:
+        version:
+      # The keystore is meant to contain your private keys and certificates
+      # and determines which authentication credentials to send to the remote
+      # host.  'key' in the Secret named 'secretName' will be used as keystore
+      # file. Only PKCS12 file format is supported.
+      keyStore:
+        secretName:
+        key:
+      # Plain text password to access the keystore stored in 'key' in the
+      # Secret named 'secretName'
+      keyStorePassword:
+        secretName:
+        key:
+      # The trust store is meant to contain the CA certificates you are willing
+      # to trust when a remote party presents its certificate. Determines whether
+      # the remote authentication credentials (and thus the connection) should be
+      # trusted. In some cases, they can be one and the same store, although it
+      # is often better practice to use distinct stores (especially when they
+      # are file-based).  'key' in the secret named 'secretName' will be used
+      # as trustsstore file.  Only PKCS12 file format is supported.
+      trustStore:
+        secretName:
+        key:
+      # Plain text password to access the truststore stored in 'key' in the
+      # Secret named 'secretName'
+      trustStorePassword:
+        secretName:
+        key:
+      # Replacement for keyStore/keyStorePassword/trustStore/trustStorePassword
+      # If needed by clog lib, it can be converted in a helm hook to keyStore/trustStore
+      tls:
+        secretRef:
+          # Secret name, pointing to a Secret object.
+          name:
+          # Secret key names mapping.
+          # If the provided Secret is of type `kubernetes.io/tls', then key names do not need to be changed.
+          keyNames:
+            # Name of Secret key, which contains CA certificate
+            caCrt:
+            # Name of Secret key, which contains TLS key
+            tlsKey:
+            # Name of Secret key, which contains TLS certificate
+            tlsCrt:
+      ##
+      ##
+      ## Certificate for admin workload level unifiedLogging
+      ## When using generated certificates via cert-manager,
+      ## the following are used to create the Certificate objects.
+      nameSuffix: admin-syslog
+      certificate:
+        enabled: true
+        ## Suffix used by common-lib for secretName of certs
+        nameSuffix:
+        issuerRef:
+          name:
+          kind:
+          group:
+        duration: 8760h # 1 year
+        renewBefore: 360h # 15 days
+        # Not needed in internall communication
+        subject:
+        # It has been deprecated since 2000 and is discouraged from being used. `dnsNames` are used instead.
+        commonName:
+        # If `usages` is not specified, the following will be used:
+        # - server auth
+        # - client auth
+        usages:
+        # If `dnsNames` is not specified then the following internal names will be used:
+        # - localhost
+        # - <service name>.<namespace>
+        # - <service name>.<namespace>.svc
+        # - <service name>.<namespace>.svc.<cluster domain>
+        # If ssl passthrough is used on the Ingress object,
+        # then dnsNames should be set to external DNS names.
+        dnsNames:
+        uris:
+        # If ipAddresses not specified then the following internal local IPs will be used:
+        # - "127.0.0.1"
+        # - "::1"
+        ipAddresses:
+        privateKey:
+          algorithm:
+          encoding:
+          size:
+
+###### site-specific params #####
+##
+## Built-in User configuration
+## Define the built-in user credentials to be used by mariadb/maxscale and
+## metrics.  Passwords can be provided via one of two ways:
+##  1.  Explicitly specified here by specifying:
+##      - username       : user name to be configured
+##      - password       : a base64 encoded password
+##  2.  Providing a pre-created secret:
+##      - credentialName : name of pre-created secret with the BOTH the
+##                         'username' and 'password' keys present.
+## NOTE: (a) All passwords provided here MUST be base64 encoded.
+##       (b) Any passwords not set (and credentialName not provided)
+##           will be auto-generated.
+##       (c) If credentialName is provided, username/password will be ignored.
+users:
+  root:
+    password:
+    credentialName:
+    ## If root user should be allowed from external hosts
+    allowExternal: false
+
+  ## MariaDB Replication
+  ## The replication user name and password to use in the database.
+  ## IMPORTANT: When deploying a geo-redundant solution
+  ##            (geo_redundancy.enabled=true), you must use the same
+  ##            replication.username/replication.password for both sites.
+  ##            Therefore you must either specify username/password below
+  ##            or provide a secret providing credentials (credentialName).
+  replication:
+    username: "repl@b.c"
+    password:
+    credentialName:
+
+  ## MariaDB Metrics
+  ## The mariadb metrics user name and password to use in the database.
+  mariadbMetrics:
+    username: exporter
+    password:
+    credentialName:
+
+  ## MaxScale
+  ## The maxscale user name and password to use in the database.
+  ## IMPORTANT: When deploying a geo-redundant solution
+  ##            (geo_redundancy.enabled=true), you must use the same
+  ##            maxscale.username/maxscale.password for both sites.
+  ##            Therefore you must either specify username/password below
+  ##            or provide a secret providing credentials (credentialName).
+  maxscale:
+    username: maxscale
+    password:
+    credentialName:
+
+  ## MaxScale Metrics
+  ## The maxscale metrics user name and password to use for the maxctrl API
+  maxscaleMetrics:
+    username: "max_exporter"
+    password:
+    credentialName:
+
+##
+## Geo-redundancy replication values
+## (Requires MaxScale, e.g. maxscale.count > 0)
+## NOTE:  Some values also apply to a single datacenter deployment and are
+##        tagged with [+single].
+##
+geo_redundancy:
+  ## Only enable geo_redundancy for multiple datacenters
+  enabled: false
+
+  ###### site-specific params #####
+  ## Values used to setup replication properly among sites and prevent
+  ## id generation conflicts
+  ## The (1-based) index of this site - each site must have a unique index
+  ## NOTE: When geo_redundancy is enabled, this will also be used as the
+  ##       Domain ID of the local site.
+  ## Valid values: [1..4] (up to 4 datacenters supported)
+  site_index: 1
+
+  ## Threshold (seconds) at which to alarm on lag between datacenters
+  lag_threshold: 30
+
+  ## [+single] Interval (minutes) at which to purge slave logs
+  slave_purge_interval: 60
+
+  ## List of errors to skip when applying replication transactions on a Slave.
+  ## Ref: https://mariadb.com/kb/en/replication-and-binary-log-system-variables/#slave_skip_errors
+  ## When geo-redundancy is enabled, this will be automatically set to skip the
+  ## following error (unless explicitly set to 'none'):
+  ##   ER_DUP_ENTRY (1062) - Duplicate entry for key
+  slave_skip_errors:
+
+  ## Enable automatic reconnection of Slave to alternate datacenter Master
+  ## server when IO thread error 1236 is detected.  All automatic replication
+  ## resets are logged to docker stdout and to the follwowing log:
+  ##     /var/log/maxscale/replication_recovery.log
+  ## IMPORTANT NOTE:  Enabling autoSiteReconnect may cause loss of data or
+  ##                  future SQL errors on the Slave datacenter since it is
+  ##                  possible that transactions have been skipped in order
+  ##                  to successfully re-establish replication.
+  autoSiteReconnect: false
+
+  ## Enable direct connection to remoteService IP:PORT (provided for each
+  ## remote datacenter in the remoteSites section below) vs through a locally
+  ## created Service/Endpoint.  Default of false is the original behavior.
+  ## NOTE:  Enabling direct connection enables direct connection for both the
+  ##        maxscale and master services for ALL remote datacenters.
+  directConnect: false
+
+  ## Specify the prefered IP family when enabling directConnect
+  ## Default of IPv6 is the orginal behavior if ommitted.
+  ## Value must be one of the following values:
+  ##     IPv6
+  ##     IPv4
+  preferredIpFamily: IPv6
+
+  ###### site-specific params #####
+  ##
+  ## Remote Datacenter Site Definitions
+  ## Here each remote datacenter site will be listed with the IP and port of the
+  ## associated maxscale and mariadb-master service at each remote datacenter.
+  ##
+  ## For each remote datacenter (up to 3), provide the following:
+  ##   name        - The name to associate with each remote datacenter.
+  ##                 Will be used to name the service/endpoint for each remote
+  ##                 datacenter (unless 'serviceName' is given) and to name the
+  ##                 replication connection to each datacenter Master pod.
+  ##   maxscale    - The service/endpoint IP address/port for the maxscale
+  ##                 service at each remote datacenter.  An optional serviceName
+  ##                 can also be provided to override the service/endpoint name
+  ##                 created for each remote datacenter.
+  ##   master      - The service/endpoint IP address/port for the mariadb-master
+  ##                 replication service at each remote datacenter. An optional
+  ##                 serviceName can also be provided to override the services/
+  ##                 endpoint name created for each remote datacenter.
+  ##   replication - [Optional] replication configuration for replicating from
+  ##                 the remote datacenter:
+  ##                 ssl   - By default, inter-DC replication SSL will be
+  ##                         enabled based on the mariadb.repl_use_ssl (local
+  ##                         replication) value.  This allows the inter-DC
+  ##                         replcation SSL to be enabled independent of local
+  ##                         replication.  Note that if set to true (implying
+  ##                         that mariadb.repl_use_ssl is false (ie, not local
+  ##                         repliation), mariadb.use_tls must be true to
+  ##                         ensure that certificates are present.
+  ##
+  ## For the maxscale and master (replication) service/endpoint, the following
+  ## attributes can be set:
+  ##   remoteService - The IP:port of an edge node at the remote datacenter
+  ##                   that:
+  ##                   (a) directConnect false (default): the local endpoint
+  ##                       must map to to access the associated service in the
+  ##                       remote datacenter, or
+  ##                   (b) directConenct true: represents the IP:PORT that the
+  ##                       local service (maxscale or replication) will attempt
+  ##                       to connect to.
+  ##                   The IP:port here be in any one of the following forms:
+  ##                     IPv4:port      - IPv4 address and port
+  ##                     "[IPv6]:port"  - IPv6 address and port (quotes needed)
+  ##                     FQDN:port      - Fully qualified domain name and port
+  ##                                      (directConnect=true ONLY)
+  ##                   If not directConnect, IPv6 is the preferred family in a
+  ##                   dual-stack installation, otherwise IPv4 will be used.
+  ##   serviceName   - Optional full name to be given to the local service
+  ##                   associated with the remote datacenter.  Defaults to:
+  ##                     <release>-{master|maxscale}-<name>
+  ##   serviceIP     - Optional fixed IP address to be assigned to the local
+  ##                     <release>-mariadb-master-remote-<datacenter-name>
+  ##                   serice which will be created to allow for replication
+  ##                   from the remote datacenter(s). If unset, the service IP
+  ##                   will be auto-assigned by kubernetes. Get suitable IP
+  ##                   address by executing the following command and picking
+  ##                   an address that is unused by any existing services:
+  ##                     # kubectl get svc --all-namespaces
+  ##                   NOTE: You must set this to the original service IP
+  ##                         assigned by kubernetes to the original
+  ##                         mariadb-master-remote service if re-deploying
+  ##                         charts using preserve PVC.
+  ##   ipFamilyPolicy - Optional dual-stack IP family policy to configure
+  ##                    for the mariadb-master-remote service.
+  ##   ipFamilies     - Optional dual-stack IP families (IPv4 and/or IPv6)
+  ##                    to configure for the mariadb-master-remote service.
+  #remoteSites:
+  #  - name: remote
+  #    maxscale:
+  #      remoteService:
+  #    # serviceName:
+  #      ipFamilyPolicy: ""
+  #      ipFamilies: []
+  #    master:
+  #      remoteService:
+  #    # serviceName:
+  #    # serviceIP:
+  #      ipFamilyPolicy: ""
+  #      ipFamilies: []
+  #    #replication:
+  #    # ssl: false
+
+hooks:
+  ## Exposes the hook-delete-policy.  By default, this is set to delete the
+  ## hooks only upon success or prior to creation.  This can also be unset to
+  ## avoid hook deletion for troubleshooting and debugging purposes
+  deletePolicy: "hook-succeeded,before-hook-creation"
+
+  resources:
+    requests:
+      memory: 256Mi
+      cpu: 250m
+      ephemeral-storage: 128Mi
+    limits:
+      memory: 256Mi
+      # Used when enableDefaultCpuLimits is true
+      _cpu: 250m
+      # Used regardless of enableDefaultCpuLimits
+      cpu:
+      ephemeral-storage: 128Mi
+
+  ## Here you can configure all pre- and post- jobs as follows:
+  ##  enabled       - Indicates if the job is enabled to run.
+  ##  name          - The job name with global.podNamePrefix (if defined)
+  ##  containerName - The job container name with global.containerNamePrefix
+  ##                  (if defined)
+  ##  timeout       - The job timeout (in seconds) allowed for job
+  ##                  execution.  If job timeout occurs. the job will fail,
+  ##                  however the job process will run to completion.
+  ##                  Set to 0 to disable job timing operations.
+  ##  activeDeadlineSeconds - The duration of the job, no matter how many pods
+  ##                  are created.  Once a job reaches activeDeadlineSeconds,
+  ##                  the job and all of its pods are terminated.  The result is
+  ##                  that the job has a status with reason: DeadlineExceeded.
+  ##                  It's used in pre-upgrade hook to prevent too many failed
+  ##                  pods being started in failure cases.
+  ## This may be useful for umbrella charts where you don't want the
+  ## CMDB upgrade jobs to run when the parent chart upgrade is performed.
+  ## WARNING: Be verify careful when disabling jobs, it may cause unexpected
+  ##          side-effects since the jobs are there to perform the tasks
+  ##          necessary to carry out an action, and this will disable those.
+  # K8S Jobs
+  preInstallJob:
+    enabled: true
+    name: "pre-install"
+    containerName: "pre-install-admin"
+    timeout: 120
+  postInstallJob:
+    enabled: true
+    name: "post-install"
+    containerName: "post-install-admin"
+    timeout: 900
+  preUpgradeJob:
+    enabled: true
+    name: "pre-upgrade"
+    containerName: "pre-upgrade-admin"
+    timeout: 300
+    activeDeadlineSeconds: 300
+  postUpgradeJob:
+    enabled: true
+    name: "post-upgrade"
+    containerName: "post-upgrade-admin"
+    timeout: 1800
+  preRollbackJob:
+    # pre-rollback must be long enough to perform rollback over major version
+    # should be set to 3 x admin.rebuildSlave.timeout
+    enabled: true
+    name: "pre-rollback"
+    containerName: "pre-rollback-admin"
+    timeout: 1200
+  postRollbackJob:
+    enabled: true
+    name: "post-rollback"
+    containerName: "post-rollback-admin"
+    timeout: 1800
+  preDeleteJob:
+    enabled: true
+    name: "pre-delete"
+    containerName: "pre-delete-admin"
+    timeout: 120
+  postDeleteJob:
+    enabled: true
+    name: "post-delete"
+    containerName: "post-delete-admin"
+    timeout: 180
+
+  # Helm test Job
+  testJob:
+    enabled: true
+    name: "test"
+    containerName: "test-admin"
+    backoffLimit: 0
+    timeout: 300
+
+  # NCMS Jobs
+  # - cannot be disabled
+  postHealJob:
+    name: "post-heal"
+    containerName: "post-heal-admin"
+    timeout: 1800
+  preRestoreJob:
+    name: "pre-restore"
+    containerName: "pre-restore-admin"
+    timeout: 180
+  postRestoreJob:
+    name: "post-restore"
+    containerName: "post-restore-admin"
+    timeout: 1800
+
+  ## If debug is true, you can add a termination delay to all of the pre/port
+  ## job hooks as follows (time in seconds).  To terminate early, create a
+  ## /tmp/exit file in the container [with exit value if want to override].
+  ## Delay will not apply to pre-delete job since that is where old jobs are
+  ## deleted and it will delete itself in the process.
+  jobDelay: 0
+
+## -------------------------------------------------------------
+## CBUR Parameters. More details can be found in CBUR user guide.
+## --------------------------------------------------------------
+
+cbur:
+  enabled: true
+  image:
+    name: "cbur/cbur-agent"
+    tag: "1.2.0-alpine-580"
+    pullPolicy: "IfNotPresent"
+
+  ## apiVersion used for brPolicy.
+  ## Use configured apiVersion if specified.
+  ## Otherwise, use api "cbur.csf.nokia.com/v1" if the capability exists.
+  ## Else, use the old API "cbur.bcmt.local/v1".
+  ## Note: "cbur.bcmt.local/v1" (deprecated in CBUR22.09)
+  ##
+  #apiVersion: "cbur.csf.nokia.com/v1"
+
+
+  ## Container securityContext override of CBUR sidecar container
+  ## Use disabled: true to disable the use of container-level security context
+  containerSecurityContext: {}
+
+  ## If persistence.cburtmp.enabled is true, below pvc is used.
+  ## It should be twice of data storage size, only needed for volume backup.
+  ## The cburtmp storage size should be twice of data storage size in site deployment.
+  persistence:
+    cburtmp:
+      enabled: false
+      size: 20Gi
+      storageClass: ""
+      accessMode: ReadWriteOnce
+      dir: /tmp
+
+  ## HBP 3.6: emptyDir volume size need to be configurable.
+  ## By default, it's twice of data storage size, only needed for volume backup.
+  ##
+  emptyDir:
+    sizeLimit: 40Gi
+
+  ## Supported values: volume( default ) or snapshot
+  ## For volume type, it's the normal backup and restore procedure based on mariabackup.
+  ## For snapshot type, the datadir pvc will be volume snapshotted during backup and
+  ##   a new datadir pvc will be recreated based on the volumesnapshot during restore.
+  ##
+  volumeBackupType: volume
+
+  ## Specify the name of a VolumeSnapshotClass
+  volumeSnapshotClassName: cinder-csi-snapclass
+  ## "true":  CBUR-m saves the contents of the volume snapshot to backend.
+  ## "false": CBUR-m only keeps volume snapshot locally on cloud provided store.
+  ##
+  saveVolumeContentToBackend: true
+  ## Only applies to restore.
+  ## "true":  CBUR-m only re-create the pvc with same name from snapshot, the application is
+  ##          responsible for pre-restore to unmount pvc, and post-restore to re-attach the new pvc.
+  ## "false": CBUR-m takes charge of deleting and re-attaching pvc, pod(s) also will be deleted
+  ##          and re-created during deleting/re-attaching pvc.
+  ##
+  createVolumeOnly: false
+  ## Only applies to Backup.
+  ## "true":  CBUR-m will keep the volume snapshot in cloud provided storage after saving volume content to backend.
+  ## "false": CBUR-m will delete the volume snapshot in cloud provided storage after saving volume content to backend.
+  ##
+  keepLocalSnapshotIfSaveToBackend: false
+  ## Only applies to Restore.
+  ## "true":  CBUR-m will always retrieve volume content from backend regardless snapshot exists in cloud provided storage.
+  ## "false": CBUR-m will retrieve volume content from backend only when snapshot doesn't exist in cloud provided storage.
+  ##
+  retrieveVolumeContentFromBackend: true
+  ## The target PVC list which will be backed up/restored via volume snapshot.
+  ## By default, it's the pvc with startname "datadir-<podprefix>" of the selected pod.
+  # pvcName: []
+  #- matchCriteria: [fullname | startname | label]
+  #  matchLabels: [dict]
+  #  matchString: [string]
+
+  ## The wait duration in seconds for filesystem flushed to the disk to be ready for snapshot
+  ##
+  snapshotWaitDisk: 60
+
+  ## defines the backup storage options, i.e. local, NetBackup, S3, Avamar.
+  backendMode: local
+  ## specifies if the backup scheduling cron job should be auto-scheduled
+  autoEnableCron: false
+  ## specifies cron update will be triggered automatically by BrPolicy update
+  autoUpdateCron: false
+  ## allows user to schedule backups
+  cronSpec: "0 0 * * *"
+  ## defines how many backup copies should be saved
+  maxiCopy : 5
+  ## should backups be encrypted?
+  dataEncryption: true
+  ## Interface to BrPolicy to ignore file changes during building tarball for
+  ## target app's volumes.
+  ignoreFileChanged: false
+  ## Use the label(cbur=backup) to select the pod for performing backup.
+  ## "true": will select latest slave pod then master pod if no slave pod is found.
+  ## "false": will select master pod
+  selectPod: true
+
+  ## Define the tables to be preserved without replication coordination.
+  ## The tables are seperated by ",", i.e.,"mydb.mydbtable2,mydb2.mydbtable3"
+  tablesPreserve:
+
+  ## cbur sidecar
+  resources:
+    requests:
+      memory: 256Mi
+      cpu: 250m
+      ephemeral-storage: 128Mi
+    limits:
+      memory: 256Mi
+      # Used when enableDefaultCpuLimits is true
+      _cpu: 250m
+      # Used regardless of enableDefaultCpuLimits
+      cpu:
+      ephemeral-storage: 128Mi
+
+  ## Exposes the BrHook parameters which may be used to control the execution
+  ## and sequencing of the hooks per CBUR logic.
+  brhookType: brpolicy
+  brhookWeight: 0
+  brhookEnable: true
+  brhookTimeout: 600
+
+  ## Ex: prebackup_mariabackup_args: "--tables-exclude=rick.local,art.local"
+  ## Beware: "helm backup" will NOT automatically pick up changes to the
+  ## "*_mariabackup_args" parameters when changed after installation.
+  ## In this case, use "kubectl edit BrPolicy <cmdb-fullname>-mariadb" to
+  ## manually reflect any changes.
+  prebackup_mariabackup_args:
+  postrestore_mariabackup_args:
+
+  prebackup: 0
+  postbackup: 0
+  prerestore: 0
+  postrestore: 0
+
+  # BrHook Jobs
+  preBackupHook:
+    name: "prebackup-brhook"
+    containerName: "prebackup-admin"
+    timeout: 180
+  postBackupHook:
+    name: "postbackup-brhook"
+    containerName: "postbackup-admin"
+    timeout: 120
+  preRestoreHook:
+    name: "prerestore-brhook"
+    containerName: "prerestore-admin"
+    timeout: 240
+  postRestoreHook:
+    name: "postrestore-brhook"
+    containerName: "postrestore-admin"
+    timeout: 900
+
+  ## Automatic backup triggering
+  backup:
+    # Perform automatic backup on (before) upgrade
+    # Triggered during pre-upgrade, only when Server image or count change
+    # detected (Values changed: server.image.* or server.count)
+    # NOTE: User must ensure admin.preUpgradeTimeout and helm timeout sufficient
+    #       of perform backup AND upgrade, or timeout failures will occur.
+    upgrade: false
+
+    # Timeout for performing backup (sec)
+    timeout: 900
+
+  # CBUR Master Service access information used to initiate backup via CBUR API,
+  # e.g., when cbur.backup.upgrade: true
+  service:
+    # The namespace where the CBUR Master Service (ignored if url set)
+    namespace: ncms
+    # The Service name of the CBUR Master Service (ignored if url set)
+    name: cbur-master-cbur
+    # The protocol to use for CBUR API (http/https)
+    protocol: http
+
+    # If unset, will be automatically constructed from name, namespace, and
+    # clusterDomain.  Can be used to set a custom URL
+    url:
+
+    # A secret providing the username/password for accessing the CBUR Master
+    # Service.  Necessary when CBUR is auth enabled
+    authSecret:
+

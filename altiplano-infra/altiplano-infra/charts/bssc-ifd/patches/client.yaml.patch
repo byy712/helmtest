@@ -1,0 +1,345 @@
+--- bssc-ifd-o/charts/bssc-indexsearch/templates/client.yaml	2023-12-06 18:41:43.000000000 +0530
++++ charts/bssc-indexsearch/templates/client.yaml	2024-05-23 18:17:58.892714049 +0530
+@@ -32,6 +32,7 @@
+   template:
+     metadata:
+       labels:
++        altiplano-role: {{ .Values.accessRoleLabel }}
+ {{- include "bssc-indexsearch.commonLabels" (tuple . .Values.client.name )  | indent 8 }}
+ {{- include "bssc-indexsearch.csf-toolkit-helm.labels" (tuple . .Values.custom.client.pod.labels) | indent 8}}
+         role: is-client
+@@ -41,6 +42,9 @@
+         {{- if and ( $.syslogEnabled ) (eq .Values.client.syslogSidecar.enabled true ) (not ($.sendLogsViaLog4j)) }}
+         checksum/loggingconfig: {{ include (print $.Template.BasePath "/unifiedlogging_cm.yaml") . | sha256sum }}
+         {{- end }}
++        {{- if not .Values.security.sensitiveInfoInSecret.enabled }}
++        checksum/secret: {{ include (print $.Template.BasePath "/secret.yaml") . | sha256sum }}
++        {{- end }}
+         checksum/config: {{ include (print $.Template.BasePath "/extra-config.yaml") . | sha256sum }}
+         checksum/jvmoptions: {{ include (print $.Template.BasePath "/jvm-options.yaml") . | sha256sum }}
+         checksum/log4j2: {{ include (print $.Template.BasePath "/log4j2-properties-cm.yaml") . | sha256sum }}
+@@ -131,8 +135,76 @@
+       {{- if (.Values.security.enable) }}
+       {{- if eq (tpl (.Values.security.sensitiveInfoInSecret.enabled | toString ) .) "true" }}
+       initContainers:
++      - name: fnms-init-container-{{ .Chart.Name }}
++        image: {{ .Values.global.registry }}/{{ .Values.init.image.name }}:{{ .Values.init.image.tag }}
++        env:
++          - name: keystore_jks_pass
++            valueFrom:
++              secretKeyRef:
++                name: {{ .Values.certificates.secrets.altiplano_keystore_secrets }}
++                key: {{ .Values.certificates.fileNames.altiplano_keystore_password }}
++          - name: keyfile
++            value: /etc/altiplano/certificates/secrets/{{ .Values.certificates.fileNames.indexsearch_server_key_pem }}
++          - name: keyfilepass
++            value: /etc/altiplano/certificates/secrets/{{ .Values.certificates.fileNames.indexsearch_server_key_pass }}
++          - name: certfile
++            value: /etc/altiplano/certificates/secrets/{{ .Values.certificates.fileNames.indexsearch_server_cert_pem }}
++          - name: keystore_jks
++            value: /etc/indexsearch/secrets/ssl/{{ .Values.certificates.fileNames.indexsearch_server_keystore_jks }}
++          - name: truststore
++            value: /etc/altiplano/certificates/secrets/{{ .Values.certificates.fileNames.indexsearch_server_trustchain_cert_pem }}
++          - name: truststore_jks
++            value: /etc/indexsearch/secrets/ssl/{{ .Values.certificates.fileNames.indexsearch_server_truststore_jks }}
++
++          - name: clientkeyfile
++            value: /etc/altiplano/certificates/secrets/{{ .Values.certificates.fileNames.client_key_pem }}
++          - name: clientkeyfilepass
++            value: /etc/altiplano/certificates/secrets/{{ .Values.certificates.fileNames.client_key_pass }}
++          - name: clientcertfile
++            value: /etc/altiplano/certificates/secrets/{{ .Values.certificates.fileNames.client_cert_pem }}
++          - name: clientkeystore_jks
++            value: /etc/indexsearch/secrets/ssl/{{ .Values.certificates.fileNames.client_keystore_jks }}
++          - name: clienttruststore
++            value: /etc/altiplano/certificates/secrets/{{ .Values.certificates.fileNames.client_trustchain_cert_pem }}
++          - name: clienttruststore_jks
++            value: /etc/indexsearch/secrets/ssl/{{ .Values.certificates.fileNames.client_truststore_jks }}
++        command: [ "/bin/sh", "-c" ]
++        args:
++          - |
++            /opt/init-container/pem-to-keystore.sh $keyfile $keyfilepass $certfile $keystore_jks_pass $keystore_jks $truststore $keystore_jks_pass $truststore_jks
++            /opt/init-container/pem-to-keystore.sh $clientkeyfile $clientkeyfilepass $clientcertfile $keystore_jks_pass $clientkeystore_jks $clienttruststore $keystore_jks_pass $clienttruststore_jks
++            cp /etc/indexsearch/secrets/ssl/{{ .Values.certificates.fileNames.indexsearch_server_keystore_jks }} /etc/initContainerMount/secrets/keystoreJks
++            cp /etc/indexsearch/secrets/ssl/{{ .Values.certificates.fileNames.indexsearch_server_keystore_jks }} /etc/initContainerMount/secrets/..data/keystoreJks
++            cp /etc/altiplano/certificates/storepass/{{ .Values.certificates.fileNames.altiplano_keystore_password }} /etc/initContainerMount/secrets/.keyPass
++            cp /etc/altiplano/certificates/storepass/{{ .Values.certificates.fileNames.altiplano_keystore_password }} /etc/initContainerMount/secrets/..data/.keyPass
++            cp /etc/indexsearch/secrets/ssl/{{ .Values.certificates.fileNames.indexsearch_server_truststore_jks }} /etc/initContainerMount/secrets/truststoreJks
++            cp /etc/indexsearch/secrets/ssl/{{ .Values.certificates.fileNames.indexsearch_server_truststore_jks }} /etc/initContainerMount/secrets/..data/truststoreJks
++            cp /etc/altiplano/certificates/storepass/{{ .Values.certificates.fileNames.altiplano_keystore_password }} /etc/initContainerMount/secrets/.trustPass
++            cp /etc/altiplano/certificates/storepass/{{ .Values.certificates.fileNames.altiplano_keystore_password }} /etc/initContainerMount/secrets/..data/.trustPass
++            cp /etc/indexsearch/secrets/ssl/{{ .Values.certificates.fileNames.client_keystore_jks }} /etc/initContainerMount/secrets/clientKeystoreJks
++            cp /etc/indexsearch/secrets/ssl/{{ .Values.certificates.fileNames.client_keystore_jks }} /etc/initContainerMount/secrets/..data/clientKeystoreJks
++            cp /etc/altiplano/certificates/secrets/{{ .Values.certificates.fileNames.client_cert_pem }} /etc/initContainerMount/secrets/clientCrtPem
++            cp /etc/altiplano/certificates/secrets/{{ .Values.certificates.fileNames.client_cert_pem }} /etc/initContainerMount/secrets/..data/clientCrtPem
++            cp /etc/altiplano/certificates/secrets/{{ .Values.certificates.fileNames.client_key_pem }} /etc/initContainerMount/secrets/clientKeyPem
++            cp /etc/altiplano/certificates/secrets/{{ .Values.certificates.fileNames.client_key_pem }} /etc/initContainerMount/secrets/..data/clientKeyPem
++            cp /etc/altiplano/certificates/secrets/{{ .Values.certificates.fileNames.altiplano_sso_trustchain_cert_pem }} /etc/initContainerMount/secrets/keycloakRootCaPem
++            cp /etc/altiplano/certificates/secrets/{{ .Values.certificates.fileNames.altiplano_sso_trustchain_cert_pem }} /etc/initContainerMount/secrets/..data/keycloakRootCaPem
++            admin_identity=$(keytool -list -v -keystore $clientkeystore_jks -storepass $keystore_jks_pass 2>/dev/null | grep "Owner:" | sed 's/Owner: //' | head -1)
++            echo $admin_identity > /etc/initContainerMount/secrets/.authAdminIdentity
++            echo $admin_identity > /etc/initContainerMount/secrets/..data/.authAdminIdentity
++        volumeMounts:
++          - name: ssl-certificates
++            mountPath: "/etc/indexsearch/secrets/ssl/"
++          - name: ssl-certificates-data
++            mountPath: "/etc/initContainerMount/secrets/..data"
++          - name: altiplano-indexsearch-certs
++            mountPath: "/etc/altiplano/certificates/secrets/"
++          - name: is-certsecrets
++            mountPath: "/etc/initContainerMount/secrets"
++          - name: altiplano-keystore-password
++            mountPath: "/etc/altiplano/certificates/storepass/"
+       - name : {{ template "bssc-indexsearch.initContainer.name" . }}
+-        image: {{ include "bssc-indexsearch.registry" (tuple .Values .Values.internalInitRegistry) }}/{{ .Values.initContainer.repo }}:{{ (include "bssc-indexsearch.imageTag" (tuple .Values.initContainer.tag $.commonSupportedImageFlavor .Values .Values.manager .Values.initContainer )) }}
++        image: {{ include "bssc-indexsearch.registry" (tuple .Values .Values.internalInitRegistry) }}/{{ .Values.initContainer.repo }}:{{ .Values.initContainer.tag }}
+         imagePullPolicy: {{.Values.manager.ImagePullPolicy}}
+         command: ['sh', '-c', "/etc/initContainerMount/encrypt.sh"]
+         securityContext:
+@@ -143,21 +215,31 @@
+         - name: TZ
+           value: {{ or .Values.timezone.timeZoneEnv .Values.global.timeZoneEnv "UTC" | quote }}
+         volumeMounts:
++        - name: ssl-certificates
++          mountPath: "/etc/indexsearch/secrets/ssl/"
++        - name: ssl-certificates-data
++          mountPath: "/etc/initContainerMount/secrets/..data"
++        - name: altiplano-indexsearch-certs
++          mountPath: "/etc/altiplano/certificates/secrets/"
++        - name: altiplano-keystore-password
++          mountPath: "/etc/altiplano/certificates/storepass/"
+         - name: shared-volume
+           mountPath: "/etc/sharedMount/"
+-        - name: is-secret
+-          mountPath: "/etc/initContainerMount/secrets"
++        - name: is-passwordsecret
++          mountPath: "/etc/initContainerMount/passwords"
+           {{- if and (eq $.isCertManagerEnabled "true") ( not $.istio.enabled) }}
+               {{- if or (and (eq .Values.security.nodeCrt.tls.secretRef.name "") ( not .Values.security.sensitiveInfoInSecret.keystoreJks)) (and (eq .Values.security.adminCrt.tls.secretRef.name "") (not .Values.security.sensitiveInfoInSecret.clientKeyPem)) }}
+         - name: cert-manager-secret
+           mountPath: "/etc/initContainerMount/certManagerSecret/"
+             {{- end }}
+           {{- end }}
++        - name: is-certsecrets
++          mountPath: "/etc/initContainerMount/secrets"
+       {{- end }}
+       {{- end }}
+       containers:
+       - name: {{ template "bssc-indexsearch.client.container" . }}
+-        image: {{ include "bssc-indexsearch.registry" (tuple .Values .Values.internalAppRegistry) }}/{{.Values.manager.image.repo}}:{{ (include "bssc-indexsearch.imageTag" (tuple .Values.manager.image.tag $.commonSupportedImageFlavor .Values .Values.manager .Values.manager.image )) }}
++        image: {{ include "bssc-indexsearch.registry" (tuple .Values .Values.internalAppRegistry) }}/{{.Values.manager.image.repo}}:{{.Values.manager.image.tag}}
+         imagePullPolicy: {{.Values.manager.ImagePullPolicy}}
+         resources:
+ {{ include "bssc-indexsearch.resources" (tuple . .Values.client.resources "1") | indent 10 }}
+@@ -202,6 +284,10 @@
+             value: "{{ include "bssc-indexsearch.nodeRoles" (tuple . "ingest") }}"
+           - name: "OPENSEARCH_JAVA_OPTS"
+             value: "{{.Values.client.java_opts}}"
++          - name: "ELASTICSEARCH_SERVICE_PORT"
++            value: "{{.Values.service.client_port}}"
++          - name: "processors"
++            value: "{{.Values.client.processors | default 1 }}"
+           - name: "DISCOVERY_SERVICE"
+             value: "{{ include "bssc-indexsearch.fullname" . |trunc ((sub .Values.customResourceNames.resourceNameLimit 10)|int) }}-discovery"
+           - name: "KEYCLOAK_AUTH"
+@@ -254,6 +340,16 @@
+             {{- end }}
+           - name: NSS_SDB_USE_CACHE
+             value: "no"
++          - name: "INDEXSEARCH_CLIENT_USERNAME"
++            valueFrom:
++              secretKeyRef:
++                name: "{{ .Values.security.sensitiveInfoInSecret.credentialNamePassword }}"
++                key: indexsearch_client_username
++          - name: "INDEXSEARCH_CLIENT_PASSWORD"
++            valueFrom:
++              secretKeyRef:
++                name: "{{ .Values.security.sensitiveInfoInSecret.credentialNamePassword }}"
++                key: indexsearch_client_password
+           - name: NAMESPACE
+             valueFrom:
+               fieldRef:
+@@ -310,6 +406,18 @@
+             value: "false"
+             {{- end }}
+           {{- end }}
++          - name: ALTIPLANO_KEYCLOAK_UI_REALM
++            {{- if .Values.global.ALTIPLANO_KEYCLOAK_UI_REALM }}
++            value: {{ .Values.global.ALTIPLANO_KEYCLOAK_UI_REALM }}
++            {{- else }}
++            value: "master"
++            {{ end }}
++          - name: ALTIPLANO_KEYCLOAK_NBI_REALM
++            {{- if .Values.global.ALTIPLANO_KEYCLOAK_NBI_REALM }}
++            value: {{ .Values.global.ALTIPLANO_KEYCLOAK_NBI_REALM }}
++            {{- else }}
++            value: "system"
++            {{ end }}
+           {{- if .Values.env}}
+ {{ toYaml .Values.env | indent 10 }}
+           {{- end }}
+@@ -323,6 +431,14 @@
+           name: tcp-rest
+           protocol: TCP
+         volumeMounts:
++        - name: ssl-certificates
++          mountPath: "/etc/indexsearch/secrets/ssl/"
++        - name: ssl-certificates-data
++          mountPath: "/etc/initContainerMount/secrets/..data"
++        - name: altiplano-indexsearch-certs
++          mountPath: "/etc/altiplano/certificates/secrets/"
++        - name: altiplano-keystore-password
++          mountPath: "/etc/altiplano/certificates/storepass/"
+         - name: "extensions-tmp"
+           mountPath: "/usr/share/opensearch/extensions"
+         - name: "log4j2-properties"
+@@ -405,6 +521,16 @@
+       volumes:
+       # mounting /usr/share/opensearch/extensions directory as emptyDir since OS-v2.7.0 requires this location to be writable on runtime.
+       # Use of this directory and the contents inside is unclear yet and query is raised to community.
++      - name: altiplano-indexsearch-certs
++        secret:
++          secretName: {{ .Values.certificates.secrets.altiplano_indexsearch_certificate_secrets }}
++      - name: ssl-certificates
++        emptyDir: {}
++      - name: ssl-certificates-data
++        emptyDir: {}
++      - name: altiplano-keystore-password
++        secret:
++          secretName: {{ .Values.certificates.secrets.altiplano_keystore_secrets }}
+       - name: extensions-tmp
+         emptyDir:
+           sizeLimit: {{ default "100Mi"  .Values.emptyDirSizeLimit.extensionsTmp }}
+@@ -467,110 +593,21 @@
+       - name: securityconf-with-sensitiveinfo
+         emptyDir:
+           sizeLimit: {{ default "10Mi"  .Values.emptyDirSizeLimit.securityconfWithSensitiveinfo }}
+-      - name: is-secret
+-        projected:
+-          sources:
+-          {{- $index := 0 }}
+-            {{- range $key, $value := .Values.security.sensitiveInfoInSecret.additionalInternalUsers }}
+-            {{- $index = add $index 1 }}
+-          - secret:
+-              name: {{ .credentialName }}
+-              items:
+-                - key: {{ .username }}
+-                  path: username-{{ $index }}
+-                - key: {{ .password }}
+-                  path: password-{{ $index }}
+-            {{- end }}
+-          - secret:
+-              name: {{ .Values.security.sensitiveInfoInSecret.credentialName }}
+-              items:
+-                {{- if .Values.security.sensitiveInfoInSecret.secInternalUserYml }}
+-                - key: {{ .Values.security.sensitiveInfoInSecret.secInternalUserYml }}
+-                  path: internal_users.yml
+-                {{- end }}
+-                {{- if .Values.security.sensitiveInfoInSecret.kibanaServerUserPwd }}
+-                - key: {{ .Values.security.sensitiveInfoInSecret.kibanaServerUserPwd }}
+-                  path: .kibanaServerUserPwd
+-                {{- end }}
+-                {{- if (.Values.security.sensitiveInfoInSecret.adminUserName) }}
+-                - key: {{ .Values.security.sensitiveInfoInSecret.adminUserName }}
+-                  path: .adminUserName
+-                {{- end }}
+-                {{- if (.Values.security.sensitiveInfoInSecret.adminPassword) }}
+-                - key: {{ .Values.security.sensitiveInfoInSecret.adminPassword }}
+-                  path: .adminPassword
+-                {{- end }}
+-                {{- if and ( .Values.security.keycloak_auth ) ( not $.istio.enabled ) }}
+-                  {{- if .Values.security.sensitiveInfoInSecret.keycloakRootCaPem }}
+-                - key: {{ .Values.security.sensitiveInfoInSecret.keycloakRootCaPem }}
+-                  path: keycloakRootCaPem
+-                  {{- end }}
+-                {{- end }}
+-              {{- if not $.istio.enabled }}
+-                {{- if .Values.security.sensitiveInfoInSecret.authAdminIdentity }}
+-                - key: {{ .Values.security.sensitiveInfoInSecret.authAdminIdentity }}
+-                  path: .authAdminIdentity
+-                {{- end }}
+-              {{- if .Values.security.sensitiveInfoInSecret.nodesDn }}
+-                - key: {{ .Values.security.sensitiveInfoInSecret.nodesDn }}
+-                  path: .nodesDn
+-              {{- end }}
+-            {{- if or (eq .Values.security.nodeCrt.tls.secretRef.name "") (eq .Values.security.adminCrt.tls.secretRef.name "") }}
+-              {{- if or ( .Values.security.sensitiveInfoInSecret.keystoreJks) ( .Values.security.sensitiveInfoInSecret.clientKeyPem) }}
+-                - key: {{ .Values.security.sensitiveInfoInSecret.keyPass }}
+-                  path: .keyPass
+-                - key: {{ .Values.security.sensitiveInfoInSecret.trustPass }}
+-                  path: .trustPass
+-                - key: {{ .Values.security.sensitiveInfoInSecret.truststoreJks }}
+-                  path: truststoreJks
+-              {{- end }}
+-            {{- end }}
+-            {{- if eq .Values.security.adminCrt.tls.secretRef.name "" }}
+-              {{- if .Values.security.sensitiveInfoInSecret.clientKeyPem }}
+-                - key: {{ .Values.security.sensitiveInfoInSecret.clientKeystoreJks }}
+-                  path: clientKeystoreJks
+-                - key: {{ .Values.security.sensitiveInfoInSecret.clientCrtPem }}
+-                  path: clientCrtPem
+-                - key: {{ .Values.security.sensitiveInfoInSecret.clientKeyPem }}
+-                  path: clientKeyPem
+-              {{- end }}
+-            {{- end }}
+-            {{- if eq .Values.security.nodeCrt.tls.secretRef.name "" }}
+-              {{- if .Values.security.sensitiveInfoInSecret.keystoreJks }}
+-                - key: {{ .Values.security.sensitiveInfoInSecret.keystoreJks }}
+-                  path: keystoreJks
+-              {{- end }}
+-            {{- else }}
+-      - name: tls-secret
+-        projected:
+-          sources:
+-          - secret:
+-              name: {{ .Values.security.nodeCrt.tls.secretRef.name }}
+-              items:
+-                - key: {{ .Values.security.nodeCrt.tls.secretRef.keyNames.caCrt }}
+-                  path: ca.crt
+-                - key: {{ .Values.security.nodeCrt.tls.secretRef.keyNames.tlsKey }}
+-                  path: node-tls.key
+-                - key: {{ .Values.security.nodeCrt.tls.secretRef.keyNames.tlsCrt }}
+-                  path: node-tls.crt
+-            {{- end }}
+-            {{- if ne .Values.security.adminCrt.tls.secretRef.name "" }}
+-            {{- if eq .Values.security.nodeCrt.tls.secretRef.name "" }}
+-      - name: tls-secret
+-        projected:
+-          sources:
+-            {{- end }}
+-          - secret:
+-              name: {{ .Values.security.adminCrt.tls.secretRef.name }}
+-              items:
+-                - key: {{ .Values.security.adminCrt.tls.secretRef.keyNames.tlsKey }}
+-                  path: clientKeyPem
+-                - key: {{ .Values.security.adminCrt.tls.secretRef.keyNames.tlsCrt }}
+-                  path: clientCrtPem
+-                - key: {{ .Values.security.adminCrt.tls.secretRef.keyNames.caCrt }}
+-                  path: admin-ca.crt
+-            {{- end }}
++      - name: is-passwordsecret
++        secret:
++          secretName: {{ .Values.security.sensitiveInfoInSecret.credentialNamePassword }}
++          items:
++            {{- if .Values.security.sensitiveInfoInSecret.secInternalUserYml }}
++          - key: {{ .Values.security.sensitiveInfoInSecret.secInternalUserYml }}
++            path: internal_users.yml
++            {{- end }}
++            {{- if .Values.security.sensitiveInfoInSecret.kibanaServerUserPwd }}
++          - key: {{ .Values.security.sensitiveInfoInSecret.kibanaServerUserPwd }}
++            path: .kibanaServerUserPwd
+             {{- end }}
++      - name: is-certsecrets
++        emptyDir: {}
++        {{- end }}
+             {{- if and (eq $.isCertManagerEnabled "true") ( not $.istio.enabled) }}
+               {{- if or (and (eq .Values.security.nodeCrt.tls.secretRef.name "") ( not .Values.security.sensitiveInfoInSecret.keystoreJks)) (and (eq .Values.security.adminCrt.tls.secretRef.name "") (not .Values.security.sensitiveInfoInSecret.clientKeyPem)) }}
+       - name: cert-manager-secret
+@@ -612,7 +649,6 @@
+                   {{- end }}
+               {{- end }}
+               {{- end }}
+-              {{- end }}
+             {{- end }}
+       - configMap:
+           name: {{ template "bssc-indexsearch.fullname" . }}-security-config

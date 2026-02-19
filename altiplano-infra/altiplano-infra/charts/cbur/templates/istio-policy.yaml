@@ -1,0 +1,47 @@
+{{- if .Values.istio.enabled }}
+{{- if .Values.istio.mtls.enabled }}
+{{- if eq .Values.istio.version "1.4" }}
+apiVersion: "authentication.istio.io/v1alpha1"
+kind: "Policy"
+metadata:
+  name: {{ template "cbur.fullname" . }}-mtls-exclude
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "cbur.proxy.commonLabels" (tuple .) | indent 4 }}
+    {{- include "cbur.customLabels" (tuple .Values.global.labels) | indent 4 }}
+  annotations:
+    {{- include "cbur.customAnnotations" (tuple .Values.global.annotations) | indent 4 }}
+spec:
+  targets:
+  - name: {{ template "cbur.fullname" . }}
+  peers:
+{{- if eq .Values.istio.permissive true }}
+  - mtls:
+      mode: PERMISSIVE
+{{- else }}
+  - mtls: {}
+{{- end }}
+{{- else }}
+apiVersion: "security.istio.io/v1beta1"
+kind: "PeerAuthentication"
+metadata:
+  name: {{ template "cbur.fullname" . }}-mtls-exclude
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "cbur.proxy.commonLabels" (tuple .) | indent 4 }}
+    {{- include "cbur.customLabels" (tuple .Values.global.labels) | indent 4 }}
+  annotations:
+    {{- include "cbur.customAnnotations" (tuple .Values.global.annotations) | indent 4 }}
+spec:
+  mtls:
+{{- if eq .Values.istio.permissive true }}
+     mode: PERMISSIVE
+{{- else }}
+     mode: STRICT
+{{- end }}
+  selector:
+    matchLabels:
+      {{- include "cbur.proxy.commonLabels" (tuple .) | indent 6 }}
+{{- end }}
+{{- end }}
+{{- end }}

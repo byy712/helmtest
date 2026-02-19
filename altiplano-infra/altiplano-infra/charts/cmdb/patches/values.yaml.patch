@@ -1,0 +1,70 @@
+--- cmdb-9.2.1/cmdb-original/values.yaml	2024-04-25 05:27:41.000000000 +0530
++++ /home/chautruo/nokia/helm-dev/altiplano-infra/charts/cmdb/values.yaml	2024-05-07 14:10:30.979575000 +0530
+@@ -166,6 +166,8 @@
+   scale:
+     timeout: 600
+ 
++accessRoleLabel: internal-access
++
+ ## Root level value takes precedence over the global value.
+ enableDefaultCpuLimits:
+ 
+@@ -844,6 +846,17 @@
+     name: "cmdb/cmdb-mariadb"
+     tag: "6.2-2.6533"
+     pullPolicy: IfNotPresent
++    vaultInitRepo: fnms-init-container
++    vaultInitTag: nokia-1.0.5
++  accessRoleLabel: internal-access
++  fluentd_sidecar:
++    image:
++      name: "fnms-fluent"
++      tag: "nokia-3.1.5"
++      pullPolicy: IfNotPresent
++    securityContext:
++      runAsUser: 1000
++      runAsGroup: 1771
+ 
+   ## Pod imagePullSecrets override for mariadb pods
+   imagePullSecrets: []
+@@ -1531,6 +1544,17 @@
+     name: "cmdb/cmdb-maxscale"
+     tag: "6.2-2.6533"
+     pullPolicy: IfNotPresent
++    vaultInitRepo: fnms-init-container
++    vaultInitTag: nokia-1.0.5
++  accessRoleLabel: internal-access
++  fluentd_sidecar:
++    image:
++      name: "fnms-fluent"
++      tag: "nokia-3.1.5"
++      pullPolicy: IfNotPresent
++    securityContext:
++      runAsUser: 1000
++      runAsGroup: 1772
+ 
+   ## Pod imagePullSecrets override for maxscale pods
+   imagePullSecrets: []
+@@ -2031,10 +2055,22 @@
+ ## (used for lifecycle and administrative Jobs)
+ ##
+ admin:
++  count: 1
+   image:
+     name: "cmdb/cmdb-admin"
+     tag: "6.2-2.6533"
+     pullPolicy: IfNotPresent
++    vaultInitRepo: fnms-init-container
++    vaultInitTag: nokia-1.0.5
++  accessRoleLabel: internal-access
++  fluentd_sidecar:
++    image:
++      name: "fnms-fluent"
++      tag: "nokia-3.1.5"
++      pullPolicy: IfNotPresent
++    securityContext:
++      runAsUser: 1000
++      runAsGroup: 1773
+ 
+   ## Pod imagePullSecrets override for admin pods and jobs
+   imagePullSecrets: []

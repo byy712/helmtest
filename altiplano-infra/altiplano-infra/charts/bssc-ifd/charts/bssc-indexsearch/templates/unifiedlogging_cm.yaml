@@ -1,0 +1,124 @@
+{{- include "bssc-indexsearch.syslogValues" . }}
+{{- include "bssc-indexsearch.syslogTlsValues" . }}
+{{- include "bssc-indexsearch.syslogSendLogsViaLog4j" . }}
+{{- if and ($.syslogEnabled) (not ($.sendLogsViaLog4j)) }}
+kind: ConfigMap
+apiVersion: v1
+data:
+  fluentd.conf: {{ tpl (toYaml .Values.unifiedLogging.unifiedLoggingConfig) . | indent 2 }}
+  sidecar.conf: |-
+    <label @FLUENT_LOG>
+      <filter fluent.*>
+        @type record_transformer
+        enable_ruby true
+        renew_record true
+        <record>
+          log ${ { message: record["message"]  } }
+          extension ${ require 'json';record.merge(JSON.parse(ENV["EXTENSION_FIELDS"])) }
+          type "log"
+          level ${record.has_key?("level") ? record["level"]: "unavailable" }
+          timezone ${ ENV["TZ"] }
+          system ${ ENV["SYSTEM"] }
+          systemid ${ ENV["SYSTEMID"] }
+          host ${ ENV["HOSTNAME"]}.${ ENV["NAMESPACE"] || '' }
+          container ${ ENV["CONTAINER_NAME"] }
+          time ${record.has_key?("time") ? record["time"]: time.strftime('%Y-%m-%dT%H:%M:%S%z') }
+        </record>
+        remove_keys $.extension.time,$.extension.message,$.extension.level
+      </filter>
+      <filter fluent.*>
+        @type record_modifier
+        enable_ruby true
+        <record>
+          dummy ${require 'json';if record["extension"].empty?; record.delete("extension"); end}
+        </record>
+        remove_keys dummy
+      </filter>       
+      <match fluent.*>
+        @include sidecar-dest.conf
+      </match>
+    </label>
+  sidecar-dest.conf: |-
+    @type copy
+    <store>
+      @type stdout
+      <format>
+        @type json
+      </format>
+    </store>
+    <store>
+      @type remote_syslog
+      host {{ tpl $.syslog.host . }}
+      {{- if tpl (default "" $.syslog.program) . }}
+      program {{ tpl $.syslog.program . }}
+      {{- end }}
+      {{- if tpl (default "" $.syslog.severity) . }}
+      severity {{ tpl $.syslog.severity . }}
+      {{- end }}
+      port {{ tpl ($.syslog.port | quote) . }}
+      protocol {{ tpl $.syslog.protocol . | lower }}
+      {{- if tpl (default "" $.syslog.facility) . }}
+      facility {{ tpl $.syslog.facility . }}
+      {{- end }}
+      <format>
+        @type json
+      </format>
+      {{- if and (default "" $.syslogSecretName) (default "" $.syslogSecretKey) }}
+      tls true
+      ca_file /etc/fluent/certs/syslogRootCaPem
+      {{- end }}
+      <buffer>
+        @type file
+        path /tmp/sidecarLogs/buffer
+        flush_interval 5s
+        retry_forever true
+        chunk_limit_size 2MB
+        total_limit_size {{ tpl .Values.unifiedLogging.syslog.sidecarLogBufferSize . }}
+        retry_max_interval 30s
+      </buffer>
+    </store>
+  dest.conf:  |-
+    @type copy
+    <store>
+      @type stdout
+      <format>
+        @type json
+      </format>
+    </store>
+    <store>
+      @type remote_syslog
+      host {{ tpl $.syslog.host . }}
+      {{- if tpl (default "" $.syslog.program) . }}
+      program {{ tpl $.syslog.program . }}
+      {{- end }}
+      severity ${tag[1]}
+      port {{ tpl ($.syslog.port | quote) . }}
+      protocol {{ tpl $.syslog.protocol . | lower }}
+      {{- if tpl (default "" $.syslog.facility) . }}
+      facility {{ tpl $.syslog.facility . }}
+      {{- end }}
+      <format>
+        @type json
+      </format>
+      {{- if and (default "" $.syslogSecretName) (default "" $.syslogSecretKey) }}
+      tls true
+      ca_file /etc/fluent/certs/syslogRootCaPem
+      {{- end }}
+      <buffer tag>
+        @type file
+        path /tmp/mainContainerLogs/buffer
+        flush_interval 5s
+        retry_forever true
+        chunk_limit_size 2MB
+        total_limit_size {{ tpl .Values.unifiedLogging.syslog.appLogBufferSize . }}
+        retry_max_interval 30s
+      </buffer>
+    </store>
+metadata:
+  name: {{ template "bssc-indexsearch.fullname" .  }}-logging-conf
+  labels:
+{{- include "bssc-indexsearch.commonLabels" (tuple . ) | indent 4 }}
+{{- include "bssc-indexsearch.csf-toolkit-helm.labels" (tuple .) | nindent 4 }}
+  annotations:
+{{- include "bssc-indexsearch.csf-toolkit-helm.annotations" (tuple .) | nindent 4 }}
+{{- end }}

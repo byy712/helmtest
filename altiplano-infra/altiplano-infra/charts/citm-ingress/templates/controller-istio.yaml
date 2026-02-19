@@ -1,0 +1,28 @@
+{{- if and .Values.istio.enabled (eq .Values.istio.permissive true) }}
+{{- if eq .Values.istio.version "1.4" }}
+apiVersion: "authentication.istio.io/v1alpha1"
+kind: "Policy"
+metadata:
+  name: {{ template "citm-ingress.fullname" . }}
+  namespace: {{ .Release.Namespace }}
+spec:
+  targets:
+  - name: {{ template "citm-ingress.fullname" . }}
+  peers:
+  - mtls:
+      mode: PERMISSIVE
+{{- else }}      
+apiVersion: "security.istio.io/v1beta1"
+kind: "PeerAuthentication"
+metadata:
+  name: {{ template "citm-ingress.fullname" . }}
+  namespace: {{ .Release.Namespace }}
+spec:
+  selector:
+    matchLabels:
+      app: {{ template "citm-ingress.name" . }}
+      release: {{ .Release.Name }}
+  mtls:
+    mode: PERMISSIVE
+{{- end }}
+{{- end }}

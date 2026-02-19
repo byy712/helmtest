@@ -1,0 +1,25 @@
+apiVersion: v2
+appVersion: 7.4.1
+dependencies:
+- condition: ckaf-zookeeper.enabled
+  name: ckaf-zookeeper
+  repository: https://repo.cci.nokia.net/csf-helm-stable/
+  version: 8.0.2
+- name: csf-common-lib
+  repository: https://repo.cci.nokia.net/csf-helm-stable/
+  version: 1.8.0
+description: Apache Kafka is publish-subscribe messaging rethought as a distributed
+  commit log.
+home: https://kafka.apache.org/
+icon: https://kafka.apache.org/images/logo.png
+keywords:
+- kafka
+- zookeeper
+- kafka statefulset
+- 'X-COMPAAS: { "CATEGORY": "Messaging", "SVC_NAME": "Kafka", "SVC_TYPE": "CKAF",
+  "SVC_SCOPE": [ "PRIVATE" ] }'
+maintainers:
+- email: I_CKAF@internal.nsn.com
+  name: CSF CKAF Team
+name: ckaf-kafka
+version: 8.0.2-nokia-patch-3

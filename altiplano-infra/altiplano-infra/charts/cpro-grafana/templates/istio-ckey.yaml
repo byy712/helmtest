@@ -1,0 +1,62 @@
+{{- if (and ($.istio.enabled) ($.istio.createKeycloakServiceEntry.enabled)) }}
+apiVersion: {{ template "cpro-grafana.apiVersionNetworkIstioV1Alpha3orV1Beta1" . }}
+kind: ServiceEntry
+metadata:
+  name: {{ template "cpro-grafana.ckeyServiceEntryName" . }}
+  labels:
+    {{- include "cpro-grafana.app.labels-v3" . | nindent 4 }}
+    {{- include "cpro-grafana.labelsOrAnnotations" (tuple .Values.global.labels) | indent 4}}
+  namespace: {{ .Release.Namespace }}
+  annotations:
+    {{- include "cpro-grafana.labelsOrAnnotations" (tuple .Values.global.annotations) | indent 4}}
+spec:
+  location: {{ $.istio.createKeycloakServiceEntry.location }}
+  hosts:
+  - {{ $.istio.createKeycloakServiceEntry.extCkeyHostname }}
+  ports:
+  - number: {{ $.istio.createKeycloakServiceEntry.extCkeyPort }}
+    name: http-extCkey
+    protocol: {{ $.istio.createKeycloakServiceEntry.extCkeyProtocol }}
+  resolution: DNS
+---
+{{- if eq $.istio.createKeycloakServiceEntry.location "MESH_INTERNAL" }}
+apiVersion: {{ template "cpro-grafana.apiVersionNetworkIstioV1Alpha3orV1Beta1" . }}
+kind: VirtualService
+metadata:
+  name: {{ template "cpro-grafana.ckeyVirtualServiceName" . }}
+  labels:
+    {{- include "cpro-grafana.app.labels-v3" . | nindent 4 }}
+    {{- include "cpro-grafana.labelsOrAnnotations" (tuple .Values.global.labels) | indent 4}}
+  namespace: {{ .Release.Namespace }}
+  annotations:
+    {{- include "cpro-grafana.labelsOrAnnotations" (tuple .Values.global.annotations) | indent 4}}
+spec:
+  hosts:
+  - {{ $.istio.createKeycloakServiceEntry.extCkeyHostname }}
+  {{- if eq $.istio.createKeycloakServiceEntry.extCkeyProtocol "HTTP" }}
+  http:
+  - match:
+    - port: {{ $.istio.createKeycloakServiceEntry.extCkeyPort }}
+    route:
+    - destination:
+        host: {{ $.istio.createKeycloakServiceEntry.ckeyK8sSvcName }}
+        port:
+          number: {{ $.istio.createKeycloakServiceEntry.ckeyK8sSvcPort }}
+  {{- else }}
+  tls:
+  - match:
+    - port: {{ $.istio.createKeycloakServiceEntry.extCkeyPort }}
+{{- if semverCompare ">1.5" $.istio.version }}
+      sniHosts:
+{{- else }}
+      sni_hosts:
+{{- end }}
+      - {{ $.istio.createKeycloakServiceEntry.extCkeyHostname }}
+    route:
+    - destination:
+        host: {{ $.istio.createKeycloakServiceEntry.ckeyK8sSvcName }}
+        port:
+          number: {{ $.istio.createKeycloakServiceEntry.ckeyK8sSvcPort }}
+  {{- end }}
+{{- end }}
+{{- end }}

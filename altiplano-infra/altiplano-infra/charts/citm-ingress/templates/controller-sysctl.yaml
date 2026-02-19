@@ -1,0 +1,20 @@
+{{- if .Values.controller.sysctlRules }}
+{{- if ( .Capabilities.APIVersions.Has "ncm.nokia.com/v1alpha1/Sysctl" ) }}
+apiVersion: ncm.nokia.com/v1alpha1
+kind: Sysctl
+metadata:
+  labels:
+    controller-tools.k8s.io: "1.0"
+    {{- include "citm-ingress.commonLabels" . | indent 4 }}
+  name: {{ template "citm-ingress.fullname" . }}
+spec:
+  sysctlRules:
+{{- range .Values.controller.sysctlRules }}
+    - {{ . }}
+{{- end }}
+  nodeSelector:
+{{- if .Values.controller.nodeSelector }}
+{{ toYaml .Values.controller.nodeSelector | indent 4 }}
+{{- end }}
+{{- end }}
+{{- end }}  

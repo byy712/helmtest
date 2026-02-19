@@ -1,0 +1,331 @@
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ template "crmq.fullname" . }}-config
+  labels:
+    app: {{ template "crmq.name" . }}
+    chart: {{ template "crmq.chart" .  }}
+    release: "{{ .Release.Name }}"
+    heritage: "{{ .Release.Service }}"
+    {{- include "crmq.commonLabels" . | indent 4 }}
+    {{- include "csf-common-lib.v1.customLabels" (tuple .Values.global.labels) | indent 4 }}
+  annotations:
+    {{- include "csf-common-lib.v1.customAnnotations" (tuple .Values.global.annotations) | indent 4 }}
+data:
+{{- if .Values.ipv6Enabled }}
+  erl_inetrc: |-
+    {inet6, true}.
+{{- if eq (include "crmq.singleStack.ipv6" .) "true" }}
+  erl_inetrc: |-
+    {ipv6_v6only, false}.
+{{- end }}
+{{- end }}
+  enabled_plugins: |-
+{{- if .Values.rabbitmq.prometheus.enabled }}
+{{ .Values.rabbitmq.plugins | indent 4 }}
+{{- else }}
+{{ .Values.rabbitmq.plugins | indent 4 | replace ",rabbitmq_prometheus" "" }}
+{{- end }}
+  rabbitmq.conf: |-
+{{- if and .Values.rabbitmq.tls.enabled (not .Values.rabbitmq.enablePlainTextPort) }}
+    listeners.tcp=none
+{{- else }}
+    listeners.tcp.default={{ .Values.rabbitmq.amqpPort }}
+{{- end }}
+{{ .Values.rabbitmq.configuration | indent 4 }}
+{{- if .Values.rabbitmq.memory.vm_memory_high_watermark_relative }}
+    vm_memory_high_watermark.relative = {{ .Values.rabbitmq.memory.vm_memory_high_watermark_relative }}
+{{- end }}
+{{- if .Values.rabbitmq.memory.vm_memory_high_watermark_absolute }}
+    vm_memory_high_watermark.absolute = {{ .Values.rabbitmq.memory.vm_memory_high_watermark_absolute }}
+{{- end }}
+{{- if .Values.rabbitmq.memory.vm_memory_high_watermark_paging_ratio }}
+    vm_memory_high_watermark_paging_ratio = {{ .Values.rabbitmq.memory.vm_memory_high_watermark_paging_ratio }}
+{{- end }}
+{{- if .Values.rabbitmq.memory.disk_free_limit_absolute }}
+    disk_free_limit.absolute = {{ .Values.rabbitmq.memory.disk_free_limit_absolute }}
+{{- end }}
+{{- if eq (include "crmq.server.tls.enabled" .) "true" }}
+    listeners.ssl.default = {{ .Values.rabbitmq.tls.ssl_port }}
+    ssl_options.verify = {{ .Values.rabbitmq.tls.verify_option }}
+    ssl_options.honor_cipher_order = {{ .Values.rabbitmq.tls.honor_cipher_order }}
+    ssl_options.honor_ecc_order = {{ .Values.rabbitmq.tls.honor_ecc_order }}
+{{- if .Values.rabbitmq.tls.fail_if_no_peer_cert }}
+    ssl_options.fail_if_no_peer_cert = true
+{{- else }}
+    ssl_options.fail_if_no_peer_cert = false
+{{- end }}
+{{- if .Values.rabbitmq.tls.versions }}
+{{ .Values.rabbitmq.tls.versions | indent 4 }}
+{{- end }}
+{{- if .Values.rabbitmq.tls.ciphers_options }}
+{{ .Values.rabbitmq.tls.ciphers_options | indent 4 }}
+{{- end }}
+{{- if .Values.rabbitmq.tls.certmanager.used }}
+    ssl_options.cacertfile = /etc/rabbitmq.tls.conf/certManagerKeys/server/ca.crt
+    ssl_options.certfile = /etc/rabbitmq.tls.conf/certManagerKeys/server/tls.crt
+    ssl_options.keyfile = /etc/rabbitmq.tls.conf/certManagerKeys/server/tls.key
+{{- else if .Values.rabbitmq.tls.uploadPath.cacert }}
+    ssl_options.cacertfile = {{ .Values.rabbitmq.tls.uploadPath.cacert }}
+    ssl_options.certfile = {{ .Values.rabbitmq.tls.uploadPath.cert }}
+    ssl_options.keyfile = {{ .Values.rabbitmq.tls.uploadPath.key }}
+{{- else if .Values.rabbitmq.tls.secret.used }}
+    ssl_options.cacertfile = /etc/rabbitmq.tls.conf/secret/server/.cacert.pem
+    ssl_options.certfile = /etc/rabbitmq.tls.conf/secret/server/.cert.pem
+    ssl_options.keyfile = /etc/rabbitmq.tls.conf/secret/server/.key.pem
+{{- end }}
+{{- end }}
+{{- if eq (include "crmq.prometheus.tls.enabled" .) "true" }}
+    prometheus.ssl.port       = {{ .Values.rabbitmq.prometheus.port }}
+{{- if .Values.rabbitmq.prometheus.tls.certmanager.used }}
+    prometheus.ssl.cacertfile = /etc/rabbitmq.tls.conf/certManagerKeys/prometheus/ca.crt
+    prometheus.ssl.certfile = /etc/rabbitmq.tls.conf/certManagerKeys/prometheus/tls.crt
+    prometheus.ssl.keyfile = /etc/rabbitmq.tls.conf/certManagerKeys/prometheus/tls.key
+{{- else if .Values.rabbitmq.prometheus.tls.uploadPath.cacert }}
+    prometheus.ssl.cacertfile = {{ .Values.rabbitmq.prometheus.tls.uploadPath.cacert }}
+    prometheus.ssl.certfile   = {{ .Values.rabbitmq.prometheus.tls.uploadPath.cert }}
+    prometheus.ssl.keyfile    = {{ .Values.rabbitmq.prometheus.tls.uploadPath.key }}
+{{- else if .Values.rabbitmq.prometheus.tls.secret.used }}
+    prometheus.ssl.cacertfile = /etc/rabbitmq.tls.conf/secret/prometheus/.cacert.pem
+    prometheus.ssl.certfile = /etc/rabbitmq.tls.conf/secret/prometheus/.cert.pem
+    prometheus.ssl.keyfile = /etc/rabbitmq.tls.conf/secret/prometheus/.key.pem
+{{- end }}
+{{- /*
+    Left blank here as a placeholder. Populated by buildconfigs_helper.py during sts boot up.
+*/}}
+{{- if and .Values.rabbitmq.prometheus.tls.passwordSecretName .Values.rabbitmq.prometheus.tls.passwordSecretKey }}
+    prometheus.ssl.password =
+{{- end }}
+{{- end }}
+    log.upgrade.file = false
+    log.file = rabbitmqlogs.log
+    log.file.level = {{ .Values.loggingLevel }}
+{{- if .Values.rabbitmq.console.enabled }}
+    log.console = true
+    log.console.level = {{ .Values.rabbitmq.console.level }}
+{{- end }}
+{{- if .Values.rabbitmq.rsyslog.enabled }}
+    log.syslog = true
+    log.syslog.level = {{.Values.rabbitmq.rsyslog.level}}
+    log.syslog.ip = 127.0.0.1
+    log.syslog.port = 2514
+    log.syslog.protocol = rfc3164
+    log.syslog.transport = {{.Values.rabbitmq.rsyslog.transport}}
+{{- end }}
+{{- if .Values.rabbitmq.clog.syslog.enabled }}
+    log.syslog = true
+    log.syslog.level = {{.Values.rabbitmq.clog.syslog.level}}
+    log.syslog.ip = 127.0.0.1
+    log.syslog.port = {{.Values.rabbitmq.clog.syslog.port}}
+    log.syslog.protocol = {{.Values.rabbitmq.clog.syslog.format}}
+    log.syslog.transport = {{.Values.rabbitmq.clog.syslog.transport}}
+{{- end }}
+{{- if .Values.rabbitmq.mqtt.enabled }}
+    mqtt.vhost            = {{.Values.rabbitmq.mqtt.vhost}}
+    mqtt.exchange         = {{.Values.rabbitmq.mqtt.exchange}}
+    mqtt.listeners.tcp.default  = {{.Values.rabbitmq.mqtt.DefaultTcpPort}}
+    mqtt.retained_message_store = {{.Values.rabbitmq.mqtt.DefaultRetainedSave}}
+{{- if .Values.rabbitmq.mqtt.enabledSsl }}
+    mqtt.listeners.ssl.default = {{.Values.rabbitmq.mqtt.DefaultSslPort}}
+{{- else }}
+    mqtt.listeners.ssl = none
+{{- end }}
+{{- end }}
+
+  advanced.config: |-
+    [
+      {rabbit, [
+          {default_user, <<"{{.Values.rabbitmq.username}}">>},
+          {default_pass,
+            {encrypted,
+             <<"5239e2VE3SiHKzRFnToP7li34XXPmCJt1aCX95noE/pxOqFUANEh4Iv0NlOIbptu">>
+            }
+          },
+          {config_entry_decoder, [
+                 {passphrase, <<"mypassphrase">>}
+          ]}
+          {{- if .Values.rabbitmq.rabbitmqAuthBackendOauth2.enabled }}
+            ,{auth_backends, [rabbit_auth_backend_oauth2, rabbit_auth_backend_internal]}
+          {{- end }}
+        ]},
+{{ .Values.rabbitmq.advancedConfig | indent 6 }}
+      {rabbitmq_management, [
+{{- if .Values.rabbitmq.uaa.enabled }}
+         {enable_uaa, true},
+         {uaa_client_id, "{{ .Values.rabbitmq.uaa.clientId }}"},
+         {uaa_location, "{{ .Values.rabbitmq.uaa.serverLocation }}"},
+{{- end }}
+{{- if .Values.ipv6Enabled }}
+         {listener, [{port,     {{ .Values.rabbitmq.management.port }}}, {ip, "::"}
+{{- else }}
+         {listener, [{port,     {{ .Values.rabbitmq.management.port }}}
+{{- end }}
+{{- if and ( .Values.rabbitmq.management.enabled )  (eq (include "crmq.management.tls.enabled" .) "true") }}
+                    ,{ssl,      true},
+{{- if .Values.rabbitmq.management.tls.certmanager.used }}
+                     {ssl_opts, [{cacertfile, "/etc/rabbitmq.tls.conf/certManagerKeys/management/ca.crt"},
+                                 {certfile,   "/etc/rabbitmq.tls.conf/certManagerKeys/management/tls.crt"},
+                                 {keyfile,    "/etc/rabbitmq.tls.conf/certManagerKeys/management/tls.key"}]}
+{{- else if .Values.rabbitmq.management.tls.uploadPath.cacert}}
+                     {ssl_opts, [{cacertfile, "{{.Values.rabbitmq.management.tls.uploadPath.cacert}}"},
+                                 {certfile,   "{{.Values.rabbitmq.management.tls.uploadPath.cert}}"},
+                                 {keyfile,    "{{.Values.rabbitmq.management.tls.uploadPath.key}}"}]}
+{{- else if .Values.rabbitmq.management.tls.secret.used }}
+                     {ssl_opts, [{cacertfile, "/etc/rabbitmq.tls.conf/secret/management/.cacert.pem"},
+                                 {certfile,   "/etc/rabbitmq.tls.conf/secret/management/.cert.pem"},
+                                 {keyfile,    "/etc/rabbitmq.tls.conf/secret/management/.key.pem"}]}
+{{- end }}
+{{- if .Values.rabbitmq.management.tls.verify_option }}
+                     ,{verify,               {{ .Values.rabbitmq.management.tls.verify_option }} }
+{{- end }}
+{{- if .Values.rabbitmq.management.tls.fail_if_no_peer_cert }}
+                     ,{fail_if_no_peer_cert, true}
+{{- else }}
+                     ,{fail_if_no_peer_cert, false}
+{{- end }}
+{{- if .Values.rabbitmq.management.tls.honor_cipher_order }}
+                     ,{honor_cipher_order, true}
+{{- else }}
+                     ,{honor_cipher_order, false}
+{{- end }}
+{{- if .Values.rabbitmq.management.tls.honor_ecc_order }}
+                     ,{honor_ecc_order, true}
+{{- else }}
+                     ,{honor_ecc_order, false}
+{{- end }}
+{{- if .Values.rabbitmq.management.tls.versions }}
+                     ,{versions, [ {{ .Values.rabbitmq.management.tls.versions | indent 4 }} ] }
+{{- end }}
+{{- if .Values.rabbitmq.management.tls.ciphers_options }}
+                     ,{ciphers, [ {{ .Values.rabbitmq.management.tls.ciphers_options | indent 4 }} ] }
+{{- end }}
+{{- end }}
+
+                    ]}
+{{- if .Values.rabbitmq.rabbitmqAuthBackendOauth2.enabled }}
+        ]},
+      {rabbitmq_auth_backend_oauth2, [
+        {resource_server_id, <<"{{.Values.rabbitmq.rabbitmqAuthBackendOauth2.ressourceServerId}}">>},
+        {key_config, [
+          {signing_keys, 
+            #{<<"{{.Values.rabbitmq.rabbitmqAuthBackendOauth2.keyId}}">> => {map, #{
+              <<"kty">> => <<"{{.Values.rabbitmq.rabbitmqAuthBackendOauth2.keyType}}">>,
+              <<"alg">> => <<"{{.Values.rabbitmq.rabbitmqAuthBackendOauth2.algo}}">>,
+              <<"value">> => <<"{{.Values.rabbitmq.rabbitmqAuthBackendOauth2.signing_key | indent 4 | trim }}">>}}
+            }}
+          ]}
+     ]}
+{{- else }}
+        ]}
+{{- end }}
+    ].
+
+  rabbitmq-env.conf: |-
+{{- if .Values.ipv6Enabled }}
+{{ .Values.rabbitmq.environmentIpv6 | indent 4 }}
+{{- else }}
+{{ .Values.rabbitmq.environment | indent 4 }}
+{{- end }}
+{{- if .Values.rabbitmq.internodetls.enabled }}
+    ERL_SSL_PATH=$(erl -noinput -eval 'io:format("~s~n", [filename:dirname(code:which(inet_tls_dist))])' -s init stop)
+    SERVER_ADDITIONAL_ERL_ARGS="-pa $ERL_SSL_PATH
+      -ssl_dist_optfile /etc/rabbitmq/tls.config"
+
+    RABBITMQ_CTL_ERL_ARGS="${RABBITMQ_CTL_ERL_ARGS} -pa $ERL_SSL_PATH
+      -ssl_dist_optfile /etc/rabbitmq/tls.config"
+
+    SERVER_ADDITIONAL_ERL_ARGS="${SERVER_ADDITIONAL_ERL_ARGS} ${RABBITMQ_SERVER_ADDITIONAL_ERL_ARGS}"
+    unset RABBITMQ_SERVER_ADDITIONAL_ERL_ARGS
+{{- end }}
+{{- if and .Values.ipv6Enabled .Values.rabbitmq.internodetls.enabled }}
+    SERVER_ADDITIONAL_ERL_ARGS="${SERVER_ADDITIONAL_ERL_ARGS} -proto_dist inet6_tls"
+    RABBITMQ_CTL_ERL_ARGS="${RABBITMQ_CTL_ERL_ARGS} -proto_dist inet6_tls"
+{{- else if and ( .Values.ipv6Enabled ) ( not .Values.rabbitmq.internodetls.enabled ) }}
+    RABBITMQ_SERVER_ADDITIONAL_ERL_ARGS="${RABBITMQ_SERVER_ADDITIONAL_ERL_ARGS} -proto_dist inet6_tcp"
+    RABBITMQ_CTL_ERL_ARGS="${RABBITMQ_CTL_ERL_ARGS} -proto_dist inet6_tcp"
+{{- else if and ( not .Values.ipv6Enabled ) ( .Values.rabbitmq.internodetls.enabled ) }}
+    SERVER_ADDITIONAL_ERL_ARGS="${SERVER_ADDITIONAL_ERL_ARGS} -proto_dist inet_tls"
+    RABBITMQ_CTL_ERL_ARGS="${RABBITMQ_CTL_ERL_ARGS} -proto_dist inet_tls"
+{{- end }}
+
+## added customize_hostname_check to accept wild-card entries
+## https://groups.google.com/g/rabbitmq-users/c/zP3PVOcDHjM/m/Z4kk6ufFEQAJ
+{{- if .Values.rabbitmq.internodetls.enabled }}
+  tls.config: |-
+    [
+       {server, [
+         {cacertfile, "/etc/rabbitmq.tls.conf/secret/internodetls/.cacert.pem"},
+         {certfile,   "/etc/rabbitmq.tls.conf/secret/internodetls/.cert.pem"},
+         {keyfile,    "/etc/rabbitmq.tls.conf/secret/internodetls/.key.pem"}
+{{- if .Values.rabbitmq.internodetls.versions }}
+        ,{versions,   {{ .Values.rabbitmq.internodetls.versions }}}
+{{- end }}
+{{- if .Values.rabbitmq.internodetls.ciphers_options }}
+        ,{ciphers, [ {{ .Values.rabbitmq.internodetls.ciphers_options | indent 6 }} ] }
+        ,{honor_cipher_order,    {{ .Values.rabbitmq.internodetls.honor_cipher_order }}}
+        ,{honor_ecc_order,     {{ .Values.rabbitmq.internodetls.honor_ecc_order }}}
+{{- end }}
+{{- if eq ( include "crmq.internode.tls.has.tls3" . ) "false" }}
+        ,{secure_renegotiate,    true}
+{{- end }}
+{{- if .Values.rabbitmq.internodetls.verify_option}}
+        ,{verify,    {{ .Values.rabbitmq.internodetls.verify_option }}}
+{{- end }}
+{{- if .Values.rabbitmq.internodetls.fail_if_no_peer_cert }}
+        ,{fail_if_no_peer_cert,    true}
+{{- else }}
+        ,{fail_if_no_peer_cert,    false}
+{{- end }}
+        ,{customize_hostname_check, [
+            {match_fun, public_key:pkix_verify_hostname_match_fun(https)}
+        ]}
+     ]},
+       {client, [
+         {cacertfile, "/etc/rabbitmq.tls.conf/secret/internodetls/.cacert.pem"},
+         {certfile,   "/etc/rabbitmq.tls.conf/secret/internodetls/.cert.pem"},
+         {keyfile,    "/etc/rabbitmq.tls.conf/secret/internodetls/.key.pem"}
+{{- if .Values.rabbitmq.internodetls.versions }}
+        ,{versions,   {{ .Values.rabbitmq.internodetls.versions }}}
+{{- end }}
+{{- if eq ( include "crmq.internode.tls.has.tls3" . ) "false" }}
+        ,{secure_renegotiate,    true}
+{{- end }}
+{{- if .Values.rabbitmq.internodetls.verify_option}}
+        ,{verify,     {{ .Values.rabbitmq.internodetls.verify_option }}}
+{{- end }}
+{{- if .Values.rabbitmq.internodetls.fail_if_no_peer_cert }}
+        ,{fail_if_no_peer_cert,    true}
+{{- else }}
+        ,{fail_if_no_peer_cert,    false}
+{{- end }}
+        ,{customize_hostname_check, [
+            {match_fun, public_key:pkix_verify_hostname_match_fun(https)}
+        ]}
+      ]}
+    ].
+{{- end }}
+
+
+{{- if .Values.rabbitmq.dynamicConfig.enabled }}
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ template "crmq.fullname" . }}-parameters
+  labels:
+    app: {{ template "crmq.name" . }}
+    chart: {{ template "crmq.chart" .  }}
+    release: "{{ .Release.Name }}"
+    heritage: "{{ .Release.Service }}"
+    {{- include "crmq.commonLabels" . | indent 4 }}
+    {{- include "csf-common-lib.v1.customLabels" (tuple .Values.global.labels) | indent 4 }}
+  annotations:
+    {{- include "csf-common-lib.v1.customAnnotations" (tuple .Values.global.annotations) | indent 4 }}
+data:
+  parameters: |+
+{{ .Values.rabbitmq.dynamicConfig.parameters | indent 4 }}
+
+
+
+{{- end }}

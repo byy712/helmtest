@@ -1,0 +1,41 @@
+
+
+## Example
+
+* Workload (named core)
+** code snippet
++
+----
+image: {{ template "cpro-common-lib.v1.imageRegistry" ( dict "root" . "imageInfo" .Values.image.imageRepo "internalRegisty" .Values.InternalDependentImagesRegistry ) }}
+
+* root refers to .Values(root) level and workload referes to .Values.image.python( where imageflavour variable is declared under)
+----
+
+
+
+{{/* container image registry */}}
+{{- define "cpro-common-lib.v1.imageRegistry" -}}
+{{- $root := .root}}
+{{- $imageRepo := .imageInfo }}
+{{- $internalRegistry := .internalRegisty }}
+{{- $imageName := "" }}
+{{- $imageNamelist := list }}
+{{- if contains "/" $imageRepo }}
+{{- $imageName = split "/" $imageRepo }}
+{{- range $index,$value := $imageName }}
+        {{- $imageNamelist = append $imageNamelist $value }}
+{{- end }}
+{{- $imageName = last $imageNamelist }}
+{{- else }}
+{{- $imageName = $imageRepo }}
+{{- end }}
+{{- if $root.Values.global.registry -}}
+  {{- if $root.Values.global.flatRegistry -}}
+    {{- printf "%s/%s" $root.Values.global.registry $imageName -}}
+  {{- else -}}
+    {{- printf "%s/%s" $root.Values.global.registry $imageRepo -}}
+  {{- end -}}
+{{- else -}}
+  {{- printf "%s/%s" $internalRegistry $imageRepo -}}
+{{- end -}}
+{{- end -}}

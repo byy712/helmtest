@@ -1,0 +1,260 @@
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: {{ include "hdfs.fullname" . }}-namenode
+  annotations:
+    checksum/config: {{ include (print $.Template.BasePath "/hadoop-configmap.yaml") . | sha256sum }}
+  labels:
+    app.kubernetes.io/name: {{ include "hdfs.name" . }}
+    app.kubernetes.io/component: namenode
+    {{- include "hdfs.labels" . | nindent 4 }}
+spec:
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: {{ include "hdfs.name" . }}
+      app.kubernetes.io/component: namenode
+      {{- include "hdfs.labels" . | nindent 6 }}
+  serviceName: {{ include "hdfs.fullname" . }}-namenode
+  replicas: {{ .Values.nameNode.replicas }}
+  template:
+    metadata:
+      labels:
+        altiplano-role: {{ .Values.nameNode.accessRoleLabel }}
+        release: "{{ .Release.Name }}"
+        app.kubernetes.io/name: {{ include "hdfs.name" . }}
+        app.kubernetes.io/component: namenode
+        {{- include "hdfs.labels" . | nindent 8 }}
+    spec:
+      {{- if .Values.nameNode.hostNetworkEnabled }}
+      # Use hostNetwork so datanodes connect to namenode without going through an overlay network
+      # like weave. Otherwise, namenode fails to see physical IP address of datanodes.
+      # Disabling this will break data locality as namenode will see pod virtual IPs and fails to
+      # equate them with cluster node physical IPs associated with data nodes.
+      # We currently disable this only for CI on minikube.
+      hostNetwork: true
+      hostPID: true
+      dnsPolicy: ClusterFirstWithHostNet
+      {{- else }}
+      dnsPolicy: ClusterFirst
+      {{- end }}
+      {{- with .Values.nameNode.nodeSelector }}
+      nodeSelector:
+{{ toYaml . | indent 8 }}
+      {{- end }}
+      affinity:
+        podAntiAffinity:
+        {{- if eq .Values.antiAffinity "hard" }}
+          requiredDuringSchedulingIgnoredDuringExecution:
+          - topologyKey: "kubernetes.io/hostname"
+            labelSelector:
+              matchLabels:
+                app.kubernetes.io/name: {{ include "hdfs.name" . }}
+                app.kubernetes.io/component: namenode
+                {{- include "hdfs.labels" . | nindent 16 }}
+        {{- else if eq .Values.antiAffinity "soft" }}
+          preferredDuringSchedulingIgnoredDuringExecution:
+          - weight: 5
+            podAffinityTerm:
+              topologyKey: "kubernetes.io/hostname"
+              labelSelector:
+                matchLabels:
+                  app.kubernetes.io/name: {{ include "hdfs.name" . }}
+                  app.kubernetes.io/component: namenode
+                  {{- include "hdfs.labels" . | nindent 18 }}
+        {{- end }}
+      securityContext:
+        fsGroup: {{ .Values.securityContext.fsGroup | default 114 }}
+      initContainers:
+      {{- if .Values.prometheus.enabled }}
+      - name: inject-exporter-jar
+        image: "{{ .Values.global.registry }}/{{ .Values.prometheus.image }}:{{ .Values.prometheus.imageTag }}"
+        securityContext:
+          runAsUser: 1000
+          runAsGroup: 114
+        env:
+          - name: SHARED_VOLUME_PATH
+            value: /jmx-exporter
+        volumeMounts:
+          - mountPath: /jmx-exporter
+            name: jmx-exporter
+      {{- end }}
+      {{- if .Values.global.namenodeHAEnabled }}
+      - name: init-hdfs-namenode
+        image: {{ template "image.fullname" . }}
+        imagePullPolicy: {{ .Values.image.pullPolicy | quote }}
+        securityContext:
+          runAsUser: 1000
+          runAsGroup: 114
+        command: ["/hadoop/jnode-status.sh"]
+        env:
+          - name: JOURNALNODE_REPLICAS
+            value: {{ .Values.journalNode.journalnodeQuorumSize | quote }}
+          - name: ZKNODE_REPLICAS
+            value: {{ .Values.nameNode.ZKQuorumSize | quote }}
+          - name: ZKNODE_PORT
+            value: {{ .Values.zookeeperquorumPort | quote }}
+        volumeMounts:
+          - name: jnode-status
+            mountPath: "/hadoop/jnode-status.sh"
+            subPath: jnode-status.sh
+      {{- end }}
+      containers:
+      - name: namenode
+        image: {{ template "image.fullname" . }}
+        imagePullPolicy: {{ .Values.image.pullPolicy | quote }}
+        securityContext:
+          runAsUser: {{ .Values.securityContext.runAsUser | default 201 }}
+          runAsGroup: {{ .Values.securityContext.runAsGroup | default 114 }}
+        command:
+        - "/bin/bash"
+        - "/tmp/hadoop-config/bootstrap.sh"
+        - "-d"
+        - "namenode"
+        resources:
+{{ toYaml .Values.nameNode.resources | indent 10 }}
+        env:
+          - name: TZ
+            {{- if .Values.timeZoneEnv}}
+            value: {{ .Values.timeZoneEnv }}
+            {{- else if .Values.global.timeZoneEnv }}
+            value: {{ .Values.global.timeZoneEnv }}
+            {{- else }}
+            value: "UTC"
+            {{- end }}
+          - name: HADOOP_HEAPSIZE
+            value: {{ .Values.nameNode.env.HADOOP_NAMENODE_HEAPSIZE | quote }}
+          - name: HDFS_NAMENODE_OPTS
+            value: {{ .Values.nameNode.env.HDFS_NAMENODE_OPTS | quote }}
+          - name: NAMENODE_HA
+            value: {{ .Values.global.namenodeHAEnabled | quote }}
+   {{- if .Values.global.namenodeHAEnabled }}
+          - name: MY_POD
+            valueFrom:
+              fieldRef:
+                fieldPath: metadata.name
+          - name: NAMENODE_POD_0
+            value: {{ include "hdfs.fullname" . }}-namenode-0
+          - name: NAMENODE_POD_1
+            value: {{ include "hdfs.fullname" . }}-namenode-1
+  {{- end }}
+        livenessProbe:
+          exec:
+            command: ["sh", "-c", "curl -s -m 10 http://${HOSTNAME}:9870/jmx?qry=Hadoop:service=NameNode,name=NameNodeStatus | grep -E 'active|standby'"]
+          initialDelaySeconds: 120
+          periodSeconds: 20
+          timeoutSeconds: 10
+          failureThreshold: 28
+        readinessProbe:
+          exec:
+            command: ["sh", "-c", "curl -s -m 10 http://${HOSTNAME}:9870/jmx?qry=Hadoop:service=NameNode,name=NameNodeStatus | grep -E 'active|standby'"]
+          initialDelaySeconds: 15
+          periodSeconds: 5
+          timeoutSeconds: 10
+        volumeMounts:
+        - name: hadoop-config
+          mountPath: /tmp/hadoop-config
+  {{- if .Values.persistence.nameNode.enabled }}
+        - name: dfs
+          mountPath: /dfs
+  {{- end }}
+  {{- if .Values.prometheus.enabled }}
+        - name: jmx-exporter
+          mountPath: /jmx-exporter
+        - name: exporter-config
+          mountPath: /etc/exporter
+        - name: logdir
+          mountPath: /opt/hadoop/logs
+  {{- end }}
+      - name: {{ template "hdfs.name" . }}-namenode-fluentd-sidecar
+        image: "{{ .Values.global.registry }}/{{ .Values.nameNode.fluentd_sidecar.image.name }}:{{ .Values.nameNode.fluentd_sidecar.image.tag }}"
+        imagePullPolicy: {{ .Values.nameNode.fluentd_sidecar.image.pullPolicy }}
+        securityContext:
+          runAsUser: {{ .Values.nameNode.fluentd_sidecar.securityContext.runAsUser | default 1000 }}
+          runAsGroup: {{ .Values.nameNode.fluentd_sidecar.securityContext.runAsGroup | default 114 }}
+        volumeMounts:
+        - name: fluentd-config
+          mountPath: /etc/fluent/
+        {{- if .Values.nameNode.fluentd_sidecar.secrets }}
+        - name: certificates
+          mountPath: /etc/.certificates/
+        {{- end }}
+        - name: logdir
+          mountPath: /logs
+        resources:
+{{ toYaml .Values.nameNode.fluentd_sidecar.resources | indent 12 }}
+        env:
+        {{- if .Values.nameNode.fluentd_sidecar.secrets }}
+        - name: IS_USERNAME
+          valueFrom:
+            secretKeyRef:
+              key: {{ .Values.nameNode.env.secrets.IS_USERNAME }}
+              name: {{ .Values.nameNode.fluentd_sidecar.secrets.passwordSecret | quote }}
+        - name: IS_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              key: {{ .Values.nameNode.env.secrets.IS_PASSWORD }}
+              name: {{ .Values.nameNode.fluentd_sidecar.secrets.passwordSecret | quote }}
+        {{- end }}
+        - name: CONTAINER_NAME
+          valueFrom:
+            fieldRef:
+              apiVersion: v1
+              fieldPath: metadata.name
+        - name: POD_IP
+          valueFrom:
+            fieldRef:
+              fieldPath: status.podIP
+      volumes:
+      {{- if .Values.prometheus.enabled }}
+      - name: jmx-exporter
+        emptyDir: {}
+      - name: exporter-config
+        configMap:
+          name: {{ include "hdfs.fullname" . }}-exporter
+      {{- end }}
+      - name: hadoop-config
+        configMap:
+          name: {{ include "hdfs.fullname" . }}-hadoop
+      {{- if .Values.global.namenodeHAEnabled }}
+      - name: jnode-status
+        configMap:
+          name: {{ .Release.Name }}-altiplano-jnode-status
+          defaultMode: 0777
+          items:
+            - key: jnode-status.sh
+              path: jnode-status.sh
+      {{- end }}
+      - name: logdir
+        emptyDir: {}
+      - name: fluentd-config
+        configMap:
+          name: {{ template "hdfs.name" . }}-namenode-fluentd-config
+      {{- if .Values.nameNode.fluentd_sidecar.secrets }}
+      - name: certificates
+        secret:
+          secretName: {{ (tpl .Values.nameNode.fluentd_sidecar.secrets.certSecret .) }}
+      - name: passwords
+        secret:
+          secretName: {{ (tpl .Values.nameNode.fluentd_sidecar.secrets.passwordSecret .) }}
+      {{- end }}
+  {{- if .Values.persistence.nameNode.enabled }}
+  volumeClaimTemplates:
+  - metadata:
+      name: dfs
+      labels:
+        app: {{ template "hdfs.fullname" . }}
+        release: "{{ .Release.Name }}"
+        heritage: "{{ .Release.Service }}"
+    spec:
+      accessModes: [ "ReadWriteOnce" ]
+      resources:
+        requests:
+          storage: "{{ .Values.persistence.nameNode.size }}"
+      {{- if .Values.persistence.nameNode.storageClass }}
+      {{- if (eq "-" .Values.persistence.nameNode.storageClass) }}
+      storageClassName: ""
+      {{- else }}
+      storageClassName: "{{ .Values.persistence.nameNode.storageClass }}"
+      {{- end }}
+      {{- end }}
+  {{- end }}

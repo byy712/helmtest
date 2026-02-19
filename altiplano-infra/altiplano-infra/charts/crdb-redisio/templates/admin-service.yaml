@@ -1,0 +1,22 @@
+{{- include "crdb-redisio.init" . -}}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ .Values.services.admin.name | default (include "csf-common-lib.v3.resourceName" (tuple . "service" .Values.admin.nameSuffix)) | quote }}
+  labels:
+    {{- include "crdb-redisio.admin.labels" (tuple . "admin" "service") | nindent 4 }}
+  annotations:
+    {{- include "crdb-redisio.annotations" (tuple . "admin" "service") | nindent 4 }}
+spec:
+  type: {{ .Values.services.admin.type | default "ClusterIP" }}
+  {{- include "crdb-redisio.dual-stack" (tuple . .Values.services.admin) | nindent 2 }}
+  ports:
+  - name: tcp-redisio
+    port: 6379
+    targetPort: tcp-redisio
+    appProtocol: tcp
+  selector:
+    {{- include "crdb-redisio.admin.selector_labels" . | nindent 4 }}
+    type: admin
+    admin-daemon: "yes"

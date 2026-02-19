@@ -1,0 +1,262 @@
+{{- include "cpro.istio.cproInitIstio" . }}
+{{- if .Values.pushgateway.enabled -}}
+{{- $syslogEnabled := eq (include "csf-common-lib.v1.coalesceBoolean" (tuple .Values.pushgateway.unifiedLogging.syslog.enabled .Values.global.unifiedLogging.syslog.enabled false )) "true"  }}
+{{- $tlsEnabled := eq (include "csf-common-lib.v1.coalesceBoolean" (tuple .Values.pushgateway.tls.enabled .Values.tls.enabled .Values.global.tls.enabled .Values.pushgateway.tls_auth_config.tls.enabled false)) "true" }}
+{{- include "cpro-common-lib.v1.syslog" (dict "root" . "context" .Values.pushgateway) }}
+apiVersion: {{ template "cpro.apiVersion.DeploymentAPI" . }}
+kind: Deployment
+metadata:
+  labels:
+    {{- include "cpro.labelsOrAnnotations" (tuple .Values.pushgateway.labels .Values.custom.pushGatewayDeployment.labels .Values.global.labels) | indent 4}}
+    {{- include "cpro.app.labels.v3" ( dict "root" . "context" .Values.pushgateway ) | nindent 4 }}
+  name: {{ template "cpro.prometheus.pushgateway.deploymentName" . }}
+  annotations:
+{{- include "cpro.labelsOrAnnotations" (tuple .Values.pushgateway.annotations .Values.custom.pushGatewayDeployment.annotations .Values.global.annotations) | indent 4}}
+{{- if or $syslogEnabled .Values.pushgateway.unifiedLogging.extension .Values.global.unifiedLogging.extension }}
+    configmap.reloader.stakater.com/reload: "{{ template "cpro-common-lib-v1.ConfigmapName" (dict "name" "pushgwfluentdcm" "root" .) }},{{ template "cpro-common-lib-v1.ConfigmapName" (dict "name" "pushgwlogrotatecm" "root" .) }}"
+{{- if and $syslogEnabled (tpl (default "" $.syslog.tls.secretRef.name) .) (tpl (default "" $.syslog.tls.secretRef.keyNames.caCrt) .) }}
+    secret.reloader.stakater.com/reload: "{{ tpl $.syslog.tls.secretRef.name . }}" 
+{{- end }}
+{{- end }}
+spec:
+{{$data_csc := dict "cSecCtx" .Values.pushgateway.containerSecurityContext "ctx" . }}
+{{ include "cpro.configure.progressDeadlineSeconds" ( dict "compPDSValue" .Values.pushgateway.progressDeadlineSeconds "context" . ) | indent 2}}
+{{- if gt  (int .Values.pushgateway.replicaCount)  1 }}
+{{- required "replica count should not be more than 1 as pushgateway doesnt support horizontal scaling" "" }}
+{{- else }}
+  replicas: {{ .Values.pushgateway.replicaCount }}
+{{- end }}
+  strategy:
+  {{- if .Values.pushgateway.strategy }}
+{{ toYaml .Values.pushgateway.strategy | indent 4 }}
+  {{- else }}
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 1
+      maxUnavailable: 1
+  {{- end }}
+
+  {{- if semverCompare ">=1.16.0-0" .Capabilities.KubeVersion.GitVersion }}
+  selector:
+   matchLabels:
+    app: {{ template "cpro.prometheus.name" . }}
+    component: "{{ .Values.pushgateway.name }}"
+    release: {{ .Release.Name }}
+  {{- end }}
+  template:
+    metadata:
+      annotations:
+        sidecar.istio.io/inject: "{{ $.istio.enabled }}"
+{{- if and ($.istio.enabled) ($.istio.mtls.enabled) }}
+        sidecar.istio.io/rewriteAppHTTPProbers: "true"
+{{- end }}
+{{- include "cpro.labelsOrAnnotations" (tuple .Values.pushgateway.annotations .Values.pushgateway.podAnnotations .Values.custom.pod.annotations .Values.global.annotations) | indent 8}}
+{{- if .Values.rbac.pspUseAppArmor }}
+{{- include "cpro.labelsOrAnnotations" (tuple .Values.custom.pod.apparmorAnnotations) | indent 8}}
+{{- end }}
+      labels:
+        {{- include "cpro.app.labels.v3" ( dict "root" . "context" .Values.pushgateway ) | nindent 8 }}
+        app: {{ template "cpro.prometheus.name" . }}
+        component: "{{ .Values.pushgateway.name }}"
+        release: {{ .Release.Name }}
+        {{- include "cpro.labelsOrAnnotations" (tuple .Values.pushgateway.labels .Values.custom.pod.labels .Values.global.labels) | indent 8}}
+    spec:
+      {{- if $.istio.enabled }}
+      automountServiceAccountToken: true
+      {{- end }}
+      serviceAccountName: {{ template "cpro.prometheus.serviceAccountName" . }}
+      securityContext:
+      {{$data := dict "securitycontext" .Values.pushgateway.securityContext "ctx" . }}
+      {{- include "cpro.securitycontext" $data | nindent 8 }}
+      {{- if .Values.seLinuxOptions.enabled }}
+        seLinuxOptions:
+          level: {{ .Values.seLinuxOptions.level }}
+          role: {{ .Values.seLinuxOptions.role }}
+          type: {{ .Values.seLinuxOptions.type }}
+          user: {{ .Values.seLinuxOptions.user }}
+      {{- end }}
+{{ include "cpro-common-lib.imagePullSecrets" (dict "workloadName" .Values.pushgateway  "root" .) | indent 6 }}
+{{- if and $tlsEnabled (eq (include "csf-common-lib.v1.isEmptyValue" .Values.pushgateway.tls.secretRef.name) "true") (.Values.certManagerConfig.wait4Certs2BeConsumed.enabled) (eq .Values.pushgateway.tls_auth_config.tls.externalSecret "") }}
+{{ $certs := dict "pushgateway-tls" "/var/lib/certs" }}
+{{ $_ := set . "certMountPaths" $certs }}
+      initContainers:
+{{ include "cpro.wait4Certs2BeConsumed.template" (dict "root" . "workload" .Values.pushgateway ) | indent 6 }}
+{{- end }}
+      containers:
+            {{- if or $syslogEnabled .Values.pushgateway.unifiedLogging.extension .Values.global.unifiedLogging.extension }}
+        {{- include "cpro-common-lib.fluentd-v2" ( dict "root" . "context" .Values.fluentd "workload" .Values.pushgateway "registry" .Values.intFluentdReg ) | nindent 8 }}
+          volumeMounts:
+            - name: logs
+              mountPath: /var/log/pushgateway
+            - name: harmonized-logging-conf
+              mountPath: /etc/fluent/
+            - mountPath: /tmp
+              name: tempfolder
+             {{- if and $syslogEnabled (tpl (default "" $.syslog.tls.secretRef.name) .) (tpl (default "" $.syslog.tls.secretRef.keyNames.caCrt) .) }}
+            - mountPath: /etc/fluent/certs/
+              name: fluentd-tls
+             {{- end}}
+      {{- include "cpro-common-lib.logrotate" ( dict "root" . "context" .Values.logrotate "registry" .Values.intLogrotateReg ) | nindent 8 }}
+          volumeMounts:
+            - name: logs
+              mountPath: /var/log/pushgateway
+            - name: logrotate-cronie-file
+              mountPath: /logRotate
+       {{- end }}
+        - name: {{ template "cpro.prometheus.pushgateway.ContainerName" . }}
+{{- include "cpro.prometheus.distro.image" (dict "root" . "workload" .Values.pushgateway  ) | nindent 10}}             
+       {{- if or $syslogEnabled .Values.pushgateway.unifiedLogging.extension .Values.global.unifiedLogging.extension }}
+          command: [ "/bin/klogrun" ]
+       {{- else }}
+          command: [ "/bin/pushgateway" ]
+       {{- end }}
+{{- include "cpro.terminationMessage" . | nindent 10 }}
+          env:
+            {{- include "cpro.timeZoneEnvName" . | nindent 12 }}
+{{- if $.istio.enabled }}
+            - name: "ISTIO_ENABLED"
+              value: "true"
+{{- end }}  
+{{- if and ($.istio.enabled) ($.istio.gateways.cproPushgateway.enabled) (ne ($.istio.gateways.cproPushgateway.protocol | upper) "HTTPS") }}
+            - name: "ISTIO_GATEWAY_ALERT"
+              value: "true"
+{{- end }}
+{{- if  and (not $.istio.enabled) ($syslogEnabled) (eq (tpl (default "" $.syslog.tls.secretRef.name) .) "") }}
+            - name: "RSYSLOG_SERVER_ALERT"
+              value: "true"
+{{- end }}
+            - name: K8S
+              value: "true"            
+          args:
+            {{- if or $syslogEnabled .Values.pushgateway.unifiedLogging.extension .Values.global.unifiedLogging.extension }}
+            - -log-file=/var/log/pushgateway/pushgateway.log
+            - -also-stdout=true
+            - /bin/pushgateway
+            - --log.format=json
+            {{- end }}
+          {{- range $key, $value := .Values.pushgateway.extraArgs }}
+            {{- if eq $value "" }}
+            - --{{ $key }}
+            {{- else }}
+            {{- if eq $key "persistence.file"  }}
+            - --{{ $key }}={{ $.Values.pushgateway.persistentVolume.mountPath }}{{ $value }}
+            {{- else }}
+            - --{{ $key }}={{ $value }}
+            {{- end }}
+            {{- end }}
+          {{- end }}
+          {{- if .Values.pushgateway.baseURL }}
+            - --web.external-url={{ .Values.pushgateway.baseURL }}
+          {{- end }}
+          {{- if ne .Values.pushgateway.prefixURL "" }}
+            - --web.route-prefix=/{{ .Values.pushgateway.prefixURL }}
+          {{- end }}
+            - --web.listen-address=:{{ .Values.pushgateway.service.servicePort }}
+        {{ if $tlsEnabled }}
+            - --web.config.file=/etc/config/web.yml
+        {{ end }}
+          ports:
+            - name: tcp-metrics
+              containerPort: {{ .Values.pushgateway.service.servicePort }}
+{{- include "cpro.prometheus.pushgateway.probe" . | indent 10 }}
+          resources:
+{{- include "cpro-common-lib.v1.resources" ( dict "root" . "workloadresources" .Values.pushgateway.resources "defaultcpulimit" "100m") | nindent 12 }}
+          securityContext:
+          {{- include "cpro.containerSecurityContext" $data_csc | nindent 12 }}
+{{- if or (hasKey .Values.pushgateway.extraArgs "persistence.file") ($tlsEnabled) }}
+          volumeMounts:
+          {{- if .Values.externalCredentials }}
+          {{- include "cpro-common-lib.v1-includeExternalCredentialMounts" (dict "creds" .Values.externalCredentials "root" . ) | indent 12 }}
+          {{- end }}
+       {{- if or $syslogEnabled .Values.pushgateway.unifiedLogging.extension .Values.global.unifiedLogging.extension }}
+            - name: logs
+              mountPath: /var/log/pushgateway
+       {{- end }}
+{{- if hasKey .Values.pushgateway.extraArgs "persistence.file" }}
+            - name: log-data
+              mountPath: "{{ .Values.pushgateway.persistentVolume.mountPath }}"
+{{- end }}
+{{- if $tlsEnabled }}
+            - name: pushgateway-tls
+              mountPath: /var/lib/certs
+            - name: config-volume
+              mountPath: /etc/config
+{{- end }}
+{{- end }}
+{{- if hasKey .Values.pushgateway.extraArgs "persistence.file" }}
+          workingDir: {{ dir (index .Values.pushgateway.extraArgs "persistence.file") }}
+{{- end }}
+{{$data := dict "component_pc" .Values.pushgateway  "ctx" . }}
+{{- include "cpro.pod.priority.classname" $data | nindent 6 }}
+    {{- if .Values.pushgateway.nodeSelector }}
+      nodeSelector:
+{{ toYaml .Values.pushgateway.nodeSelector | indent 8 }}
+    {{- end }}
+    {{- if .Values.pushgateway.tolerations }}
+      tolerations:
+{{ toYaml .Values.pushgateway.tolerations | indent 8 }}
+    {{- end }}
+{{- if or (hasKey .Values.pushgateway.extraArgs "persistence.file") ($tlsEnabled) }}
+      {{- if .Values.pushgateway.topologySpreadConstraints }}
+      topologySpreadConstraints: {{- include "cpro.topologySpreadConstraints" (tuple . .Values.pushgateway) | nindent 8 }}
+      {{- end }}
+      volumes:
+      {{- if .Values.externalCredentials  }}
+      {{- include "cpro-common-lib.v1-includeExternalCredentials" (dict "creds" .Values.externalCredentials ) | indent 8 }}
+      {{- end }}
+        {{- if or $syslogEnabled .Values.pushgateway.unifiedLogging.extension .Values.global.unifiedLogging.extension }}
+        - name: logs
+          emptyDir: {}
+        - name: tempfolder
+          emptyDir: {}
+        - name: harmonized-logging-conf
+          configMap:
+            name: {{ template "cpro-common-lib-v1.ConfigmapName" (dict "name" "pushgwfluentdcm" "root" .) }} 
+        - name: logrotate-cronie-file
+          configMap:
+            defaultMode: 0640
+            items:
+              - key: logrotate.conf
+                path: logrotate.conf
+              - key: rotate.sh
+                path: rotate.sh
+            name: {{ template "cpro-common-lib-v1.ConfigmapName" (dict "name" "pushgwlogrotatecm" "root" .) }} 
+              {{- if and $syslogEnabled (tpl (default "" $.syslog.tls.secretRef.name) .) (tpl (default "" $.syslog.tls.secretRef.keyNames.caCrt) .) }}
+        - name: fluentd-tls
+          secret:
+            secretName: {{ tpl $.syslog.tls.secretRef.name . }}
+            items:
+              - key: {{ tpl $.syslog.tls.secretRef.keyNames.caCrt . }}
+                path: syslogRootCaPem
+        {{- end }}
+        {{- end }}
+{{- if hasKey .Values.pushgateway.extraArgs "persistence.file" }}
+        - name: log-data
+        {{- if .Values.pushgateway.persistentVolume.enabled }}
+          persistentVolumeClaim:
+            claimName: {{ if .Values.pushgateway.persistentVolume.existingClaim }}{{ .Values.pushgateway.persistentVolume.existingClaim }}{{- else }}{{ template "cpro.prometheus.pushgateway.fullname" . }}{{- end }}
+{{- end }}
+{{- end }}
+{{- if $tlsEnabled }}
+        - name: pushgateway-tls
+          secret:
+            secretName: {{ template "cpro.pushgateway.server.secret" . }}
+            defaultMode: 0440
+        - name: config-volume
+          secret:
+            secretName: {{ .Values.pushgateway.tls_auth_config.secretForWebConfig }}
+            defaultMode: 0440
+{{- end }}
+{{- end }}
+      affinity:
+      {{- include "cpro.pushgateway.podAntiAffinity" . | indent 8 }}
+      {{- if .Values.pushgateway.affinity }}
+      {{- if .Values.pushgateway.affinity.podAntiAffinity }}
+{{ toYaml .Values.pushgateway.affinity.podAntiAffinity | indent 10 }}
+      {{- end }}
+      {{- if .Values.pushgateway.affinity.podAffinity }}
+        podAffinity:
+{{ toYaml .Values.pushgateway.affinity.podAffinity | indent 10 }}
+      {{- end }}
+      {{- end }}
+{{- end }}

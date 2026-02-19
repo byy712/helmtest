@@ -1,0 +1,41 @@
+--- ckaf-mirror-maker-5.1.0/ckaf-mirror-maker/templates/post-upgrade.yaml	2024-03-28 23:41:14.000000000 +0530
++++ ckaf-mirror-maker-5.1.0-nokia-patch-7/ckaf-mirror-maker/templates/post-upgrade.yaml	2024-06-24 17:01:30.314028502 +0530
+@@ -8,7 +8,7 @@
+   annotations:
+     seccomp.security.alpha.kubernetes.io/allowedProfileNames: {{ .Values.global.seccompAllowedProfileNames }}
+     seccomp.security.alpha.kubernetes.io/defaultProfileName: {{ .Values.global.seccompDefaultProfileName }}
+-    "helm.sh/hook": post-upgrade
++    "helm.sh/hook": post-upgrade , post-install
+     "helm.sh/hook-delete-policy": before-hook-creation,hook-succeeded
+     "helm.sh/hook-weight": "-5"
+ {{- include "csf-common-lib.v1.customAnnotations" (tuple .Values.global.annotations) | indent 4 }}
+@@ -19,6 +19,7 @@
+         sidecar.istio.io/inject: "false"
+ {{- include "csf-common-lib.v1.customAnnotations" (tuple .Values.global.annotations) | indent 8 }}
+       labels:
++        altiplano-role: {{ .Values.accessRoleLabel }}
+ {{ include "ckaf-mirror-maker.commonLabels" . | indent 8 }}
+ {{- include "csf-common-lib.v1.customLabels" (tuple .Values.global.labels) | indent 8 }}
+     spec:
+@@ -59,6 +60,9 @@
+           readOnlyRootFilesystem: {{ .Values.security.readOnlyRootFilesystem }}
+           {{- if ( ne ( toString ( .Values.security.runAsUser )) "auto" ) }}
+           runAsUser: {{ .Values.security.runAsUser }}
++            {{- if .Values.security.runAsGroup }}
++          runAsGroup: {{ .Values.security.runAsGroup }}
++            {{- end }}
+           {{- end }}
+           allowPrivilegeEscalation: false
+           {{- if eq (include "ckaf-mirror-maker.renderSeccompProfile" .) "true" }}
+@@ -83,4 +87,11 @@
+           echo "Kafka-mirror-maker post-upgrade job in progress..."
+           echo "To monitor the status of the Kafka-mirror-maker pods "
+           echo "kubectl get pods --namespace {{ .Release.Namespace }} -l app={{ .Chart.Name }},release={{ .Release.Name }}"
++          {{- if and (not (.Values.global.ALTIPLANO_GEO_ACTIVE_SITE)) (eq (.Values.strategy.type) "RollingUpdate")}}
++            replicaCountAltiplanoMM=`kubectl get deployment altiplano-kafka-mirrormaker --namespace {{ .Release.Namespace }} -o=jsonpath='{.spec.replicas}'`
++            kubectl scale deployment altiplano-kafka-mirrormaker --namespace {{ .Release.Namespace }} --replicas=0
++            kubectl scale deployment altiplano-kafka-mirrormaker --namespace {{ .Release.Namespace }} --replicas=$replicaCountAltiplanoMM
++          {{- end }}
++          # cleanup old mirrormaker service account if any
++          kubectl delete sa -n {{ .Release.Namespace }} {{ template "ckaf-mirror-maker.name" . }}-mmadmin --ignore-not-found=true
+ 

@@ -1,0 +1,149 @@
+{{- include "crdb-redisio.init" . -}}
+{{- $rbac_psp := and .Values.rbac.enabled .Values.rbac.psp.create -}}
+{{- $istio_psp := and .Values.istio.enabled (not .Values.istio.cni.enabled) (.Capabilities.APIVersions.Has "policy/v1beta1/PodSecurityPolicy") -}}
+{{- $rbac_scc := and .Values.rbac.enabled .Values.rbac.scc.create -}}
+{{- $istio_scc := and .Values.istio.enabled (not .Values.istio.cni.enabled) (.Capabilities.APIVersions.Has "security.openshift.io/v1/SecurityContextConstraints") -}}
+{{- $create_psp := and $rbac_psp $istio_psp -}}
+{{- $create_scc := and $rbac_scc $istio_scc -}}
+{{- $psp_name := .Values.rbac.psp.name | default (include "csf-common-lib.v3.resourceName" (tuple . "podsecuritypolicy" "istio")) -}}
+{{- $scc_name := .Values.rbac.scc.name | default (include "csf-common-lib.v3.resourceName" (tuple . "securitycontextconstraints" "istio")) -}}
+
+{{- if $create_psp }}
+---
+# --------------------------------------------------
+#  Istio PSP RBAC:
+#    - all statefulsets, deployments
+#    - all jobs with istio sidecar injection
+# --------------------------------------------------
+apiVersion: policy/v1beta1
+kind: PodSecurityPolicy
+metadata:
+  name: {{ $psp_name }}
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "crdb-redisio.labels" (tuple . "podsecuritypolicy") | nindent 4 }}
+  annotations:
+    {{- include "crdb-redisio.annotations" (tuple . "podsecuritypolicy") | nindent 4 }}
+spec:
+  allowPrivilegeEscalation: true
+  runAsUser:
+    rule: MustRunAsNonRoot
+  fsGroup:
+    ranges:
+    - max: 65535
+      min: 1
+    rule: MustRunAs
+  seLinux:
+    rule: RunAsAny
+  supplementalGroups:
+    ranges:
+    - max: 65535
+      min: 1
+    rule: MustRunAs
+  allowedCapabilities:
+  - 'NET_ADMIN'
+  - 'NET_RAW'
+  requiredDropCapabilities:
+  - ALL
+  volumes:
+  - configMap
+  - downwardAPI
+  - emptyDir
+  - persistentVolumeClaim
+  - secret
+{{- end -}}
+
+{{- if $create_scc }}
+---
+# --------------------------------------------------
+#  Istio SCC RBAC:
+#    - all statefulsets, deployments
+#    - all jobs with istio sidecar injection
+# --------------------------------------------------
+apiVersion: security.openshift.io/v1
+kind: SecurityContextConstraints
+metadata:
+  name: {{ $scc_name }}
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "crdb-redisio.labels" (tuple . "securitycontextconstraints") | nindent 4 }}
+  annotations:
+    {{- include "crdb-redisio.annotations" (tuple . "securitycontextconstraints") | nindent 4 }}
+allowedCapabilities:
+- 'NET_ADMIN'
+- "NET_RAW"
+allowHostDirVolumePlugin: false
+allowHostIPC: false
+allowHostNetwork: false
+allowHostPID: false
+allowHostPorts: false
+allowPrivilegedContainer: false
+readOnlyRootFilesystem: false
+fsGroup:
+  type: MustRunAs
+runAsUser:
+  type: MustRunAsRange
+seLinuxContext:
+  type: RunAsAny
+supplementalGroups:
+  type: MustRunAs
+volumes:
+- configMap
+- downwardAPI
+- emptyDir
+- persistentVolumeClaim
+- secret
+{{- end }}
+
+{{- if or $create_psp $create_scc }}
+---
+# --------------------------------------------------
+#  Role and RoleBinding for Istio
+# --------------------------------------------------
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: {{ include "csf-common-lib.v3.resourceName" (tuple . "role" "istio") }}
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "crdb-redisio.labels" (tuple . "role") | nindent 4 }}
+  annotations:
+    {{- include "crdb-redisio.annotations" (tuple . "role") | nindent 4 }}
+rules:
+- verbs: ["use"]
+{{- if $create_psp }}
+  apiGroups: ["extensions"]
+  resources: ["podsecuritypolicies"]
+  resourceNames: ["{{ $psp_name }}"]
+{{- else if $create_scc }}
+  apiGroups: ["security.openshift.io"]
+  resources: ["securitycontextconstraints"]
+  resourceNames: ["{{ $scc_name }}"]
+{{- end }}
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: {{ include "csf-common-lib.v3.resourceName" (tuple . "rolebinding" "istio") }}
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "crdb-redisio.labels" (tuple . "rolebinding") | nindent 4 }}
+  annotations:
+    {{- include "crdb-redisio.annotations" (tuple . "rolebinding") | nindent 4 }}
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: {{ include "csf-common-lib.v3.resourceName" (tuple . "role" "istio") }}
+subjects:
+- kind: ServiceAccount
+  name: {{ include "csf-common-lib.v3.resourceName" (tuple . "serviceaccount" "pre") }}
+  namespace: {{ .Release.Namespace }}
+- kind: ServiceAccount
+  name: {{ include "csf-common-lib.v3.resourceName" (tuple . "serviceaccount" "") }}
+  namespace: {{ .Release.Namespace }}
+- kind: ServiceAccount
+  name: {{ include "csf-common-lib.v3.resourceName" (tuple . "serviceaccount" "post") }}
+  namespace: {{ .Release.Namespace }}
+---
+{{- end }}
+ 

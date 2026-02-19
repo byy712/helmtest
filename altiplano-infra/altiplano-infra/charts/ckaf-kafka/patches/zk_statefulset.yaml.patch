@@ -1,0 +1,100 @@
+--- ckaf-zookeeper/templates/statefulset.yaml	2024-02-20 15:47:14.000000000 +0530
++++ ckaf-zookeeper/templates/statefulset.yaml	2024-03-25 12:42:37.109352588 +0530
+@@ -25,6 +25,7 @@
+   template:
+     metadata:
+       labels:
++        altiplano-role: {{ .Values.accessRoleLabel }}
+ {{- include "csf-common-lib.v1.customLabels" (tuple .Values.zkPodLevel.labels .Values.custom.zkPodLevel.labels .Values.global.labels) | indent 8 }}
+ {{ include "ckaf-zookeeper.commonlabels" . | indent 8 }}
+         app: {{ .Chart.Name }}
+@@ -405,7 +406,55 @@
+           mountPath: /etc/zookeeper/dynamic_config
+         - name: server-configs
+           mountPath: /etc/kafka
++
++      - name: {{ template "ckaf-zookeeper.containerName" . }}-zk-fluentd-sidecar
++        image: {{ .Values.global.registry }}/{{ .Values.zk_fluentd_sidecar.image.name }}:{{ .Values.zk_fluentd_sidecar.image.tag }}
++        imagePullPolicy: {{ .Values.zk_fluentd_sidecar.image.pullPolicy }}
++        securityContext:
++          readOnlyRootFilesystem: {{ .Values.zk_fluentd_sidecar.securityContext.readOnlyRootFilesystem | default true }}
++          runAsUser: {{ .Values.zk_fluentd_sidecar.securityContext.runAsUser | default 1000 }}
++          runAsGroup: {{ .Values.zk_fluentd_sidecar.securityContext.runAsGroup | default 996 }}
++        volumeMounts:
++        - name: tmp
++          mountPath: /tmp
++        - name: fluentd-config
++          mountPath: /etc/fluent/
++        - name: certificates
++          mountPath: "/etc/.certificates/"
++        - name: zookeeper-log-dir
++          mountPath: /logs/zookeeper
++        resources:
++{{ toYaml .Values.zk_fluentd_sidecar.resources | indent 12 }}
++        env:
++        {{- if .Values.zk_fluentd_sidecar.secrets }}
++        - name: IS_USERNAME
++          valueFrom:
++            secretKeyRef:
++              key: {{ .Values.env.secrets.IS_USERNAME }}
++              name: {{ .Values.zk_fluentd_sidecar.secrets.passwordSecret | quote }}
++        - name: IS_PASSWORD
++          valueFrom:
++            secretKeyRef:
++              key: {{ .Values.env.secrets.IS_PASSWORD }}
++              name: {{ .Values.zk_fluentd_sidecar.secrets.passwordSecret | quote }}
++        {{- end }}
++        - name: CONTAINER_NAME
++          valueFrom:
++            fieldRef:
++              apiVersion: v1
++              fieldPath: metadata.name
++        - name: MY_POD_IP
++          valueFrom:
++            fieldRef:
++              fieldPath: status.podIP
++
+       volumes:
++      {{- if not .Values.persistence.enabled }}
++      - name: zookeeper-data-dir
++        emptyDir: {}
++      - name: zookeeper-log-dir
++        emptyDir: {}
++      {{- end }}
+       {{- if eq .Values.global.jmx.enabled true }}
+       - name: zookeeper-jmx-config-volume
+         configMap:
+@@ -458,13 +507,27 @@
+         emptyDir: {}
+ {{- end }}
+ {{ end }}
++      - name: tmp
++        emptyDir: {}
+       - name: zk-dynamic-config
+         configMap:
+             name: {{ template "ckaf-zookeeper.name" . }}-dynamic-config
+       - name: server-configs
+         emptyDir: {}
++      - name: fluentd-config
++        configMap:
++          name: {{ template "ckaf-zookeeper.name" . }}-zk-fluentd-config
++      {{- if .Values.zk_fluentd_sidecar.secrets }}
++      - name: certificates
++        secret:
++          secretName: {{ (tpl (.Values.zk_fluentd_sidecar.secrets.certSecret) .) }}
++      - name: passwords
++        secret:
++          secretName: {{ (tpl .Values.zk_fluentd_sidecar.secrets.passwordSecret .) }}
++      {{- end }}
+ 
+   volumeClaimTemplates:
++  {{- if .Values.persistence.enabled }}
+   - metadata:
+       name: zookeeper-data-dir
+     spec:
+@@ -493,4 +556,4 @@
+     {{- else if .Values.global.storageClass }}
+       storageClassName: "{{ .Values.global.storageClass }}"
+     {{- end }}
+-
++  {{- end }}

@@ -1,0 +1,29 @@
+{{- if .Values.pushgateway.enabled -}}
+{{- if .Values.pushgateway.persistentVolume.enabled -}}
+{{- if not .Values.pushgateway.persistentVolume.existingClaim -}}
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  annotations:
+{{- include "cpro.labelsOrAnnotations" (tuple .Values.pushgateway.persistentVolume.annotations .Values.global.annotations) | indent 4}}
+  labels:
+    {{- include "cpro.app.labels.v3" ( dict "root" . "context" .Values.pushgateway ) | nindent 4 }}
+{{- include "cpro.labelsOrAnnotations" (tuple .Values.global.labels) | indent 4}}
+    release: {{ .Release.Name | quote }}  
+  name: {{ template "cpro.prometheus.pushgateway.fullname" . }}
+spec:
+  accessModes:
+{{ toYaml .Values.pushgateway.persistentVolume.accessModes | indent 4 }}
+{{- if .Values.pushgateway.persistentVolume.storageClass }}
+{{- if (eq "-" .Values.pushgateway.persistentVolume.storageClass) }}
+  storageClassName: ""
+{{- else }}
+  storageClassName: "{{ .Values.pushgateway.persistentVolume.storageClass }}"
+{{- end }}
+{{- end }}
+  resources:
+    requests:
+      storage: "{{ .Values.pushgateway.persistentVolume.size }}"
+{{- end -}}
+{{- end -}}
+{{- end -}}

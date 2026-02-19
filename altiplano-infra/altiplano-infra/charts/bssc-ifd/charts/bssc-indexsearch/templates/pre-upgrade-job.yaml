@@ -1,0 +1,215 @@
+##Pre-upgrade job is added to identify the action (i.e. initializing or updating .opendistro_security index) that should be taken as part of upgrade when security is enabled.
+#  Upgrade could have been triggered from below options:
+#  1. Opensearch security to opensearch security(secToSec)
+#  2. Non security to opensearch security(nonSecToSec)
+##Pre-upgrade job creates osinstalled configmap to use this as a check to run secAdmin with -f on upgrade for secToSec case.
+# Upgrade action is stored in a new configmap {{ template "bssc-indexsearch.fullname" . }}-upg-sec. This configmap is used by upgrade job.
+# Due to asset name changes and common labels changes deletion of deployment is required in pre-upgrade.
+## Check if old deployment  prior to 22.06 present, if so then delete deployment
+# Login to any one running client pod and check for env SEC_ENABLED
+#  a) if SEC_ENABLED is set to true, upgradeAction is secToSec
+#  b) if SEC_ENABLED is set to false, upgradeAction is nonSecToSec
+{{- include "bssc-indexsearch.ccrEnabled" . }}
+{{- if ( .Values.rbac.enabled ) }}
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: {{ include "bssc-indexsearch.fullname" . |trunc ((sub .Values.customResourceNames.resourceNameLimit 10)|int) }}-preupg-sa
+  namespace: "{{.Release.Namespace}}"
+  labels:
+{{- include "bssc-indexsearch.commonLabels" (tuple .) | nindent 4 }}
+{{- include "bssc-indexsearch.csf-toolkit-helm.labels" (tuple .) | nindent 4 }}
+  annotations:
+{{- include "bssc-indexsearch.csf-toolkit-helm.annotations" (tuple .) | nindent 4 }}
+    "helm.sh/hook": pre-upgrade
+    "helm.sh/hook-weight": "-8"
+    "helm.sh/hook-delete-policy": before-hook-creation, hook-succeeded
+    seccomp.security.alpha.kubernetes.io/allowedProfileNames: {{ .Values.global.seccompAllowedProfileNames }}
+    seccomp.security.alpha.kubernetes.io/defaultProfileName: {{ .Values.global.seccompDefaultProfileName }}
+automountServiceAccountToken: false
+---
+kind: RoleBinding
+apiVersion: {{ template "bssc-indexsearch.apiVersionRbacAuthorizatioK8sIoV1Beta1orV1" . }}
+metadata:
+  name: {{ template "bssc-indexsearch.fullname" . }}-preupg-rb
+  namespace: "{{.Release.Namespace}}"
+  labels:
+{{- include "bssc-indexsearch.commonLabels" (tuple .) | nindent 4 }}
+{{- include "bssc-indexsearch.csf-toolkit-helm.labels" (tuple .) | nindent 4 }}
+  annotations:
+{{- include "bssc-indexsearch.csf-toolkit-helm.annotations" (tuple .) | nindent 4 }}
+    "helm.sh/hook": pre-upgrade
+    "helm.sh/hook-weight": "-7"
+    "helm.sh/hook-delete-policy": before-hook-creation, hook-succeeded
+    seccomp.security.alpha.kubernetes.io/allowedProfileNames: {{ .Values.global.seccompAllowedProfileNames }}
+    seccomp.security.alpha.kubernetes.io/defaultProfileName: {{ .Values.global.seccompDefaultProfileName }}
+subjects:
+- kind: ServiceAccount
+  name: {{ include "bssc-indexsearch.fullname" . |trunc ((sub .Values.customResourceNames.resourceNameLimit 10)|int) }}-preupg-sa
+  namespace: "{{.Release.Namespace}}"
+  apiGroup: ""
+roleRef:
+  kind: Role
+  name: {{ template "bssc-indexsearch.fullname" . }}-preupg-role
+  apiGroup: ""
+
+---
+kind: Role
+apiVersion: {{ template "bssc-indexsearch.apiVersionRbacAuthorizatioK8sIoV1Beta1orV1" . }}
+metadata:
+  namespace: "{{.Release.Namespace}}"
+  name: {{ template "bssc-indexsearch.fullname" . }}-preupg-role
+  labels:
+{{- include "bssc-indexsearch.commonLabels" (tuple .) | nindent 4 }}
+{{- include "bssc-indexsearch.csf-toolkit-helm.labels" (tuple .) | nindent 4 }}
+  annotations:
+{{- include "bssc-indexsearch.csf-toolkit-helm.annotations" (tuple .) | nindent 4 }}
+    "helm.sh/hook": pre-upgrade
+    "helm.sh/hook-weight": "-8"
+    "helm.sh/hook-delete-policy": before-hook-creation, hook-succeeded
+    seccomp.security.alpha.kubernetes.io/allowedProfileNames: {{ .Values.global.seccompAllowedProfileNames }}
+    seccomp.security.alpha.kubernetes.io/defaultProfileName: {{ .Values.global.seccompDefaultProfileName }}
+rules:
+- apiGroups:
+  - apps
+  resources:
+  - deployments
+  verbs:
+  - get
+  - list
+  - delete
+- apiGroups:
+  - extensions
+  resources:
+  - deployments
+  verbs:
+  - get
+  - list
+  - delete
+{{- if or ($.ccrEnabled) (.Values.restApi.enabled) (.Values.security.enable ) }}
+- apiGroups:
+  - batch
+  resources:
+  - jobs
+  verbs:
+  - delete
+{{- end }}
+{{- if .Values.security.enable }}
+- apiGroups:
+  - ""
+  resources:
+  - pods
+  verbs:
+  - list
+  - get
+- apiGroups:
+  - ""
+  resources:
+  - pods/exec
+  verbs:
+  - create
+- apiGroups:
+  - ""
+  resources:
+  - configmaps
+  verbs:
+  - get
+  - list
+  - create
+  - patch
+  - delete
+{{- end }}
+{{- end }}
+---
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: {{ template "bssc-indexsearch.preUpgradeJob.name" . }}
+  labels:
+{{- include "bssc-indexsearch.commonLabels" (tuple .) | indent 4 }}
+{{- include "bssc-indexsearch.csf-toolkit-helm.labels" (tuple . .Values.custom.hookJobs.job.labels) | indent 4 }}
+  annotations:
+    "helm.sh/hook-weight": "-6"
+    "helm.sh/hook": pre-upgrade
+    "helm.sh/hook-delete-policy": {{ .Values.upgrade.hookDelPolicy }}
+    seccomp.security.alpha.kubernetes.io/allowedProfileNames: {{ .Values.global.seccompAllowedProfileNames }}
+    seccomp.security.alpha.kubernetes.io/defaultProfileName: {{ .Values.global.seccompDefaultProfileName }}
+{{- include "bssc-indexsearch.csf-toolkit-helm.annotations" (tuple . .Values.custom.hookJobs.job.annotations) | indent 4 }}
+spec:
+  template:
+    metadata:
+      labels:
+        altiplano-role: {{ .Values.accessRoleLabel }}
+{{- include "bssc-indexsearch.csf-toolkit-helm.labels" (tuple . .Values.custom.hookJobs.pod.labels) | indent 8 }}
+{{- include "bssc-indexsearch.commonLabels" (tuple .) | indent 8 }}
+      annotations:
+        sidecar.istio.io/inject: "false"
+{{- include "bssc-indexsearch.csf-toolkit-helm.annotations" (tuple . .Values.custom.hookJobs.pod.annotations) | indent 8 }}
+    spec:
+      serviceAccountName: {{ template "bssc-indexsearch.preServiceAccount.name" . }}
+      automountServiceAccountToken: true
+      {{- if .Values.jobs.affinity }}
+      affinity:
+{{ toYaml .Values.jobs.affinity | indent 8 }}
+      {{- end }}
+      {{- if .Values.jobs.nodeSelector }}
+      nodeSelector:
+{{ toYaml .Values.jobs.nodeSelector | indent 8 }}
+      {{- end }}
+      {{- if .Values.jobs.tolerations }}
+      tolerations:
+{{ toYaml .Values.jobs.tolerations | indent 8 }}
+      {{- end }}
+      restartPolicy: Never
+      {{- if .Values.securityContext.enabled }}
+      securityContext:
+{{ include "bssc-indexsearch.pod.securityContext" . | indent 8 }}
+      {{- end }}
+      {{- with or .Values.imagePullSecrets .Values.global.imagePullSecrets }}
+      imagePullSecrets:
+{{- toYaml . | nindent 8 }}
+      {{- end }}
+      containers:
+      - name: {{ template "bssc-indexsearch.preUpgradeSecContainer.name" . }}
+        image: {{ include "bssc-indexsearch.registry" (tuple .Values .Values.internalToolsRegistry) }}/{{ include "bssc-indexsearch.imageRepositoryPath" (tuple .Values.global.flatRegistry .Values.kubectl.image.repo) }}:{{ (include "bssc-indexsearch.imageTag" (tuple .Values.kubectl.image.tag .Values.kubectl.image.supportedImageFlavor .Values .Values.kubectl .Values.kubectl.image )) }}
+        env:
+        - name: TZ
+          value: {{ or .Values.timezone.timeZoneEnv .Values.global.timeZoneEnv "UTC" | quote }}
+        - name: NAMESPACE
+          value: {{ .Release.Namespace }}
+        command:
+        - bash
+        - -c
+        - |
+          if [[ `kubectl --namespace {{ .Release.Namespace }} get deployment -l component=elasticsearch,role=client,release={{ .Release.Name}} --no-headers` ]]; then
+            #Due to common labels changes and asset name changes, deployment is deleted. 
+            DEPLOYMENT=$(kubectl --namespace $NAMESPACE get deployment -l component=elasticsearch,role=client --no-headers=true -o custom-columns=:metadata.name)
+            kubectl delete deployment $DEPLOYMENT --namespace $NAMESPACE
+          fi
+          {{- if or ($.ccrEnabled) (.Values.restApi.enabled) }}
+          kubectl delete job --namespace {{ .Release.Namespace }} {{ template "bssc-indexsearch.postSetupApiJob.name" . }} --ignore-not-found=true
+          {{- end }}
+          {{- if .Values.security.enable }}
+            echo "Checking if the upg-sec configmap exists.. Deleting if it exists.."
+            kubectl delete cm {{ template "bssc-indexsearch.fullname" . }}-upg-sec  --namespace {{ .Release.Namespace }} --ignore-not-found=true
+            kubectl delete job --namespace {{ .Release.Namespace }} {{ template "bssc-indexsearch.upgradeJob.name" . }} --ignore-not-found=true 
+            if [[ `kubectl get configmap --namespace {{ .Release.Namespace }} {{ template "bssc-indexsearch.fullname" . }}-security-config` ]] || [[ `kubectl get configmap --namespace {{ .Release.Namespace }} | grep "belk-elasticsearch-security-config*"` ]]; then
+              kubectl create configmap {{ template "bssc-indexsearch.fullname" . }}-upg-sec  --namespace {{ .Release.Namespace }} --from-literal=upgradeAction=secToSec
+              kubectl get configmap {{ template "bssc-indexsearch.fullname" . }}-osinstalled --namespace {{ .Release.Namespace }}
+              if [[ $? -ne 0 ]];then
+                kubectl create configmap {{ template "bssc-indexsearch.fullname" . }}-osinstalled  --namespace {{ .Release.Namespace }}
+                kubectl label configmap {{ template "bssc-indexsearch.fullname" . }}-osinstalled  --namespace {{ .Release.Namespace }} app.kubernetes.io/name={{ default .Chart.Name .Values.nameOverride }} app.kubernetes.io/instance={{ .Release.Name }}  app.kubernetes.io/managed-by={{ .Values.managedBy | default .Release.Service | quote}} app.kubernetes.io/version={{ .Chart.AppVersion | quote }}  helm.sh/chart="{{ .Chart.Name }}-{{ .Chart.Version }}"
+              fi
+            else
+              kubectl create configmap {{ template "bssc-indexsearch.fullname" . }}-upg-sec  --namespace {{ .Release.Namespace }} --from-literal=upgradeAction=nonSecToSec
+            fi
+            kubectl label configmap {{ template "bssc-indexsearch.fullname" . }}-upg-sec  --namespace {{ .Release.Namespace }} app.kubernetes.io/name={{ default .Chart.Name .Values.nameOverride }} app.kubernetes.io/instance={{ .Release.Name }}  app.kubernetes.io/managed-by={{ .Values.managedBy | default .Release.Service | quote}} app.kubernetes.io/version={{ .Chart.AppVersion | quote }}  helm.sh/chart={{ default .Chart.Name .Values.nameOverride }}-{{ .Chart.Version }}
+
+          {{- end }}
+        {{- if .Values.securityContext.enabled }}
+        securityContext:
+{{ include "bssc-indexsearch.container.securityContext" . | indent 10 }}
+        {{- end }}
+        resources:
+{{ include "bssc-indexsearch.resources" (tuple . .Values.jobs.secAdminUpgradeJob.resources "500m") | indent 10 }}
+

@@ -1,0 +1,270 @@
+## The below job will get triggered during Install/Upgrade/Rollback in case of ccr/restApi creation enabled.
+## There are 2 different types of check we do before running any APIs post Deployment as below:
+### The post setup API job is a non-hook job. Hence it would get triggered with the other jobs in case of security enabled setup. This would be an concern for parallel decryption and encryption of the pods.
+### 1) When security is enabled:
+###    1) Wait for a delay of client initialDelaySeconds and start checking for Upgrade/SecurityAdmin job to complete.
+###    2) Once the Upgrade/SecurityAdmin job is completed, we check if the latest client is in running state and all the containers in the pod is up.
+###    3) Wait for a delay of client initialDelaySeconds for the ready client pod to complete the encryption of the secrets for the ccr/restApi scripts to further decrypt and proceed.
+### 2) When security is disabled:
+###    1) Wait for a delay of client initialDelaySeconds
+###    2) If data pods are restarting as part of upgrade(could be due to change in volume mounts, env etc), then the post setup job must wait for atleast one data pod to come up with updated changes and to be ready. For this, the job compares the value of updated (UP-TO-DATE) replicas vs the desired number of replicas and also checks if the READY Replica is 1. If atleast 2 replicas are UP-TO-DATE, it means atleast 1 new pod is up and 1/1. So the job waits until 2 replicas are updated (or only 1 if total desired replica count is itself 1). If it fails to update this minimum number of replicas within timeout period, the job fails with exit code 1. Else it proceeds to next step.
+###    3) If client pods are restarting as part of upgrade(could be due to change in volume mounts, env etc), then the post setup job must wait for atleast one client pod to come up with updated changes and to be ready. For this, the job compares the value of updated (UP-TO-DATE) replicas vs the desired number of replicas and also checks if the READY Replica is 1. If atleast 2 replicas are UP-TO-DATE, it means atleast 1 new pod is up and 1/1. So the job waits until 2 replicas are updated (or only 1 if total desired replica count is itself 1). If it fails to update this minimum number of replicas within timeout period, the job fails with exit code 1. Else it proceeds to next step.
+###    4) Once the above conditions are met, we check if the latest client is in running state and all the containers in the pod is up.
+## Once the above checks have passed, We run the post setup API scripts. If CCR is enabled, the script runs with 3 attempts to pass. If the script fails after 3 attempts, the job goes to 'error' state.
+## If Rest API is enabled, the script runs only once. In case of any errors in Rest API script, the job still passes and goes to 'completed' state
+
+{{- include "bssc-indexsearch.ccrEnabled" . }}
+{{- if or ($.ccrEnabled) (.Values.restApi.enabled) }}
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: {{ template "bssc-indexsearch.postSetupApiJob.name" . }}
+  labels:
+{{- include "bssc-indexsearch.csf-toolkit-helm.labels" (tuple . .Values.custom.hookJobs.job.labels) | indent 4 }}
+{{- include "bssc-indexsearch.commonLabels" (tuple .) | indent 4 }}
+  annotations:
+{{- include "bssc-indexsearch.csf-toolkit-helm.annotations" (tuple . .Values.custom.hookJobs.job.annotations) | indent 4 }}
+spec:
+  backoffLimit: 0
+  template:
+    metadata:
+      labels:
+{{- include "bssc-indexsearch.csf-toolkit-helm.labels" (tuple . .Values.custom.hookJobs.pod.labels) | indent 8 }}
+{{- include "bssc-indexsearch.commonLabels" (tuple .) | indent 8 }}
+      annotations:
+        sidecar.istio.io/inject: "false"
+{{- include "bssc-indexsearch.csf-toolkit-helm.annotations" (tuple . .Values.custom.hookJobs.pod.annotations) | indent 8 }}
+    spec:
+      serviceAccountName: {{ template "bssc-indexsearch.inupgServiceAccount.name" . }}
+      automountServiceAccountToken: true
+      {{- if .Values.jobs.affinity }}
+      affinity:
+{{ toYaml .Values.jobs.affinity | indent 8 }}
+      {{- end }}
+      {{- if .Values.jobs.nodeSelector }}
+      nodeSelector:
+{{ toYaml .Values.jobs.nodeSelector | indent 8 }}
+      {{- end }}
+      {{- if .Values.jobs.tolerations }}
+      tolerations:
+{{ toYaml .Values.jobs.tolerations | indent 8 }}
+      {{- end }}
+      restartPolicy: Never
+      securityContext:
+{{ include "bssc-indexsearch.pod.securityContext" . | indent 8 }}
+      {{- with .Values.imagePullSecrets }}
+      imagePullSecrets:
+{{- toYaml . | nindent 8 }}
+      {{- end }}
+      volumes:
+      # tmp folder is mounted as emptyDir as tac creates a temporary file during the execution
+      - name: tmp
+        emptyDir:
+          sizeLimit: {{ default "5Mi"  .Values.emptyDirSizeLimit.postSetupApiJobTmp }}
+
+      containers:
+      - name: {{ template "bssc-indexsearch.postSetupApiJobContainer.name" .}}
+        image: {{ include "bssc-indexsearch.registry" (tuple .Values .Values.internalToolsRegistry) }}/{{ include "bssc-indexsearch.imageRepositoryPath" (tuple .Values.global.flatRegistry .Values.kubectl.image.repo) }}:{{ (include "bssc-indexsearch.imageTag" (tuple .Values.kubectl.image.tag .Values.kubectl.image.supportedImageFlavor .Values .Values.kubectl .Values.kubectl.image )) }}
+        volumeMounts:
+        - name: tmp
+          mountPath: /tmp
+        securityContext:
+{{ include "bssc-indexsearch.container.securityContext" . | indent 10 }}
+        resources:
+{{ include "bssc-indexsearch.resources" (tuple . .Values.jobs.secAdminUpgradeJob.resources "500m") | indent 10 }}
+        env:
+        - name: TZ
+          value: {{ or .Values.timezone.timeZoneEnv .Values.global.timeZoneEnv "UTC" | quote }}
+
+        command:
+        - bash
+        - "-c"
+        - |
+          echo "Post Deployment API job started at - `date +'%Y-%m-%dT%H:%M:%S'`"
+          sleep $(({{ .Values.client.readinessProbe.initialDelaySeconds }}))
+          ccrPassFlag="false"              
+          retryLimit=0
+          dataReady="false"
+          clientReady="false"              
+          # Below check is for the upgrade/security admin job has got completed to avoid parallel encryption and decryption to clash between the job and script for CCR/REST API when security is enabled.
+          {{- if .Values.security.enable }}  
+             if [[ "{{ .Release.IsInstall }}" == "true" ]]; then  
+                jobName="{{ template "bssc-indexsearch.secAdminJob.name" . }}"
+             else
+                jobName="{{ template "bssc-indexsearch.upgradeJob.name" . }}" 
+             fi 
+             timeout={{ default "1800" .Values.jobs.postApiJobTimeout }}
+             timeout=$((SECONDS+$timeout))
+             echo "Started checking if the Upgrade/SecurityAdmin job: $jobName has completed at - `date +'%Y-%m-%dT%H:%M:%S'`" 
+             while true
+             do 
+               isJobComplete=$(kubectl get job $jobName --namespace {{ .Release.Namespace }} -o jsonpath='{.status.conditions[?(@.type=="Complete")].status}')
+               if [ "$isJobComplete" == "True" ]; then
+                  echo "Upgrade/SecurityAdmin job has completed at - `date +'%Y-%m-%dT%H:%M:%S'`" 
+                  #In case of Installation case, the client pod takes time to come up even if the securityAdmin completes. Hence checking if the client pod is n/n. 
+                  client_timeout=$((SECONDS+{{ .Values.client.readinessProbe.initialDelaySeconds }}+{{ .Values.client.readinessProbe.periodSeconds }}*{{ .Values.client.readinessProbe.failureThreshold }}+600))        
+                  echo "Checking if the latest client is in running state....."
+                  while true
+                  do
+                    pod_id=$(kubectl get pods  --namespace {{ .Release.Namespace }} -l app.kubernetes.io/instance={{ .Release.Name }},app.kubernetes.io/name={{ default .Chart.Name .Values.nameOverride }},app.kubernetes.io/component={{ .Values.client.name}}  --no-headers=true --sort-by=.metadata.creationTimestamp | awk '{ print$1 }' | tac | head -1)
+                    podStatus=$(kubectl get pods $pod_id --namespace {{ .Release.Namespace }} -ojsonpath={.status.phase})
+                    if [[ "$podStatus" == "Running" ]]; then
+                       echo "The client pod: $pod_id is in $podStatus state at - `date +'%Y-%m-%dT%H:%M:%S'`"
+                       break 
+                    elif [ $SECONDS -ge $client_timeout ]; then
+                       echo "Error: The client pod: $pod_id failed to attain the Running State. Failing the job as it timed out waiting for the condition at - `date +'%Y-%m-%dT%H:%M:%S'`"
+                       exit 1
+                    fi
+                    echo "The client pod: $pod_id is in $podStatus state - `date +'%Y-%m-%dT%H:%M:%S'`. Hence, rechecking the status of client pod after 10 seconds"
+                    sleep 10
+                  done 
+                  echo "Checking if all the containers are up in $pod_id ......."          
+                  while true
+                  do
+                    if [[ $(kubectl get pod $pod_id -n {{ .Release.Namespace }} -o=jsonpath={.status.containerStatuses[*].ready}) != *false* ]];then
+                       clientReady="true"
+                       echo "All container in the $pod_id pod is up and running at - `date +'%Y.%m.%d-%H:%M:%S'`"
+                       #Sleep is added for the opensearch client pod to complete the encryption post the cluster response check delay of 5.
+                       sleep {{ .Values.client.readinessProbe.initialDelaySeconds }}
+                       break  
+                    elif [ $SECONDS -ge $client_timeout ]; then
+                       echo "Error: All the containers in the client pod: $pod_id failed to come up even after the Upgrade/SecurityAdmin has completed. Failing the job as it timed out waiting for the condition at - `date +'%Y-%m-%dT%H:%M:%S'`"
+                       exit 1
+                    fi
+                    sleep 5
+                  done  
+                  if [[ "$clientReady" == "true" ]]; then 
+                     break
+                  fi
+               elif [ $SECONDS -ge $timeout ]; then
+                  echo "Error: The Upgrade/SecurityAdmin job has not been completed within the given timeout. Failing the job as it timed out waiting for the condition at - `date +'%Y-%m-%dT%H:%M:%S'`"
+                  exit 1
+               fi
+               echo "Upgrade/SecurityAdmin job has not completed yet at - `date +'%Y-%m-%dT%H:%M:%S'`. Retrying to check the status of the job after 15 seconds" 
+               sleep 15
+             done          
+          {{- else }}    
+             #Security is not enabled, hence check for new data pods and latest client pod to run the Post Deployment APIs.  
+             #Check for new data pods          
+             echo "Started checking to find atleast 1 data pod to come up with latest changes........"     
+             #The job waits until timeout period to find atleast 1 data pod to come up with latest changes. Timeout period is calculated as per readinessProbe parameters configured for data with an additional delay of 600s(10min).
+             desired_data_replica={{ .Values.data.replicas }}
+             data_wait_timeout=$((SECONDS+({{ .Values.data.readinessProbe.initialDelaySeconds }}+{{ .Values.data.readinessProbe.periodSeconds }}*{{ .Values.data.readinessProbe.failureThreshold }}+600)))
+             while true
+             do
+               ready_data_replica=$(kubectl get statefulsets -n {{ .Release.Namespace }} {{ template "bssc-indexsearch.data.fullname" . }} -ojsonpath={.status.readyReplicas})
+               updated_data_replica=$(kubectl get statefulsets -n {{ .Release.Namespace }} {{ template "bssc-indexsearch.data.fullname" . }} -ojsonpath={.status.updatedReplicas})
+               if [[ $ready_data_replica -ge 1 && ($updated_data_replica -ge 2 || $desired_data_replica -eq 1 && $updated_data_replica -eq 1) ]]; then
+                  dataReady="true"
+                  echo "Atleast 1 Data pod is up with the latest Opensearch image at - `date +'%Y.%m.%d-%H:%M:%S'`"
+                  break
+               elif [ $SECONDS -ge $data_wait_timeout ]; then
+                  echo "Error: Even 1 data pod has not got updated with latest changes. Failing the job as it timed out waiting for the condition at - `date +'%Y-%m-%dT%H:%M:%S'`"
+                  exit 1
+               fi
+               sleep 5
+             done   
+    
+             #Check for latest client pods
+             pod_id=""
+             desired_client_replica={{ .Values.client.replicas }}
+             echo "Started checking to find atleast 1 client pod to come up with latest changes........" 
+             #The job waits until timeout period to find atleast 1 client pod to come up with latest changes. Timeout period is calculated as per readinessProbe parameters configured for client with an additional delay of 600s(10min).
+             client_wait_timeout=$((SECONDS+({{ .Values.client.readinessProbe.initialDelaySeconds }}+{{ .Values.client.readinessProbe.periodSeconds }}*{{ .Values.client.readinessProbe.failureThreshold }}+600)))
+             while true
+             do
+               ready_client_replica=$(kubectl get deployment -n {{ .Release.Namespace }} {{ template "bssc-indexsearch.client.fullname" . }} -ojsonpath={.status.readyReplicas})
+               updated_client_replica=$(kubectl get deployment -n {{ .Release.Namespace }} {{ template "bssc-indexsearch.client.fullname" . }} -ojsonpath={.status.updatedReplicas})
+               if [[ $ready_client_replica -ge 1 && ($updated_client_replica -ge 2 || $desired_client_replica -eq 1 && $updated_client_replica -eq 1) ]]; then
+                  echo "Found Atleast 1 client pod with the latest Opensearch image at - `date +'%Y.%m.%d-%H:%M:%S'`"
+                  echo "Checking if the latest client is in running state....."
+                  while true
+                  do
+                    pod_id=$(kubectl get pods  --namespace {{ .Release.Namespace }} -l app.kubernetes.io/instance={{ .Release.Name }},app.kubernetes.io/name={{ default .Chart.Name .Values.nameOverride }},app.kubernetes.io/component={{ .Values.client.name}}  --no-headers=true --sort-by=.metadata.creationTimestamp | awk '{ print$1 }' | tac | head -1)
+                    podStatus=$(kubectl get pods $pod_id --namespace {{ .Release.Namespace }} -ojsonpath={.status.phase})
+                    if [[ "$podStatus" == "Running" ]]; then
+                       echo "The client pod: $pod_id is in $podStatus state at - `date +'%Y-%m-%dT%H:%M:%S'`"
+                       break 
+                    elif [ $SECONDS -ge $client_wait_timeout ]; then
+                       echo "Error: The client pod: $pod_id failed to attain the Running State. Failing the job as it timed out waiting for the condition at - `date +'%Y-%m-%dT%H:%M:%S'`"
+                       exit 1
+                    fi
+                    echo "The client pod: $pod_id is in $podStatus state - `date +'%Y-%m-%dT%H:%M:%S'`. Hence, rechecking the status of client pod after 10 seconds"
+                    sleep 10
+                  done 
+                  echo "Checking if all the containers are up in $pod_id......."
+                  while true
+                  do
+                    if [[ $(kubectl get pod $pod_id -n {{ .Release.Namespace }} -o=jsonpath={.status.containerStatuses[*].ready}) != *false* ]];then
+                       clientReady="true" 
+                       echo "All container in the $pod_id pod is up and running with the latest Opensearch image at - `date +'%Y.%m.%d-%H:%M:%S'`"
+                       break  
+                    elif [ $SECONDS -ge $client_wait_timeout ]; then
+                       echo "Error: All the containers in the client pod: $pod_id failed to come up. Failing the job as it timed out waiting for the condition at - `date +'%Y-%m-%dT%H:%M:%S'`"
+                       exit 1
+                    fi
+                    sleep 5
+                  done
+                  if [[ "$clientReady" == "true" ]]; then
+                     break                   
+                  fi
+               elif [ $SECONDS -ge $client_wait_timeout ]; then
+                  echo "Error: Even 1 client pod has not got updated with latest changes. Failing the job as it timed out waiting for the condition at - `date +'%Y-%m-%dT%H:%M:%S'`"
+                  exit 1
+               fi
+             done                  
+          {{- end }} 
+
+          {{- if $.ccrEnabled }}
+             echo -e "\nCross Cluster Replication feature is enabled, hence running the script at `date +'%Y.%m.%d-%H:%M:%S'`"
+             while [ $retryLimit -le 2 ];
+             do
+               #Run the Cross Cluster Replication script when both data and client pods have come up. 
+               patterns={{- include "bssc-indexsearch.ccrReplicateIndices" (tuple .Values.crossClusterReplication.follower.replicateIndices) | trim | quote }}
+               patterns="'$patterns'"
+               ccr_status=$(kubectl exec -i ${pod_id} --namespace {{ .Release.Namespace }} -c {{ template "bssc-indexsearch.client.container" . }} -- bash -c "export REPLICATED_INDICES=${patterns}; /opt/opensearch/scripts/ccr.sh")          
+               if [ $? -eq 0 ]; then
+                  echo "$ccr_status"
+                  echo "Cross Cluster Replication Script Successfully passed at `date +'%Y.%m.%d-%H:%M:%S'`"
+                  ccrPassFlag="true"
+                  break
+               else
+                  echo "$ccr_status"
+                  echo "Cross Cluster Replication script failed at `date +'%Y.%m.%d-%H:%M:%S'`"
+                  ccrPassFlag="false"
+                  ((retryLimit++))
+               fi
+               if [[ $retryLimit == 3 ]]; then
+                  echo "Failure: Max retries reached to execute Cross Cluster Replication Script at `date +'%Y.%m.%d-%H:%M:%S'`"
+               else
+                  echo -e "Attempt - $retryLimit Failed: Retrying to execute Cross Cluster Replication Script at `date +'%Y.%m.%d-%H:%M:%S'`\n"
+               fi
+             done
+          {{- else }}
+             echo -e "\n[ `date +'%Y.%m.%d-%H:%M:%S'` ] Cross Cluster Replication feature is not enabled." 
+             ccrPassFlag="true"
+          {{- end }}    
+         
+          if [[ {{ .Values.restApi.enabled }} == "true" ]]; then
+             echo -e "\nREST API commands execution is enabled, hence running the script at `date +'%Y.%m.%d-%H:%M:%S'`"
+             api_status=$(kubectl exec -i ${pod_id} --namespace {{ .Release.Namespace }} -c {{ template "bssc-indexsearch.client.container" . }} -- bash -c "/opt/opensearch/scripts/restApi.sh")          
+             if [ $? -eq 0 ]; then
+                echo "$api_status"
+                echo "Rest Api script Successfully passed at `date +'%Y.%m.%d-%H:%M:%S'`"
+             else 
+                echo "$api_status"
+                echo "Rest Api script failed at `date +'%Y.%m.%d-%H:%M:%S'`"
+             fi
+          else
+             echo -e "\n[ `date +'%Y.%m.%d-%H:%M:%S'` ] REST API command execution is not enabled." 
+          fi
+
+          if [[ "$ccrPassFlag" == "true" ]]; then
+             echo -e "\nJob completed successfully at `date +'%Y.%m.%d-%H:%M:%S'`, exiting..."
+             exit 0
+          else 
+             echo -e "\nError: Job failed at `date +'%Y.%m.%d-%H:%M:%S'`"
+             exit 1
+          fi 
+
+{{- end }}

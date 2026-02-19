@@ -1,0 +1,66 @@
+{{- if and .Values.restserver.enabled .Values.restserver.ingress.enabled -}}
+{{- $releaseName := .Release.Name -}}
+{{- $serviceName := include "cpro.prometheus.restserver.fullname" . }}
+{{- $servicePort := .Values.restserver.service.servicePort -}}
+{{- $kubeVersion := .Capabilities.KubeVersion.GitVersion -}}
+apiVersion: {{ template "cpro.apiVersion.ingress" . }}
+kind: Ingress
+metadata:
+  name: {{ template "cpro.prometheus.restserver.fullname" . }}
+  annotations:
+{{- include "cpro.labelsOrAnnotations" (tuple .Values.restserver.ingress.annotations .Values.global.annotations) | indent 4}}
+  labels:
+    {{- include "cpro.app.labels.v3" ( dict "root" . "context" .Values.restserver ) | nindent 4 }}
+{{- include "cpro.labelsOrAnnotations" (tuple .Values.global.labels) | indent 4}}
+spec:
+{{- if .Values.restserver.ingress.hosts }}
+{{- if semverCompare "<= 1.19.0-0" .Capabilities.KubeVersion.GitVersion }}
+  rules:
+  {{- range .Values.restserver.ingress.hosts }}
+    {{- $url := splitList "/" . }}
+    - host: {{ first $url }}
+      http:
+        paths:
+          - path: /{{ rest $url | join "/" }}
+            backend:
+              serviceName: {{ $serviceName }}
+              servicePort: {{ $servicePort }}
+  {{- end -}}
+{{- else }}
+  rules:
+  {{- range .Values.restserver.ingress.hosts }}
+    {{- $url := splitList "/" . }}
+    - host: {{ first $url }}
+      http:
+        paths:
+          - path: /{{ rest $url | join "/" }}
+          {{- if eq $.Values.restserver.ingress.pathType "" }}
+          {{- required "This parameter needs to be provided. Possible Values are Prefix, ImplementationSpecific,Exact" ""}}
+          {{- else }}
+            pathType: {{ $.Values.restserver.ingress.pathType }}
+          {{- end }}
+            backend:
+              service:
+                name: {{ $serviceName }}
+                port:
+                  number: {{ $servicePort }}
+  {{- end -}}
+{{- end }}
+{{- else }}
+{{- if semverCompare "<= 1.19.0-0" $kubeVersion }}
+  backend:
+    serviceName: {{ $serviceName }}
+    servicePort: {{ $servicePort }}
+{{- else }}
+  defaultBackend:
+    service:
+      name: {{ $serviceName }}
+      port:
+        number: {{ $servicePort }}
+{{- end }}
+{{- end }}
+{{- if .Values.restserver.ingress.tls }}
+  tls:
+{{ toYaml .Values.restserver.ingress.tls | indent 4 }}
+{{- end }}
+{{- end }}

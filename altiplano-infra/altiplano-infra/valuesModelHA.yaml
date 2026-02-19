@@ -1,0 +1,508 @@
+# This values yaml contains the configuration for Local HA
+#
+global:
+  namenodeHAEnabled: true
+  clustered_opentsdb: true
+
+altiplano-sso:
+  replicaCount: 3
+
+  nodeAntiAffinity:
+    enabled: true
+  podAntiAffinity:
+  zone:
+  #Possible options: soft/hard/none
+    type: hard
+    topologyKey: "topology.kubernetes.io/zone"
+  node:
+  #Possible options: soft/hard/none
+    type: hard
+    topologyKey: "kubernetes.io/hostname"
+
+altiplano-indexsearch:
+  bssc-indexsearch:
+
+    manager:
+      podAntiAffinity:
+        ruleDefinition: "hard"
+      replicas: 3
+
+    client:
+      podAntiAffinity:
+        ruleDefinition: "hard"
+      replicas: 2
+
+    data:
+      podAntiAffinity:
+        ruleDefinition: "hard"
+      replicas: 3
+
+altiplano-kafka:
+  Replicas: 3
+  DefaultReplicationFactor: "2"
+  OffsetsTopicReplicationFactor: "2"
+  MinInsyncReplicas: "1"
+  antiAffinity: "hard"
+  MessageMaxBytes: "314572800"
+  pdb:
+    minAvailable: 2
+
+  ckaf-zookeeper:
+    antiAffinity: "hard"
+    servers: 3
+    ingress:
+      enableExternalAccess: true
+    pdb:
+      minAvailable: 2
+
+altiplano-redis:
+  ## Anti-affinity among all pods to share a node (server+sentinel).  soft/hard
+  nodeAntiAffinity: hard
+
+  server:
+    count: 3
+    podAntiAffinity:
+      node:
+        type: hard
+  sentinel:
+    enabled: true
+    podAntiAffinity:
+      node:
+        type: hard
+    nodeSelector:
+      #role: "Infra"
+    ## Number of Redis sentinels to run - minimum 3
+    count: 3
+
+    # Number of sentinels that must agree on a master as down to perform failover
+    quorum: 2
+
+altiplano-opentsdb-cluster:
+  altiplano-hbase:
+    antiAffinity: "hard"
+    hbase:
+      master:
+        replicas: 2
+      regionServer:
+        replicas: 2
+  altiplano-hdfs:
+    antiAffinity: "soft"
+    conf:
+      hdfsSite:
+        dfs.replication: 3  # when changing this value ensure that dataNode.replicas is equal or higher than this value
+    journalNode:
+      journalnodeQuorumSize: 3
+      #pdbMinAvailable: 3
+    nameNode:
+      replicas: 2
+      ZKQuorumSize: 3
+    dataNode:
+      replicas: 3
+      #pdbMinAvailable: 3
+
+altiplano-mariadb:
+  #enabled: true
+  ## Cluster Type is one of master-slave, master-master, galera, simplex
+  cluster_type: "master-slave"
+
+  nodeAntiAffinity: hard
+
+  ## Values on how to expose services
+  services:
+
+    ##
+    ## MariaDB Master exposes the pod that is master
+    ## (only if using MaxScale and geo_redundancy.enabled)
+    ##
+    mariadb_master:
+      ## name of service.  If not set, will be <release>-mariadb-master
+      #name:
+      ## Set as NodePort to expose master externally for replication among
+      ## Datacenters
+      type: NodePort
+      ## If set to NodePort, optionally set a specific nodePort port to use
+      ## instead of having one assigned by the infrastructure.  Ignored if
+      ## not using NodePort, random assigned if commented out.
+      ## NOTE:  If assigning nodePort here, you must ensure that the port
+      ##        is not currently assigned in the assignment range.
+      nodePort: 30034
+
+    ##
+    ## Maxscale exposes the administrative REST API interface of Maxscale
+    ## (only if using MaxScale)
+    ## Enabling geo-redundancy will automatically set type to "NodePort".
+    ##
+    maxscale:
+      ## name of service.  If not set, will be <release>-maxscale
+      #name:
+      ## Set as NodePort to expose maxscale service externally
+      type: NodePort
+      port: 8989
+      ## If set to NodePort, optionally set a specific nodePort port to use
+      ## instead of having one assigned by the infrastructure.  Ignored if
+      ## not using NodePort, random assigned if commented out.
+      ## NOTE:  If assigning nodePort here, you must ensure that the port
+      ##        is not currently assigned in the assignment range.
+      nodePort: 30035
+
+  ##
+  ## Values specific to the MariaDB (server)
+  ##
+  mariadb:
+
+    tls:
+      enabled: true
+    ## The number of MariaDB pods to create
+    count: 3
+
+    ## If root user should be allowed from all hosts
+    #allow_root_all: false
+
+  ##
+  ## Values specific to the MaxScale (proxy)
+  ##
+  maxscale:
+    enabled: true
+    ## The number of MaxScale pods
+    count: 2
+
+    metrics:
+      enabled: true
+
+    resources:
+      requests:
+        memory: 1Gi
+        cpu: 1
+        ephemeral-storage: 1Gi
+      limits:
+        memory: 7Gi
+        cpu: 2
+        ephemeral-storage: 1Gi
+    metrics:
+      enabled: true
+    ## use TLS/SSL for maxscale admin interface
+    tls:
+      enabled: true
+
+    maxscale_site_conf: |-
+      [maxscale]
+      threads = 5
+      query_retries = 2
+      query_retry_timeout = 10s
+      query_classifier_cache_size=1500Mi
+      [RWSplit-Service]
+      connection_keepalive = 1750s
+      [RO-Service]
+      connection_keepalive = 1750s
+      [Master-Service]
+      connection_keepalive = 1750s
+
+    nodeAffinity:
+      enabled: false # if you want to allow maxscale & mariadb on same worker node, set this to false, otherwise set to true
+
+    fluentd_sidecar:
+      
+      fluent_conf: |-
+
+        <system>
+          log_level error
+        </system>
+
+        <source>
+          @type tail
+          path /logs/datacenter-monitor.log
+          read_from_head true
+          pos_file /tmp/fluentd/datacenter-monitor-log.pos
+          keep_time_key true
+          tag nokia.logging.json
+          @label @alarm.log
+          format json
+        </source>
+        <source>
+          @type tail
+          path /logs/datacenter-monitor.log,/logs/maxscale-monitor.log
+          read_from_head true
+          pos_file /tmp/fluentd/alarmmonitor-log.pos
+          keep_time_key true
+          tag monitor.log
+          @label @all.monitor.log
+          <parse>
+            @type multi_format
+            #pattern for type "log" in datacenter-monitor.log,maxscale-monitor.log
+            <pattern>
+              format regexp
+              expression /^{([^{]*){(.*?:)"(?<message>[^}]*)"},(.*?:)"(?<container_name>[^.]*).\w*",(.*?:)"(?<process>[^,]*)",(.*?:)"(?<service>[^,]*)",(.*?:)"(?<level>[^,]*)",(.*?:)"(?<date>[^}]*)"}$/
+            </pattern>
+            #pattern for type "ALARM" in datacenter-monitor.log
+            <pattern>
+              format regexp
+              expression /^([^{]*){(.*?:)"(?<message>[^}]*)"},(.*?:)"(?<container_name>[^.]*).\w*",(.*?:)"(?<level>[^,]*)",(.*?:)"(?<process>[^,]*)",(.*?:)"(?<service>[^,]*)",(.*?:)"(?<date>[^,]*)",(.*:)"(?<type>[^}]*)"}/
+            </pattern>
+          </parse>
+        </source>
+        <source>
+          @type tail
+          path /logs/maxscale.log
+          read_from_head true
+          pos_file /tmp/fluentd/maxscale-log.pos
+          keep_time_key true
+          tag maxscale.log
+          @label @all.monitor.log
+          <parse>
+            @type multi_format
+            <pattern>
+              format regexp
+              expression /^(?<date>([^ ]* [^ ]*))\s+(?<level>[^:]*)([^ ]*)\s(?<message>[^{]*)$/
+            </pattern>
+            <pattern>
+              format regexp
+              expression /^(?<date>([^ ]* [^ ]*))\s+([^ ]*)([^{]*){(.*?:)"(?<container_name>[^.]*).\w*",(.*?:)"(?<level>[^,]*)"([^{]*){(.*?:)"(?<message>[^}]*)"},(.*?:)"(?<process>[^,]*)",(.*?:)"(?<service>[^,]*)"(.*)/
+            </pattern>
+          </parse>
+        </source>
+        <label @alarm.log>
+          <match nokia.logging.json>
+            @type rewrite_tag_filter
+            <rule>
+              key "type"
+              pattern ^(.+)$
+              tag "nokia.logging.$1"
+            </rule>
+          </match>
+          <match nokia.logging.alarm>
+            @type copy
+            <store>
+              @type stdout
+            </store>
+            <store>
+              @type kafka2
+              <format>
+                @type json
+              </format>
+              <buffer topic>
+                @type file
+                path /tmp/fluentd/kafka-buffer/nokia.logging.all.alarm
+                overflow_action drop_oldest_chunk
+                chunk_limit_size 16MB
+                chunk_limit_records 1
+                queued_chunks_limit_size  4096
+                flush_thread_count 1
+                flush_mode immediate
+                retry_wait 0s
+                retry_forever true
+                total_limit_size 50MB
+              </buffer>
+              ssl_ca_cert "/etc/.certificates/mariadb-server-trustchain-cert.pem"
+              ssl_client_cert "/etc/.certificates/mariadb-client-cert.pem"
+              ssl_client_cert_key "/etc/.certificates/mariadb-client-key.pem"
+              ssl_client_cert_key_password "/etc/.certificates/client_key_pass"
+              ssl_verify_hostname false
+              get_kafka_client_log true
+              max_send_retries 10
+              brokers "{{ .Values.maxscale.fluentd_sidecar.KAFKA_BOOTSTRAP_SERVERS }}"
+              default_topic "{{ .Values.maxscale.fluentd_sidecar.KAFKA_TOPIC }}"
+            </store>
+          </match>
+          <match nokia.logging.*>
+            @type null
+          </match>
+        </label>
+        <label @all.monitor.log>
+          <filter monitor.log>
+            @type record_transformer
+            enable_ruby true
+            <record>
+              container_ip "#{ENV['POD_IP']}"
+              level ${record["level"]}
+              level ${record['level'] == "notice " ? "INFO" : record['level'] == "ERR" || record['level'] == "error" ? "ERROR" : record['level'] == "warning" || record['level'] == "ALERT" ? "WARN" : record['level'] }
+            </record>
+            renew_record true
+            keep_keys container_name,container_ip,date,level,message,process,service
+          </filter>
+          <filter maxscale.log>
+            @type record_transformer
+            enable_ruby true
+            <record>
+              container_name "#{ENV['CONTAINER_NAME']}"
+              container_ip "#{ENV['POD_IP']}"
+              date ${Time.strptime(record['date'], '%Y-%m-%d %H:%M:%S').strftime('%Y-%m-%dT%H:%M:%S.%LZ')}
+              level ${record["level"]}
+              level ${record['level'] == "notice " ? "INFO" : record['level'] == "ERR" || record['level'] == "error" ? "ERROR" : record['level'] == "warning" || record['level'] == "ALERT" ? "WARN" : record['level'] }
+            </record>
+            renew_record true
+            keep_keys container_name,container_ip,date,level,message
+          </filter>
+          <match *.log>
+            @type opensearch
+            suppress_type_name true
+            reload_on_failure true
+            reconnect_on_error true
+            logstash_format true
+            type_name fluentd
+            ssl_verify false
+            ssl_version TLSv1_2
+            scheme {{ .Values.maxscale.fluentd_sidecar.IS_PROTO }}
+              host {{ .Values.maxscale.fluentd_sidecar.IS_IP }}
+              port {{ .Values.maxscale.fluentd_sidecar.IS_PORT }}
+              user "#{ENV['IS_USERNAME']}"
+              password "#{ENV['IS_PASSWORD']}"
+              ca_file "/etc/.certificates/trustchain-cert.pem"
+              <buffer>
+                @type file
+                path /tmp/fluentd/buffer_es/
+                overflow_action drop_oldest_chunk
+                chunk_limit_size 16MB
+                queued_chunks_limit_size  4096
+                flush_thread_count 5
+                flush_interval 5s
+                retry_wait 0s
+                retry_forever true
+                total_limit_size 50MB
+              </buffer>
+              time_key date
+              time_key_exclude_timestamp true
+              logstash_prefix {{ .Values.maxscale.fluentd_sidecar.LOG_INDEX_PATTERN }}
+              request_timeout 45s
+          </match>
+        </label>
+        <match **>
+          @type null
+        </match>
+
+  geo_redundancy:
+    ## Only enable geo_redundancy for multiple datacenters
+    enabled: false
+
+  cbur:
+    ## "true": will select latest slave pod then master pod if no slave pod is found.
+    ## "false": will select master pod
+    selectPod: true
+
+altiplano-kafka-mirrormaker:
+  enabled: false # This will be enabled by valuesModelGeo.yaml
+  mirrorMakerConfig:
+    certManager:
+      enabled: false
+    mmClusters: "site1,site2"
+    maxTasks: 1
+#    krbConfigmapName: des-infra-krb5-config #please enable krbConfigmapName if SASL is enabled
+#    KrbConfKeyName: krb5config
+    clusters:
+      - alias: "site1"
+        bootstrap.servers: "altiplano-kafka-headless:9092"
+        security.protocol: SSL
+        config:
+          config.storage.replication.factor: 3
+          offset.storage.replication.factor: 3
+          status.storage.replication.factor: 3
+          ssl.endpoint.identification.algorithm: ""
+        ssl:
+          enabled: true
+          enabledProtocols: TLSv1.2,TLSv1.3
+          protocol: TLSv1.2
+          secret_name: "altiplano-secrets-all-certs"
+          keystore_key: server.jks
+          truststore_key: trustchain.jks
+          truststore_passwd_key: trustchain_jks_pass
+          keystore_passwd_key: server_jks_pass
+          keystore_key_passwd_key: server_jks_pass
+          certificates:
+            altiplano_keystore_secrets: altiplano-keystore-secrets
+            altiplano_keystore_password: keystore-password
+            secrets:
+              altiplano_kafka_certificate_secrets: altiplano-kafka-mirrormaker-certificate-secrets
+              altiplano_keystore_secrets: altiplano-keystore-secrets
+            fileNames:
+              kafka_server_key_pem: kafka-mirrormaker-kafka-client-key.pem
+              kafka_server_key_pass: kafka-mirrormaker-kafka-client-key.pass
+              kafka_server_cert_pem: kafka-mirrormaker-kafka-client-cert.pem
+              altiplano_keystore_password: keystore-password
+              kafka_server_keystore_jks: server.jks
+              kafka_server_trustchain_cert_pem: kafka-mirrormaker-kafka-client-trustchain-cert.pem
+              kafka_server_truststore_jks: trustchain.jks
+      - alias: "site2"
+        bootstrap.servers: "" #Use central kafka instance
+        security.protocol: SSL #SASL_SSL
+        config:
+          config.storage.replication.factor: 3
+          offset.storage.replication.factor: 3
+          status.storage.replication.factor: 3
+          ssl.endpoint.identification.algorithm: ""
+        ssl:
+          enabled: true
+          enabledProtocols: TLSv1.2,TLSv1.3
+          protocol: TLSv1.2
+          secret_name: "altiplano-secrets-all-certs"
+          keystore_key: server.jks
+          truststore_key: trustchain.jks
+          truststore_passwd_key: trustchain_jks_pass
+          keystore_passwd_key: server_jks_pass
+          keystore_key_passwd_key: server_jks_pass
+          certificates:
+            altiplano_keystore_secrets: altiplano-keystore-secrets
+            altiplano_keystore_password: keystore-password
+            secrets:
+              altiplano_kafka_certificate_secrets: altiplano-kafka-mirrormaker-certificate-secrets
+              altiplano_keystore_secrets: altiplano-keystore-secrets
+            fileNames:
+              kafka_server_key_pem: kafka-mirrormaker-kafka-client-key.pem
+              kafka_server_key_pass: kafka-mirrormaker-kafka-client-key.pass
+              kafka_server_cert_pem: kafka-mirrormaker-kafka-client-cert.pem
+              altiplano_keystore_password: keystore-password
+              kafka_server_keystore_jks: server.jks
+              kafka_server_trustchain_cert_pem: kafka-mirrormaker-kafka-client-trustchain-cert.pem
+              kafka_server_truststore_jks: trustchain.jks
+        #saslKrb:
+          #enabled: false #please correct to your secret if enable SASL
+          #krbSecretName: *saslSecret
+          #krbPrincipalKey: *krbPrincipalKey
+          #krbKeytabKey: *krbKeytabKey
+    mirrors:
+      - sourceCluster: "site1"
+        targetCluster: "site2"
+        purgeKafkaTopic: "true"
+        sourceConnector:
+          config:
+            replication.factor: 3
+            offset-syncs.topic.replication.factor: 3
+            sync.topic.acls.enabled: "false"
+            sync.topic.configs.enabled: "true"
+            replication.policy.class: "com.nokia.csf.kafka.mm2.RetainTopicNameReplicationPolicy"
+#            replication.policy.class: "com.nokia.csf.kafka.mm2.IdentityMapperTopicReplicationPolicy" #This class is used for topic rename. If enable this line, please comment out above one
+#            topic.replication.maps: "" #e.g: source_topic_1:target_topic_1,source_topic_2:target_topic_2
+        heartbeatConnector:
+          config:
+            emit.hearbeats.enabled: "true"
+            heartbeats.topic.replication.factor: 3
+        checkpointConnector:
+          config:
+            emit.checkpoints.enabled: "true"
+            checkpoints.topic.replication.factor: 3
+            sync.group.offsets.enabled: "true"
+        refresh.groups.interval.seconds: "300"
+        refresh.topics.interval.seconds: "300"
+        sync.topic.configs.interval.seconds: "300"
+        topics: ".*_ALARM$,.*_INTERNAL_Intent_Changes$,ALTIPLANO_INTERNAL_HAM_UPDATE$"
+        groups: ".*"
+        groups.blacklist: "console-consumer-.*, connect-.*, __.*"
+  initContainer:
+    image:
+      name: fnms-init-container
+      tag: nokia-2.0.1
+      pullPolicy: IfNotPresent
+  certificates:
+    secrets:
+      altiplano_kafka_certificate_secrets: altiplano-kafka-mirrormaker-certificate-secrets
+      altiplano_keystore_secrets: altiplano-keystore-secrets
+    fileNames:
+      kafka_server_key_pem: kafka-mirrormaker-kafka-client-key.pem
+      kafka_server_key_pass: kafka-mirrormaker-kafka-client-key.pass
+      kafka_server_cert_pem: kafka-mirrormaker-kafka-client-cert.pem
+      altiplano_keystore_password: keystore-password
+      kafka_server_keystore_jks: server.jks
+      kafka_server_trustchain_cert_pem: kafka-mirrormaker-kafka-client-trustchain-cert.pem
+      kafka_server_truststore_jks: trustchain.jks
+      
+altiplano-installation-info:
+  installationStatus:
+    valuesModelHA: installed

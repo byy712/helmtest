@@ -1,0 +1,18 @@
+--- ckey-12.2.0/templates/isu/isu-upgrade-job.yaml	2024-03-16 01:47:07.000000000 +0530
++++ ckey-12.2.0-nokia-patch-1/ckey/templates/isu/isu-upgrade-job.yaml	2024-03-27 18:37:11.657464829 +0530
+@@ -19,6 +19,7 @@
+     metadata:
+       name: {{ template "ckey.keycloak.isuUpgradeContainerName" . }}
+       labels:
++        altiplano-role: {{ .Values.accessRoleLabel }}
+         app: {{ template "ckey.fullName" . }}
+         release: {{ .Release.Name }}
+         {{- include "ckey.customLabels" (tuple .Values.custom.job.labels .Values.global.labels ) | indent 8 }}
+@@ -99,6 +100,7 @@
+     metadata:
+       name: {{ template "ckey.keycloak.postUpgradeIsuJob" . }}
+       labels:
++        altiplano-role: {{ .Values.accessRoleLabel }}
+         app: {{ template "ckey.fullName" . }}
+         release: {{ .Release.Name }}
+ {{ include "ckey.commonLabels" . | indent 8 }}

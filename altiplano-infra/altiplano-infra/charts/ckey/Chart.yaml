@@ -1,0 +1,20 @@
+apiVersion: v2
+appVersion: 23.0.7
+description: Keycloak is an open source Identity and Access Management solution aimed
+  at modern applications and services. It makes it easy to secure applications and
+  services with little to no code.
+keywords:
+- keycloak
+- quarkus
+- 12.2.0
+- 23.0.7
+- CKEY
+- 'X-COMPAAS: { "CATEGORY": "Security", "SVC_NAME": "Keycloak", "SVC_TYPE": "CKEY",
+  "SVC_SCOPE": [ "PRIVATE","SHARED" ] }'
+maintainers:
+- email: CSFSecurity@groups.nokia.com
+  name: CSF Security Team
+name: ckey
+sources:
+- https://repo.cci.nokia.net/webapp/#/artifacts/browse/tree/General/csf-docker-delivered/keycloak
+version: 12.2.0-nokia-patch-3

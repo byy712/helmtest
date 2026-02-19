@@ -1,0 +1,10 @@
+--- bssc-ifd-13.0.1/bssc-ifd/charts/bssc-dashboards/templates/post-delete-job.yaml	2023-12-06 18:41:43.000000000 +0530
++++ bssc-ifd-patch/bssc-ifd/charts/bssc-dashboards/templates/post-delete-job.yaml	2023-12-20 16:36:53.032685000 +0530
+@@ -87,6 +87,7 @@
+   template:
+     metadata:
+       labels:
++        altiplano-role: {{ .Values.accessRoleLabel }}
+ {{- include "bssc-dashboards.csf-toolkit-helm.labels" (tuple . .Values.dashboards.custom.hookJobs.pod.labels) | indent 8}}
+ {{- include "bssc-dashboards.commonLabels" (tuple .  "dashboards" ) | indent 8 }}
+       annotations:

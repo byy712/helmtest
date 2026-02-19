@@ -1,0 +1,51 @@
+{{- include "cpro.istio.cproInitIstio" . }}
+{{- if and (.Values.rbac.enabled) (.Values.restserver.enabled) }}
+apiVersion: {{ template "cpro.apiVersion.roleApiversion" . }}
+{{- if .Values.restrictedToNamespace }}
+kind: Role
+{{- else }}
+kind: ClusterRole
+{{- end }}
+metadata:
+  labels:
+    {{- include "cpro.app.labels.v3" ( dict "root" . "context" .Values.restserver ) | nindent 4 }}
+{{- include "cpro.labelsOrAnnotations" (tuple .Values.global.labels) | indent 4}}
+{{- if .Values.restrictedToNamespace }}
+  name: {{ template "cpro.prometheus.restserver.role" . }}
+  namespace: "{{.Release.Namespace}}"
+{{- else }}
+  name: {{ template "cpro.prometheus.restserver.clusterrole" . }}
+{{- end }}
+  annotations:
+{{- include "cpro.labelsOrAnnotations" (tuple .Values.global.annotations) | indent 4}}
+rules:
+  - apiGroups:
+      - ""
+    resources:
+      - secrets
+    verbs:
+      - get
+      - watch
+      - list
+  - apiGroups:
+      - ""
+    resources:
+      - configmaps
+    verbs:
+      - get
+      - watch
+      - list
+      - patch
+  {{- if and ($.istio.enabled) (not $.istio.cni.enabled) }}
+  - apiGroups:
+      - {{ template "cpro.prometheus.apiGroupVersionExtensionsorPolicy" . }}
+    {{- if (.Values.rbac.psp.create) }}
+    resourceNames:
+      - {{ template "cpro.prometheus.restserver.psp" . }}
+    {{- end }}
+    resources:
+      - podsecuritypolicies
+    verbs:
+      - use
+  {{- end }}
+{{- end }}

@@ -1,0 +1,267 @@
+{{ if .Values.isuUpgrade.enabled }}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ template "ckey.fullName" . }}-isu
+  labels:
+    app: {{ template "ckey.fullName" . }}
+    release: "{{ .Release.Name }}"
+    heritage: "{{ .Release.Service }}"
+    {{- include "ckey.customLabels" (tuple .Values.global.labels ) | indent 4 }}
+    {{- include "ckey.commonLabels" . | indent 4 }}
+  annotations:
+    "helm.sh/hook": pre-upgrade, post-upgrade, pre-rollback, post-rollback
+    "helm.sh/hook-delete-policy": before-hook-creation, hook-succeeded
+    {{- include "ckey.customAnnotations" (tuple .Values.global.annotations) | indent 4 }}
+data:
+  isu-common.sh: |
+    function get_ckey_sts_name {
+      CKEY_STS=$(kubectl get statefulset -n {{ .Release.Namespace }} -l app={{ template "ckey.chartName" . }},release={{ .Release.Name }},csf-component=ckey,csf-subcomponent=keycloak --no-headers=true --output=custom-columns=":metadata.name" --ignore-not-found=true | grep -v "isu-upgrade")
+      if [ -z "$CKEY_STS" ]; then
+        CKEY_STS={{ template "ckey.keycloak.statefulsetName" . }}
+      fi
+      echo ${CKEY_STS}
+    }
+
+    function get_ckey_isu_sts_name {
+      CKEY_ISU_STS=$(kubectl get statefulset -n {{ .Release.Namespace }} -l app={{ template "ckey.chartName" . }},release={{ .Release.Name }},csf-component=ckey,csf-subcomponent=keycloak --no-headers=true --output=custom-columns=":metadata.name" --ignore-not-found=true | grep "isu-upgrade")
+      if [ -z "$CKEY_ISU_STS" ]; then
+        CKEY_ISU_STS={{ template "ckey.keycloak.isuStatefulsetName" . }}
+      fi
+      echo ${CKEY_ISU_STS}
+    }
+
+    function get_ckey_pod_0_name {
+      CKEY_POD_0=$(get_ckey_sts_name)-0
+      echo ${CKEY_POD_0}
+    }
+
+    function get_isu_mysql_pod_name {
+      CKEY_ISU_MYSQL_POD=$(get_ckey_pod_0_name)
+      echo ${CKEY_ISU_MYSQL_POD}
+    }
+
+    export CKEY_STS=$(get_ckey_sts_name)
+    export CKEY_ISU_STS=$(get_ckey_isu_sts_name)
+    export CKEY_POD_0=$(get_ckey_pod_0_name)
+    export EXEC_CKEY_POD="kubectl exec -n {{ .Release.Namespace }} ${CKEY_POD_0} -- /bin/bash -c "
+    export CBUR_HOST="{{ .Values.isuUpgrade.cbur.host | default "http://cbur-master-cbur.ncms.svc:80" }}"
+    export USERNAME=$(kubectl get secret -n ncms cbur-basic-auth -o=jsonpath='{.data.username}' | base64 -d)
+    export PASSWORD=$(kubectl get secret -n ncms cbur-basic-auth -o=jsonpath='{.data.password}' | base64 -d)
+
+    export HELM_VERSION=3
+    export BACKUP_NAMESPACE={{ .Release.Namespace }}
+
+    echo "Waiting for main CKEY Statefulset to ready"
+    kubectl rollout status sts ${CKEY_STS} --namespace {{ .Release.Namespace }}
+
+    export DB_USER={{ .Values.dbUser }}
+    if [ -f /ckey-secret/db-password ]; then
+      export DB_PASSWORD=$(cat /ckey-secret/db-password)
+    else
+      export DB_PASSWORD="r00tr00t"
+    fi
+    export DB_ARGS="-h {{ .Values.dbAddress | default "127.0.0.1" | quote }} -P {{ .Values.dbPort }} -u$DB_USER -p$DB_PASSWORD -f "
+    export PATCH_DB_PASSWORD=$DB_PASSWORD
+
+
+    function remove_isu_statefulset {
+      info "Deleting older ISU Statefulset if exists"
+      CKEY_ISU_STS=$(get_ckey_isu_sts_name)
+      kubectl delete sts --namespace {{ .Release.Namespace }} ${CKEY_ISU_STS}
+    }
+
+    function cleanup {
+      info "Waiting for main CKEY Statefulset to ready"
+      CKEY_STS=$(get_ckey_sts_name)
+      kubectl rollout status sts ${CKEY_STS} --namespace {{ .Release.Namespace }}
+
+      info "Redirecting CKEY service traffic back to main CKEY Statefulset"
+      kubectl patch svc {{ template "ckey.fullName" . }} -n {{ .Release.Namespace }} -p '{"spec":{"selector":{"isu-upgrade":null}}}'
+
+      remove_isu_statefulset
+      # As the ckey containers will continue running for additional .Values.terminationGracePeriodSecondsForSSO seconds due to intentional sleeping within preStop lifecycle, we need to ensure 'tmdb4keycloak' is not removed until the isu-statefulset pods have successfully terminated.
+      sleep {{ .Values.terminationGracePeriodSecondsForSSO }}
+
+      CKEY_ISU_MYSQL_POD=$(get_isu_mysql_pod_name)
+      kubectl exec -n {{ template "ckey.keycloak.isu.mysql-client.pod.namespace" . }} ${CKEY_ISU_MYSQL_POD} -- /bin/bash -c \
+        'mysql '"$DB_ARGS"' <<< "\
+        DROP DATABASE IF EXISTS tmpdb4keycloak;"'
+    }
+
+    function cbur_curl {
+      BACKUP_AUTH_STATUS=$(curl -s -kL --post301 -X GET $CBUR_HOST/v2/auth/status | grep "message" | sed "s/\"message\"\://" | sed "s/,//")
+      export BACKUP_AUTH_STATUS=${BACKUP_AUTH_STATUS//[[:blank:]]/}
+      if [ "$BACKUP_AUTH_STATUS" = "0" ]; then
+        curl_req="curl $1 $2"
+      elif [ "$BACKUP_AUTH_STATUS" = "1" ]; then
+        TKN=$(curl -skL --post301 -X POST "$CBUR_HOST/v2/auth/users/login" -H "accept: application/json" -H "Content-Type: application/json" \
+                   -d '{"username":"{{ .Values.isuUpgrade.cbur.username }}","password":"$CBUR_PASSWORD"}'| grep "accessToken" | sed "s/\"accessToken\"\://" | sed "s/,//")
+        TKN=${TKN//[[:blank:]]/}
+        curl_req="curl $1 $2 -H \"Authorization: Bearer $TKN\""
+      elif [ "$BACKUP_AUTH_STATUS" = "2" ]; then
+        curl_req="curl $1 $2 -u $USERNAME:$PASSWORD"
+      fi
+      local out=$(eval $curl_req)
+      echo $out
+    }
+
+    function cbur_backup {
+      info "Calling CBUR to backup"
+
+      info "Using BACKUP_AUTH_STATUS=$BACKUP_AUTH_STATUS"
+      out=$(cbur_curl "-d \"\" -skL --post301 -X POST" "$CBUR_HOST/v2/helm/release/backup/$BACKUP_NAMESPACE/{{ .Release.Name }}?helm_version=$HELM_VERSION")
+      info "Backup output is: $out"
+
+      resp_code=$(echo $out | awk 'BEGIN{RS=","; FS="code"}NF>1{print $NF}' | tr -dc '[:alnum:]\n\r')
+      if [ "$resp_code" = "200" ]; then
+        info "Backup Success"
+      elif [ "$resp_code" = "202" ]; then
+        backup_id=$(echo $out | awk 'BEGIN{RS="is"; FS="="}NF>1{print $NF}' | tr -d '[:space:]\n\r')
+        backup_sts=$(cbur_curl "-skL" "$CBUR_HOST/v2/task/$backup_id")
+        info "$backup_sts"
+        while [[ "$backup_sts" =~ "\"status\": \"InProgress\"" ]]; do
+          sleep 10
+          info "Backup in progress..."
+          backup_sts=$(cbur_curl "-skL" "$CBUR_HOST/v2/task/$backup_id")
+          info "$backup_sts"
+        done
+      else
+        info "Backup failed"
+      fi
+    }
+
+    function cbur_restore {
+      if [ "$BACKUP_ID" != "skip" ]; then
+        info "Calling CBUR to restore CKEY and database from backup. BACKUP_ID=$BACKUP_ID"
+        out=$(cbur_curl "-skL --post301 -X POST -H \"accept: application/json\" -H \"Content-Type: application/x-www-form-urlencoded\" -d \"backup_id=$BACKUP_ID\"" "$CBUR_HOST/v2/helm/release/restore/$BACKUP_NAMESPACE/{{ .Release.Name }}?helm_version=$HELM_VERSION")
+        info "Restore output is: $out"
+
+        resp_code=$(echo $out | awk 'BEGIN{RS=","; FS="code"}NF>1{print $NF}' | tr -dc '[:alnum:]\n\r')
+        if [ "$resp_code" = "200" ]; then
+          info "Restore Success"
+        elif [ "$resp_code" = "202" ]; then
+          restore_id=$(echo $out | awk 'BEGIN{RS="is"; FS="="}NF>1{print $NF}' | tr -d '[:space:]\n\r')
+          restore_sts=$(cbur_curl "-skL" "$CBUR_HOST/v2/task/$restore_id")
+          info "$restore_sts"
+          while [[ "$restore_sts" =~ "\"status\": \"InProgress\"" ]]; do
+            sleep 60
+            info "Restore in progress..."
+            restore_sts=$(cbur_curl "-skL" "$CBUR_HOST/v2/task/$restore_id")
+            info "$restore_sts"
+          done
+        else
+          info "Restore failed"
+        fi
+      else
+        info "Skipping restoring CKEY data from backup"
+      fi
+    }
+
+    #Note that app name of the ISU statefulset is retained same as the original ckey statefulset.
+    #This is because if ISU statefulset would have different app name than the original ckey statefulset,
+    #we need to switch the ckey http service's selector to this ISU statefulset app name to redirect the incoming traffic
+    #to the ISU statefulset pods. But that would have caused service discontinuity
+    #when helm would detect(as part of upgrade process) that the http service resource has changed
+    #and helm would patch this service forcefully back to the original ckey statefulset app.
+    function create_isu_statefulset {
+      info "Creating ISU Statefulset with infinispan group separation fix"
+      REPLICAS=$1
+      CKEY_STS=$(get_ckey_sts_name)
+      CKEY_ISU_STS=$(get_ckey_isu_sts_name)
+      #JGROUPS_DNS_QUERY of ckey-sts and the isu-upgrade-sts should be separated from each other.
+      export CKEY_HEADLESS_SVC="{{ .Release.Name }}-ckey-headless.{{ .Release.Namespace }}.svc.{{ .Values.clusterDomain }}"
+      #Thus, $CKEY_HEADLESS_SVC value of JGROUPS_DNS_QUERY environment variable has to be replaced by $CKEY_ISU_HEADLESS_SVC
+      export CKEY_ISU_HEADLESS_SVC="{{ .Release.Name }}-ckey-isu-headless.{{ .Release.Namespace }}.svc.{{ .Values.clusterDomain }}"
+      kubectl patch sts --namespace {{ .Release.Namespace }} ${CKEY_STS} -o yaml --type "json" --dry-run --record=false -p '[
+        {"op":"replace","path":"/metadata/name","value":"'$CKEY_ISU_STS'"},
+        {"op":"replace","path":"/spec/replicas","value":'"$REPLICAS"'},
+        #CRUCIAL: by setting isu-upgrade:true we are ensuring isu-statefulset is visible only
+        #to isu specific headless service. This will ensure infinispan members which are part of isu-statefulset,
+        #find their peer members only within isu specific domain search.
+        {"op":"add","path":"/spec/template/metadata/labels/isu-upgrade","value":"true"},
+        {"op":"add","path":"/spec/template/spec/containers/0/env/-","value":{"name":"ISU_UPGRADE", "value":"1"}},
+        {"op":"add","path":"/spec/template/spec/containers/0/env/-","value":{"name":"ISU_EXCLUDE_CHECK_PATTERN", "value":"{{ .Values.isuUpgrade.excludeCheckPattern }}"}}]' | sed "s|$CKEY_HEADLESS_SVC|$CKEY_ISU_HEADLESS_SVC|g" | \
+        kubectl apply --namespace {{ .Release.Namespace }} --record=false -f -
+    }
+
+    function create_isu_statefulset_with_temp_db {
+      info "Creating ISU Statefulset with temporary database with infinispan group separation fix"
+      REPLICAS=$1
+      CKEY_STS=$(get_ckey_sts_name)
+      CKEY_ISU_STS=$(get_ckey_isu_sts_name)
+      #JGROUPS_DNS_QUERY of ckey-sts and the isu-upgrade-sts should be separated from each other.
+      export CKEY_HEADLESS_SVC="{{ .Release.Name }}-ckey-headless.{{ .Release.Namespace }}.svc.{{ .Values.clusterDomain }}" 
+      #Thus, $CKEY_HEADLESS_SVC value of JGROUPS_DNS_QUERY environment variable has to be replaced by $CKEY_ISU_HEADLESS_SVC
+      export CKEY_ISU_HEADLESS_SVC="{{ .Release.Name }}-ckey-isu-headless.{{ .Release.Namespace }}.svc.{{ .Values.clusterDomain }}"
+      kubectl patch sts --namespace {{ .Release.Namespace }} ${CKEY_STS} -o yaml --type "json" --dry-run --record=false -p '[
+        {"op":"replace","path":"/metadata/name","value":"'$CKEY_ISU_STS'"},
+        {"op":"replace","path":"/spec/replicas","value":'"$REPLICAS"'},
+        #CRUCIAL: by setting isu-upgrade:true we are ensuring isu-statefulset is visible only
+        #to isu specific headless service. This will ensure infinispan members which are part of isu-statefulset,
+        #find their peer members only within isu specific domain search.
+        {"op":"add","path":"/spec/template/metadata/labels/isu-upgrade","value":"true"},
+        {"op":"add","path":"/spec/template/spec/containers/0/env/-","value":{"name":"ISU_UPGRADE", "value":"1"}},
+        {"op":"add","path":"/spec/template/spec/containers/0/env/-","value":{"name":"ISU_EXCLUDE_CHECK_PATTERN", "value":"{{ .Values.isuUpgrade.excludeCheckPattern }}"}},
+        {"op":"add","path":"/spec/template/spec/containers/0/env/-","value":{"name":"DB_NAME", "value":"tmpdb4keycloak"}},
+        {"op":"add","path":"/spec/template/spec/containers/0/env/-","value":{"name":"KC_DB_URL_DATABASE", "value":"tmpdb4keycloak"}}]' | sed "s|$CKEY_HEADLESS_SVC|$CKEY_ISU_HEADLESS_SVC|g" | \
+        kubectl apply --namespace {{ .Release.Namespace }} --record=false -f -
+    }
+
+    function redirect_requests_to_isu_statefulset {
+      info "Switching CKEY service to ISU Statefulset"
+      kubectl patch svc {{ template "ckey.fullName" . }} -n {{ .Release.Namespace }} -p '{"spec":{"selector":{"isu-upgrade":"true"}}}'
+    }
+
+    function change_isu_statefulset_db {
+      info "Switching ISU Statefulset to temporary database"
+      CKEY_ISU_STS=$(get_ckey_isu_sts_name)
+      kubectl patch sts --namespace {{ .Release.Namespace }} ${CKEY_ISU_STS} --type "json" --record=false -p '[
+        {"op":"add","path":"/spec/template/spec/containers/0/env/-","value":{"name":"DB_NAME", "value":"tmpdb4keycloak"}},
+        {"op":"add","path":"/spec/template/spec/containers/0/env/-","value":{"name":"KC_DB_URL_DATABASE", "value":"tmpdb4keycloak"}}]'
+    }
+
+    function wait_isu_statefulset {
+      info "Waiting for ISU Statefulset to be ready"
+      CKEY_ISU_STS=$(get_ckey_isu_sts_name)
+      kubectl rollout status sts ${CKEY_ISU_STS} --namespace {{ .Release.Namespace }}
+      ROLLOUT_STATUS=$?
+      if [[ $ROLLOUT_STATUS != 0 ]]; then
+        info "ISU Statefulset is not ready. ROLLOUT_STATUS=$ROLLOUT_STATUS. Stopping ISU."
+        exit 1
+      fi
+    }
+
+
+    function create_temp_db {
+      info "Creating temporary Keycloak database tmpdb4keycloak"
+
+      CKEY_ISU_MYSQL_POD=$(get_isu_mysql_pod_name)
+      mysqldump_version=$(kubectl exec -n {{ template "ckey.keycloak.isu.mysql-client.pod.namespace" . }}  ${CKEY_ISU_MYSQL_POD} -- /bin/bash -c "mysqldump --version")
+
+      if [[ "$mysqldump_version" =~ "MariaDB" ]]; then
+        export MYSQL_DUMP_ARGS=""
+      else
+        export MYSQL_DUMP_ARGS="--column-statistics=0"
+      fi
+
+      kubectl exec -n {{ template "ckey.keycloak.isu.mysql-client.pod.namespace" . }}  \
+        ${CKEY_ISU_MYSQL_POD} -- /bin/bash -c \
+        'mysql '"$DB_ARGS"' <<< "\
+        DROP DATABASE IF EXISTS tmpdb4keycloak; \
+        CREATE DATABASE IF NOT EXISTS tmpdb4keycloak;" && \
+        { mysqldump '"$DB_ARGS"' {{ .Values.dbName }} --no-data '"$MYSQL_DUMP_ARGS"'; \
+          mysqldump '"$DB_ARGS"' {{ .Values.dbName }} --no-create-info '"$MYSQL_DUMP_ARGS"' --ignore-table={{ .Values.dbName }}.EVENT_ENTITY --ignore-table={{ .Values.dbName }}.ADMIN_EVENT_ENTITY --ignore-table={{ .Values.dbName }}.JGROUPSPING; \
+        } | mysql '"$DB_ARGS"' tmpdb4keycloak'
+    }
+
+    function remove_main_sts {
+      info "Deleting Main Statefulset"
+      CKEY_STS=$(get_ckey_sts_name)
+      kubectl delete sts ${CKEY_STS} --namespace {{ .Release.Namespace }}
+    }
+
+    function info() {
+      echo "["`date +'%Y-%m-%d %H:%M:%S'`"] $*"
+    }
+{{ end }}

@@ -1,0 +1,38 @@
+{{- if and .Values.rbac.enabled .Values.nodeExporter.enabled }}
+apiVersion: {{ template "cpro.apiVersion.roleApiversion" . }}
+kind: Role
+metadata:
+  labels:
+    {{- include "cpro.app.labels.v3" ( dict "root" . "context" .Values.nodeExporter ) | nindent 4 }}
+{{- include "cpro.labelsOrAnnotations" (tuple .Values.global.labels) | indent 4}}
+  name: {{ template "cpro.prometheus.nodeExporter.role" . }}
+  namespace: "{{.Release.Namespace}}"
+  annotations:
+{{- include "cpro.labelsOrAnnotations" (tuple .Values.global.annotations) | indent 4}}
+rules:
+{{- if .Capabilities.APIVersions.Has "security.openshift.io/v1/SecurityContextConstraints" }}
+  - apiGroups:
+      - security.openshift.io
+    resourceNames:
+      {{- if .Values.rbac.scc.create }}
+      - {{ template "cpro.prometheus.nodeexporter.psporsccname" . }}
+      {{- else }}
+      - node-exporter
+      {{- end }}
+    resources:
+      - securitycontextconstraints
+    verbs:
+      - use
+{{- else }}
+  - apiGroups:
+      - {{ template "cpro.prometheus.apiGroupVersionExtensionsorPolicy" . }}
+    resourceNames:
+      - {{ template "cpro.prometheus.nodeexporter.psporsccname" . }}
+    resources:
+      - podsecuritypolicies
+    verbs:
+      - use
+{{- end }} 
+{{- end }}
+
+

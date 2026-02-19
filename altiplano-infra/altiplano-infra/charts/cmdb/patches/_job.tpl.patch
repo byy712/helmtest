@@ -1,0 +1,10 @@
+--- cmdb-9.2.1/cmdb-original/templates/_job.tpl	2024-04-25 05:27:41.000000000 +0530
++++ cmdb-9.2.xxxxx.new/cmdb/templates/_job.tpl	2024-05-07 13:28:22.393212695 +0530
+@@ -32,6 +32,7 @@
+ metadata:
+   name: {{ $job_name }}
+   labels:
++    altiplano-role: {{ .Values.accessRoleLabel }}
+     {{- include "cmdb-admin.labels" (tuple . "job") | nindent 4 }}
+   annotations:
+     {{- include "cmdb-admin.annotations" (tuple . "job") | nindent 4 }}

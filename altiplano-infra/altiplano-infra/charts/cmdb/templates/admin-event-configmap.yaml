@@ -1,0 +1,34 @@
+{{- include "cmdb.init" . -}}
+{{ $admin_recovery := .Values.admin.recovery | default "none" }}
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ template "cmdb.fullname" . }}-admin-event
+  labels:
+    {{- include "cmdb-admin.labels" (tuple . "configmap") | nindent 4 }}
+  annotations:
+    {{- include "cmdb-admin.annotations" (tuple . "configmap") | nindent 4 }}
+data:
+  recovery_tag: |-
+    {{ $admin_recovery | sha256sum }}
+  cmd_args: |-
+    {{- if contains ":" $admin_recovery }}
+    {{- $vals := (split ":" $admin_recovery) }}
+    node={{ $vals._1 }}
+    {{- end }}
+  {{- if .Values.admin.pwChangeSecret }}
+  pw_change_secret: {{ default "" .Values.admin.pwChangeSecret }}
+  {{- end }}
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ template "cmdb.fullname" . }}-mariadb-admin-fluentd-config
+  labels:
+    {{- include "csf-common-lib.v1.commonLabels" (tuple . "configmap") | nindent 4 }}
+data:
+  fluentd.conf: |-
+{{- if .Values.admin.fluentd_sidecar.fluent_conf }}
+{{ tpl .Values.admin.fluentd_sidecar.fluent_conf . | indent 4 }}
+{{- end }}

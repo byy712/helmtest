@@ -1,0 +1,119 @@
+{{ if gt (int .Values.postscalein ) 0 }}
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: {{ template "ckaf-kafka.postScaleInJobName" . }}
+  labels:
+{{ include "ckaf-kafka.commonLabels" . | indent 4 }}
+{{- include "csf-common-lib.v1.customLabels" (tuple .Values.global.labels) | indent 4 }}
+  annotations:
+    seccomp.security.alpha.kubernetes.io/allowedProfileNames: {{ .Values.global.seccompAllowedProfileNames }}
+    seccomp.security.alpha.kubernetes.io/defaultProfileName: {{ .Values.global.seccompDefaultProfileName }}
+{{- include "csf-common-lib.v1.customAnnotations" (tuple .Values.global.annotations) | indent 4 }}
+spec:
+  template:
+    metadata:
+      labels:
+        altiplano-role: {{ .Values.accessRoleLabel }}
+        app: {{ .Chart.Name }}
+{{ include "ckaf-kafka.commonLabels" . | indent 8 }}
+{{- include "csf-common-lib.v1.customLabels" (tuple .Values.global.labels) | indent 8 }}
+      annotations:
+        sidecar.istio.io/inject: "false"
+{{- include "csf-common-lib.v1.customAnnotations" (tuple .Values.global.annotations) | indent 8 }}
+    spec:
+      {{- if .Values.kafkaNodeSelector.enable }}
+      nodeSelector:
+{{ toYaml .Values.kafkaNodeSelector.nodeLabel | indent 8 }}
+      {{- end }}
+      {{- include "ckaf-kafka.tolerations" . | indent 6 }}
+      {{- if .Values.global.rbac.enabled }}
+      serviceAccountName: {{ template "ckaf-kafka.serviceAccountName" . }}
+      {{ end }}
+      automountServiceAccountToken: true
+      {{- if eq .Values.security.enabled true }}
+      securityContext:
+        {{- if ( ne ( toString ( .Values.security.runAsUser )) "auto" ) }}
+        runAsUser: {{ .Values.security.runAsUser }}
+        {{- end }}
+        runAsNonRoot: true       
+        {{- if ( ne ( toString (.Values.security.fsGroup)) "auto" ) }}
+        fsGroup: {{ .Values.security.fsGroup }}
+        {{- end }}
+        {{- if eq (include "ckaf-kafka.renderSeccompProfile" .) "true" }}
+        seccompProfile:
+          type: {{ .Values.security.seccompProfile.type }}
+        {{- end }}
+      {{- end }}
+      {{- if  coalesce .Values.imagePullSecrets .Values.global.imagePullSecrets }}
+      imagePullSecrets:
+        - name: {{ coalesce .Values.imagePullSecrets .Values.global.imagePullSecrets }}
+      {{- end }}
+      restartPolicy: Never
+      containers:
+      - name: {{ template "ckaf-kafka.postScaleInJobContainerName" . }}
+        {{- if eq .Values.global.flatRegistry true }}
+        image: "{{ .Values.global.registry }}/{{ .Values.kubectlImageName }}:{{ .Values.kubectlTag }}"
+        {{- else }}
+        image: "{{ coalesce .Values.global.registry3 .Values.global.registry }}/{{ include "ckaf-kafka.kubectlImageRepo" . }}:{{ .Values.kubectlTag }}"
+        {{- end }}
+        imagePullPolicy: IfNotPresent
+        {{- if eq .Values.security.enabled true }}
+        securityContext:
+          runAsNonRoot: true
+          readOnlyRootFilesystem: {{ .Values.security.readOnlyRootFilesystem }}
+          {{- if ( ne ( toString ( .Values.security.runAsUser )) "auto" ) }}
+          runAsUser: {{ .Values.security.runAsUser }}
+          {{- end }}
+          {{- if .Values.security.runAsGroup }}
+          runAsGroup: {{ .Values.security.runAsGroup }}
+          {{- end }}
+          allowPrivilegeEscalation: false
+          {{- if eq (include "ckaf-kafka.renderSeccompProfile" .) "true" }}
+          seccompProfile:
+            type: {{ .Values.security.seccompProfile.type }}
+          {{- end }}
+          privileged: false
+          capabilities:
+            drop: ["ALL"]
+        {{- end }}
+        resources:
+{{- include "ckaf-kafka.getResources" (tuple . .Values.jobResources "1") | indent 10 }}
+        env:
+        - name: TZ
+          value: {{ template "ckaf-kafka.timeZoneEnv" . }}
+        command:
+        - sh
+        - -c
+        - |
+          echo "Postscalein in progress"
+          if  [[ {{ .Values.Replicas | quote }} -eq "0" ]]; then
+          echo "Replicas set to 0, PVC would not be deleted"
+          echo "exiting postscalein."
+          exit 0
+          else
+          rc=$(kubectl exec {{ template "ckaf-kafka.statefulset" . }}-0 -c {{ template "ckaf-kafka.containerName" . }} -- bash -c "if [[ -f /var/lib/kafka/data/donotdeletepvc ]]; then echo "true" ; else echo "false"; fi" |tr -d "\r")
+          if [[ {{ .Values.safeScale }} -eq false && "$rc" == true ]]; then
+          echo "Replication factor of one or more topics is greater than the number of brokers that is scaled to."
+          echo "PVC wouldnt be deleted"
+          # deleting the temporary file created.
+          kubectl exec {{ template "ckaf-kafka.statefulset" . }}-0 -c {{ template "ckaf-kafka.containerName" . }} -- bash -c "rm -rf /var/lib/kafka/data/donotdeletepvc" 
+          exit 0
+          else
+          echo 'Deleting the pvc of the old pods'
+          KF_COUNT={{ .Values.Replicas }}
+          echo "UPDATED_KF_COUNT = ${KF_COUNT}"
+          KF_PVC=`kubectl get pvc -l app={{ .Chart.Name }},release={{ .Release.Name }} -n={{ .Release.Namespace }} | awk '{print $1}'`
+          echo "existing KF PVC = ${KF_PVC}"
+          for i in ${KF_PVC};do
+          KF_PVC_NUMBER="${i##*-}"
+          if ((${KF_PVC_NUMBER} >= ${KF_COUNT}));then
+          kubectl delete pvc ${i} --namespace {{ .Release.Namespace }}
+          echo "PVC Deleted is : ${i}"
+          fi;
+          done;
+          fi
+          fi 
+
+{{- end }}
+

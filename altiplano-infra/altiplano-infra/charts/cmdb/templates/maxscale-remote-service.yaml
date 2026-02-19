@@ -1,0 +1,96 @@
+{{- include "cmdb.init" . -}}
+{{ if and (eq (include "cmdb.has_maxscale" .) "true") .Values.geo_redundancy.enabled (not (.Values.geo_redundancy.directConnect)) }}
+#
+#  Create maxscale Endpoint and Service for each remote datacenter site
+#
+{{- $g := . -}}
+{{- $maxscale_port := .Values.services.maxscale.port }}
+{{- $istio_enabled := .Values.istio.enabled }}
+{{- $tls_mode := default "ISTIO_MUTUAL" .Values.istio.destinationRule.tls.mode }}
+{{- $mtls_mode := include "cmdb.istio_mtls_mode" . }}
+{{- $has_security_api := semverCompare ">=1.5" (toString .Values.istio.version) }}
+{{- range $index, $item := .Values.geo_redundancy.remoteSites }}
+{{ $maxscale := $item.maxscale }}
+{{ $parts := splitList ":" (default ":" $maxscale.remoteService) }}
+{{ $remote_ip := initial $parts | join ":" | trimAll "[]" }}
+{{ $remote_port := last $parts }}
+{{ if $maxscale.remoteService }}
+  ## Validate remote host and port and trigger error as needed
+  {{- $ip := (required "A valid geo_redundancy.remoteSites.maxscale must be 'host:port'" $remote_ip) }}
+  {{- $port := (required "A valid geo_redundancy.remoteSites.maxscale must be 'host:port'" $remote_port) }}
+{{ end }}
+{{ $service_name := $maxscale.serviceName | default (printf "%s-maxscale-%s" (include "cmdb.fullname" $g) $item.name) }}
+---
+kind: Endpoints
+apiVersion: v1
+metadata:
+  name: {{ $service_name }}
+  labels:
+    {{- include "cmdb-maxscale.labels" (tuple $g "endpoints") | nindent 4 }}
+  annotations:
+    {{- include "cmdb-maxscale.annotations" (tuple $g "endpoints") | nindent 4 }}
+subsets:
+  # To be added after install
+{{- if $maxscale.remoteService }}
+  - addresses:
+      - ip: "{{ $remote_ip }}"
+    ports:
+      - port: {{ $remote_port }}
+        name: "tcp-maxscale"
+{{- else }}
+  []
+{{- end }}
+---
+kind: Service
+apiVersion: v1
+metadata:
+  name: {{ $service_name }}
+  labels:
+    {{- include "cmdb-maxscale.labels" (tuple $g "service") | nindent 4 }}
+  annotations:
+    {{- include "cmdb-maxscale.annotations" (tuple $g "service") | nindent 4 }}
+spec:
+  {{- include "cmdb.dual-stack" (tuple $g $maxscale) | nindent 2 }}
+  ports:
+  - name: "tcp-maxscale"
+    port: {{ $maxscale_port }}
+  # To be modified after install
+{{- if $maxscale.remoteService }}
+    targetPort: {{ $remote_port }}
+{{- end }}
+
+{{- if $istio_enabled }}
+{{- if not $has_security_api }}
+---
+apiVersion: "authentication.istio.io/v1alpha1"
+kind: "Policy"
+metadata:
+  name: {{ $service_name }}-mtls-authn
+  labels:
+    {{- include "cmdb-maxscale.labels" (tuple $g "policy") | nindent 4 }}
+  annotations:
+    {{- include "cmdb-maxscale.annotations" (tuple $g "policy") | nindent 4 }}
+spec:
+  targets:
+  - name: {{ $service_name }}
+  peers:
+  - mtls:
+      mode: {{ $mtls_mode }}
+{{- end }}
+---
+apiVersion: networking.istio.io/v1beta1
+kind: DestinationRule
+metadata:
+  name: {{ $service_name }}-mlts-dr
+  labels:
+    {{- include "cmdb-maxscale.labels" (tuple $g "destinationrule") | nindent 4 }}
+  annotations:
+    {{- include "cmdb-maxscale.annotations" (tuple $g "destinationrule") | nindent 4 }}
+spec:
+  host: {{ $service_name }}
+  trafficPolicy:
+    tls:
+      mode: {{ $tls_mode }}
+{{- end }}
+{{- end }}
+{{- end }}

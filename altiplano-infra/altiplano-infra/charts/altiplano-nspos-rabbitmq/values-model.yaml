@@ -1,0 +1,598 @@
+# Model of configuration.
+type: object
+properties:
+
+  istio:
+    description: "istio options"
+    type: object
+    properties:
+      enabled:
+        description: "Whether your chart will deploy on istio"
+        type: boolean
+        default: false
+      cni:
+        description: "istio options"
+        type: object
+        properties:
+          enabled:
+            description: "Whether istio cni is enabled in the environment."
+            type: boolean
+            default: false
+      mtls:
+        description: "MTLS section of configuration."
+        type: object
+        properties:
+          enabled:
+            description: "Is strict MTLS enabled in the environment."
+            type: boolean
+            default: true
+      permissive:
+        description: "Should allow mutual TLS as well as clear text for your deployment."
+        type: boolean
+        default: true
+        
+
+  istioIngress:
+    description: "Whether use istio ingress gateway"
+    type: object
+    properties:
+      enabled:
+        description: "Whether enable istio"
+        type: boolean
+        default: false
+      host:
+        description: "The host of istio ingress gateway and virtual service"
+        type: string
+        default: ""
+      port:
+        description: "The port of istio ingress gateway"
+        type: integer
+        minimum: 80
+        maxinum: 9999
+        default: 80
+  
+  clusterDomain:
+    description: "change DnsConfig clusterDomain"
+    type: string
+    default: "cluster.local"
+
+  rabbitmq:
+    description: "section of specific values for rabbitmq"
+    type: object
+    properties:
+      dynamicConfig:
+        description: "Set Dynamic Configuration and Parameters via rabbitmqctl"
+        type: object
+        properties:
+          enabled:
+            description: "Set Dynamic Configuration and Parameters switch"
+            type: boolean
+            default: false
+          tiemout:
+            description: "Seconds to wait for pod ready in post-install job"
+            type: integer
+            default: 300
+          # {} cannot be quoted by '
+          parameters:
+            description: "The command would like to be run after pod start, refer to https://www.rabbitmq.com/rabbitmqctl.8.html."
+            type: string
+            format: text-area
+            default: ""
+      username:
+        description: "RabbitMQ application username"
+        type: string
+        pattern: '^[a-zA-Z0-9-_]*$'
+        default: user
+      password:
+        description: "RabbitMQ application password, available character: Uppercase letter, lowercase letter, number and !@#$%^&*-+="
+        type: string
+        pattern: '^[a-zA-Z0-9!@#$%^&*-+=]*$'
+        format: password
+        default: ""
+      amqpSvc:
+        description: "Expose the amqp port of RabbitMQ"
+        type: boolean
+        default: true
+      amqpPort:
+        description: "amqp port of RabbitMQ"
+        type: integer
+        minimum: 1001
+        maxinum: 9999
+        default: 5672
+      erlangCookie:
+        description: "Erlang cookie to determine whether different nodes are allowed to communicate with each other"
+        type: string
+        pattern: '^[a-zA-Z0-9]*$'
+        format: password
+        default: ""
+      clustering:
+        description: "The node name type in cluster."
+        type: object
+        properties:
+          address_type:
+            description: "When address_type is default, the env RABBITMQ_NODENAME is rabbit@$(POD_NAME). When address_type is hostname, the env RABBITMQ_NODENAME is rabbit@$(POD_NAME).$(K8S_SERVICE_NAME).$(POD_NAMESPACE).svc.$(k8s_domain)."
+            type: string
+            pattern: '^(default|hostname)$'
+            default: "default"
+          k8s_domain:
+            type: string
+            pattern: '^[a-zA-Z0-9-.]*$'
+            default: "cluster.local"
+      rabbitmqClusterNodeName:
+        description: "Node name to cluster with. e.g.: `clusternode@hostname`"
+        type: string
+        pattern: '^[a-zA-Z0-9-._@]*$'
+        default: ""
+      plugins:
+        description: |-
+          Plugins to enable, refer to https://www.rabbitmq.com/plugins.html, configure as
+          plugin1,plugin2,plugin3...
+
+          The supported built-in plugins are as follow.
+          rabbitmq_amqp1_0
+          rabbitmq_auth_backend_cache
+          rabbitmq_auth_backend_http
+          rabbitmq_auth_backend_ldap
+          rabbitmq_auth_mechanism_ssl
+          rabbitmq_consistent_hash_exchange
+          rabbitmq_event_exchange
+          rabbitmq_federation
+          rabbitmq_federation_management
+          rabbitmq_jms_topic_exchange
+          rabbitmq_management
+          rabbitmq_management_agent
+          rabbitmq_mqtt
+          rabbitmq_peer_discovery_aws
+          rabbitmq_peer_discovery_common
+          rabbitmq_peer_discovery_consul
+          rabbitmq_peer_discovery_etcd
+          rabbitmq_peer_discovery_k8s
+          rabbitmq_random_exchange
+          rabbitmq_recent_history_exchange
+          rabbitmq_sharding
+          rabbitmq_shovel
+          rabbitmq_shovel_management
+          rabbitmq_stomp
+          rabbitmq_top
+          rabbitmq_tracing
+          rabbitmq_trust_store
+          rabbitmq_web_dispatch
+          rabbitmq_web_mqtt
+          rabbitmq_web_mqtt_examples
+          rabbitmq_web_stomp
+          rabbitmq_web_stomp_examples
+          rabbitmq_prometheus
+
+        type: string
+        format: text-area
+        pattern: '^[a-zA-Z0-9, _]*$'
+        default: "rabbitmq_management,rabbitmq_peer_discovery_k8s,rabbitmq_prometheus"
+      configuration:
+        description: "Configution file content, refer to https://www.rabbitmq.com/configure.html#config-items."
+        type: string
+        format: text-area
+        default: |-
+          ## Clustering
+          cluster_formation.peer_discovery_backend  = rabbit_peer_discovery_k8s
+          cluster_formation.k8s.host = kubernetes.default.svc.cluster.local
+          cluster_formation.k8s.address_type = hostname
+          cluster_partition_handling = autoheal
+          ## queue master locator
+          queue_master_locator=min-masters
+          ## enable guest user
+          loopback_users.guest = false
+      advancedConfig:
+        description: "Advance configuration file content, refer to https://www.rabbitmq.com/configure.html#advanced-config-file."
+        type: string
+        format: text-area
+        default: |-
+           %% configuration for prometheus
+           %%{prometheus,
+           %%  [{rabbitmq_exporter, [ {path, "/rabbitmq"},
+           %%                         {connections_total_enabled, true} ]} ]},
+      environment:
+        description: "environment file content, refer to https://www.rabbitmq.com/configure.html#customise-environment."
+        type: string
+        format: text-area
+        default: |-
+          RABBITMQ_SERVER_ADDITIONAL_ERL_ARGS="+A 128"
+          PLUGINS_DIR="/var/lib/rabbitmq/plugins:/usr/lib/rabbitmq/plugins:$RABBITMQ_HOME/plugins"
+      memory:
+        description: "rabbitmq memory configuration can also be set in configuration bloc"
+        type: object
+        properties:
+          vm_memory_high_watermark_relative:
+            description: "vm_memory_high_watermark_relative"
+            type: string
+            default: ""
+          vm_memory_high_watermark_absolute:
+            description: "vm_memory_high_watermark_absolute"
+            type: string
+            default: ""
+          vm_memory_high_watermark_paging_ratio:
+            description: "vm_memory_high_watermark_paging_ratio"
+            type: string
+            default: ""
+          disk_free_limit_absolute:
+            description: "disk_free_limit_absolute"
+            type: string
+            default: ""
+      mqtt:
+        description: "configuration to support mqtt plugin"
+        type: object
+        properties:
+          enabled:
+            description: "if enable the mqtt plugin or not"
+            type: boolean
+            default: false
+          vhost:
+            description: "vhost for mqtt plugin"
+            type: string
+            default: "/"
+          exchange:
+            description: "exchange of the vhost for mqtt plugin"
+            type: string
+            default: "amq.topic"
+          DefaultTcpPort:
+            description: "default tcp port for mqtt"
+            type: integer
+            minimum: 1001
+            maxinum: 9999
+            default: 1883
+          enabledSsl:
+            description: "if enable SSL port for mqtt"
+            type: boolean
+            default: false
+          DefaultSslPort:
+            description: "default SSL port for mqtt"
+            type: integer
+            minimum: 1001
+            maxinum: 9999
+            default: 8883
+      tls:
+        description: "configuration to support broker tls. Note that here must config the whole content of file, not file path."
+        type: object
+        properties:
+          enabled:
+            description: "enabled tls"
+            type: boolean
+            default: false
+          cacert:
+            description: "cacert file content of RabbitMQ server"
+            type: string
+            format: text-area
+            default: ""
+          cert: 
+            description: "cert file content of RabbitMQ server"
+            type: string
+            format: text-area
+            default: ""
+          key: 
+            description: "key file content of RabbitMQ server"
+            type: string
+            format: text-area
+            default: ""
+          verify_option:
+            description: "whether peer verification is enabled"
+            type: string
+            pattern: '^(verify_peer|none)$'
+            default: "verify_peer"
+          fail_if_no_peer_cert:
+            description: "whether to accept clients which don't present a certificate"
+            type: boolean
+            default: false
+          honor_cipher_order:
+            description: "whether to prefer cipher suite order of server"
+            type: boolean
+            default: true
+          honor_ecc_order:
+            description: "whether to prefer ECC suite order of server"
+            type: boolean
+            default: true
+          ciphers_options:
+            description: "you can provide cipher order with cipher names https://www.rabbitmq.com/ssl.html#configuring-cipher-suites"
+            type: string
+            format: text-area
+            default: |-
+              ##  ssl_options.ciphers.1 = ECDHE-ECDSA-AES256-GCM-SHA384
+              ##  ssl_options.ciphers.2  = ECDHE-RSA-AES256-GCM-SHA384
+          ssl_port:
+            description: "RabbitMQ broker tls port"
+            type: integer
+            minimum: 1001
+            maxinum: 9999
+            default: 5671
+          versions:
+            description: "you can chose tls version used by crmq https://www.rabbitmq.com/ssl.html#tls-versions-why-not-limit"
+            type: string
+            format: text-area
+            default: |-
+              ##  ssl_options.versions.1 = tlsv1
+              ##  ssl_options.versions.2 = tlsv1.1
+              ##  ssl_options.versions.3 = tlsv1.2
+
+      management:
+        description: "configuration for management plugin."
+        type: object
+        properties:
+          enabled:
+            description: "disable or enable management port"
+            type: boolean
+            default: true
+          port:
+            description: "RabbitMQ management port"
+            type: integer
+            minimum: 10001
+            maxinum: 55536
+            default: 15672
+          cacert: 
+            description: "cacert file content of management plugin, not file path"
+            type: string
+            format: text-area
+            default: ""
+          cert: 
+            description: "cert file content of management plugin, not file path"
+            type: string
+            format: text-area
+            default: ""
+          key: 
+            description: "key file content of management plugin, not file path"
+            type: string
+            format: text-area
+            default: ""          
+      backuprestore:
+        description: "configuration to enable backuprestore"
+        type: object
+        properties:
+          enabled:
+            description: "whether to enable backuprestore"
+            type: boolean
+            default: false
+          backendMode:
+            type: string
+            pattern: '^(local|NETBKUP|AVAMAR|CEPHS3|AWSS3)$'
+            default: "local"
+          cronJob:
+            type: string
+            pattern: '^[0-9\/ *]*$'
+            default: "*/10 * * * *"
+          brOption:
+            type: integer
+            minimum: 0
+            maxinum: 2
+            default: 0
+          maxCopy:
+            type: integer
+            minimum: 1
+            maximum: 20
+            default: 5
+
+      prometheus:
+        description: "configuration to enable prometheus plugin"
+        type: object
+        properties:
+          enabled: 
+            description: "whether to enable prometheus plugin"
+            type: boolean
+            default: false
+          port:
+            description: "prometheus port"
+            type: integer
+            default: 15692
+          tls:
+            description: "configure for prometheus in tls"
+            type: object
+            properties:
+              enabled:
+                description: "to enable prometheus in tls"
+                type: boolean
+                default: false
+              cacert: 
+                description: "cacert file content of management plugin, not file path"
+                type: string
+                format: text-area
+                default: ""
+              cert: 
+                description: "cert file content of management plugin, not file path"
+                type: string
+                format: text-area
+                default: ""
+              key: 
+                description: "key file content of management plugin, not file path"
+                type: string
+                format: text-area
+                default: ""   
+              password: 
+                description: "password-if-keyfile-is-encrypted"
+                type: string
+                format: text-area
+                default: ""
+
+      rsyslog:
+        description: "configuration to enable unified logging via rsyslog"
+        type: object
+        properties:
+          enabled:
+            description: "whether to enable rsyslog"
+            type: boolean
+            default: false
+          level:
+            description: "log level of the unified logging via rsyslog"
+            type: string
+            pattern: '^(emerg|alert|crit|error|warning|notice|info|debug)$'
+            default: "debug"
+          transport:
+            description: "transport of the unified logging via rsyslog"
+            type: string
+            pattern: '^(tcp|udp)$'
+            default: "udp"
+
+      clog:
+        description: "configuration to enable unified logging via CLOG sidecar"
+        type: object
+        properties:
+          enabled:
+            description: "whether to enable CLOG sidecar"
+            type: boolean
+            default: false
+          level:
+            description: "log level of the unified logging via CLOG sidecar"
+            type: string
+            pattern: '^(emerg|alert|crit|error|warning|notice|info|debug)$'
+            default: "debug"
+          transport:
+            description: "transport of the unified logging via CLOG sidecar"
+            type: string
+            pattern: '^(tcp|udp)$'
+            default: "udp"
+
+      thirdPartyPlugin:
+        description: "Third party plugin need to be installed on the RabbitMQ server. Note plugin should be enabled in upper rabbitmq.plugins field."
+        type: array
+        items:
+          type: string
+          enum:
+          - rabbitmq_delayed_message_exchange
+ 
+  persistence:
+    description: "persistence storage"
+    type: object
+    properties:
+      reservePvc:
+        description: "reserve persistence storage after pod deleted"
+        type: boolean
+        default: false
+      reservePvcForScalein:
+        description: "reserve persistence storage after pod scale-in"
+        type: boolean
+        default: false
+      data:
+        description: "persistence storage for data"
+        type: object
+        properties:
+          enabled:
+            description: "enable persistence storage for data under /var/lib/rabbitmq"
+            type: boolean
+            default: true
+          accessMode:
+            description: "Persistent Volume Access Mode for data: ReadWriteOnce, ReadOnlyMany and ReadWriteMany."
+            type: string
+            pattern: '^(ReadWriteOnce|ReadOnlyMany|ReadWriteMany)$'
+            default: ReadWriteOnce
+          size:
+            description: "Persistent Volume Size for data."
+            type: string
+            default: 8Gi
+            pattern: '^[1-9][0-9]*(Gi|Mi)$'
+      log:
+        description: "persistence storage for log under /var/log/rabbitmq"
+        type: object
+        properties:
+          enabled:
+            description: "enable persistence storage for log"
+            type: boolean
+            default: false
+          accessMode:
+            description: "Persistent Volume Access Mode for log: ReadWriteOnce, ReadOnlyMany and ReadWriteMany."
+            type: string
+            pattern: '^(ReadWriteOnce|ReadOnlyMany|ReadWriteMany)$'
+            default: ReadWriteOnce
+          size:
+            description: "Persistent Volume Size for data."
+            type: string
+            default: 8Gi
+            pattern: '^[1-9][0-9]*(Gi|Mi)$'
+
+  resources:
+    description: "Configure resource requests and limits"
+    type: object
+    properties:
+      memory:
+        description: |
+          Memory request size reserved for a service.
+        type: string
+        default: "256Mi"
+        pattern: '^([0-9]+(Gi|Mi))$'
+      cpu:
+        description: |
+          CPU request reserved for a service.
+        type: string
+        default: "350m"
+        pattern: '^([0-9]+m?)$'
+      memoryLimit:
+        description: |
+          Memory limit for a service.
+        type: string
+        default: "512Mi"
+        pattern: '^([0-9]+(Gi|Mi))$'
+      cpuLimit:
+        description: |
+          CPU limit for a service.
+        type: string
+        default: "1"
+        pattern: '^([0-9]+m?)$'
+
+  replicas:
+    description: "Replica count, set to 3 to provide a default available cluster"
+    type: integer
+    default: 3
+
+  svcAnnotations:
+    description: "service annotation in svc.yaml file, set annotation items split by comma, like: prometheus.io/scrape: ..., prometheus.io/path: ..."
+    type: string
+    default: ""
+    format: text-area
+
+  livenessProbe:
+    description: "Section of pod livenessProbe definition"
+    type: object
+    properties:
+      enabled:
+        description:
+        type: boolean
+        default: true
+      initialDelaySeconds:
+        description:
+        type: integer
+        default: 120
+      timeoutSeconds:
+        description:
+        type: integer
+        default: 5
+      failureThreshold:
+        description:
+        type: integer
+        default: 6
+
+  readinessProbe:
+    description: "Section of pod readinessProbe definition"
+    type: object
+    properties:
+      enabled:
+        description:
+        type: boolean
+        default: true
+      initialDelaySeconds:
+        description:
+        type: integer
+        default: 20
+      timeoutSeconds:
+        description:
+        type: integer
+        default: 6
+      periodSeconds:
+        description:
+        type: integer
+        default: 10
+
+  ingress:
+    description: "Section of ingress configuration"
+    type: object
+    properties:
+      enabled:
+        type: boolean
+        default: false
+      hostName:
+        type: string
+        pattern: '^[a-zA-Z0-9-._@]*$'
+        default: "csf-crmq-nokia.net"

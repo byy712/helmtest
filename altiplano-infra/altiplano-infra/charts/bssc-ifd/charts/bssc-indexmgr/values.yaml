@@ -1,0 +1,610 @@
+### global registry
+global:
+  # This registry is used for all container images
+  registry: csf-docker-delivered.repo.cci.nokia.net
+
+  # Set flatRegistry to true to use images from registries with a flat structure.
+  # If enabled, any subpaths in the image repository name (separated by /) would be skipped and only its last part would be used. Please ensure that all the images are available in the docker registry in the expected flat structure.
+  flatRegistry: false
+
+  # Set enableDefaultCpuLimits to true to enable pod CPU resources limit for all containers. Default is 'false'.
+  # If set to true, the cpuLimits ([*].resources.limit.cpu) must be defined for all containers.
+  # Value set here can be overriden at the workload level by setting enableDefaultCpuLimits value.
+  enableDefaultCpuLimits: false
+
+  seccompAllowedProfileNames: docker/default
+  seccompDefaultProfileName: docker/default
+
+  # This value has lower precendence over "timeZone.timeZoneEnv".
+  # Example: To test IST(India Standard Time) which is UTC +5:30, you need to use "Asia/Calcutta".
+  # Timezone full names can be found here: https://en.wikipedia.org/wiki/List_of_tz_database_time_zones
+  timeZoneEnv:
+
+  #Sets imagePullSecrets at global level for all indexmgr pods.
+  imagePullSecrets: []
+  # -name: regcred
+  
+  certManager:
+    #global.certManager is set to true by default.
+    enabled: true
+
+  #Provide list of extended fields that component can use to enrich the log event by removing {} and configure like below example.
+  unifiedLogging:
+    extension: {}
+    #extension:
+       #VM_Name: abc
+       #VM_UUID: 123
+    syslog:
+      # Enable sending logs to syslog. Enabled value left empty intentionally, default value is False.
+      enabled:
+      facility:
+      host:
+      port:
+      protocol:
+      #Note - If SSL is enabled for syslog server, configure its root CA certificate in a precreated secret and configure the secret name and key containing the ca certificate under caCrt/tls section
+      ## syslog.caCrt section will be deprecated in future. It is still supported currently, however the new parameter syslog.tls.secretRef takes higher precedence over syslog.caCrt if both are configured.
+      caCrt:
+        secretName:
+        key: 
+      ## Recommended to use the below method to configure tls
+      tls:
+        secretRef:
+          # Secret name, pointing to a Secret object.
+          name:
+          # Secret key names mapping.
+          # If the provided Secret is of type `kubernetes.io/tls', then key names do not need to be changed.
+          keyNames:
+            # Name of Secret key, which contains CA certificate
+            caCrt: "ca.crt"
+      
+  #you can add prefixes to pod and container names by providing values for below parameters
+  #Provide lowercase alphanumeric characters, '-' or '.'
+  #Consider suffixing the podNamePrefix and containerNamePrefix with either . or - for convenience
+  podNamePrefix:
+  containerNamePrefix:
+
+  #If enabled, then `podNamePrefix` would be added to the pod name without any restrictions. Default value is false.
+  disablePodNamePrefixRestrictions: 
+
+  #Sets priorityClass for indexmgr pods at global level
+  priorityClassName: ""
+
+  # Configure annotations and labels at global level respectively. These will be added at both pod level and cronjob level for indexmgr.
+  annotations: {}
+  labels: {}
+
+  # Istio-related parameters
+  istio:
+    # Whether istio cni is enabled in the environment.
+    cni:
+     enabled: true
+
+  # Set requested image flavor at global level.
+  imageFlavor:
+  # Set requested image Flavor Policy at global level. Supports Strict or BestMatch. It is BestMatch by default.
+  imageFlavorPolicy:
+#Creating internal*Registry parameters for each image. These will be removed at the time of release in favour of global.registry
+#Internal registry used for indexmgr image
+internalAppRegistry:
+#Internal registry used for fluentd sidecar image
+internalFluentdSidecarRegistry:
+#Internal registry used for init image
+internalInitRegistry:
+#Internal registry used for kubectl image
+internalToolsRegistry:
+
+#If enabled, then `podNamePrefix` would be added to the pod name without any restrictions. This has higher precedence than "global.disablePodNamePrefixRestrictions". Default value is false.
+disablePodNamePrefixRestrictions:
+
+#When rbac.enabled is set to true, chart would create its own rbac related resources; If false, an external/pre-created service account as configured at serviceAccountName will be used.
+rbac:
+  enabled: true
+  #PSP/SCC is required only if istio cni is disabled. In other cases, they are not created as the 'restricted' PSP/SCC is sufficient to run this chart.
+  psp:
+    create: false
+    #Below annotation must be set, when 'containerSecurityContext.seccompProfile.type' is configured.
+    annotations:
+      seccomp.security.alpha.kubernetes.io/allowedProfileNames: '*'
+  scc:
+    create: false
+    #Set annotations for SCCs only if required
+    annotations: {}
+#User can specify the external/pre-created SA here.
+serviceAccountName: ""
+
+customResourceNames:
+  #Provide lowercase alphanumeric characters, '-' or '.'
+  resourceNameLimit: 63
+  indexmgrCronJobPod:
+    #when indexmgrContainerName is not provided,<containerprefix>-indexmgr would be used by default.
+    indexmgrContainerName: ""
+    indexmgrInitContainerName: ""
+    #when unifiedLoggingContainerName is not provided,<containerprefix>unifiedlogging-sidecar would be used by default.
+    unifiedLoggingContainerName: ""
+  #If job/container names are not provided, then default names would be generated by the chart in following format:
+  #For job name: <podprefix>-<ReleaseName>-<string related to job>
+  #For job containernames: <containerprefix>-<string related to job>
+  deleteJob:
+    name: ""
+    deleteJobContainerName: ""
+  helmTestPod:
+    name: ""
+    helmTestContainerName: ""
+
+#This section allows to configure user defined name for pods and containers(For container this will take effect only when customResourceName is not provided for container)
+#Options include:
+#nameOverride: fullname would become <ReleaseName>-<nameOverride>
+#fullnameOverride: fullname would become fullnameOverride
+#If specified both, fullnameOverride would take the precedence.
+nameOverride:
+fullnameOverride:
+
+# Set enableDefaultCpuLimits to true to enable pod CPU resources limit for all containers. Default is empty value.
+# Values set here will take precedence over the value set at global.enableDefaultCpuLimits.
+enableDefaultCpuLimits:
+
+## Pod scheduling preferences.
+## ref: https://kubernetes.io/docs/concepts/configuration/assign-pod-node/#affinity-and-anti-affinity
+affinity: {}
+
+## Node labels for pod assignment
+#ref: https://kubernetes.io/docs/concepts/configuration/assign-pod-node/#nodeselector
+nodeSelector: {}
+
+#Toleration is asking the K8S schedule to ignore a taint
+#ref: https://kubernetes.io/docs/concepts/configuration/taint-and-toleration/
+tolerations: []
+
+#Common lables for k8s objects. Set below to configure label app.kubernetes.io/part-of:
+partOf: ""
+
+timezone:
+
+# This value has precendence over "global.timeZoneEnv". 
+# Example: To test IST(India Standard Time) which is UTC +5:30, you need to use "Asia/Calcutta".
+# Timezone full names can be found here: https://en.wikipedia.org/wiki/List_of_tz_database_time_zones
+  timeZoneEnv:
+
+
+#Sets imagePullSecrets at root level for all indexmgr pods . It takes higher precedence over imagePullSecrets configured at global level.
+imagePullSecrets: []
+# - name: regcred
+
+# Set requested image flavor at root level. It has higher precedence then global.imageFlavor.
+imageFlavor:
+# Set image flavor policy at root level. It supports Strict or BestMatch. It is BestMatch by default. It has higher precedence then global.imageFlavorPolicy.
+imageFlavorPolicy:
+indexmgr:
+  # Set to the requested workload level image flavor. This applies to all containers in indexmgr workload. It takes higher precedence over imageFlavor configured at global/root levels.
+  imageFlavor:
+  # Set image flavor policy at workload.  It takes higher precedence over imageFlavor configured at global/root levels. It supports Strict or BestMatch. It is BestMatch by default.
+  imageFlavorPolicy:
+  image:
+    repo: bssc-indexmgr
+    tag: 5.8.4-2311.0.1 # Desired image flavor must be configured at image.flavor. If the flavor is included in image.tag (for ex. 5.8.4-rocky8-jre17-2311.0.1), the complete tag would be read as-is, irrespective of configuration at image.flavor. 
+    # Set image flavor at container level for main and init container. It takes higher precedence over imageFlavor configured at global/root/workload levels. Supports rocky8-jre11 and rocky8-jre17. It picks rocky8-jre11 by default.
+    flavor:
+    # Set image flavor policy at container level for main container. It takes higher precedence over imageFlavor configured at global/root/workload levels. It supports Strict or BestMatch. It is BestMatch by default.
+    flavorPolicy:
+    initRepo: bssc-init
+    initTag: 1.0.0-2311.0.1  # Desired image flavor must be configured at image.flavor. If the flavor is included in image.initTag (for ex. 1.0.0-rocky8-jre17-2311.0.1), the complete tag would be read as-is, irrespective of configuration at image.flavor.
+  ImagePullPolicy: "IfNotPresent"
+  resources:
+    limits:
+      #cpu: "120m"
+      memory: "120Mi"
+      ephemeral-storage: "100Mi"
+    requests:
+      cpu: "100m"
+      memory: "100Mi"
+      ephemeral-storage: "100Mi"
+  init_resources:
+    limits:
+      #cpu: "100m"
+      memory: "100Mi"
+      ephemeral-storage: "30Mi"
+    requests:
+      cpu: "50m"
+      memory: "50Mi"
+      ephemeral-storage: "30Mi"
+  #Set unifiedLogging.enabled to false if you do not want to get indexmgr logs in CLOG format.
+  unifiedLogging:
+    enabled: true
+    # Following are the image and resource details for the fluentd sidecar used for unifiedLogging
+    imageRepo: bssc-fluentd
+    imageTag: 1.16.2-2311.0.1 # Desired image flavor must be configured at imageFlavor. If the flavor is included in imageTag (for ex. 1.16.2-rocky8-jre17-2311.0.1), the complete tag would be read as-is, irrespective of configuration at imageFlavor.
+    imagePullPolicy: IfNotPresent
+    # Set image flavor at container level for fluentd sidecar container. It takes higher precedence over imageFlavor configured at global/root/workload levels. Supports rocky8-jre11 and rocky8-jre17. It picks rocky8-jre11 by default.
+    imageFlavor:
+     # Set image flavor policy at container level for fluentd sidecar container. It takes higher precedence over imageFlavor configured at global/root/workload levels. It supports Strict or BestMatch. It is BestMatch by default.
+    imageFlavorPolicy:
+    resources:
+      limits:
+        #cpu: "50m"
+        memory: "100Mi"
+        ephemeral-storage: "100Mi"
+      requests:
+        cpu: "20m"
+        memory: "80Mi"
+        ephemeral-storage: "100Mi"
+    # Delay (in seconds) to terminate fluentd sidecar process after curator process gets completed
+    fluentdTerminationDelay: 150
+    syslog:
+      # Enable sending logs to syslog. Takes precedence over global.unifiedLogging.syslog.enabled. Enabled value left empty intentionally, default value is False.
+      enabled:
+      facility:
+      host:
+      port:
+      protocol:
+      #Note - If SSL is enabled for syslog server, configure its root CA certificate in a precreated secret and configure the secret name and key containing the ca certificate under caCrt/tls section
+      ## syslog.caCrt section will be deprecated in future. It is still supported currently, however the new parameter syslog.tls.secretRef takes higher precedence over syslog.caCrt if both are configured.
+      caCrt:
+        secretName:
+        key:
+      ## Recommended to use the below method to configure tls
+      tls:
+        secretRef:
+        # Secret name, pointing to a Secret object.
+          name:
+          # Secret key names mapping.
+          # If the provided Secret is of type `kubernetes.io/tls', then key names do not need to be changed.
+          keyNames:
+            # Name of Secret key, which contains CA certificate
+            caCrt: "ca.crt"
+      
+      #set buffer size for application and sidecar logs.
+      appLogBufferSize: 50MB
+      sidecarLogBufferSize: 20MB
+    #Provide list of extended fields that component can use to enrich the log event by removing {} and configure like below example.
+    #This has precedence over global.unifiedLogging.extension
+    extension: {}
+    #extension:
+       #VM_Name: abc
+       #VM_UUID: 123
+    #Provide list of env parameters to be added in fluentd sidecar in below section after removing {}.
+    env: { }
+    unifiedLoggingConfig: |
+      #system directive is added here to format fluentd sidecar logs into json.
+      <system>
+        <log>
+          format json
+          time_format %Y-%m-%dT%H:%M:%S%z
+        </log>
+      </system>
+      <source>
+        @type tail
+        path /tmp/mainContainerLogs/*.log
+        pos_file /tmp/fluentd.pos
+        # refresh_interval is set to 10s as the Indexmgr is a short lived container and hence with higher refresh_interval, the log file might not be tailed by fluentd as the Indexmgr would have completed its job and exited. The default value of refresh_interval is 60s.
+        refresh_interval 2s
+        read_from_head true
+        tag indexmgr-main-container-logs
+        <parse>
+          @type json
+        </parse>
+      </source>
+      <source>
+        @type tail
+        path /tmp/sidecarContainerLogs/*.log
+        pos_file /tmp/sidecar.pos
+        refresh_interval 2s
+        read_from_head true
+        tag indexmgr-sidecar-alert-logs
+        <parse>
+          @type json
+          time_format %iso8601
+          keep_time_key true
+        </parse>
+      </source>
+      <filter indexmgr-main-container-logs>
+        @type record_transformer
+        enable_ruby true
+        renew_record true
+        <record>
+          log ${ { message: record["message"]  } }
+          extension ${ require 'json';record.merge(JSON.parse(ENV["EXTENSION_FIELDS"])) }
+          type "log"
+          level ${record.has_key?("loglevel") ? record["loglevel"] : (record.has_key?("level") ? record["level"] : "unavailable") }
+          timezone ${ ENV["TZ"] }
+          system ${ ENV["SYSTEM"] }
+          systemid ${ ENV["SYSTEMID"] }
+          host ${ ENV["HOSTNAME"]}.${ ENV["NAMESPACE"] || '' }
+          container ${ ENV["MAIN_CONTAINER_NAME"] }
+          time ${record.has_key?("@timestamp") ? record["@timestamp"]: time.strftime('%Y-%m-%dT%H:%M:%S%z') }
+        </record>
+        remove_keys $.extension.@timestamp,$.extension.message,$.extension.loglevel,$.extension.level
+      </filter>
+      <filter indexmgr-main-container-logs>
+        @type record_modifier
+        enable_ruby true
+        <record>
+          dummy ${require 'json';if record["extension"].empty?; record.delete("extension"); end}
+        </record>
+        remove_keys dummy
+      </filter>
+      {{- if $.syslogEnabled }}
+      <match indexmgr-main-container-logs indexmgr-sidecar-alert-logs>
+        @type rewrite_tag_filter
+        <rule>
+          key level
+          pattern (?i)alert
+          tag ${tag}.alert
+        </rule>
+        <rule>
+          key level
+          pattern .+
+          tag ${tag}.{{ tpl (default "notice" $.syslog.severity) . }}
+        </rule>
+      </match>
+      {{- end}}
+      @include sidecar.conf
+      <match **>
+        @include dest.conf
+      </match>
+
+
+  #Sets PriorityClass for indexmgr pods. If left blank or empty quotes, pods will be configured to cluster default PriorityClass.
+  #indexmgr.priorityClassName has higher precedence than priorityClassName in global scope
+  priorityClassName: ""
+
+  #Sets imagePullSecrets at workload level for all indexmgr pods . This has higher precendece over imagePullsecrets configured at root and global levels.
+  imagePullSecrets: []
+  # - name: regcred
+   
+
+  #pod securityContext can be defined below  
+  securityContext:
+    enabled: true
+    #runAsUser is the uid with which the containers are run. If using random userids in openshift environment, set value as "auto".
+    runAsUser: 1000
+    # fsGroup is the gid that is assigned for the volumemounts mounted to the pod(fsGroup ID is used for block storage). If deploying in openshift environment, the value can be set "auto". 
+    fsGroup: 1000
+    # The supplementalGroups ID applies to shared storage volumes. Uncomment below line to set supplemetary group.
+    #supplementalGroups: [1000]
+    # Uncomment below lines lines to configure SELinux label to a container.
+    # For more details refer to https://kubernetes.io/docs/tasks/configure-pod-container/security-context/
+    #seLinuxOptions:
+    #  level: "s0:c223,c111"
+
+  #container securityContext can be defined below
+  containerSecurityContext:
+    seccompProfile:
+      type: RuntimeDefault
+
+  #To configure custom annotations and labels for indexmgr, remove {} and configure desired annotations and labels respectively using 8 space indentation under respective section.
+  custom:
+    cronjob:
+      #These will be added at metadata.annotations of indexmgr cronjob
+      annotations: {}
+      #These will be added at metadata.labels of indexmgr cronjob
+      labels: {}
+    pod:
+      # These will be added at pod spec level (i.e. spec.template.metadata.annotations)
+      annotations: {}
+      # These will be added at pod spec level (i.e. spec.template.metadata.labels)
+      labels: {}
+
+    ## Configure annotations specific to helm hook jobs & test pods using 10 space indentation.
+    ## Configure labels specific to helm hook jobs & test pods using 10 space indentation.
+    hookJobs:
+      job:
+        # These will be added at job level (i.e. metadata.annotations)
+        annotations: {}
+        # These will be added at job level (i.e. metadata.labels) 
+        labels: {}
+      # These will be added at pod spec level (i.e. spec.template.metadata.annotations)
+      # These will be added at pod spec level (i.e. spec.template.metadata.labels)
+      pod:
+        # These will be added at pod spec level (i.e. spec.template.metadata.annotations)
+        annotations: {}
+        # These will be added at pod spec level (i.e. spec.template.metadata.labels)
+        labels: {}
+
+
+  enabled: true
+  schedule: "0 1 * * *"
+  ## Uncomment following section to modify cronjob spec parameters. Examples have been given.
+  ## Parameters of the same hierarchy should be added. Do not add parameters with nested hierarchy. 
+  #jobSpec:
+  #  successfulJobsHistoryLimit: 5
+  #  failedJobsHistoryLimit: 3
+  #  concurrencyPolicy: Allow
+  ## Uncomment following section to modify cronjob template spec parameters. Examples have been given.
+  ## Parameters of the same hierarchy should be added. Do not add parameters with nested hierarchy.
+  #jobTemplateSpec:
+  #  backoffLimit: 3
+  #  activeDeadlineSeconds: 30
+  configMaps:
+
+    #Please configure preCreatedConfigmap if you want to use existing configmap for indexmgr. The configmap must contain the files actions.yml, curator.yml
+    #Refer bssc user guide for guidelines on how to create custom configmap.
+    #When sensitiveInfoInSecret is enabled, 'http_auth' and 'certificate' parameters will get set by the values from precreated mounted secret specified in sensitiveInfoInSecret section. User can give any random value or leave both the parameter value empty. User can also omit giving these parameters in the configuration while ensuring that in this case  whole configuration should have 2 space of indentation. 
+    preCreatedConfigmap : ""
+    # Delete indices older than 7 days
+    action_file_yml: |-
+      ---
+      actions:
+        1:
+          action: delete_indices
+          description: "Delete indices older than 7 (based on index name)"
+          options:
+            timeout_override:
+            continue_if_exception: False
+            disable_action: False
+            ignore_empty_list: True
+          filters:
+          - filtertype: age
+            source: name
+            direction: older
+            timestring: '%Y.%m.%d'
+            unit: days
+            unit_count: 7
+        ##When cbur is enabled for indexsearch,following section can be uncommented to configure deletion of old snapshots.
+        ## Indexmgr cronjob should be scheduled to run after backup cronjob.
+        #2:
+        #  action: delete_snapshots
+        #  description: "Delete snapshot older than 5 days (based on index name)"
+        #  options:
+        #    repository: is_backup
+        #    ignore_empty_list: True
+        #  filters:
+        #  - filtertype: age
+        #    source: name
+        #    direction: older
+        #    timestring: '%Y.%m.%d'
+        #    unit: days
+        #    unit_count: 5
+    # Having config_yaml WILL override the other config
+    config_yml: |-
+      ---
+      client:
+        #When security is enabled, certificate path will be set internally. Hence, it can be left empty.
+        certificate: ""
+        #Default service name is indexsearch.
+        hosts:
+        # <indexsearch_service_name.namespace>
+        - indexsearch
+        #Provide credentials (user having all_access role) to allow basic HTTP authentication to indexsearch
+        username:
+        password:
+        master_only: 'false'
+        port: 9200
+        # ssl_no_validate property should be 'false' when you are using security without istio and should be 'true' when used with security and istio.
+        ssl_no_validate: 'true'
+        timeout: '60'
+        url_prefix: ''
+        #set use_ssl to true when security is enabled.
+        use_ssl: 'false'
+      logging:
+        blacklist:
+        - elasticsearch
+        - urllib3
+        # When unified logging is enabled, logfile has to be set to "/tmp/mainContainerLogs/im.log" and the logformat has to be set to "json".
+        logfile: '/tmp/mainContainerLogs/im.log'
+        logformat: json
+        loglevel: INFO
+
+  # certManager.enabled and certificate.enabled must be true for using this certificate.
+  # The following certificate configurations like duration etc would be given precedence over the configurations in security.certManager section.
+  certificate:
+    enabled: true
+    # If `issuerRef.name` or `issuerRef.kind` is not specified value from certManager section is taken
+    issuerRef:
+      name:
+      kind:
+      group: # set to "cert-manager.io" by default
+    duration:  # set to 8760h by default
+    renewBefore:  # set to 360h by default
+    # If left empty, it will be generated automatically.
+    secretName:
+    # Not needed in internal communication
+    subject:
+    # It has been deprecated since 2000 and is discouraged from being used for a server side certificates.
+    # `dnsNames` are used instead.
+    commonName:
+    # Usages is the set of x509 usages that are requested for the certificate.
+    # If `usages` is not specified, the following will be used:
+    # - server auth
+    # - client auth
+    usages:
+    # DNSNames is a list of DNS subjectAltNames to be set on the Certificate.
+    # If ssl passthrough is used on the Ingress object,
+    # then dnsNames should be set to external DNS names.
+    dnsNames:
+    # URIs is a list of URI subjectAltNames to be set on the Certificate.
+    uris:
+    # IPAddresses is a list of IP address subjectAltNames to be set on the Certificate.
+    ipAddresses:
+    privateKey:
+      algorithm:
+      encoding:
+      size:
+      # Rotation of a key pair, when certificate is refreshed is recommended from a security point of view
+      rotationPolicy: Always
+      
+accessRoleLabel: internal-access
+kubectl:
+  image:
+    repo: tools/kubectl
+    tag: 1.26.11-20231124 # Desired image flavor must be configured at image.flavor. If the flavor is included in image.tag (for ex. 1.26.11-rocky8-nano-20231124), the complete tag would be read as-is, irrespective of configuration at image.flavor. It takes rocky8-nano as default flavor.
+    # Set image Flavor for kubectl. It has higher precedence then global.imageFlavor and .imageFlavor. Default value is rocky8-nano.
+    # If the flavor is configured at higher levels (workload, root or global) with a flavor not supported by kubectl image, set this imageFlavor explicitly to rocky8-nano.
+    flavor:
+    # Set image Flavor Policy for kubectl. It takes higher precedence over imageFlavor configured at global/root levels. It supports Strict or BestMatch. It is BestMatch by default.
+    flavorPolicy:
+    supportedImageFlavor: ["rocky8-nano"]
+
+#Set affinity, nodeSelector, tolerations and modify resources to apply to jobs and helm test pods 
+jobs:
+  affinity: {}
+  nodeSelector: {}
+  tolerations: []
+  hookJobs:
+    resources:
+      requests:
+        cpu: 100m
+        memory: 100Mi
+        ephemeral-storage: "50Mi"
+      limits:
+        #cpu: 120m
+        memory: 120Mi
+        ephemeral-storage: "50Mi"
+
+# Set to true to enable istio
+istio:
+ enabled: false
+ envoy:
+  # Health check port of istio envoy proxy. For istio versions less than 1.6, set the value to 15020.
+  healthCheckPort: 15021
+  # Time in seconds to wait for istio envoy proxy to load required configurations
+  waitTimeout: 60
+  # Port used to terminate istio envoy sidecar using /quitquitquit endpoint
+  stopPort: 15000
+ # Whether istio cni is enabled in the environment.
+ cni:
+   enabled:
+
+#certManager configuration at root level.
+#Set certManager.enabled as true to create certifcates using certmanager feature.
+#If certManager is enabled, security must be enabled too
+certManager:
+#enabled value left empty intentionally, default value is False
+#This value has higher precedence over global.certManager.enabled
+  enabled:
+
+security:
+  # Set to true when connecting to security-enabled indexsearch.
+  enable: false
+  # If security is set to true, sensitiveInfoInSecret must be enabled as well.
+  sensitiveInfoInSecret:
+    enabled: "{{ .Values.security.enable }}"
+    #When enabled, a secret object has to be created with 3 keys i.e. root-ca certificate, username and password of indexsearch.
+    #Example secret generation command: kubectl create secret generic <secret-name> --from-literal=indexmgr_is_username=<username> --from-literal=indexmgr_is_password=<password> --from-file=root_ca_certificate=<certificatepath>/ca-cert.pem --namespace <namespace>
+    credentialName: #pre-created secretName
+    indexmgrIsUsername: #secret key of indexsearch username
+    indexmgrIsPassword: #secret of indexsearch password
+    ca_certificate: #secret key of indexsearch root ca certificate
+
+  #This has higher precedence over certManager.enabled (root level) and global.certManager.enabled. Its default value is set to read the same value configured at .Values.certManager.enabled
+  certManager:
+    enabled: "{{ .Values.certManager.enabled }}"
+    apiVersion: "cert-manager.io/v1alpha3"
+    duration: "8760h" # 365d
+    renewBefore: "360h" # 15d
+    issuerRef:
+      # We can refer different Issuers by changing the kind and group here.
+      # The default value is ncms-ca-issuer(i.e is a cluster issuer)
+      name: ncms-ca-issuer
+      kind: ClusterIssuer
+      group: cert-manager.io
+
+#When Cross-Cluster Replication is enabled and if the opensearch cluster is a Follower Cluster, set crossClusterReplication.stopReplicationFollowerIndices to true to stop the replication for the follower indices undergoing replication which satisfies Indexmgr's delete policy(actions.yaml).
+#Replication is stopped because the follower indices will be in read_only mode and hence deletion can't be performed by Indexmgr.
+crossClusterReplication:
+  stopReplicationFollowerIndices: false
+
+#This section is used for configuring sizeLimit for emptyDir volumes. When emptyDirSizeLimit is not configured, default values will be used.
+emptyDirSizeLimit:
+  dryrunLogs: #default value is 10Mi
+  indexmgrLogs: #default value is 100Mi
+  sharedVolume: #default value is 10Mi

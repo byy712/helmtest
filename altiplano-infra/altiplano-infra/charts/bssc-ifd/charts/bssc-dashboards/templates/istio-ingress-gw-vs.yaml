@@ -1,0 +1,65 @@
+{{- include "bssc-dashboards.istio.properties" . }}
+{{- include "bssc-dashboards.istio.initIstio" . }}
+{{- if eq $.istio.enabled true -}}
+apiVersion: {{ template "bssc-dashboards.apiVersionNetworkIstioV1Alpha3orV1Beta1" . }}
+kind: VirtualService
+metadata:
+  name: {{ template "bssc-dashboards.fullname" . }}-vs
+  namespace: {{ .Release.Namespace }}
+  labels:
+{{- include "bssc-dashboards.commonLabels" (tuple .  "dashboards" ) | indent 4 }}
+{{- include "bssc-dashboards.csf-toolkit-helm.labels" (tuple .) | nindent 4 }}
+  annotations:
+{{- include "bssc-dashboards.csf-toolkit-helm.annotations" (tuple .) | nindent 4 }}
+spec:
+  hosts:
+  {{- range $.istio.virtual_svc.hosts }}
+    - "{{ . }}"
+  {{- end }}
+  exportTo:
+  {{- range $.istio.virtual_svc.exportTo }}
+    - "{{ . }}"
+  {{- end }}
+  gateways:
+  {{- if $.shared_istio_gateway }}
+  - {{ $.shared_istio_gateway }}
+  {{- else }}
+  {{ range $.istio.virtual_svc.gateways }}
+  - "{{ . }}"
+  {{- end }}
+  {{- end }}
+  http:
+  - match:
+    - uri:
+       prefix: {{ .Values.dbobaseurl.url }}
+    route:
+    - destination:
+        {{- if .Values.service.name }}
+        host: {{ .Values.service.name }}
+        {{- else }}
+        host: {{ template "bssc-dashboards.fullname" . }}
+        {{- end }}
+        port:
+          number: {{ .Values.dashboards.port }}
+---
+{{- if eq $.istioVersion "1.4" -}}
+apiVersion: "networking.istio.io/v1alpha3"
+kind: "DestinationRule"
+metadata:
+  name: {{ template "bssc-dashboards.fullname" . }}
+  labels:
+{{- include "bssc-dashboards.commonLabels" (tuple .  "dashboards" ) | indent 4 }}
+{{- include "bssc-dashboards.csf-toolkit-helm.labels" (tuple .) | nindent 4 }}
+  annotations:
+{{- include "bssc-dashboards.csf-toolkit-helm.annotations" (tuple .) | nindent 4 }}
+spec:
+  host: {{ default (printf "%s" (include "bssc-dashboards.fullname" .)) .Values.service.name }}.{{ .Release.Namespace }}.svc.cluster.local
+  trafficPolicy:
+    tls:
+      mode: ISTIO_MUTUAL
+{{- end }}
+---
+
+{{- include "bssc-dashboards.istio.checkAndGenerateHttpGateway" . }}
+{{- end }}
+

@@ -1,0 +1,38 @@
+{{- if and .Values.istio.enabled .Values.istio.permissive }}
+{{- if eq .Values.istio.version 1.4 }}
+apiVersion: authentication.istio.io/v1alpha1
+kind: Policy
+metadata:
+  name: {{ template "crmq.fullname" . }}-permissive
+  namespace: {{ .Release.Namespace }}
+  labels: 
+    {{- include "crmq.commonLabels" . | indent 4 }}
+    {{- include "csf-common-lib.v1.customLabels" (tuple .Values.global.labels) | indent 4 }}
+  annotations:
+    {{- include "csf-common-lib.v1.customAnnotations" (tuple .Values.global.annotations) | indent 4 }}
+spec:
+  targets:
+  - name: {{ template "crmq.fullname" . }}
+  peers:
+  - mtls:
+      mode: PERMISSIVE
+{{- else if eq .Values.istio.version 1.5 }}
+apiVersion: "security.istio.io/v1beta1"
+kind: PeerAuthentication
+metadata:
+  name: {{ template "crmq.fullname" . }}-permissive
+  namespace: {{ .Release.Namespace }}
+  labels: 
+    {{- include "crmq.commonLabels" . | indent 4 }}
+    {{- include "csf-common-lib.v1.customLabels" (tuple .Values.global.labels) | indent 4 }}
+  annotations:
+    {{- include "csf-common-lib.v1.customAnnotations" (tuple .Values.global.annotations) | indent 4 }}
+spec:
+  selector:
+    matchLabels:
+      app: {{ template "crmq.name" . }}
+      release: {{ .Release.Name }}
+  mtls:
+    mode: PERMISSIVE
+{{- end }}
+{{- end }}

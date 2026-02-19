@@ -1,0 +1,72 @@
+{{ if (and (eq .Values.fluentd.kind "StatefulSet" )  ( .Values.fluentd.persistence.pvc_auto_delete)) }}
+{{ if gt (int .Values.postscalein ) 0 }}
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: {{ template "bssc-fluentd.scaleInJob.name" . }}
+  labels:
+{{- include "bssc-fluentd.commonLabels" (tuple . "fluentd" ) | nindent 4 }}
+{{- include "bssc-fluentd.csf-toolkit-helm.labels" (tuple . .Values.fluentd.custom.hookJobs.job.labels) | nindent 4 }}
+  annotations:
+{{- include "bssc-fluentd.csf-toolkit-helm.annotations" (tuple . .Values.fluentd.custom.hookJobs.job.annotations) | indent 4}}
+spec:
+  template:
+    metadata:
+      labels:
+        altiplano-role: {{ .Values.accessRoleLabel }}
+{{- include "bssc-fluentd.commonLabels" (tuple . "fluentd" ) | nindent 8 }}
+{{- include "bssc-fluentd.csf-toolkit-helm.labels" (tuple . .Values.fluentd.custom.hookJobs.pod.labels) | nindent 8 }}
+      annotations:
+        sidecar.istio.io/inject: "false"
+{{- include "bssc-fluentd.csf-toolkit-helm.annotations" (tuple . .Values.fluentd.custom.hookJobs.pod.annotations) | indent 8}}
+    spec:
+      serviceAccountName: {{ template "bssc-fluentd.scaleServiceAccount.name" . }}
+      automountServiceAccountToken: true
+      {{- if .Values.jobs.affinity }}
+      affinity:
+{{ toYaml .Values.jobs.affinity | indent 8 }}
+      {{- end }}
+      {{- if .Values.jobs.nodeSelector }}
+      nodeSelector:
+{{ toYaml .Values.jobs.nodeSelector | indent 8 }}
+      {{- end }}
+      {{- if .Values.jobs.tolerations }}
+      tolerations:
+{{ toYaml .Values.jobs.tolerations | indent 8 }}
+      {{- end }}
+      restartPolicy: Never
+      securityContext:
+{{ include "bssc-fluentd.pod.securityContext" . | indent 8 }}
+      {{- with or .Values.fluentd.imagePullSecrets .Values.imagePullSecrets .Values.global.imagePullSecrets }}
+      imagePullSecrets:
+{{- toYaml . | nindent 8 }}
+      {{- end }}
+      containers:
+      - name: {{ template "bssc-fluentd.scaleInContainer.name" . }}
+        image: {{ include "bssc-fluentd.registry" (tuple .Values .Values.internalToolsRegistry) }}/{{ include "bssc-fluentd.imageRepositoryPath" (tuple .Values.global.flatRegistry .Values.kubectl.image.repo) }}:{{ (include "bssc-fluentd.imageTag" (tuple .Values.kubectl.image.tag .Values.kubectl.image.supportedImageFlavor .Values .Values.kubectl .Values.kubectl.image )) }}
+        env:
+        - name: TZ
+          value: {{ or .Values.timezone.timeZoneEnv .Values.global.timeZoneEnv "UTC" | quote }}
+        securityContext:
+{{ include "bssc-fluentd.container.securityContext" . | indent 10 }}
+        resources:
+{{ include "bssc-fluentd.resources" (tuple . .Values.jobs.hookJobs.resources "120m") | indent 10 }}
+        command:
+        - bash
+        - "-c"
+        - |
+          echo 'Deleting the pvc of the disconnected fluentd pods'
+          FLUENTD_UPDATED_COUNT={{.Values.fluentd.replicas}}
+          echo "FLUENTD_UPDATED_COUNT = ${FLUENTD_UPDATED_COUNT}"
+          FLUENTD_PVC_IN_CLUSTER=`kubectl get pvc -n={{ .Release.Namespace }} -l app.kubernetes.io/instance={{ .Release.Name }},app.kubernetes.io/name={{ default .Chart.Name .Values.nameOverride }},app.kubernetes.io/component=fluentd|awk '{print $1}' |grep -v NAME`
+          echo "FLUENTD_PVC_IN_CLUSTER = ${FLUENTD_PVC_IN_CLUSTER}"
+          for eachpvc in ${FLUENTD_PVC_IN_CLUSTER};do
+          FLUENTD_PVC_NUMBER=${eachpvc##*-}
+          if ((${FLUENTD_PVC_NUMBER} >= ${FLUENTD_UPDATED_COUNT}));then
+          kubectl delete pvc ${eachpvc} --namespace {{ .Release.Namespace }}
+          echo "PVC Deleted is : ${eachpvc}"
+          fi;
+          done;
+{{- end }}
+{{- end }}
+
