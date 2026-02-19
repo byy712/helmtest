@@ -1,0 +1,62 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+helmCharts:
+- name: altiplano-infra
+  path: . # Points to the local chart files in the same directory
+  releaseName: nokia-infra-anthos
+  namespace: altiplano
+  # These files must exist in the same directory in your GitHub repo
+  valuesFile: values.yaml 
+  additionalValuesFiles:
+    - valuesModelB.yaml
+  # All your --set flags converted to structured YAML
+  valuesInline:
+    global:
+      K8S_PUBLIC_IP: "10.1.1.3"
+      persistence: true
+      registry: "us-east4-docker.pkg.dev/niipr-shared-ue4-oh536/shared-ue4"
+      registry1: "us-east4-docker.pkg.dev/niipr-shared-ue4-oh536/shared-ue4"
+      registry2: "us-east4-docker.pkg.dev/niipr-shared-ue4-oh536/shared-ue4"
+      registry3: "us-east4-docker.pkg.dev/niipr-shared-ue4-oh536/shared-ue4"
+      registry4: "us-east4-docker.pkg.dev/niipr-shared-ue4-oh536/shared-ue4"
+    tags:
+      infra: true
+    cbur:
+      ingress:
+        annotations:
+          "kubernetes.io/ingress.class": "nginx"
+    altiplano-indexsearch:
+      bssc-indexsearch:
+        backup_restore:
+          storageClassName: "ap-filestore-csi"
+    altiplano-kafka:
+      ingress:
+        externalServiceNam: "10.1.1.3"
+    altiplano-nspos-rabbitmq:
+      enabled: false
+    altiplano-opentsdb-cluster:
+      altiplano-hbase:
+        hbase:
+          master:
+            resources:
+              limits:
+                cpu: "2000m"
+                memory: "4096Mi"
+          regionServer:
+            resources:
+              limits:
+                cpu: "2000m"
+                memory: "4096Mi"
+        persistence:
+          size: "10Gi"
+      altiplano-hdfs:
+        persistence:
+          dataNode:
+            size: "10Gi"
+          nameNode:
+            size: "10Gi"
+    altiplano-sso:
+      ingress:
+        annotations:
+          "kubernetes.io/ingress.class": "nginx"
