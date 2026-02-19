@@ -4,7 +4,7 @@ kind: Kustomization
 helmCharts:
 - name: altiplano-infra
   releaseName: nokia-infra-anthos
-  repo: .
+  repo: https://byy712.github.io/helmtest
   namespace: altiplano
   # These files must exist in the same directory in your GitHub repo
   valuesFile: values.yaml 

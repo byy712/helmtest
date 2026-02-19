@@ -3,7 +3,7 @@ entries:
   altiplano-crds:
   - apiVersion: v1
     appVersion: 24.6.1-REL_256
-    created: "2026-02-18T23:02:13.058476-05:00"
+    created: "2026-02-19T00:02:09.197399-05:00"
     dependencies:
     - alias: altiplano-cbur-crds
       condition: altiplano-cbur-crds.enabled,global.altiplano-cbur-crds.enabled
@@ -24,7 +24,7 @@ entries:
   altiplano-infra:
   - apiVersion: v1
     appVersion: 24.6.1-REL_256
-    created: "2026-02-18T23:02:13.120135-05:00"
+    created: "2026-02-19T00:02:09.196813-05:00"
     dependencies:
     - alias: altiplano-indexsearch
       condition: altiplano-indexsearch.enabled,global.altiplano-indexsearch.enabled
@@ -214,12 +214,12 @@ entries:
       name: Nokia Altiplano Team
     name: altiplano-infra
     urls:
-    - https://byy712.github.io/helmtest/altiplano-infra/altiplano-infra-24.6.1-REL-0256.tgz
+    - https://byy712.github.io/helmtest/altiplano-infra-24.6.1-REL-0256.tgz
     version: 24.6.1-REL-0256
   altiplano-secrets:
   - apiVersion: v1
     appVersion: 24.6.1-REL_256
-    created: "2026-02-18T23:02:13.126214-05:00"
+    created: "2026-02-19T00:02:09.203837-05:00"
     dependencies:
     - condition: altiplano-infra-secrets.enabled
       name: altiplano-infra-secrets
@@ -245,7 +245,7 @@ entries:
   altiplano-solution:
   - apiVersion: v1
     appVersion: 24.6.1-REL_256
-    created: "2026-02-18T23:02:13.155349-05:00"
+    created: "2026-02-19T00:02:09.233521-05:00"
     dependencies:
     - condition: altiplano-av.enabled,global.altiplano-av.enabled
       name: altiplano-av
@@ -832,4 +832,4 @@ entries:
     urls:
     - https://byy712.github.io/helmtest/altiplano-solution/altiplano-solution-24.6.1-REL-0256.tgz
     version: 24.6.1-REL-0256
-generated: "2026-02-18T23:02:13.05785-05:00"
+generated: "2026-02-19T00:02:09.142229-05:00"
